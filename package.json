@@ -1,0 +1,13 @@
+{
+	"scripts": {
+		"dev": "npm run build -- --sourcemap=inline --watch",
+		"build": "esbuild js/widget.ts --minify --format=esm --bundle --outdir=src/observablejs/static",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {},
+	"devDependencies": {
+		"@anywidget/types": "^0.3.0",
+		"typescript": "^6.0.2",
+		"esbuild": "^0.28.0"
+	}
+}
