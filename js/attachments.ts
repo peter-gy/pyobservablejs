@@ -14,7 +14,7 @@ export function createFileAttachment(baseUrl: string, registry: AttachmentRegist
 }
 
 export function registerAttachments(attachments: Record<string, AttachmentInfo>): AttachmentRegistry {
-	// registerFile mutates Notebook Kit's global registry; cleanup removes this base.
+	// registerFile mutates Notebook Kit's global registry. Cleanup removes this base.
 	const base = createAttachmentRegistryBase();
 	const registered: string[] = [];
 	for (const [name, info] of Object.entries(attachments)) {

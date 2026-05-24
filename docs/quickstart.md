@@ -25,8 +25,8 @@ uv add "observablejs[data]"
 
 ## Create a Notebook
 
-Use `ojs.Notebook` with cell helpers. `ojs.cell` is Observable JavaScript by
-default.
+Use `ojs.Notebook` with cell helpers. `ojs.cell` creates an Observable
+JavaScript cell.
 
 ```python
 import observablejs as ojs
@@ -40,13 +40,14 @@ notebook = ojs.Notebook(
 notebook
 ```
 
-In a notebook frontend, displaying `notebook` renders the full Observable
-notebook.
+Displaying `notebook` renders the full Observable notebook in any compatible
+widget frontend.
 
-## Pass Python Data
+## Pass Python Values
 
-Pass a mapping with `data`. Keys must be JavaScript identifiers because they
-become variable names inside OJS.
+Pass a mapping with `data`. Each key becomes an OJS variable name, so keys must
+be JavaScript identifiers. If a notebook defines the same variable, the Python
+value overrides that definition.
 
 ```python
 import observablejs as ojs
@@ -57,7 +58,7 @@ events = [
     {"day": "Wed", "value": 15},
 ]
 
-ojs.Notebook(
+notebook = ojs.Notebook(
     ojs.cell("""
     Plot.plot({
       height: 220,
@@ -69,6 +70,11 @@ ojs.Notebook(
 )
 ```
 
+:::{note}
+The browser receives a serialized trait payload for each `notebook.data`
+assignment. Dependent Observable cells recompute from the updated variables.
+:::
+
 Update the data by assigning to `notebook.data`:
 
 ```python
@@ -77,7 +83,8 @@ notebook.data = {"events": events[-2:]}
 
 ## Display One Cell
 
-Name a cell when Python should address it later.
+Name cells that Python needs to display or read separately from the full
+notebook.
 
 ```python
 notebook = ojs.Notebook(
@@ -105,8 +112,8 @@ Use `from_file` or `from_html` for source-backed notebooks.
 notebook = ojs.Notebook.from_file("chart.html")
 ```
 
-By default, local `FileAttachment(...)` references and relative JavaScript imports
-are embedded so the widget can travel with the notebook output. Use
+By default, local `FileAttachment(...)` references and relative JavaScript
+imports are embedded so the widget can travel with the notebook output. Use
 `portable=False` when you want to keep source references as they are.
 
 ## Load a Public Observable Notebook
@@ -121,3 +128,17 @@ notebook
 The URL can be a full Observable URL, a slug such as `@mbostock/saving-svg`, or a
 16-character notebook id. Remote file attachments are kept as URL-backed
 attachments.
+
+Use the same `data` mapping to override variables in a public notebook:
+
+```python
+penguins = [
+    {"culmen_length_mm": 36.7, "culmen_depth_mm": 18.4},
+    {"culmen_length_mm": 44.1, "culmen_depth_mm": 15.9},
+    {"culmen_length_mm": 50.2, "culmen_depth_mm": 19.1},
+]
+notebook = ojs.Notebook.from_url(
+    "https://observablehq.com/@observablehq/plot-scatterplot/2",
+    data={"penguins": penguins},
+)
+```

@@ -2,9 +2,10 @@
 
 Observable JavaScript notebooks as Python widgets.
 
-`observablejs` lets you write Observable JavaScript from Python, pass Python data
-into the Observable runtime, and display the result anywhere
-[anywidget](https://anywidget.dev) runs.
+`observablejs` renders Observable JavaScript cells from Python and runs them with
+Observable Notebook Kit in the browser. Python owns the notebook model, synced
+data, and cell handles. TypeScript owns Notebook Kit evaluation, rendering, and
+runtime metadata.
 
 ```python
 import observablejs as ojs
@@ -54,14 +55,15 @@ For dataframe and Arrow helpers:
 uv add "observablejs[data]"
 ```
 
-## Core Ideas
+## Notebook Model
 
-- `ojs.Notebook(...)` renders a Notebook Kit notebook from Python-authored cells.
-- `data={...}` exposes Python values as normal Observable variables.
-- `name="..."` gives a cell a stable Python handle through `notebook.cell(...)`.
-- `Notebook.from_file(...)` and `Notebook.from_html(...)` load Notebook Kit HTML.
-- `Notebook.from_url(...)` loads public Observable notebooks through Observable's
-  document API.
+- `ojs.Notebook(...)` builds a Notebook Kit notebook from Python-authored cells.
+- `data={...}` sets OJS variables. A matching notebook variable is overridden.
+- `name="..."` gives Python a stable handle for a cell.
+- `notebook.values` and `notebook.cell("name").value` read browser-synchronized
+  outputs after rendering.
+- `notebook.graph` exposes Notebook Kit-derived cell definitions, references, and
+  dependency edges.
 
 ```python
 notebook = ojs.Notebook(
@@ -74,7 +76,16 @@ notebook.cell("gain")
 notebook.value("double")
 ```
 
-## Public Observable Notebooks
+## Source Notebooks
+
+Load Notebook Kit HTML from disk:
+
+```python
+notebook = ojs.Notebook.from_file("chart.html")
+```
+
+Local `FileAttachment(...)` references and relative JavaScript imports are
+embedded by default so the widget can move between notebook frontends.
 
 Load a public Observable notebook by URL, slug, or id:
 
@@ -84,34 +95,25 @@ notebook = ojs.Notebook.from_url("https://observablehq.com/@mbostock/saving-svg"
 
 Remote `FileAttachment(...)` entries are registered as URL-backed attachments,
 so Plot notebooks and examples with uploaded files can render in the widget.
-
-## Notebook Kit HTML
-
-Load an existing Notebook Kit HTML file:
-
-```python
-notebook = ojs.Notebook.from_file("chart.html")
-```
-
-Local `FileAttachment(...)` references and relative JavaScript imports are
-embedded by default so the widget can move between notebook frontends.
+Pass `data={...}` to override variables in a loaded notebook with Python values.
 
 ## Documentation
 
 - [Quickstart](docs/quickstart.md)
 - [Concepts](docs/concepts.md)
 - [Architecture](docs/architecture.md)
+- [Widget composition](docs/composition.md)
 - [API reference](docs/api.md)
 - [Development](docs/development.md)
 
 ## Built On
 
-- [anywidget](https://anywidget.dev) for Python widget packaging
-- traitlets for synced widget state
+- [anywidget](https://anywidget.dev) and traitlets for widget composition and
+  synced state
 - [Observable Notebook Kit](https://github.com/observablehq/notebook-kit) and
-  [@observablehq/runtime](https://github.com/observablehq/runtime) for
-  compilation and runtime execution in the browser
-- data URLs for portable local file attachments and imports
+  [@observablehq/runtime](https://github.com/observablehq/runtime) for cell
+  transpilation and browser execution
+- [Shiki](https://shiki.style/) for pinned source highlighting
 
 ## Contributing
 
@@ -121,9 +123,9 @@ and the check commands used before sending changes for review.
 ## Acknowledgements
 
 `observablejs` builds on [Observable Notebook Kit](https://github.com/observablehq/notebook-kit)
-and [@observablehq/runtime](https://github.com/observablehq/runtime). It was also inspired by
-[`pyobsplot`](https://github.com/juba/pyobsplot), which shows a clean path for
-passing Python values into an Observable JavaScript context.
+and [@observablehq/runtime](https://github.com/observablehq/runtime).
+[`pyobsplot`](https://github.com/juba/pyobsplot) informed the Python-to-OJS
+data-passing API.
 
 Thanks to [@manzt](https://github.com/manzt) (Trevor Manz) for the composable
 anywidgets demo that helped shape the widget design.

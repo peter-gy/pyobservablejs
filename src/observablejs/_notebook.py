@@ -1,4 +1,4 @@
-"""Python models for Observable Notebook Kit widgets."""
+"""Python widget models for Observable notebooks and cells."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from ._variables import serialize_variables
 
 @dataclasses.dataclass(frozen=True)
 class Cell:
-    """Notebook Kit script cell authored from Python."""
+    """Notebook Kit cell authored from Python source."""
 
     source: str
     mode: Mode = "ojs"
@@ -78,14 +78,14 @@ def _widgets_from_json(value: object, _widget: object) -> object:
 
 
 class _ObservableWidget(anywidget.AnyWidget):
-    """anywidget base for the bundled Observable frontend."""
+    """Shared anywidget base for the bundled frontend assets."""
 
     _esm = pathlib.Path(__file__).parent / "static" / "widget.js"
     _css = pathlib.Path(__file__).parent / "static" / "widget.css"
 
 
 class CellHandle(_ObservableWidget):
-    """Python handle for one Observable cell."""
+    """Child widget model that tracks one Observable cell."""
 
     role = traitlets.Unicode("cell").tag(sync=True)
     _cell_id = traitlets.Unicode("").tag(sync=True)
@@ -107,7 +107,7 @@ class CellHandle(_ObservableWidget):
 
     @property
     def info(self) -> CellInfo | None:
-        """Notebook Kit-derived metadata for this cell, once rendered."""
+        """Notebook Kit metadata for this cell, once the browser renders."""
 
         if self._notebook is None or self._notebook_index is None:
             return None
@@ -162,7 +162,7 @@ class CellHandle(_ObservableWidget):
 
 
 class Notebook(_ObservableWidget):
-    """anywidget model that renders an Observable Notebook Kit notebook."""
+    """anywidget model for one Observable Notebook Kit runtime."""
 
     role = traitlets.Unicode("notebook").tag(sync=True)
     source = traitlets.Unicode("").tag(sync=True)
@@ -209,7 +209,7 @@ class Notebook(_ObservableWidget):
             mode: default mode for plain string cells.
             attachments: explicit ``FileAttachment`` inputs.
             base_path: base path for relative attachment inputs.
-            data: Python values exposed as Observable runtime variables.
+            data: Python values that set or override Observable runtime variables.
             show_pinned_source: render source for pinned Notebook Kit cells.
         """
 
@@ -240,7 +240,7 @@ class Notebook(_ObservableWidget):
 
     @property
     def data(self) -> dict[str, Any]:
-        """Python values currently exposed to the Observable runtime."""
+        """Original Python values that set or override Observable variables."""
 
         return dict(self._data_values)
 
@@ -251,13 +251,13 @@ class Notebook(_ObservableWidget):
 
     @property
     def graph(self) -> NotebookGraph | None:
-        """Latest browser-produced symbolic graph for the notebook."""
+        """Symbolic cell graph synced from the browser runtime."""
 
         return graph_from_raw(self._graph)
 
     @property
     def cells(self) -> tuple[CellHandle, ...]:
-        """Cell handles synchronized with the corresponding OJS cells."""
+        """Child cell handles in notebook order."""
 
         return tuple(self._cell_widgets)
 
@@ -334,8 +334,8 @@ class Notebook(_ObservableWidget):
         """Create a notebook from Notebook Kit HTML.
 
         Local ``FileAttachment`` calls and relative imports can be embedded for
-        portability, while Python ``data`` still enters the OJS runtime through
-        the same ``_data`` trait used by Python-authored notebooks.
+        portability. Python ``data`` enters the OJS runtime through the same
+        ``_data`` trait used by Python-authored notebooks.
         """
 
         source, discovered = prepare_source(
@@ -418,7 +418,7 @@ def cell(
     raw: bool = False,
     attrs: Mapping[str, Any] | None = None,
 ) -> Cell:
-    """Create an Observable JavaScript cell."""
+    """Return an Observable JavaScript cell spec."""
 
     if isinstance(source, Cell):
         if any([name is not None, display is not True, mode != "ojs", raw, attrs]):
@@ -437,32 +437,32 @@ def cell(
 
 
 def module(source: str, **kwargs: Any) -> Cell:
-    """Create a standard JavaScript module cell."""
+    """Return a standard JavaScript module cell spec."""
 
     return cell(source, mode="js", **kwargs)
 
 
 def md(source: str, **kwargs: Any) -> Cell:
-    """Create a Markdown cell."""
+    """Return a Markdown cell spec."""
 
     return cell(source, mode="md", **kwargs)
 
 
 def html(source: str, **kwargs: Any) -> Cell:
-    """Create an HTML cell."""
+    """Return an HTML cell spec."""
 
     return cell(source, mode="html", **kwargs)
 
 
 def sql(source: str, **kwargs: Any) -> Cell:
-    """Create a SQL cell."""
+    """Return a SQL cell spec."""
 
     return cell(source, mode="sql", **kwargs)
 
 
 def _copy_data(data: Mapping[str, Any] | None) -> dict[str, Any]:
-    # Validate now, but keep Python-facing values unmodified. The serialized
-    # representation lives only on the synced `_data` trait.
+    # Validation runs against Python-facing values. The synced `_data` trait
+    # carries the serialized representation.
     serialize_variables(data)
     return {} if data is None else dict(data)
 
@@ -481,7 +481,7 @@ _MODE_BY_SCRIPT_TYPE = {
 
 
 class _NotebookHTMLParser(HTMLParser):
-    """Extract Notebook Kit script cells from source-backed HTML."""
+    """Collect script cells from Notebook Kit HTML."""
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)

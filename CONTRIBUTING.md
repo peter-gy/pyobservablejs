@@ -1,7 +1,5 @@
 # Contributing
 
-Thanks for helping improve `observablejs`.
-
 ## Setup
 
 Set up the Python and JavaScript dependencies:
@@ -24,6 +22,8 @@ Run the marimo workbench notebooks from the project environment:
 ```sh
 uv run marimo edit workbench/python_vars.py
 uv run marimo edit workbench/gallery_examples.py
+uv run marimo edit workbench/construction_methods.py
+uv run marimo edit workbench/observable_urls.py
 ```
 
 `workbench/gallery_examples.py` can load the Observable Notebook Kit example
@@ -52,10 +52,15 @@ Preview them locally:
 Before sending changes for review, run:
 
 ```sh
-uv run pytest
-uv run ruff check
-uv run ty check
 pnpm format:check
 pnpm lint
 pnpm typecheck
+pnpm test:js
+uv run ruff format --check .
+uv run ruff check
+uv run ty check
+uv run pytest -q
+pnpm build
+(cd docs && uv run jupyter book build --site)
+git diff --check
 ```

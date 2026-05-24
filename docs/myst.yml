@@ -17,6 +17,7 @@ project:
     - file: quickstart.md
     - file: concepts.md
     - file: architecture.md
+    - file: composition.md
     - file: api.md
     - file: development.md
 site:

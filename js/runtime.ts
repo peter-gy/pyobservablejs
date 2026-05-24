@@ -23,6 +23,25 @@ export function createRuntime(
 	return new NotebookRuntime(builtins);
 }
 
+type RedefinableModule = NotebookRuntime["main"] & {
+	redefine(name: string, inputs: string[], definition: () => unknown): unknown;
+};
+
+export function redefineRuntimeData(runtime: NotebookRuntime, data: Record<string, unknown>): void {
+	const definitions = createVariableBuiltins(data);
+	for (const [name, define] of Object.entries(definitions)) {
+		try {
+			(runtime.main as RedefinableModule).redefine(name, [], define);
+		} catch (error) {
+			if (!isUnknownRuntimeVariable(error, name)) throw error;
+		}
+	}
+}
+
+function isUnknownRuntimeVariable(error: unknown, name: string): boolean {
+	return error instanceof Error && error.message === `${name} is not defined`;
+}
+
 export function createRuntimeCleanup(runtime: NotebookRuntime, attachmentRegistry: AttachmentRegistry): () => void {
 	let disposed = false;
 	return () => {

@@ -1,138 +1,182 @@
 ---
 title: Architecture
-description: How Python cells, data, anywidget traits, and the Observable runtime fit together.
+description: Python traits, Observable cells, browser runtime, and graph metadata.
 ---
 
 # Architecture
 
-Runtime state moves through a fixed path:
+`observablejs` has one runtime boundary: Python defines notebook state, and the
+browser evaluates Observable cells.
 
 ```text
 Python API
   -> anywidget trait model
-  -> TypeScript widget renderer
+  -> TypeScript renderer
   -> Observable Notebook Kit runtime
-  -> child cell widgets
-  -> Python-visible values
+  -> child cell models
+  -> Python-visible values and graph metadata
 ```
 
-## Python Model
+Python prepares Notebook Kit inputs, serializes Python values, and exposes child
+widget handles. TypeScript runs Notebook Kit, binds Python values as Observable
+builtins, renders cell outputs, and syncs cell values plus symbolic graph
+metadata back to Python.
 
-The Python package builds the widget model.
+:::{note} Runtime ownership
+Notebook Kit and `@observablehq/runtime` own cell parsing, dependency analysis,
+runtime variables, `viewof` semantics, and DOM output. `observablejs` keeps those
+results visible to Python through widget traits.
+:::
 
-| File | Responsibility |
+## Python Package
+
+| File | Role |
 | --- | --- |
-| `src/observablejs/_notebook.py` | Public `Notebook`, `Cell`, and cell helper API. |
-| `src/observablejs/_graph.py` | Immutable graph dataclasses and browser-trait decoding. |
+| `src/observablejs/_notebook.py` | Public `Notebook`, `Cell`, `CellHandle`, and cell helpers. |
 | `src/observablejs/_variables.py` | Python value serialization for `data`. |
-| `src/observablejs/_files.py` | Attachment discovery and portable source rewriting. |
+| `src/observablejs/_files.py` | `FileAttachment` discovery and portable source rewriting. |
+| `src/observablejs/_graph.py` | Immutable Python view of browser-produced graph metadata. |
 | `src/observablejs/_observable.py` | Observable document API URL resolution and response conversion. |
 | `src/observablejs/_serialize.py` | Notebook Kit HTML serialization for Python-authored cells. |
 
-`Notebook(...)` creates:
+`Notebook(...)` builds a Notebook Kit `spec`, serializes `data`, creates one
+`CellHandle` per cell, and records attachment metadata. `Notebook.from_file(...)`
+and `Notebook.from_html(...)` keep the source HTML and derive the same cell
+handles by reading Notebook Kit script tags. `Notebook.from_url(...)` fetches
+Observable's document API and converts API nodes to Notebook Kit cells.
 
-- a Notebook Kit-compatible `spec` for Python-authored cells,
-- a serialized `_data` payload for Python values,
-- one child cell widget per notebook cell,
-- normalized attachment metadata.
-
-`Notebook.from_file(...)` and `Notebook.from_html(...)` instead keep the original
-Notebook Kit HTML in `source`, then create the same child cell handles by parsing
-the HTML script cells. `Notebook.from_url(...)` follows Observable's document API
-shape, converts API `js` nodes to Notebook Kit `ojs` cells, and passes remote file
-metadata to the same attachment registry.
+See [](./composition.md) for the anywidget composition contract that makes those
+cell handles render inside the parent notebook and remain Python-visible widgets.
 
 ## Widget Traits
 
-The Python and TypeScript sides communicate through these traits.
+Python and TypeScript communicate through synced trait state.
 
 | Trait | Direction | Meaning |
 | --- | --- | --- |
-| `source` | Python to browser | Original Notebook Kit HTML for source-backed notebooks. |
-| `spec` | Python to browser | Notebook Kit JSON shape for Python-authored notebooks. |
+| `source` | Python to browser | Notebook Kit HTML for source-backed notebooks. |
+| `spec` | Python to browser | Notebook Kit JSON for Python-authored notebooks. |
 | `attachments` | Python to browser | File metadata used by `FileAttachment`. |
 | `base_url` | Python to browser | Base URL for non-embedded source references. |
-| `_data` | Python to browser | Serialized Python values exposed as OJS variables. |
-| `_graph` | Browser to Python | Notebook Kit-derived symbolic graph for the notebook. |
-| `_cell_widgets` | Python to browser | anywidget refs for the child cell models. |
-| `variable_names` | Browser to Python | Names exposed by one cell, or by the whole notebook on notebook models. |
-| `variables` | Browser to Python, then Python to browser for views | Latest wire values for one cell, plus the aggregate notebook values on notebook models. |
+| `_data` | Python to browser | Serialized Python values that set or override OJS variables. |
+| `_cell_widgets` | Python to browser | anywidget references for child cell models. |
+| `_graph` | Browser to Python | Notebook Kit-derived symbolic notebook graph. |
+| `variable_names` | Browser to Python | Variables exposed by a cell or notebook. |
+| `variables` | Browser to Python, then Python to browser for views | Latest wire values. |
 
-`_cell_widgets` serializes child widget references as `anywidget:<model_id>`
-strings while still validating each item as an `anywidget.WidgetTrait` on the
-Python side. This matches the anywidget composition contract for one child model
-per Notebook Kit cell.
+`_cell_widgets` uses anywidget composition. The Python trait validates real
+`CellHandle` instances, then serializes them as `anywidget:<model_id>` strings
+so the browser can resolve the matching child models.
 
 ## Browser Runtime
 
-The TypeScript package turns trait state into a running notebook.
-
-| File | Responsibility |
+| File | Role |
 | --- | --- |
-| `js/widget.ts` | anywidget render function, cell composition, OJS value sync. |
-| `js/runtime.ts` | Notebook Kit runtime creation and builtins. |
+| `js/widget.ts` | anywidget lifecycle, Notebook Kit runtime binding, cell composition, value sync. |
+| `js/runtime.ts` | Runtime builtins, `FileAttachment`, `width`, and Python data variables. |
 | `js/wire.ts` | Browser-side value serialization and Python data revival. |
-| `js/attachments.ts` | FileAttachment registry scoped to each widget instance. |
-| `js/types.ts` | Shared model and runtime types. |
+| `js/graph.ts` | Notebook Kit `transpile` metadata to notebook graph JSON. |
+| `js/attachments.ts` | Scoped `FileAttachment` registry cleanup. |
+| `js/highlight.ts` | Shiki-backed rendering for pinned source cells. |
 
-When the notebook renders, TypeScript:
+Rendering follows a fixed order:
 
-1. Reads `source` or `spec` and creates a Notebook Kit notebook.
-2. Revives `_data` into runtime builtins, so OJS cells can use Python variables by
-   name.
-3. Registers file attachments for the widget instance.
-4. Resolves the child cell widgets from `_cell_widgets`.
-5. Transpiles each cell with Notebook Kit and syncs the symbolic graph to
-   `_graph`.
-6. Defines each OJS cell in one Notebook Kit runtime.
-7. Mirrors each exposed OJS variable into the matching child widget's `variables`
-   trait.
-8. Aggregates child `variables` into the notebook model's own `variables` trait,
-   which backs `notebook.values`.
+1. Read `source` or `spec` and create a Notebook Kit notebook.
+2. Resolve child cell models from `_cell_widgets`.
+3. Register file attachments for this widget instance.
+4. Create one Notebook Kit runtime with Observable builtins and Python `data`.
+5. Transpile each cell with Notebook Kit and sync `_graph`.
+6. Define cells in notebook order. The runtime resolves dependencies.
+7. Mirror exposed OJS variables into child `variables` traits.
+8. Aggregate child values onto the notebook model for `notebook.values`.
 
-Cell handles use anywidget v0.11 composition. The parent resolves each child with
-`host.getWidget` / `host.getModel`, passes the parent render signal through the
-child render lifecycle, and hands over the shared Notebook Kit runtime context.
+The full notebook is one Observable reactive graph. A standalone
+`notebook.cell("name")` display for an ordinary cell renders against the bound
+parent runtime. `viewof` cells use an isolated render path with a separate DOM
+target and a synchronized current value on the cell model.
 
-Graph metadata comes from Notebook Kit's
-`transpile(cell, {resolveLocalImports: true})` result, the same symbolic cell
-metadata used to define runtime variables.
+## Graph Metadata
 
-## Cell Handles
+`notebook.graph` is populated after browser render. TypeScript calls Notebook
+Kit `transpile(cell, {resolveLocalImports: true})` and records:
 
-A full Observable notebook is one reactive graph. Python still needs handles for
-individual cells.
+- variables defined by each cell,
+- variables referenced by each cell,
+- runtime output names, including `viewof` and mutable variables,
+- cell-to-cell dependency edges,
+- transpilation errors reported by Notebook Kit.
 
-Child widgets provide those handles without creating independent full notebooks
-for every cell. The full notebook renders each cell through its child widget,
-and the child widget records the values exposed by that cell. When a child is
-rendered on its own, display cells run against the already-bound Notebook Kit
-runtime so dependencies such as D3 selections, Mutable values, DOM nodes, and
-arrays with side properties stay live JavaScript objects. `viewof` cells keep an
-isolated rendering path so the standalone control can sync through the cell
-model without redefining the notebook's primary view variable.
+This keeps the symbolic representation native to Notebook Kit. Python decodes
+the synced trait into immutable `NotebookGraph`, `CellInfo`, and
+`DependencyEdge` objects.
 
-The shared child model supports these operations:
+## Performance Boundaries
 
-- display the full notebook,
-- display `notebook.cell("gain")`,
-- read `notebook.value("gain")`,
-- read reactive aggregate values with `notebook.values`,
-- update a `viewof` value through synced widget state.
+The main cost centers are data movement, runtime invalidation, source handling,
+and browser rendering.
+
+- `data` crosses as JSON-compatible trait state. Dates, bytes, NumPy values, and
+  dataframe records are encoded in Python and revived in TypeScript.
+- Matching `data` keys are applied with Observable Runtime `redefine`, so Python
+  values can replace variables from Python-authored, source-backed, and public
+  Observable notebooks.
+- `ojs.arrow(df)` sends Arrow IPC and lazily imports Apache Arrow in the browser.
+- Notebook updates re-render through anywidget model change events. The render
+  path aborts obsolete work before starting the next runtime.
+- File attachments and relative imports can be embedded as data URLs. Embedding
+  makes notebooks portable and increases trait/source payload size.
+- Shiki is initialized once with the imported languages and theme, and falls
+  back to plain source for very large pinned cells.
+- Graph metadata is extracted during TypeScript cell transpilation and synced to
+  Python through `_graph`.
+
+:::{warning}
+Traitlets are a control and state channel for complete payload updates.
+Frequent reassignment of large `data` payloads will dominate notebook update
+time.
+:::
+
+## Complexity Hotspots
+
+Large files correspond to cross-boundary concerns.
+
+`src/observablejs/_notebook.py`
+: Defines the public Python model boundary. It aligns `Notebook`, `CellHandle`,
+  Python-authored cells, source-backed constructors, child anywidget composition,
+  trait initialization, browser-synced values, and graph state with
+  TypeScript-owned OJS evaluation and transpilation.
+
+`js/widget.ts`
+: Coordinates anywidget lifecycle, child widget composition, Notebook Kit runtime
+  binding, standalone cell display, `viewof` synchronization, and abort cleanup.
+  The core invariant is one parent runtime per displayed notebook, with child
+  models acting as handles into that runtime.
+
+`src/observablejs/_files.py`
+: Rewrites source-backed notebooks through static source analysis. It finds
+  `FileAttachment(...)` and relative import specifiers inside real notebook
+  script cells. Comments, strings, template literals, regex literals, and
+  non-JavaScript script types are excluded from those matches.
+
+`src/observablejs/_variables.py` and `js/wire.ts`
+: Define the cross-language wire format. Tagged `__observablejs_type__` values
+  carry dates, bytes, non-finite numbers, Arrow tables, DOM summaries, typed
+  arrays, and errors across the trait boundary.
+
+`js/highlight.ts`
+: Uses Shiki for pinned source panels with a selected language and theme set.
+  Highlighting is asynchronous and guarded by the render abort signal so stale
+  work exits before writing into a disposed cell.
 
 ## Portability
 
-For source-backed notebooks, local files can be embedded:
+Source-backed notebooks can be made self-contained:
 
 - `FileAttachment("data.csv")` becomes an attachment entry with a data URL.
-- Relative static imports such as `import "./helper.js"` are rewritten to data
-  URLs.
-- Relative dynamic imports such as `import("./helper.js")` are also rewritten.
+- Static imports such as `import "./helper.js"` are rewritten to data URLs.
+- Dynamic imports such as `import("./helper.js")` are rewritten the same way.
 
-Portable source-backed notebooks can move between Python frontends without
-depending on the original local file tree.
-
-Public Observable URLs take a different portability path. The Python side
-fetches the document API response, serializes its nodes to Notebook Kit HTML, and
-keeps uploaded files as remote attachment URLs. The browser still uses Notebook
-Kit for transpilation, imports, graph metadata, and runtime execution.
+Public Observable URLs are fetched through the document API. Python serializes
+API nodes to Notebook Kit HTML and keeps uploaded files as remote attachment
+URLs. The browser uses Notebook Kit for transpilation, runtime execution, graph
+metadata, and rendering.

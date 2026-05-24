@@ -6,14 +6,13 @@ description: The main ideas behind observablejs.
 # Concepts
 
 `observablejs` connects Python objects to the Observable notebook model. The
-core objects are notebooks, cells, widget traits, Python data variables, cell
-handles, and graph metadata.
+main pieces are Observable cells, Notebook Kit, traitlets, Python data
+variables, cell handles, and graph metadata.
 
 ## Observable JavaScript
 
-Observable JavaScript is a notebook language for the browser. It looks like
-JavaScript, but cells are reactive: when an input changes, dependent cells
-recompute.
+Observable JavaScript is a reactive notebook language for the browser. When an
+input changes, dependent cells recompute.
 
 - A cell can define a variable, such as `answer = 42`.
 - A cell can display a value directly, such as `Plot.plot(...)`.
@@ -28,7 +27,7 @@ Observable Notebook Kit provides the browser compiler and runtime used here. It
 turns notebook cells into runtime definitions, evaluates them in dependency
 order, and renders outputs into DOM nodes.
 
-`observablejs` uses Notebook Kit in two ways:
+`observablejs` accepts three Notebook Kit entry points:
 
 - Python-authored cells are converted to Notebook Kit cell specs.
 - Existing Notebook Kit HTML can be loaded with `Notebook.from_file` or
@@ -41,17 +40,19 @@ order, and renders outputs into DOM nodes.
 anywidget is the Python widget layer. It gives Python a model with synced
 traitlets and gives the browser a TypeScript renderer for that model.
 
-The important boundary is trait state:
+The trait boundary carries widget state:
 
 - Python sets traits such as `spec`, `source`, `attachments`, and `_data`.
 - TypeScript reads those traits and creates the Observable runtime.
-- TypeScript writes OJS cell values back to child widget traits.
+- TypeScript writes OJS cell outputs and metadata back to child widget traits.
 - Python can inspect those child widget traits with `notebook.cell(...)` and
   `notebook.value(...)`.
 
-## Python Data in OJS
+## Python Values in OJS
 
-Python data enters OJS through `data={...}`.
+Python data enters OJS through `data={...}`. The mapping sets Observable
+variables and can override variables defined by Python-authored, source-backed,
+or URL-backed notebooks.
 
 ```python
 ojs.Notebook(
@@ -60,17 +61,24 @@ ojs.Notebook(
 )
 ```
 
-The browser sees `rows` as a normal Observable variable. There is no special
-syntax inside OJS.
+OJS code reads `rows` directly as a normal Observable variable. In source-backed
+and public Observable notebooks, a matching `data` key replaces the notebook's
+runtime value.
 
-The data serializer handles JSON-like values, dates, bytes, NumPy values, and
-dataframe-like objects. Dataframes become records by default. Use `ojs.arrow(df)`
-when you want Arrow IPC and have `pyarrow` installed.
+The serializer accepts JSON-like values, dates, bytes, NumPy values, and
+dataframe-like objects. Dataframes become records by default. Use
+`ojs.arrow(df)` when you want Arrow IPC and have `pyarrow` installed.
+
+:::{warning}
+Large values cross the Python/browser boundary as widget trait payloads. For
+large tables, prefer existing `FileAttachment(...)` data files or Arrow payloads
+over repeatedly assigning large record lists.
+:::
 
 ## Cell Handles
 
-Every notebook cell has a matching child widget. Named cells are useful because
-they provide stable Python handles:
+Every notebook cell has a matching child widget. Named cells provide stable
+Python handles:
 
 ```python
 notebook.cell("gain")
@@ -82,8 +90,7 @@ notebook.values
 input changes in the browser, the matching child cell trait updates first and the
 notebook trait receives the aggregate values immediately after.
 
-Separate cell displays stay connected to the same OJS computation because the
-cell handle and the full notebook share the same browser-side cell model.
+Separate cell displays stay connected through the shared browser-side cell model.
 
 ## Notebook Graph
 
@@ -98,9 +105,9 @@ notebook.cell("gain").info
 notebook.defining_cell("gain")
 ```
 
-This graph is not parsed in Python. It comes from Notebook Kit's `transpile`
-metadata on the TypeScript side, the same metadata used to define cells in the
-Observable runtime. Each cell reports:
+Notebook Kit `transpile` metadata in TypeScript supplies the graph, using the
+same symbolic cell metadata that defines variables in the Observable runtime.
+Each cell reports:
 
 - `defines`: Python-visible variables exposed by the cell
 - `references`: variables the cell reads
@@ -108,12 +115,12 @@ Observable runtime. Each cell reports:
 - `outputs`: Notebook Kit's raw plural output declarations
 - `runtime_outputs`: raw runtime names used for dependency edges
 
-Expression-only display cells can have `autodisplay=True` while defining no
-variable.
+Display expression cells can have `autodisplay=True` and an empty `defines`
+list.
 
-## Source-backed Versus Python-authored
+## Notebook Entry Points
 
-There are three notebook entry points:
+The package has three notebook entry points:
 
 - Python-authored notebooks: `Notebook(ojs.cell(...), ojs.md(...))`
 - Source-backed notebooks: `Notebook.from_file(...)` or `Notebook.from_html(...)`

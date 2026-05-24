@@ -99,6 +99,96 @@ describe("widget graph sync", () => {
 		controller.abort();
 	});
 
+	test("lets Python data override notebook-defined variables", async () => {
+		const model = createModel({
+			role: "notebook",
+			spec: {
+				cells: [
+					{ id: 1, mode: "ojs", value: "answer = 1" },
+					{ id: 2, mode: "ojs", value: "doubled = answer * 2" },
+				],
+			},
+			attachments: {},
+			_data: { answer: 41, unused: 1 },
+			options: {},
+			_cell_widgets: ["anywidget:answer", "anywidget:doubled"],
+		});
+		const childModels = new Map([
+			["anywidget:answer", createModel({ role: "cell", name: "answer", variables: {}, variable_names: [] })],
+			["anywidget:doubled", createModel({ role: "cell", name: "doubled", variables: {}, variable_names: [] })],
+		]);
+		const childExports = createCellExportsMap(childModels);
+		const childRenders = renderChildrenThroughWidget(childModels);
+		const controller = new AbortController();
+
+		widget.render({
+			model,
+			el: document.createElement("div"),
+			signal: controller.signal,
+			host: createHost(childModels, childExports, childRenders),
+		} as unknown as RenderProps<WidgetModel>);
+
+		expect(
+			await waitFor(() => (variableValue(childModels.get("anywidget:answer")!, "answer") === 41 ? 41 : undefined)),
+		).toBe(41);
+		expect(await waitFor(() => (variableValue(model, "doubled") === 82 ? 82 : undefined))).toBe(82);
+
+		const standaloneEl = document.createElement("div");
+		widget.render({
+			model: childModels.get("anywidget:answer")!,
+			el: standaloneEl,
+			signal: controller.signal,
+			host: createHost(new Map()),
+		} as unknown as RenderProps<WidgetModel>);
+
+		expect(await waitFor(() => (standaloneEl.textContent?.includes("41") ? standaloneEl.textContent : undefined))).toBe(
+			"41",
+		);
+		controller.abort();
+	});
+
+	test("overrides source-backed variables without breaking URL-backed attachments", async () => {
+		const model = createModel({
+			role: "notebook",
+			source: `
+<notebook>
+  <script id="1" type="application/vnd.observable.javascript" name="rows">rows = [{x: 0}, {x: 1}, {x: 2}]</script>
+  <script id="2" type="application/vnd.observable.javascript" name="count">count = rows.length</script>
+  <script id="3" type="application/vnd.observable.javascript" name="attachmentUrl">attachmentUrl = FileAttachment("points.csv").url()</script>
+</notebook>
+`,
+			attachments: {
+				"points.csv": { url: "https://static.example/points.csv", mimeType: "text/csv" },
+			},
+			_data: { rows: [{ x: 10 }, { x: 20 }], unused: 1 },
+			options: {},
+			_cell_widgets: ["anywidget:rows", "anywidget:count", "anywidget:attachment"],
+		});
+		const childModels = new Map([
+			["anywidget:rows", createModel({ role: "cell", name: "rows", variables: {}, variable_names: [] })],
+			["anywidget:count", createModel({ role: "cell", name: "count", variables: {}, variable_names: [] })],
+			["anywidget:attachment", createModel({ role: "cell", name: "attachmentUrl", variables: {}, variable_names: [] })],
+		]);
+		const controller = new AbortController();
+
+		widget.render({
+			model,
+			el: document.createElement("div"),
+			signal: controller.signal,
+			host: createHost(childModels, createCellExportsMap(childModels), renderChildrenThroughWidget(childModels)),
+		} as unknown as RenderProps<WidgetModel>);
+
+		expect(await waitFor(() => (variableValue(model, "count") === 2 ? 2 : undefined))).toBe(2);
+		expect(await waitFor(() => variableValue(model, "rows") as Array<{ x: number }> | undefined)).toEqual([
+			{ x: 10 },
+			{ x: 20 },
+		]);
+		expect(await waitFor(() => variableValue(model, "attachmentUrl") as string | undefined)).toBe(
+			"https://static.example/points.csv",
+		);
+		controller.abort();
+	});
+
 	test("syncs graph metadata for source-backed Notebook Kit HTML", async () => {
 		const model = createModel({
 			role: "notebook",
@@ -478,6 +568,25 @@ function createHost(
 			},
 		}),
 	} as unknown as RenderProps<WidgetModel>["host"];
+}
+
+function renderChildrenThroughWidget(childModels: Map<string, Model>): Map<string, ChildRender> {
+	const childRenders = new Map<string, ChildRender>();
+	for (const [ref, childModel] of childModels) {
+		childRenders.set(ref, ({ el, signal }) => {
+			widget.render({
+				model: childModel,
+				el,
+				signal: signal ?? new AbortController().signal,
+				host: createHost(new Map()),
+			} as unknown as RenderProps<WidgetModel>);
+		});
+	}
+	return childRenders;
+}
+
+function createCellExportsMap(childModels: Map<string, Model>): Map<string, CellExports> {
+	return new Map(Array.from(childModels, ([ref, childModel]) => [ref, createCellExports(childModel)]));
 }
 
 function createCellExports(model: Model): CellExports {

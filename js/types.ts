@@ -23,8 +23,8 @@ export type WidgetModel = {
 	// Serialized Python data. runtime.ts revives this as Observable builtins.
 	_data?: Record<string, unknown>;
 	_graph?: NotebookGraph;
-	// Browser-produced values. On notebook models this is the aggregate of child
-	// cell values; on cell models this is the matching cell's own values.
+	// Browser-produced values. Notebook models aggregate child cell values.
+	// Cell models hold values for their matching cell.
 	variables?: Record<string, unknown>;
 	variable_names?: string[];
 	options?: {
@@ -50,7 +50,7 @@ export type AttachmentRegistry = {
 export type CellVariableSync = {
 	model: RenderProps<WidgetModel>["model"];
 	signal: AbortSignal;
-	// OJS viewof cells expose DOM-ish targets; Python value updates write back
+	// OJS viewof cells expose DOM-ish targets. Python value updates write back
 	// into those targets so the rendered control and synced trait stay aligned.
 	views: Map<string, ViewTarget>;
 	setVariableNames(names: string[]): void;

@@ -24,9 +24,8 @@ def _(mo):
     mo.md(r"""
     # Public Observable URL loader
 
-    This workbench loads public Observable notebooks through the document API,
-    keeps remote file attachments as URL-backed attachments, and renders one
-    selected notebook.
+    This workbench keeps a small catalog of public Observable notebooks and
+    fetches only the selected URL. Remote file attachments stay URL-backed.
     """)
     return
 
@@ -69,43 +68,6 @@ def _():
 
 
 @app.cell
-def _(ojs, urls):
-    notebooks = {}
-    rows = []
-    for url in urls:
-        try:
-            _notebook = ojs.Notebook.from_url(url)
-            notebooks[url] = _notebook
-            rows.append(
-                {
-                    "status": "ok",
-                    "url": url,
-                    "cells": len(_notebook.cells),
-                    "attachments": len(_notebook.attachments),
-                }
-            )
-        except Exception as exc:
-            notebooks[url] = None
-            rows.append(
-                {
-                    "status": "error",
-                    "url": url,
-                    "cells": 0,
-                    "attachments": 0,
-                    "error": str(exc),
-                }
-            )
-    return notebooks, rows
-
-
-@app.cell
-def _(mo, rows, urls):
-    ok_count = sum(1 for row in rows if row["status"] == "ok")
-    mo.md(f"**{ok_count} / {len(urls)}** public Observable notebooks loaded.")
-    return
-
-
-@app.cell
 def _(mo, urls):
     selected_url = mo.ui.dropdown(
         options=urls,
@@ -117,36 +79,127 @@ def _(mo, urls):
 
 
 @app.cell
-def _(mo, rows):
-    mo.ui.table(rows)
-    return
+def _(ojs, selected_url):
+    try:
+        selected_notebook = ojs.Notebook.from_url(
+            selected_url.value,
+            show_pinned_source=True,
+        )
+        selected_error = ""
+    except Exception as exc:
+        selected_notebook = None
+        selected_error = str(exc)
+    return selected_error, selected_notebook
 
 
 @app.cell
-def _(mo, notebooks, selected_url):
-    _notebook = notebooks[selected_url.value]
+def _(mo, selected_error, selected_notebook):
     _content = (
-        mo.md("Selected notebook failed to load.")
-        if _notebook is None
-        else mo.ui.anywidget(_notebook)
+        mo.md(f"Selected notebook failed to load: `{selected_error}`")
+        if selected_notebook is None
+        else mo.ui.anywidget(selected_notebook)
     )
     _content
     return
 
 
 @app.cell
-def _(mo, notebooks, selected_url):
-    _notebook = notebooks[selected_url.value]
+def _(mo, selected_error, selected_notebook, selected_url, urls):
     _summary = (
-        mo.md("No notebook metadata available.")
-        if _notebook is None
+        mo.md(f"**{selected_url.value}** · load failed · `{selected_error}`")
+        if selected_notebook is None
         else mo.md(
             f"""
-            **{selected_url.value}** · {len(_notebook.cells)} cells · {len(_notebook.attachments)} attachments
+            **{selected_url.value}** · {len(selected_notebook.cells)} cells · {len(selected_notebook.attachments)} attachments · {len(urls)} URLs available
             """
         )
     )
     _summary
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    ## Python data override smoke
+
+    This fixed example loads the Observable Plot scatterplot notebook and
+    replaces its `penguins` variable with three Python rows.
+    """)
+    return
+
+
+@app.cell
+def _(mo):
+    show_override_smoke = mo.ui.checkbox(
+        label="Show Python data override smoke",
+        value=False,
+    )
+    show_override_smoke
+    return (show_override_smoke,)
+
+
+@app.cell
+def _():
+    override_url = "https://observablehq.com/@observablehq/plot-scatterplot/2"
+    python_penguins = [
+        {"culmen_length_mm": 36.7, "culmen_depth_mm": 18.4},
+        {"culmen_length_mm": 44.1, "culmen_depth_mm": 15.9},
+        {"culmen_length_mm": 50.2, "culmen_depth_mm": 19.1},
+    ]
+    return override_url, python_penguins
+
+
+@app.cell
+def _(ojs, override_url, python_penguins, show_override_smoke):
+    if not show_override_smoke.value:
+        override_notebook = None
+        override_error = ""
+    else:
+        try:
+            override_notebook = ojs.Notebook.from_url(
+                override_url,
+                data={"penguins": python_penguins},
+                show_pinned_source=True,
+            )
+            override_error = ""
+        except Exception as exc:
+            override_notebook = None
+            override_error = str(exc)
+    return override_error, override_notebook
+
+
+@app.cell
+def _(mo, override_error, override_notebook, show_override_smoke):
+    _content = (
+        mo.md("Enable the smoke check to fetch the fixed override notebook.")
+        if not show_override_smoke.value
+        else (
+            mo.md(f"Override smoke notebook failed to load: `{override_error}`")
+            if override_notebook is None
+            else mo.ui.anywidget(override_notebook)
+        )
+    )
+    _content
+    return
+
+
+@app.cell
+def _(mo, override_error, override_notebook, override_url, show_override_smoke):
+    _details = (
+        mo.md("")
+        if not show_override_smoke.value
+        else (
+            mo.md(f"**{override_url}** · load failed · `{override_error}`")
+            if override_notebook is None
+            else mo.md(
+                f"""
+                **{override_url}** · {len(override_notebook.cells)} cells · {len(override_notebook.attachments)} attachments · Python `penguins` override on
+                """
+            )
+        )
+    )
+    _details
     return
 
 

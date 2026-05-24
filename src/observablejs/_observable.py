@@ -1,4 +1,4 @@
-"""Load public Observable notebooks through the Notebook Kit document API."""
+"""Convert public Observable documents to Notebook Kit inputs."""
 
 from __future__ import annotations
 

@@ -5,11 +5,10 @@ description: Observable JavaScript notebooks as reusable Python widgets.
 
 # observablejs
 
-`observablejs` lets Python users create, display, and compose Observable
-JavaScript notebooks.
-
-Write Observable cells in Python, pass Python data into the browser runtime, and
-display either the full notebook or a named cell.
+`observablejs` renders Observable JavaScript notebooks as Python widgets.
+Python builds the notebook model and synced data. The browser runs Observable
+Notebook Kit, renders cells, and sends values and graph metadata back through
+traitlets.
 
 ```python
 import observablejs as ojs
@@ -32,21 +31,28 @@ ojs.Notebook(
 )
 ```
 
-## What It Gives You
+## Core Model
 
-- Full Observable JavaScript cells from Python.
-- Python values available as normal OJS variables.
-- Named cell handles for displaying or reading individual cells.
-- Notebook Kit HTML import for existing Observable-style notebooks.
-- Public Observable notebook URL loading.
-- Portable file attachments and local JavaScript imports.
-- anywidget packaging, so the same object works in Jupyter, marimo, and other
-  compatible frontends.
+- `Notebook(...)` creates one Observable notebook from Python-authored cells.
+- `data={...}` sets ordinary OJS variables and overrides matching notebook
+  variables.
+- Named cells provide Python handles for display and value sync.
+- Notebook Kit HTML and public Observable notebooks enter the same runtime path.
+- `notebook.graph` reports Notebook Kit-derived definitions, references, and
+  dependency edges after the browser renders.
+- anywidget composition lets notebook and cell handles render in Jupyter,
+  marimo, and compatible frontends.
+
+:::{tip}
+Use `Notebook.from_file(...)` when you already have Notebook Kit HTML. Use
+`Notebook(...)` for Python-authored cells.
+:::
 
 ## Read Next
 
-- [](./quickstart.md): create your first notebook and pass data from Python.
+- [](./quickstart.md): create a notebook, pass Python values, and display cells.
 - [](./concepts.md): learn the Observable, Notebook Kit, and widget vocabulary.
-- [](./architecture.md): follow the Python-to-browser data flow.
-- [](./api.md): see the public API in one place.
+- [](./architecture.md): follow the Python-to-browser runtime path.
+- [](./composition.md): see how anywidget composition makes cell handles work.
+- [](./api.md): reference the public Python API.
 - [](./development.md): build, test, and work on the project locally.

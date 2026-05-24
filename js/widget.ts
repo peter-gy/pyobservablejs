@@ -4,7 +4,7 @@ import { observe, type NotebookRuntime } from "@observablehq/notebook-kit/runtim
 import { registerAttachments } from "./attachments";
 import { createNotebookGraph, exposedVariableNames, unprefix } from "./graph";
 import { renderSource } from "./highlight";
-import { createRuntime, createRuntimeCleanup } from "./runtime";
+import { createRuntime, createRuntimeCleanup, redefineRuntimeData } from "./runtime";
 import type {
 	CellExports,
 	CellRenderContext,
@@ -22,8 +22,10 @@ import "@observablehq/notebook-kit/index.css";
 import "@observablehq/notebook-kit/theme-air.css";
 import "./widget.css";
 
-// Notebook models own the Notebook Kit runtime; cell models own per-cell handles
-// for rendering and synchronized values.
+// Notebook models own the Notebook Kit runtime. Cell models own per-cell handles
+// for rendering and synchronized values. The widget lifecycle keeps anywidget
+// views, Observable runtime state, and standalone cell displays aligned with the
+// active parent notebook runtime.
 
 type CellWidgetMount = {
 	el: HTMLElement;
@@ -338,11 +340,12 @@ async function renderComposedCells(
 		renderTask = renderTask.then(() => child.render({ el: wrapper, signal }));
 	}
 	await renderTask;
+	if (!signal.aborted) redefineRuntimeData(runtime, options.data);
 }
 
 async function resolveCellWidget(host: CompositionHost, ref: string, signal: AbortSignal): Promise<ResolvedCell> {
 	// Some hosts expose the child model before the child widget exports are
-	// ready. Retry briefly so initial notebook display does not depend on host
+	// ready. A brief retry keeps initial notebook display tolerant of host
 	// scheduling details.
 	parseWidgetRef(ref);
 	return resolveCellWidgetAttempt(host, ref, signal, performance.now() + 5000);
@@ -647,6 +650,15 @@ function createStandaloneDisplayDefinition(
 	cell: Cell,
 	definition: ReturnType<typeof transpile>,
 ): Parameters<NotebookRuntime["define"]>[1] {
+	const exposed = exposedVariableNames(definition);
+	if (exposed.length === 1) {
+		return {
+			id: cell.id,
+			body: (value: unknown) => value,
+			inputs: exposed,
+			autodisplay: true,
+		};
+	}
 	return {
 		id: cell.id,
 		body: new Function(`return (${definition.body});`)(),
@@ -660,7 +672,7 @@ function renderCellError(wrapper: HTMLElement, error: unknown): void {
 }
 
 function createCellObserver(sync: CellVariableSync, definition: ReturnType<typeof transpile>): typeof observe {
-	// `viewof x` returns the DOM/control target, while `x` is the current value.
+	// `viewof x` returns the DOM/control target. `x` carries the current value.
 	// Capture the target so later Python writes can update the rendered control.
 	return (state, runtimeDefinition) => {
 		const observer = observe(state, runtimeDefinition);

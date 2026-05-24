@@ -139,9 +139,8 @@ def _collect_attachments(
     for script in _iter_notebook_script_blocks(source):
         if not _is_javascript_script(script.attrs):
             continue
-        # Regexes find the Observable FileAttachment call shape; the code mask
-        # keeps comments, strings, templates, and regex literals from producing
-        # false attachments.
+        # Regexes find the Observable FileAttachment call shape. The code mask
+        # excludes comments, strings, templates, and regex literals.
         code_mask = _javascript_code_mask(script.body)
         for match in _FILE_ATTACHMENT_RE.finditer(script.body):
             if not code_mask[match.start()]:
@@ -179,7 +178,7 @@ def _iter_notebook_script_blocks(source: str) -> list[_ScriptBlock]:
 
 
 class _NotebookScriptBlockParser(HTMLParser):
-    """Find script bodies inside ``<notebook>`` without touching other HTML."""
+    """Find script bodies inside the Notebook Kit ``<notebook>`` element."""
 
     def __init__(self, source: str) -> None:
         super().__init__(convert_charrefs=False)

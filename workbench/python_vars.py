@@ -145,7 +145,7 @@ def _(gain_cell, json, mo, notebook):
 @app.cell
 def _(frequency_floor, letters, mo):
     mo.md(f"""
-    {len(letters)} Python records passed into OJS; frequency floor = `{frequency_floor}`.
+    {len(letters)} Python records passed into OJS. Frequency floor = `{frequency_floor}`.
     """)
     return
 

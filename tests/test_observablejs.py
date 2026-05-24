@@ -130,11 +130,14 @@ def test_notebook_from_url_fetches_source_and_remote_attachments(
         "https://observablehq.com/@d3/bar-chart",
         timeout=1,
         attachments={"local.csv": "https://example.test/local.csv"},
+        data={"answer": 7},
     )
 
     assert widget.source.startswith("<!doctype html>")
     assert widget.attachments["data.csv"]["url"] == "https://static.example/data.csv"
     assert widget.attachments["local.csv"]["url"] == "https://example.test/local.csv"
+    assert widget.data == {"answer": 7}
+    assert widget.get_state(["_data"]) == {"_data": {"answer": 7}}
     assert len(widget.cells) == 1
 
 

@@ -23,6 +23,7 @@ type SourceMode = {
 };
 
 const SHIKI_THEME = "github-light-default";
+// Very large pinned cells render as plain text to keep widget updates responsive.
 const MAX_HIGHLIGHT_CHARS = 120_000;
 const FONT_STYLE_ITALIC = 1;
 const FONT_STYLE_BOLD = 2;

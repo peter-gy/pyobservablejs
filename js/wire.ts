@@ -94,7 +94,7 @@ export function reviveSyncedValue(value: unknown): unknown {
 }
 
 export function createVariableBuiltins(variables: Record<string, unknown>): Record<string, () => unknown> {
-	// Observable builtins are thunks; cache revived Python values per variable.
+	// Observable builtins are thunks. Cache revived Python values per variable.
 	const builtins: Record<string, () => unknown> = {};
 	const cache = new Map<string, unknown>();
 	for (const [name, value] of Object.entries(variables)) {

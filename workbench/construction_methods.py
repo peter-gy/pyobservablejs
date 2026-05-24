@@ -63,14 +63,37 @@ def _(Path, html_source, tempfile):
 
 
 @app.cell
-def _(html_file, html_source, ojs):
+def _():
+    methods = [
+        "Python cells",
+        "HTML string",
+        "HTML file",
+        "Observable URL",
+    ]
+    return (methods,)
+
+
+@app.cell
+def _(methods, mo):
+    method = mo.ui.dropdown(
+        options=methods,
+        value="Python cells",
+        label="Method",
+    )
+    method
+    return (method,)
+
+
+@app.cell
+def _(html_file, html_source, method, ojs):
     rows = [
         {"letter": "A", "frequency": 0.0812},
         {"letter": "B", "frequency": 0.0149},
         {"letter": "C", "frequency": 0.0271},
     ]
-    notebooks = {
-        "Python cells": ojs.Notebook(
+    selected_error = ""
+    if method.value == "Python cells":
+        selected_notebook = ojs.Notebook(
             ojs.md("# Python cells"),
             ojs.cell(
                 """
@@ -84,58 +107,52 @@ Plot.plot({
             ),
             data={"rows": rows},
             show_pinned_source=True,
-        ),
-        "HTML string": ojs.Notebook.from_html(
+        )
+    elif method.value == "HTML string":
+        selected_notebook = ojs.Notebook.from_html(
             html_source,
             show_pinned_source=True,
-        ),
-        "HTML file": ojs.Notebook.from_file(
+        )
+    elif method.value == "HTML file":
+        selected_notebook = ojs.Notebook.from_file(
             html_file,
             show_pinned_source=True,
-        ),
-    }
-    try:
-        notebooks["Observable URL"] = ojs.Notebook.from_url(
-            "https://observablehq.com/@mbostock/saving-svg",
-            show_pinned_source=True,
         )
-        remote_error = ""
-    except Exception as exc:
-        remote_error = str(exc)
-    return notebooks, remote_error
+    else:
+        try:
+            selected_notebook = ojs.Notebook.from_url(
+                "https://observablehq.com/@mbostock/saving-svg",
+                show_pinned_source=True,
+            )
+        except Exception as exc:
+            selected_notebook = None
+            selected_error = str(exc)
+    return selected_error, selected_notebook
 
 
 @app.cell
-def _(mo, notebooks):
-    method = mo.ui.dropdown(
-        options=list(notebooks),
-        value="Python cells",
-        label="Method",
-    )
-    method
-    return (method,)
-
-
-@app.cell
-def _(method, mo, notebooks, remote_error):
-    _notebook = notebooks.get(method.value)
+def _(method, mo, selected_error, selected_notebook):
     _content = (
-        mo.md(f"Unable to load the Observable URL: `{remote_error}`")
-        if _notebook is None
-        else mo.ui.anywidget(_notebook)
+        mo.md(f"Unable to load {method.value}: `{selected_error}`")
+        if selected_notebook is None
+        else mo.ui.anywidget(selected_notebook)
     )
     _content
     return
 
 
 @app.cell
-def _(method, mo, notebooks):
-    _notebook = notebooks[method.value]
-    mo.md(
-        f"""
-        **{method.value}** · {len(_notebook.cells)} cells · {len(_notebook.attachments)} attachments
-        """
+def _(method, mo, selected_error, selected_notebook):
+    _summary = (
+        mo.md(f"**{method.value}** · load failed · `{selected_error}`")
+        if selected_notebook is None
+        else mo.md(
+            f"""
+            **{method.value}** · {len(selected_notebook.cells)} cells · {len(selected_notebook.attachments)} attachments
+            """
+        )
     )
+    _summary
     return
 
 

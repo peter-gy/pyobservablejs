@@ -1,9 +1,9 @@
 """Serialize Python values for Observable JavaScript variables.
 
 Python sends data through anywidget as JSON-compatible trait state. Plain values
-are left as normal JSON, while values that need a browser-side type are wrapped
-with ``__observablejs_type__`` tags that ``js/wire.ts`` revives before the OJS
-runtime evaluates cells.
+stay normal JSON. Values that need a browser-side type use
+``__observablejs_type__`` tags that ``js/wire.ts`` revives before the OJS runtime
+evaluates cells.
 """
 
 from __future__ import annotations
@@ -40,7 +40,7 @@ def arrow(value: Any) -> _ArrowValue:
 
 
 def records(value: Any) -> _RecordsValue:
-    """Serialize dataframe-like values as row records instead of Arrow."""
+    """Serialize dataframe-like values as row records."""
 
     return _RecordsValue(value)
 
@@ -118,8 +118,8 @@ def serialize_value(value: Any) -> Any:
 
 
 def _try_arrow_table(value: Any) -> str | None:
-    # Arrow keeps typed dataframe columns available in OJS, but it is opt-in so
-    # the default path remains dependency-light and easy to inspect as records.
+    # Arrow keeps typed dataframe columns available in OJS. Records remain the
+    # dependency-free default.
     module, class_name = _value_type(value)
     is_pandas_dataframe = module == "pandas" and class_name == "DataFrame"
     is_polars_dataframe = (

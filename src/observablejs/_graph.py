@@ -1,4 +1,4 @@
-"""Python view of Notebook Kit-derived symbolic graph metadata."""
+"""Immutable Python view of browser-produced Notebook Kit graph metadata."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from typing import Any
 
 @dataclasses.dataclass(frozen=True)
 class DependencyEdge:
-    """A symbolic dependency between two notebook cell ids."""
+    """A symbolic dependency between two notebook cells."""
 
     source_id: int
     target_id: int
@@ -18,7 +18,7 @@ class DependencyEdge:
 
 @dataclasses.dataclass(frozen=True)
 class CellInfo:
-    """Notebook Kit-derived symbolic information for one cell."""
+    """Notebook Kit symbolic information for one cell."""
 
     id: int
     index: int
@@ -45,7 +45,7 @@ class CellInfo:
 
 @dataclasses.dataclass(frozen=True)
 class NotebookGraph:
-    """Browser-produced symbolic graph for an Observable notebook."""
+    """Symbolic graph for a rendered Observable notebook."""
 
     cells: tuple[CellInfo, ...]
     edges: tuple[DependencyEdge, ...]
