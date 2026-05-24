@@ -55,6 +55,12 @@ The Python and TypeScript sides communicate through these traits.
 | `variable_names` | Browser to Python | Names exposed by one cell, or by the whole notebook on notebook models. |
 | `variables` | Browser to Python, then Python to browser for views | Latest wire values for one cell, plus the aggregate notebook values on notebook models. |
 
+`_cell_widgets` deliberately has a small custom list serializer around
+`anywidget.WidgetTrait`. The scalar trait validates each child widget, while the
+list-level serializer keeps the browser wire state as `anywidget:<model_id>` ref
+strings. A bare `List(WidgetTrait())` does not apply the inner trait serializer
+in the current traitlets path.
+
 ## Browser Runtime
 
 The TypeScript package turns trait state into a running notebook.
@@ -82,6 +88,11 @@ When the notebook renders, TypeScript:
 8. Aggregates child `variables` into the notebook model's own `variables` trait,
    which backs `notebook.values`.
 
+Cell handles use anywidget v0.11 composition directly. The parent resolves each
+child with `host.getWidget` / `host.getModel`, passes the parent render signal
+through the child render lifecycle, and uses the child's `initialize` exports
+only to hand over the shared Notebook Kit runtime context.
+
 The graph uses Notebook Kit's `transpile(cell, {resolveLocalImports: true})`
 result. It does not walk Observable runtime private fields such as `_scope`,
 `_inputs`, or `_outputs`.
@@ -91,10 +102,14 @@ result. It does not walk Observable runtime private fields such as `_scope`,
 A full Observable notebook is one reactive graph. Python still needs handles for
 individual cells.
 
-Child widgets provide those handles without creating independent notebooks for
-every cell. The full notebook renders each cell through its child widget, and the
-child widget records the values exposed by that cell. When a child is rendered on
-its own, TypeScript recreates the dependencies it needs from sibling cell state.
+Child widgets provide those handles without creating independent full notebooks
+for every cell. The full notebook renders each cell through its child widget,
+and the child widget records the values exposed by that cell. When a child is
+rendered on its own, display cells run against the already-bound Notebook Kit
+runtime so dependencies such as D3 selections, Mutable values, DOM nodes, and
+arrays with side properties stay live JavaScript objects. `viewof` cells keep an
+isolated rendering path so the standalone control can sync through the cell
+model without redefining the notebook's primary view variable.
 
 This keeps these workflows aligned:
 

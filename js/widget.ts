@@ -14,7 +14,6 @@ import type {
 	ResolvedCellWidget,
 	RuntimeObserver,
 	ViewTarget,
-	WidgetManager,
 	WidgetModel,
 } from "./types";
 import { reviveSyncedValue, toWireValue } from "./wire";
@@ -35,6 +34,7 @@ type CellWidgetMount = {
 type CellWidgetState = {
 	contexts: CellRenderContext[];
 	mounts: Set<CellWidgetMount>;
+	composedRenders: WeakMap<HTMLElement, CellRenderContext>;
 };
 
 const MODEL_CHANGE_EVENTS = [
@@ -48,12 +48,29 @@ const MODEL_CHANGE_EVENTS = [
 ] as const;
 const cellStates = new WeakMap<RenderProps<WidgetModel>["model"], CellWidgetState>();
 const localCellExports = new WeakMap<RenderProps<WidgetModel>["model"], CellExports>();
+const cellStateKeys = new WeakMap<RenderProps<WidgetModel>["model"], string>();
+const cellStatesById = new Map<string, CellWidgetState>();
+const localCellExportsById = new Map<string, CellExports>();
+let nextFallbackCellStateKey = 0;
 
-function initialize({ model }: InitializeProps<WidgetModel>): CellExports | Record<string, never> {
+function initialize({
+	model,
+	signal,
+}: InitializeProps<WidgetModel> & { signal?: AbortSignal }): CellExports | undefined {
 	// anywidget composition calls these exports when a notebook renders its child
 	// cell widgets. Notebook widgets do not need exported methods.
-	if (model.get("role") !== "cell") return {};
-	return ensureLocalCellExports(model);
+	if (model.get("role") !== "cell") return undefined;
+	const key = getCellStateKey(model);
+	const exports = ensureLocalCellExports(model);
+	signal?.addEventListener(
+		"abort",
+		() => {
+			cellStatesById.delete(key);
+			localCellExportsById.delete(key);
+		},
+		{ once: true },
+	);
+	return exports;
 }
 
 function createCellExports(model: RenderProps<WidgetModel>["model"], state: CellWidgetState): CellExports {
@@ -72,18 +89,17 @@ function createCellExports(model: RenderProps<WidgetModel>["model"], state: Cell
 			state.contexts = contexts;
 			for (const mount of state.mounts) renderCellWidgetMount(model, mount);
 		},
-		renderComposed(el: HTMLElement, _signal: AbortSignal, context?: CellRenderContext) {
-			const activeContext = context ?? currentCellContext(state);
-			if (!activeContext) throw new Error("Cell widget is not bound to a notebook runtime");
-			renderCell(el, activeContext.runtime, activeContext.cell, activeContext.showSource, activeContext.sync);
+		prepareComposedRender(el: HTMLElement, context: CellRenderContext) {
+			state.composedRenders.set(el, context);
 		},
 	};
 	localCellExports.set(model, exports);
 	return exports;
 }
 
-function render({ model, el, signal, host }: RenderProps<WidgetModel>): void {
+function render({ model, el, signal, host }: RenderProps<WidgetModel> & { signal?: AbortSignal }): void {
 	signal ??= new AbortController().signal;
+	if (signal.aborted) return;
 	if (model.get("role") === "cell") {
 		renderCellWidget(model, el, signal);
 		return;
@@ -94,9 +110,11 @@ function render({ model, el, signal, host }: RenderProps<WidgetModel>): void {
 	const rerender = () => {
 		current.abort();
 		current = createAbortController(signal);
+		const attempt = current;
 		const renderVersion = ++version;
-		void renderCurrent(model, el, current.signal, host).catch((error: unknown) => {
-			if (current.signal.aborted || renderVersion !== version) return;
+		void renderCurrent(model, el, attempt.signal, host).catch((error: unknown) => {
+			if (attempt.signal.aborted || renderVersion !== version) return;
+			attempt.abort();
 			el.replaceChildren(renderTopLevelError(error));
 		});
 	};
@@ -128,7 +146,7 @@ async function renderCurrent(
 	// Python-visible cell handles.
 	const notebook = getNotebook(model);
 	const cellRefs = getCellRefs(model.get("_cell_widgets"));
-	const compositionHost = createCompositionHost(host, model, signal);
+	const compositionHost = host ? createCompositionHost(host) : createWidgetManagerCompositionHost(model, signal);
 	if (cellRefs.length > 0) {
 		if (!compositionHost) throw new Error("This anywidget host does not expose composition APIs for cell widgets");
 		if (cellRefs.length !== notebook.cells.length) {
@@ -163,61 +181,84 @@ async function renderCurrent(
 	}
 }
 
-function createCompositionHost(
-	host: RenderProps<WidgetModel>["host"] | undefined,
-	model: RenderProps<WidgetModel>["model"],
-	signal: AbortSignal,
-): CompositionHost | undefined {
-	// JupyterLab-style hosts provide composition helpers directly. The local host
-	// fallback uses the classic widget manager so the same child-cell model flow
-	// works in hosts with older anywidget composition support.
-	if (!host) return createLocalHost(model, signal);
+function createCompositionHost(host: RenderProps<WidgetModel>["host"]): CompositionHost {
 	return {
 		getModel(ref) {
 			return host.getModel<WidgetModel>(ref);
 		},
 		async getWidget(ref) {
-			return (await host.getWidget<CellExports>(ref)) as ResolvedCellWidget;
+			return host.getWidget<CellExports>(ref);
 		},
 	};
 }
 
-function createLocalHost(model: RenderProps<WidgetModel>["model"], _signal: AbortSignal): CompositionHost | undefined {
-	const manager = (model as unknown as { widget_manager?: WidgetManager }).widget_manager;
-	if (!manager) return undefined;
-	const getChildModel = async (ref: string): Promise<RenderProps<WidgetModel>["model"]> => {
-		const id = parseWidgetRef(ref);
-		const getter = manager.get_model ?? manager.getModel;
-		if (!getter) throw new Error("Widget manager does not expose get_model");
-		const childModel = await getter.call(manager, id);
-		if (!childModel) throw new Error(`Unknown widget model ${id}`);
-		return childModel;
-	};
-	const localHost = {
-		async getModel(ref: string) {
-			return getChildModel(ref);
+function createWidgetManagerCompositionHost(
+	model: RenderProps<WidgetModel>["model"],
+	signal: AbortSignal,
+): CompositionHost | undefined {
+	const manager = model.widget_manager as
+		| { get_model?: (modelId: string) => Promise<RenderProps<WidgetModel>["model"]> }
+		| undefined;
+	if (!manager?.get_model) return undefined;
+
+	const host: CompositionHost = {
+		async getModel(ref) {
+			const modelId = parseWidgetRef(ref);
+			const childModel = await manager.get_model?.(modelId);
+			if (!childModel) throw new Error(`Unknown widget model ${modelId}`);
+			return childModel;
 		},
-		async getWidget(ref: string) {
-			const childModel = await getChildModel(ref);
-			const exports = ensureLocalCellExports(childModel);
+		async getWidget(ref) {
+			const childModel = await host.getModel(ref);
 			return {
-				exports,
+				exports: ensureLocalCellExports(childModel),
+				async render({ el, signal: childSignal }) {
+					render({
+						model: childModel,
+						el,
+						signal: childSignal ?? signal,
+						host,
+					} as RenderProps<WidgetModel>);
+				},
 			};
 		},
 	};
-	return localHost;
+	return host;
 }
 
 function ensureLocalCellExports(model: RenderProps<WidgetModel>["model"]): CellExports {
+	const key = getCellStateKey(model);
+	const existingById = localCellExportsById.get(key);
+	if (existingById) return existingById;
 	const existing = localCellExports.get(model);
 	if (existing) return existing;
-	return createCellExports(model, getOrCreateCellState(model));
+	const exports = createCellExports(model, getOrCreateCellState(model));
+	localCellExportsById.set(key, exports);
+	return exports;
 }
 
 function getOrCreateCellState(model: RenderProps<WidgetModel>["model"]): CellWidgetState {
-	const state = cellStates.get(model) ?? { contexts: [], mounts: new Set() };
+	const key = getCellStateKey(model);
+	const existingById = cellStatesById.get(key);
+	if (existingById) return existingById;
+	const state = cellStates.get(model) ?? {
+		contexts: [],
+		mounts: new Set(),
+		composedRenders: new WeakMap<HTMLElement, CellRenderContext>(),
+	};
 	cellStates.set(model, state);
+	cellStatesById.set(key, state);
 	return state;
+}
+
+function getCellStateKey(model: RenderProps<WidgetModel>["model"]): string {
+	const syncedId = model.get("_cell_id");
+	if (typeof syncedId === "string" && syncedId.length > 0) return syncedId;
+	const existing = cellStateKeys.get(model);
+	if (existing) return existing;
+	const fallback = `local-${++nextFallbackCellStateKey}`;
+	cellStateKeys.set(model, fallback);
+	return fallback;
 }
 
 function parseWidgetRef(ref: string): string {
@@ -281,6 +322,7 @@ async function renderComposedCells(
 		syncNotebookGraph(model, notebook, graphCellModels);
 		bindNotebookValueSync(model, graphCellModels, signal);
 	}
+	let renderTask = Promise.resolve();
 	for (let index = 0; index < cells.length; index++) {
 		if (signal.aborted) return;
 		const cell = cells[index];
@@ -305,8 +347,10 @@ async function renderComposedCells(
 		};
 		child.exports.bindRuntime(context);
 		signal.addEventListener("abort", () => child.exports.unbindRuntime(context), { once: true });
-		child.exports.renderComposed(wrapper, signal, context);
+		child.exports.prepareComposedRender(wrapper, context);
+		renderTask = renderTask.then(() => child.render({ el: wrapper, signal }));
 	}
+	await renderTask;
 }
 
 async function resolveCellWidget(host: CompositionHost, ref: string, signal: AbortSignal): Promise<ResolvedCell> {
@@ -336,15 +380,27 @@ async function resolveCellWidgetAttempt(
 		await delay(75, signal);
 		return resolveCellWidgetAttempt(host, ref, signal, deadline, error);
 	}
-	if (typeof child.exports.bindRuntime !== "function") {
-		throw new Error(`Cell widget ${ref} does not expose bindRuntime`);
+	if (!isCellExports(child.exports)) {
+		throw new Error(`Cell widget ${ref} does not expose observablejs cell exports`);
 	}
 	return [child, childModel];
 }
 
 function isRetryableResolutionError(error: unknown): boolean {
 	if (!(error instanceof Error)) return false;
-	return /not ready|not found|unknown widget model|model .*missing|widget .*missing|no model/i.test(error.message);
+	return /not ready|not found|no binding found|unknown widget model|model .*missing|widget .*missing|no model/i.test(
+		error.message,
+	);
+}
+
+function isCellExports(value: unknown): value is CellExports {
+	if (value === null || typeof value !== "object") return false;
+	const candidate = value as Record<string, unknown>;
+	return (
+		typeof candidate.bindRuntime === "function" &&
+		typeof candidate.unbindRuntime === "function" &&
+		typeof candidate.prepareComposedRender === "function"
+	);
 }
 
 function renderCellWidget(model: RenderProps<WidgetModel>["model"], el: HTMLElement, signal: AbortSignal): void {
@@ -352,6 +408,12 @@ function renderCellWidget(model: RenderProps<WidgetModel>["model"], el: HTMLElem
 	// waits until the parent notebook binds a runtime context for that cell.
 	if (signal.aborted) return;
 	const state = getOrCreateCellState(model);
+	const composedContext = state.composedRenders.get(el);
+	if (composedContext) {
+		state.composedRenders.delete(el);
+		renderComposedCellWidget(el, composedContext, signal);
+		return;
+	}
 	const mount: CellWidgetMount = { el, signal, controller: null };
 	state.mounts.add(mount);
 	signal.addEventListener(
@@ -377,7 +439,9 @@ function renderCellWidgetMount(model: RenderProps<WidgetModel>["model"], mount: 
 	try {
 		renderStandaloneCellWidget(model, mount.el, context, signal);
 	} catch (error) {
-		if (!signal.aborted) mount.el.replaceChildren(renderTopLevelError(error));
+		const shouldRenderError = !signal.aborted;
+		mount.controller?.abort();
+		if (shouldRenderError) mount.el.replaceChildren(renderTopLevelError(error));
 	}
 }
 
@@ -386,6 +450,70 @@ function currentCellContext(state: CellWidgetState): CellRenderContext | null {
 }
 
 function renderStandaloneCellWidget(
+	model: RenderProps<WidgetModel>["model"],
+	el: HTMLElement,
+	context: CellRenderContext,
+	signal: AbortSignal,
+): void {
+	const definition = transpile(context.cell, { resolveLocalImports: true });
+	if (definition.autoview === true) {
+		renderIsolatedStandaloneCellWidget(model, el, context, signal);
+		return;
+	}
+	renderLiveStandaloneCellWidget(model, el, context, definition, signal);
+}
+
+function renderLiveStandaloneCellWidget(
+	model: RenderProps<WidgetModel>["model"],
+	el: HTMLElement,
+	context: CellRenderContext,
+	definition: ReturnType<typeof transpile>,
+	signal: AbortSignal,
+): void {
+	el.replaceChildren();
+	el.classList.add("observablejs");
+	if (signal.aborted) return;
+
+	const root = document.createElement("div");
+	root.className = "observablejs-notebook observablehq observablehq--block";
+	root.dataset.theme = typeof context.notebook.theme === "string" ? context.notebook.theme : "light-dark";
+	el.appendChild(root);
+
+	const wrapper = appendCellWrapper(root);
+	wrapper.dataset.observablejsStandaloneCell = "true";
+	const output = document.createElement("div");
+	output.id = `cell-${context.cell.id}`;
+	output.className = "observablehq observablehq--cell";
+	wrapper.appendChild(output);
+
+	syncCellVariableNames(model, exposedVariableNames(definition));
+	const state: Parameters<NotebookRuntime["define"]>[0] = {
+		root: output,
+		expanded: [],
+		variables: [],
+	};
+	signal.addEventListener(
+		"abort",
+		() => {
+			for (const variable of state.variables) variable.delete();
+			output.replaceChildren();
+		},
+		{ once: true },
+	);
+	try {
+		context.runtime.define(state, createStandaloneDisplayDefinition(context.cell, definition), observe);
+		if (context.showSource && context.cell.pinned) {
+			wrapper.appendChild(renderSource(context.cell));
+		}
+	} catch (error) {
+		if (!signal.aborted) {
+			for (const variable of state.variables) variable.delete();
+		}
+		throw error;
+	}
+}
+
+function renderIsolatedStandaloneCellWidget(
 	model: RenderProps<WidgetModel>["model"],
 	el: HTMLElement,
 	context: CellRenderContext,
@@ -406,9 +534,6 @@ function renderStandaloneCellWidget(
 	signal.addEventListener("abort", cleanup, { once: true });
 
 	try {
-		// Standalone cell rendering uses a fresh runtime. Recreate only the
-		// sibling variables this cell reads so it behaves like it still lives in
-		// the full notebook.
 		defineStandaloneDependencyVariables(runtime, context, signal);
 		const wrapper = appendCellWrapper(root);
 		wrapper.dataset.observablejsStandaloneCell = "true";
@@ -419,6 +544,12 @@ function renderStandaloneCellWidget(
 	}
 }
 
+function renderComposedCellWidget(el: HTMLElement, context: CellRenderContext, signal: AbortSignal): void {
+	el.classList.add("observablejs");
+	if (signal.aborted) return;
+	renderCell(el, context.runtime, context.cell, context.showSource, context.sync);
+}
+
 function defineStandaloneDependencyVariables(
 	runtime: NotebookRuntime,
 	context: CellRenderContext,
@@ -427,25 +558,36 @@ function defineStandaloneDependencyVariables(
 	// Sibling values come from their child models' `variables` traits. This is
 	// why Python can render `notebook.cell("readout")` without also rendering the
 	// whole notebook beside it.
-	const definition = transpile(context.cell, { resolveLocalImports: true });
-	const inputs = new Set(definition.inputs ?? []);
-	for (let index = 0; index < context.cellModels.length; index++) {
-		if (index === context.cellIndex) continue;
-		const model = context.cellModels[index];
-		if (!model) continue;
-		const sibling = context.notebook.cells[index];
-		if (!sibling) continue;
-		for (const name of exposedVariableNames(transpile(sibling, { resolveLocalImports: true }))) {
-			if (!inputs.has(name)) continue;
-			if (runtime.main.defines(name)) continue;
-			const variable = runtime.main.variable(true);
-			const defineCurrent = () => {
-				variable.define(name, [], () => reviveSyncedValue(model.get("variables")?.[name]));
-			};
-			defineCurrent();
-			model.on("change:variables", defineCurrent);
-			signal.addEventListener("abort", () => model.off("change:variables", defineCurrent), { once: true });
+	const cleanups: Array<() => void> = [];
+	try {
+		const definition = transpile(context.cell, { resolveLocalImports: true });
+		const inputs = new Set(definition.inputs ?? []);
+		for (let index = 0; index < context.cellModels.length; index++) {
+			if (index === context.cellIndex) continue;
+			const model = context.cellModels[index];
+			if (!model) continue;
+			const sibling = context.notebook.cells[index];
+			if (!sibling) continue;
+			for (const name of exposedVariableNames(transpile(sibling, { resolveLocalImports: true }))) {
+				if (!inputs.has(name)) continue;
+				if (runtime.main.defines(name)) continue;
+				const variable = runtime.main.variable(true);
+				const defineCurrent = () => {
+					variable.define(name, [], () => reviveSyncedValue(model.get("variables")?.[name]));
+				};
+				const cleanup = () => model.off("change:variables", defineCurrent);
+				defineCurrent();
+				model.on("change:variables", defineCurrent);
+				signal.addEventListener("abort", cleanup, { once: true });
+				cleanups.push(() => {
+					signal.removeEventListener("abort", cleanup);
+					cleanup();
+				});
+			}
 		}
+	} catch (error) {
+		for (const cleanup of cleanups.reverse()) cleanup();
+		throw error;
 	}
 }
 
@@ -489,16 +631,7 @@ function defineCell(runtime: NotebookRuntime, root: HTMLDivElement, cell: Cell, 
 				expanded: [],
 				variables: [],
 			},
-			{
-				id: cell.id,
-				body: new Function(`return (${definition.body});`)(),
-				inputs: definition.inputs,
-				outputs: definition.outputs,
-				output: definition.output,
-				autodisplay: definition.autodisplay,
-				autoview: definition.autoview,
-				automutable: definition.automutable,
-			},
+			createRuntimeDefinition(cell, definition),
 			sync ? createCellObserver(sync, definition) : observe,
 		);
 		for (const name of exposed) {
@@ -510,6 +643,34 @@ function defineCell(runtime: NotebookRuntime, root: HTMLDivElement, cell: Cell, 
 	} catch (error) {
 		root.appendChild(renderTopLevelError(error));
 	}
+}
+
+function createRuntimeDefinition(
+	cell: Cell,
+	definition: ReturnType<typeof transpile>,
+): Parameters<NotebookRuntime["define"]>[1] {
+	return {
+		id: cell.id,
+		body: new Function(`return (${definition.body});`)(),
+		inputs: definition.inputs,
+		outputs: definition.outputs,
+		output: definition.output,
+		autodisplay: definition.autodisplay,
+		autoview: definition.autoview,
+		automutable: definition.automutable,
+	};
+}
+
+function createStandaloneDisplayDefinition(
+	cell: Cell,
+	definition: ReturnType<typeof transpile>,
+): Parameters<NotebookRuntime["define"]>[1] {
+	return {
+		id: cell.id,
+		body: new Function(`return (${definition.body});`)(),
+		inputs: definition.inputs,
+		autodisplay: definition.autodisplay,
+	};
 }
 
 function renderCellError(wrapper: HTMLElement, error: unknown): void {
@@ -585,6 +746,12 @@ function createCellModelSync(model: RenderProps<WidgetModel>["model"], signal: A
 		changeEvent: "change:variables",
 	});
 	return sync;
+}
+
+function syncCellVariableNames(model: RenderProps<WidgetModel>["model"], names: string[]): void {
+	if (sameWireValue(model.get("variable_names"), names)) return;
+	model.set("variable_names", names);
+	model.save_changes();
 }
 
 function createBaseSync(
@@ -772,7 +939,9 @@ function createAbortController(parent: AbortSignal): AbortController {
 		controller.abort();
 	} else {
 		parent.addEventListener("abort", abort, { once: true });
-		controller.signal.addEventListener("abort", () => parent.removeEventListener("abort", abort), { once: true });
+		controller.signal.addEventListener("abort", () => parent.removeEventListener("abort", abort), {
+			once: true,
+		});
 	}
 	return controller;
 }
@@ -795,5 +964,4 @@ function delay(ms: number, signal: AbortSignal): Promise<void> {
 	});
 }
 
-export { initialize, render };
 export default { initialize, render };

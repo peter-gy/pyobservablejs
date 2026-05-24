@@ -36,7 +36,7 @@ def _(dt):
 
 
 @app.cell
-def _(frequency_floor, letters, ojs):
+def _(frequency_floor, letters, mo, ojs):
     notebook = ojs.Notebook(
         ojs.md("# Python data in Observable", name="title"),
         ojs.cell(
@@ -81,13 +81,31 @@ def _(frequency_floor, letters, ojs):
         ),
         data={"letters": letters, "frequencyFloor": frequency_floor},
     )
-    notebook
-    return (notebook,)
+    notebook_view = mo.ui.anywidget(notebook)
+    notebook_view
+    return notebook, notebook_view
 
 
 @app.cell
-def _(notebook):
+def _(notebook, notebook_view):
+    notebook_view.value
     notebook.values
+    return
+
+
+@app.cell
+def _(mo, notebook):
+    mo.vstack(
+        [
+            mo.vstack(
+                [
+                    mo.md(f"**Cell {index}: `{cell.name}`**"),
+                    mo.ui.anywidget(cell),
+                ]
+            )
+            for index, cell in enumerate(notebook.cells)
+        ]
+    )
     return
 
 

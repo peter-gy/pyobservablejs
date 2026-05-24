@@ -4,8 +4,10 @@ import datetime as dt
 import pathlib
 from typing import Any
 
+import anywidget
 import observablejs as ojs
 import pytest
+import traitlets
 
 
 def test_public_namespace_is_small() -> None:
@@ -68,6 +70,8 @@ def test_notebook_composes_python_cells_as_named_child_widgets() -> None:
     assert widget.cell("answer") is widget.cells[1]
     assert widget.get_state(["_cell_widgets"]) == {"_cell_widgets": cell_refs}
     assert widget.cells[0].role == "cell"
+    assert widget.cells[0]._cell_id
+    assert widget.cells[0]._cell_id != widget.cells[1]._cell_id
     assert widget.cells[0].name == "title"
     assert not widget.cells[0].has_trait("cell")
     assert widget.graph is None
@@ -75,6 +79,33 @@ def test_notebook_composes_python_cells_as_named_child_widgets() -> None:
     assert widget.cells[0].info is None
     assert widget.cells[0].variables == {}
     assert widget.cells[0].variable_names == []
+
+
+def test_bare_widgettrait_list_does_not_serialize_child_refs() -> None:
+    class BareParent(anywidget.AnyWidget):
+        _esm = "export default {}"
+        children = traitlets.List(anywidget.WidgetTrait(), default_value=[]).tag(
+            sync=True
+        )
+
+    widget = ojs.Notebook(ojs.cell("answer = 42", name="answer"))
+    bare = BareParent(children=[widget.cell("answer")])
+
+    assert bare.get_state(["children"]) == {"children": [widget.cell("answer")]}
+    assert widget.get_state(["_cell_widgets"]) == {
+        "_cell_widgets": [f"anywidget:{widget.cell('answer').model_id}"]
+    }
+
+
+def test_notebook_rejects_invalid_cell_widget_overrides() -> None:
+    class OtherWidget(anywidget.AnyWidget):
+        _esm = "export default {}"
+
+    with pytest.raises(traitlets.TraitError, match="_cell_widgets"):
+        ojs.Notebook(ojs.cell("answer = 42"), _cell_widgets=[None])
+
+    with pytest.raises(traitlets.TraitError, match="_cell_widgets"):
+        ojs.Notebook(ojs.cell("answer = 42"), _cell_widgets=[OtherWidget()])
 
 
 def test_notebook_graph_exposes_symbolic_cell_metadata() -> None:
@@ -387,6 +418,25 @@ def test_from_file_embeds_file_attachments_and_local_imports(
     assert 'from "data:text/javascript;base64,' in widget.source
     assert len(widget.cells) == 1
     assert widget.spec == {}
+
+
+def test_source_backed_notebook_creates_one_unique_cell_handle_per_script() -> None:
+    widget = ojs.Notebook.from_html(
+        """<!doctype html>
+<notebook>
+  <script id="10" type="text/markdown"># Title</script>
+  <script id="11" type="module">const svg = ({node: () => "live"});</script>
+  <script id="12" type="module">svg.node()</script>
+</notebook>
+""",
+    )
+
+    cell_refs = [f"anywidget:{item.model_id}" for item in widget.cells]
+
+    assert len(widget.cells) == 3
+    assert [widget.cell(index) for index in range(3)] == list(widget.cells)
+    assert len({cell._cell_id for cell in widget.cells}) == 3
+    assert widget.get_state(["_cell_widgets"]) == {"_cell_widgets": cell_refs}
 
 
 def test_from_file_rewrites_only_javascript_imports(tmp_path: pathlib.Path) -> None:

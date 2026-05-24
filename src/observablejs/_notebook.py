@@ -11,6 +11,7 @@ from __future__ import annotations
 import dataclasses
 import pathlib
 import textwrap
+import uuid
 from collections.abc import Mapping
 from html.parser import HTMLParser
 from typing import Any, cast
@@ -102,6 +103,7 @@ class CellHandle(_ObservableWidget):
     """
 
     role = traitlets.Unicode("cell").tag(sync=True)
+    _cell_id = traitlets.Unicode("").tag(sync=True)
     name = traitlets.Unicode("").tag(sync=True)
     variable_names = traitlets.List(traitlets.Unicode(), default_value=[]).tag(
         sync=True
@@ -109,6 +111,7 @@ class CellHandle(_ObservableWidget):
     variables = traitlets.Dict(default_value={}).tag(sync=True)
 
     def __init__(self, **kwargs: Any) -> None:
+        kwargs.setdefault("_cell_id", uuid.uuid4().hex)
         self._notebook: Notebook | None = None
         self._notebook_index: int | None = None
         super().__init__(**kwargs)
@@ -192,6 +195,13 @@ class Notebook(_ObservableWidget):
         anywidget.WidgetTrait(),
         default_value=[],
     ).tag(sync=True, to_json=_widgets_to_json, from_json=_widgets_from_json)
+
+    @traitlets.validate("_cell_widgets")
+    def _validate_cell_widgets(self, proposal: Any) -> list[CellHandle]:
+        widgets = proposal["value"]
+        if not all(isinstance(item, CellHandle) for item in widgets):
+            raise traitlets.TraitError("_cell_widgets must contain CellHandle widgets")
+        return cast(list[CellHandle], widgets)
 
     def __init__(
         self,

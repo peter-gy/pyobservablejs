@@ -98,7 +98,7 @@ def _(default_example, example_options, mo):
 
 
 @app.cell
-def _(Path, example_sources, ojs, selected_example):
+def _(Path, example_sources, mo, ojs, selected_example):
     selected_source = example_sources[selected_example.value]
     if isinstance(selected_source, Path):
         gallery_notebook = ojs.Notebook.from_file(
@@ -110,8 +110,9 @@ def _(Path, example_sources, ojs, selected_example):
             selected_source,
             show_pinned_source=True,
         )
-    gallery_notebook
-    return (gallery_notebook,)
+    gallery_notebook_view = mo.ui.anywidget(gallery_notebook)
+    gallery_notebook_view
+    return gallery_notebook, gallery_notebook_view
 
 
 @app.cell
@@ -119,6 +120,22 @@ def _(example_options, gallery_notebook, mo, selected_example, source_label):
     mo.md(f"""
     **{selected_example.value}** · {len(gallery_notebook.attachments)} embedded file attachments · {len(example_options)} examples available · `{source_label}`
     """)
+    return
+
+
+@app.cell
+def _(gallery_notebook, mo):
+    mo.vstack(
+        [
+            mo.vstack(
+                [
+                    mo.md(f"**Cell {index}**"),
+                    mo.ui.anywidget(cell),
+                ]
+            )
+            for index, cell in enumerate(gallery_notebook.cells)
+        ]
+    )
     return
 
 

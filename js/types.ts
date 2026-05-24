@@ -1,4 +1,4 @@
-import type { RenderProps } from "@anywidget/types";
+import type { RenderProps, ResolvedWidget } from "@anywidget/types";
 import type { Cell, Notebook } from "@observablehq/notebook-kit";
 import type { NotebookRuntime } from "@observablehq/notebook-kit/runtime";
 
@@ -15,6 +15,8 @@ export type AttachmentInfo = {
 
 export type WidgetModel = {
 	role?: "notebook" | "cell";
+	// Stable per-cell lifecycle key shared by anywidget initialize/render model proxies.
+	_cell_id?: string;
 	name?: string;
 	// Source-backed notebooks keep the original Notebook Kit HTML here.
 	source?: string;
@@ -80,23 +82,16 @@ export type CellRenderContext = {
 export type CellExports = {
 	bindRuntime(context: CellRenderContext): void;
 	unbindRuntime(context: CellRenderContext): void;
-	renderComposed(el: HTMLElement, signal: AbortSignal, context?: CellRenderContext): void;
+	prepareComposedRender(el: HTMLElement, context: CellRenderContext): void;
 };
 
-export type ResolvedCellWidget = {
-	exports: CellExports;
-};
+export type ResolvedCellWidget = ResolvedWidget<CellExports>;
 
 export type ResolvedCell = [ResolvedCellWidget, RenderProps<WidgetModel>["model"]];
 
 export type CompositionHost = {
 	getModel(ref: string): Promise<RenderProps<WidgetModel>["model"]>;
 	getWidget(ref: string): Promise<ResolvedCellWidget>;
-};
-
-export type WidgetManager = {
-	get_model?: (id: string) => Promise<RenderProps<WidgetModel>["model"]> | RenderProps<WidgetModel>["model"];
-	getModel?: (id: string) => Promise<RenderProps<WidgetModel>["model"]> | RenderProps<WidgetModel>["model"];
 };
 
 export type RuntimeObserver = Parameters<NotebookRuntime["main"]["variable"]>[0];
