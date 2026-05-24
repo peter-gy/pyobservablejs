@@ -1,0 +1,16 @@
+{
+	"$schema": "./node_modules/oxlint/configuration_schema.json",
+	"plugins": [
+		"typescript",
+		"unicorn",
+		"import"
+	],
+	"categories": {
+		"correctness": "error",
+		"perf": "error"
+	},
+	"ignorePatterns": [
+		"node_modules/**",
+		"src/observablejs/static/**"
+	]
+}

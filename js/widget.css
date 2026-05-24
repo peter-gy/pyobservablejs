@@ -1,23 +1,44 @@
-.observablejs button {
-	background: linear-gradient(
-		300deg,
-		#9933ff 33.26%,
-		#ff6666 46.51%,
-		#faca30 59.77%,
-		#00cd99 73.03%,
-		#00ccff 86.29%
-	);
-	border-radius: 10px;
-	border: 0;
-	color: white;
-	cursor: pointer;
-	font-family: "Roboto", sans-serif;
-	font-size: 2em;
-	margin: 10px;
-	padding: 10px 20px;
-	transition: transform 0.25s ease-in-out;
+.observablejs {
+	color: inherit;
+	font: inherit;
+	width: 100%;
 }
 
-.observablejs button:hover {
-	transform: scale(1.05);
+.observablejs-notebook {
+	box-sizing: border-box;
+	container-type: inline-size;
+	max-width: 100%;
+	padding: 0.25rem 0;
+}
+
+.observablejs-cell {
+	margin: 0 0 1rem;
+	max-width: 100%;
+}
+
+.observablejs .observablehq--cell {
+	max-width: 100%;
+	overflow-x: auto;
+}
+
+.observablejs-source,
+.observablejs-error {
+	background: #f7f7f7;
+	border: 1px solid #d8d8d8;
+	border-radius: 6px;
+	box-sizing: border-box;
+	color: #222;
+	font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	margin: 0.5rem 0 0;
+	max-height: 22rem;
+	overflow: auto;
+	padding: 0.75rem;
+	white-space: pre;
+}
+
+.observablejs-error {
+	background: #fff5f5;
+	border-color: #efb4b4;
+	color: #8a1f1f;
+	white-space: pre-wrap;
 }

@@ -1,16 +1,33 @@
-import importlib.metadata
-import pathlib
+"""Python API for embedding Observable JavaScript notebooks."""
 
-import anywidget
-import traitlets
+from __future__ import annotations
+
+import importlib.metadata
+
+from ._notebook import (
+    Cell,
+    Notebook,
+    cell,
+    html,
+    md,
+    module,
+    sql,
+)
+from ._variables import arrow, records
 
 try:
     __version__ = importlib.metadata.version("observablejs")
 except importlib.metadata.PackageNotFoundError:
     __version__ = "unknown"
 
-
-class Widget(anywidget.AnyWidget):
-    _esm = pathlib.Path(__file__).parent / "static" / "widget.js"
-    _css = pathlib.Path(__file__).parent / "static" / "widget.css"
-    value = traitlets.Int(0).tag(sync=True)
+__all__ = [
+    "Cell",
+    "Notebook",
+    "arrow",
+    "cell",
+    "html",
+    "md",
+    "module",
+    "records",
+    "sql",
+]

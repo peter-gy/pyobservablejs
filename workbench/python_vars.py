@@ -1,0 +1,119 @@
+# /// script
+# requires-python = ">=3.12"
+# dependencies = [
+#     "marimo[recommended]>=0.23.8",
+# ]
+# ///
+
+import marimo
+
+__generated_with = "0.23.8"
+app = marimo.App(width="medium")
+
+
+@app.cell
+def _():
+    import datetime as dt
+    import json
+
+    import marimo as mo
+    import observablejs as ojs
+
+    return dt, json, mo, ojs
+
+
+@app.cell
+def _(dt):
+    letters = [
+        {"letter": "A", "frequency": 0.0812, "seen": dt.date(2026, 5, 21)},
+        {"letter": "B", "frequency": 0.0149, "seen": dt.date(2026, 5, 22)},
+        {"letter": "C", "frequency": 0.0271, "seen": dt.date(2026, 5, 23)},
+        {"letter": "D", "frequency": 0.0432, "seen": dt.date(2026, 5, 24)},
+        {"letter": "E", "frequency": 0.1202, "seen": dt.date(2026, 5, 25)},
+    ]
+    frequency_floor = 0.04
+    return frequency_floor, letters
+
+
+@app.cell
+def _(frequency_floor, letters, ojs):
+    notebook = ojs.Notebook(
+        ojs.md("# Python data in Observable", name="title"),
+        ojs.cell(
+            """
+    Plot.plot({
+      height: 260,
+      marginLeft: 48,
+      y: {grid: true, label: "frequency"},
+      color: {legend: true},
+      marks: [
+    Plot.ruleY([frequencyFloor]),
+    Plot.barY(letters, {
+      x: "letter",
+      y: "frequency",
+      fill: (d) => d.frequency >= frequencyFloor ? "above floor" : "below floor",
+      tip: true
+    })
+      ]
+    })
+    """,
+            name="chart",
+        ),
+        ojs.cell(
+            """
+    viewof gain = Inputs.range([0, 11], {value: 5, step: 0.1, label: "Gain"})
+    """,
+            name="gain",
+        ),
+        ojs.cell(
+            """
+    `Gain: ${gain.toFixed(1)}`
+    """,
+            name="gain_readout",
+        ),
+        ojs.cell(
+            """
+    letters
+      .map((d) => `${d.letter}: ${d.seen.toISOString().slice(0, 10)}`)
+      .join(", ")
+    """,
+            name="dates",
+        ),
+        data={"letters": letters, "frequencyFloor": frequency_floor},
+    )
+    notebook
+    return (notebook,)
+
+
+@app.cell
+def _(mo, notebook):
+    gain_cell = mo.ui.anywidget(notebook.cell("gain"))
+    gain_cell
+    return (gain_cell,)
+
+
+@app.cell
+def _(mo, notebook):
+    gain_readout_cell = mo.ui.anywidget(notebook.cell("gain_readout"))
+    gain_readout_cell
+    return (gain_readout_cell,)
+
+
+@app.cell
+def _(gain_cell, json, mo, notebook):
+    gain_cell.value
+    values = notebook.cell("gain").values
+    mo.md(f"notebook.cell('gain').values = `{json.dumps(values, sort_keys=True)}`")
+    return
+
+
+@app.cell
+def _(frequency_floor, letters, mo):
+    mo.md(f"""
+    {len(letters)} Python records passed into OJS; frequency floor = `{frequency_floor}`.
+    """)
+    return
+
+
+if __name__ == "__main__":
+    app.run()

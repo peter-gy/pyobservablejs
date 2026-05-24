@@ -1,0 +1,27 @@
+version: 1
+project:
+  title: observablejs
+  description: Observable JavaScript notebooks as reusable Python widgets.
+  keywords:
+    - observable
+    - anywidget
+    - jupyter
+    - marimo
+    - notebooks
+  authors:
+    - name: Peter Ferenc Gyarmati
+  github: https://github.com/peterg-y/observablejs
+  license: MIT
+  toc:
+    - file: index.md
+    - file: quickstart.md
+    - file: concepts.md
+    - file: architecture.md
+    - file: api.md
+    - file: development.md
+site:
+  template: book-theme
+  title: observablejs
+  options:
+    folders: true
+    logo_text: observablejs

@@ -1,13 +1,24 @@
 {
+	"packageManager": "pnpm@10.33.3",
 	"scripts": {
 		"dev": "npm run build -- --sourcemap=inline --watch",
 		"build": "esbuild js/widget.ts --minify --format=esm --bundle --outdir=src/observablejs/static",
+		"format": "oxfmt -c oxfmtrc.jsonc \"js/**/*.ts\"",
+		"format:check": "oxfmt --check -c oxfmtrc.jsonc \"js/**/*.ts\"",
+		"lint": "oxlint -c oxlintrc.json --deny-warnings --report-unused-disable-directives js",
+		"test:js": "vitest run",
 		"typecheck": "tsc --noEmit"
 	},
-	"dependencies": {},
+	"dependencies": {
+		"@observablehq/notebook-kit": "1.7.11"
+	},
 	"devDependencies": {
-		"@anywidget/types": "^0.3.0",
+		"@anywidget/types": "^0.4.0",
+		"esbuild": "^0.28.0",
+		"jsdom": "29.1.1",
+		"oxfmt": "^0.51.0",
+		"oxlint": "^1.66.0",
 		"typescript": "^6.0.2",
-		"esbuild": "^0.28.0"
+		"vitest": "4.1.7"
 	}
 }

@@ -4,30 +4,75 @@ build-backend = "hatchling.build"
 
 [project]
 name = "observablejs"
-version = "0.0.0"
-dependencies = ["anywidget"]
+version = "0.1.0"
+description = "Observable JavaScript notebooks as reusable Python widgets"
 readme = "README.md"
+license = "MIT"
+authors = [{ name = "Peter Ferenc Gyarmati", email = "dev.petergy@gmail.com" }]
+maintainers = [{ name = "Peter Ferenc Gyarmati", email = "dev.petergy@gmail.com" }]
+requires-python = ">=3.10,<3.15"
+keywords = [
+    "anywidget",
+    "jupyter",
+    "marimo",
+    "notebooks",
+    "observable",
+    "visualization",
+]
+dependencies = [
+    "anywidget>=0.11.0",
+    "traitlets>=5",
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "License :: OSI Approved :: MIT License",
+]
 
-# For projects not using `uv`, you can install these development dependencies with:
-# `pip install -e ".[dev]"`
-# If you're using `uv` for development, feel free to remove this section.
+[project.urls]
+Homepage = "https://github.com/peterg-y/observablejs"
+Source = "https://github.com/peterg-y/observablejs"
+Issues = "https://github.com/peterg-y/observablejs/issues"
+
 [project.optional-dependencies]
-dev = ["watchfiles", "jupyterlab"]
+arrow = ["pyarrow>=16"]
+data = ["pandas>=2", "polars>=1", "pyarrow>=16"]
+dev = ["watchfiles", "jupyterlab", "jupyter-book>=2.1.5"]
+pandas = ["pandas>=2"]
+polars = ["polars>=1"]
 
-# Dependency groups (recognized by `uv`). For more details, visit:
-# https://peps.python.org/pep-0735/
 [dependency-groups]
-dev = ["watchfiles", "jupyterlab"]
+dev = [
+    "watchfiles",
+    "jupyterlab",
+    "ruff>=0.15.14",
+    "ty>=0.0.39",
+    "pytest>=9.0.3",
+    "marimo[recommended]>=0.23.8",
+    "jupyter-book>=2.1.5",
+]
 
 
 [tool.hatch.build]
 only-packages = true
 artifacts = ["src/observablejs/static/*"]
 
+[tool.hatch.build.targets.sdist.force-include]
+"js" = "js"
+"package.json" = "package.json"
+"pnpm-lock.yaml" = "pnpm-lock.yaml"
+
 [tool.hatch.build.hooks.jupyter-builder]
 build-function = "hatch_jupyter_builder.npm_builder"
-ensured-targets = ["src/observablejs/static/widget.js"]
-skip-if-exists = ["src/observablejs/static/widget.js"]
+ensured-targets = [
+    "src/observablejs/static/widget.js",
+    "src/observablejs/static/widget.css",
+]
 dependencies = ["hatch-jupyter-builder>=0.5.0"]
 
 [tool.hatch.build.hooks.jupyter-builder.build-kwargs]
