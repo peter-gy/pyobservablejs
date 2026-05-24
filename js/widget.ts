@@ -3,6 +3,7 @@ import { deserialize, toNotebook, transpile, type Cell, type Notebook } from "@o
 import { observe, type NotebookRuntime } from "@observablehq/notebook-kit/runtime";
 import { registerAttachments } from "./attachments";
 import { createNotebookGraph, exposedVariableNames, unprefix } from "./graph";
+import { renderSource } from "./highlight";
 import { createRuntime, createRuntimeCleanup } from "./runtime";
 import type {
 	CellExports,
@@ -488,7 +489,7 @@ function renderLiveStandaloneCellWidget(
 	try {
 		context.runtime.define(state, createStandaloneDisplayDefinition(context.cell, definition), observe);
 		if (context.showSource && context.cell.pinned) {
-			wrapper.appendChild(renderSource(context.cell));
+			wrapper.appendChild(renderSource(context.cell, signal));
 		}
 	} catch (error) {
 		if (!signal.aborted) {
@@ -522,7 +523,7 @@ function renderIsolatedStandaloneCellWidget(
 		defineStandaloneDependencyVariables(runtime, context, signal);
 		const wrapper = appendCellWrapper(root);
 		wrapper.dataset.observablejsStandaloneCell = "true";
-		renderCell(wrapper, runtime, context.cell, context.showSource, createCellModelSync(model, signal));
+		renderCell(wrapper, runtime, context.cell, context.showSource, createCellModelSync(model, signal), signal);
 	} catch (error) {
 		if (!signal.aborted) cleanup();
 		throw error;
@@ -532,7 +533,7 @@ function renderIsolatedStandaloneCellWidget(
 function renderComposedCellWidget(el: HTMLElement, context: CellRenderContext, signal: AbortSignal): void {
 	el.classList.add("observablejs");
 	if (signal.aborted) return;
-	renderCell(el, context.runtime, context.cell, context.showSource, context.sync);
+	renderCell(el, context.runtime, context.cell, context.showSource, context.sync, signal);
 }
 
 function defineStandaloneDependencyVariables(
@@ -586,7 +587,8 @@ function renderCell(
 	runtime: NotebookRuntime,
 	cell: Cell,
 	showSource: boolean,
-	sync?: CellVariableSync,
+	sync: CellVariableSync | undefined,
+	signal: AbortSignal,
 ): void {
 	wrapper.replaceChildren();
 	const output = document.createElement("div");
@@ -596,7 +598,7 @@ function renderCell(
 	defineCell(runtime, output, cell, sync);
 
 	if (showSource && cell.pinned) {
-		wrapper.appendChild(renderSource(cell));
+		wrapper.appendChild(renderSource(cell, signal));
 	}
 }
 
@@ -888,15 +890,6 @@ function readModelVariables(model: RenderProps<WidgetModel>["model"]): Record<st
 function getCellRefs(value: unknown): string[] {
 	if (!Array.isArray(value)) return [];
 	return value.filter((item): item is string => typeof item === "string");
-}
-
-function renderSource(cell: Cell): HTMLElement {
-	const pre = document.createElement("pre");
-	pre.className = "observablejs-source";
-	const code = pre.appendChild(document.createElement("code"));
-	code.className = `language-${cell.mode}`;
-	code.textContent = cell.value;
-	return pre;
 }
 
 function renderTopLevelError(error: unknown): HTMLElement {

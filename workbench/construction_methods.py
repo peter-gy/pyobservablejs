@@ -79,9 +79,11 @@ Plot.plot({
   y: {grid: true},
   marks: [Plot.barY(rows, {x: "letter", y: "frequency", tip: true})]
 })
-"""
+""",
+                attrs={"pinned": True},
             ),
             data={"rows": rows},
+            show_pinned_source=True,
         ),
         "HTML string": ojs.Notebook.from_html(
             html_source,
