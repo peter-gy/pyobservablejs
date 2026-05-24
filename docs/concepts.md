@@ -5,16 +5,15 @@ description: The main ideas behind observablejs.
 
 # Concepts
 
-`observablejs` connects Python to the Observable notebook model. These are the
-pieces it relies on.
+`observablejs` connects Python objects to the Observable notebook model. The
+core objects are notebooks, cells, widget traits, Python data variables, cell
+handles, and graph metadata.
 
 ## Observable JavaScript
 
 Observable JavaScript is a notebook language for the browser. It looks like
 JavaScript, but cells are reactive: when an input changes, dependent cells
 recompute.
-
-Important OJS ideas:
 
 - A cell can define a variable, such as `answer = 42`.
 - A cell can display a value directly, such as `Plot.plot(...)`.
@@ -35,7 +34,7 @@ order, and renders outputs into DOM nodes.
 - Existing Notebook Kit HTML can be loaded with `Notebook.from_file` or
   `Notebook.from_html`.
 
-## anywidget And traitlets
+## anywidget and traitlets
 
 anywidget is the Python widget layer. It gives Python a model with synced
 traitlets and gives the browser a TypeScript renderer for that model.
@@ -48,7 +47,7 @@ The important boundary is trait state:
 - Python can inspect those child widget traits with `notebook.cell(...)` and
   `notebook.value(...)`.
 
-## Python Data In OJS
+## Python Data in OJS
 
 Python data enters OJS through `data={...}`.
 
@@ -81,8 +80,8 @@ notebook.values
 input changes in the browser, the matching child cell trait updates first and the
 notebook trait receives the aggregate values immediately after.
 
-This is what makes it possible to render a control cell separately from the full
-notebook while still keeping it connected to the same OJS computation.
+Separate cell displays stay connected to the same OJS computation because the
+cell handle and the full notebook share the same browser-side cell model.
 
 ## Notebook Graph
 
@@ -118,5 +117,5 @@ There are two notebook entry points:
 - Source-backed notebooks: `Notebook.from_file(...)` or `Notebook.from_html(...)`
 
 Python-authored notebooks are serialized to Notebook Kit HTML when needed.
-Source-backed notebooks keep their original Notebook Kit HTML and parse it only
-enough to create Python-visible cell handles.
+Source-backed notebooks keep their original Notebook Kit HTML and parse the
+script cells needed for Python-visible handles.

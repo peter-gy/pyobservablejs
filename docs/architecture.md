@@ -5,7 +5,7 @@ description: How Python cells, data, anywidget traits, and the Observable runtim
 
 # Architecture
 
-The runtime flow is small but there are several moving parts:
+Runtime state moves through a fixed path:
 
 ```text
 Python API
@@ -55,11 +55,10 @@ The Python and TypeScript sides communicate through these traits.
 | `variable_names` | Browser to Python | Names exposed by one cell, or by the whole notebook on notebook models. |
 | `variables` | Browser to Python, then Python to browser for views | Latest wire values for one cell, plus the aggregate notebook values on notebook models. |
 
-`_cell_widgets` deliberately has a small custom list serializer around
-`anywidget.WidgetTrait`. The scalar trait validates each child widget, while the
-list-level serializer keeps the browser wire state as `anywidget:<model_id>` ref
-strings. A bare `List(WidgetTrait())` does not apply the inner trait serializer
-in the current traitlets path.
+`_cell_widgets` serializes child widget references as `anywidget:<model_id>`
+strings while still validating each item as an `anywidget.WidgetTrait` on the
+Python side. This matches the anywidget composition contract for one child model
+per Notebook Kit cell.
 
 ## Browser Runtime
 
@@ -88,16 +87,15 @@ When the notebook renders, TypeScript:
 8. Aggregates child `variables` into the notebook model's own `variables` trait,
    which backs `notebook.values`.
 
-Cell handles use anywidget v0.11 composition directly. The parent resolves each
-child with `host.getWidget` / `host.getModel`, passes the parent render signal
-through the child render lifecycle, and uses the child's `initialize` exports
-only to hand over the shared Notebook Kit runtime context.
+Cell handles use anywidget v0.11 composition. The parent resolves each child with
+`host.getWidget` / `host.getModel`, passes the parent render signal through the
+child render lifecycle, and hands over the shared Notebook Kit runtime context.
 
-The graph uses Notebook Kit's `transpile(cell, {resolveLocalImports: true})`
-result. It does not walk Observable runtime private fields such as `_scope`,
-`_inputs`, or `_outputs`.
+Graph metadata comes from Notebook Kit's
+`transpile(cell, {resolveLocalImports: true})` result, the same symbolic cell
+metadata used to define runtime variables.
 
-## Why Child Cell Widgets Exist
+## Cell Handles
 
 A full Observable notebook is one reactive graph. Python still needs handles for
 individual cells.
@@ -111,7 +109,7 @@ arrays with side properties stay live JavaScript objects. `viewof` cells keep an
 isolated rendering path so the standalone control can sync through the cell
 model without redefining the notebook's primary view variable.
 
-This keeps these workflows aligned:
+The shared child model supports these operations:
 
 - display the full notebook,
 - display `notebook.cell("gain")`,
@@ -128,5 +126,5 @@ For source-backed notebooks, local files can be embedded:
   URLs.
 - Relative dynamic imports such as `import("./helper.js")` are also rewritten.
 
-This is designed for notebooks that need to move between Python frontends without
+Portable source-backed notebooks can move between Python frontends without
 depending on the original local file tree.

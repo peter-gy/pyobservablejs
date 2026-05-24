@@ -23,7 +23,7 @@ For dataframe and Arrow helpers:
 uv add "observablejs[data]"
 ```
 
-## Create A Notebook
+## Create a Notebook
 
 Use `ojs.Notebook` with cell helpers. `ojs.cell` is Observable JavaScript by
 default.

@@ -2,9 +2,7 @@ import { FileAttachment, registerFile } from "@observablehq/notebook-kit/runtime
 import type { AttachmentInfo, AttachmentRegistry } from "./types";
 
 export function createFileAttachment(baseUrl: string, registry: AttachmentRegistry): typeof FileAttachment {
-	// Notebook Kit resolves FileAttachment by name plus base URL. Registered
-	// Python attachments use a per-widget synthetic base so two widget instances
-	// can register the same filename without sharing state.
+	// A synthetic base URL scopes registered attachments to this widget instance.
 	const attachment = ((name: string, base?: string) => {
 		const key = String(name);
 		if (base !== undefined) return FileAttachment(key, base);
@@ -16,8 +14,7 @@ export function createFileAttachment(baseUrl: string, registry: AttachmentRegist
 }
 
 export function registerAttachments(attachments: Record<string, AttachmentInfo>): AttachmentRegistry {
-	// registerFile mutates Notebook Kit's runtime registry; return cleanup so a
-	// disposed widget removes only the names it added for its synthetic base.
+	// registerFile mutates Notebook Kit's global registry; cleanup removes this base.
 	const base = createAttachmentRegistryBase();
 	const registered: string[] = [];
 	for (const [name, info] of Object.entries(attachments)) {

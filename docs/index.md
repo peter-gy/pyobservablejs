@@ -8,10 +8,8 @@ description: Observable JavaScript notebooks as reusable Python widgets.
 `observablejs` lets Python users create, display, and compose Observable
 JavaScript notebooks.
 
-The goal is simple: use Observable's notebook language and browser runtime from
-Python without turning the Python API into a chart-specific wrapper. You write
-OJS cells, pass Python data into the runtime, and display either the whole
-notebook or a named cell.
+Write Observable cells in Python, pass Python data into the browser runtime, and
+display either the full notebook or a named cell.
 
 ```python
 import observablejs as ojs
@@ -47,7 +45,7 @@ ojs.Notebook(
 ## Read Next
 
 - [](./quickstart.md): create your first notebook and pass data from Python.
-- [](./concepts.md): understand the ideas the project builds on.
+- [](./concepts.md): learn the Observable, Notebook Kit, and widget vocabulary.
 - [](./architecture.md): follow the Python-to-browser data flow.
 - [](./api.md): see the public API in one place.
 - [](./development.md): build, test, and work on the project locally.

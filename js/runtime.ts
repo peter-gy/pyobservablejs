@@ -12,9 +12,7 @@ export function createRuntime(
 	options: NotebookOptions,
 	attachmentRegistry: AttachmentRegistry,
 ): NotebookRuntime {
-	// The runtime is where Python data enters OJS execution. `options.data`
-	// becomes Observable builtins, and FileAttachment is scoped to this widget's
-	// attachment registry before Notebook Kit defines cells.
+	// Python data enters OJS as Observable builtins before Notebook Kit defines cells.
 	const width = () => Math.max(320, Math.floor(root.getBoundingClientRect().width || el.clientWidth || 928));
 	const builtins = {
 		...library,

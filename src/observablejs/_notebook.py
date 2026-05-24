@@ -1,10 +1,4 @@
-"""Python objects that become Observable notebooks in the browser.
-
-The public API builds Notebook Kit-compatible cell specs, stores them on an
-anywidget model, and lets the TypeScript widget render those specs with the
-Observable runtime. Python data travels separately on the ``_data`` trait so it
-can be revived as Observable builtins before any cells run.
-"""
+"""Python models for Observable Notebook Kit widgets."""
 
 from __future__ import annotations
 
@@ -27,12 +21,7 @@ from ._variables import serialize_variables
 
 @dataclasses.dataclass(frozen=True)
 class Cell:
-    """A Python-authored Notebook Kit script cell.
-
-    ``mode`` selects the script type that Notebook Kit expects. ``name`` is also
-    used for the child cell widget so Python can later address
-    ``notebook.cell("name")`` and read the values synchronized from OJS.
-    """
+    """Notebook Kit script cell authored from Python."""
 
     source: str
     mode: Mode = "ojs"
@@ -50,7 +39,7 @@ class Cell:
         object.__setattr__(self, "source", source)
 
     def to_spec(self, id: int) -> dict[str, Any]:
-        """Convert the Python cell object to Notebook Kit's JSON cell shape."""
+        """Return this cell in Notebook Kit's JSON cell shape."""
 
         if self.mode not in SCRIPT_TYPES:
             raise ValueError(f"Unsupported Observable cell mode: {self.mode!r}")
@@ -88,19 +77,14 @@ def _widgets_from_json(value: object, _widget: object) -> object:
 
 
 class _ObservableWidget(anywidget.AnyWidget):
-    """Shared anywidget base that points Python models at the bundled frontend."""
+    """anywidget base for the bundled Observable frontend."""
 
     _esm = pathlib.Path(__file__).parent / "static" / "widget.js"
     _css = pathlib.Path(__file__).parent / "static" / "widget.css"
 
 
 class CellHandle(_ObservableWidget):
-    """Child anywidget model that mirrors one Observable cell.
-
-    Notebook widgets compose these child widgets in the browser. Each child
-    receives values exposed by its matching OJS cell through ``variables``.
-    Symbolic metadata comes from the owning notebook's graph.
-    """
+    """Python handle for one Observable cell."""
 
     role = traitlets.Unicode("cell").tag(sync=True)
     _cell_id = traitlets.Unicode("").tag(sync=True)
@@ -122,6 +106,8 @@ class CellHandle(_ObservableWidget):
 
     @property
     def info(self) -> CellInfo | None:
+        """Notebook Kit-derived metadata for this cell, once rendered."""
+
         if self._notebook is None or self._notebook_index is None:
             return None
         graph = self._notebook.graph
@@ -158,10 +144,14 @@ class CellHandle(_ObservableWidget):
 
     @property
     def values(self) -> dict[str, Any]:
+        """Latest browser-synchronized values exposed by this cell."""
+
         return dict(self.variables)
 
     @property
     def value(self) -> Any:
+        """Return the named value, sole value, or full values dictionary."""
+
         values = self.values
         if self.name and self.name in values:
             return values[self.name]
@@ -171,13 +161,7 @@ class CellHandle(_ObservableWidget):
 
 
 class Notebook(_ObservableWidget):
-    """anywidget model that renders an Observable Notebook Kit notebook.
-
-    A notebook can be created from Python cells (stored as ``spec``) or from
-    existing Notebook Kit HTML (stored as ``source``). In both cases ``data`` is
-    serialized to the synced ``_data`` trait; the frontend revives it into normal
-    Observable variables before defining the cells.
-    """
+    """anywidget model that renders an Observable Notebook Kit notebook."""
 
     role = traitlets.Unicode("notebook").tag(sync=True)
     source = traitlets.Unicode("").tag(sync=True)
@@ -217,9 +201,15 @@ class Notebook(_ObservableWidget):
     ) -> None:
         """Create a notebook from Python-authored cells.
 
-        ``data`` remains available in Python as the original mapping while the
-        synced ``_data`` trait holds the JSON-compatible wire form consumed by
-        TypeScript.
+        Args:
+            *cells: strings or ``Cell`` objects in notebook order.
+            title: title written to exported Notebook Kit HTML.
+            theme: Notebook Kit theme name or theme mapping.
+            mode: default mode for plain string cells.
+            attachments: explicit ``FileAttachment`` inputs.
+            base_path: base path for relative attachment inputs.
+            data: Python values exposed as Observable runtime variables.
+            show_pinned_source: render source for pinned Notebook Kit cells.
         """
 
         self._data_values = _copy_data(data)
@@ -403,11 +393,7 @@ def cell(
     raw: bool = False,
     attrs: Mapping[str, Any] | None = None,
 ) -> Cell:
-    """Create an Observable JavaScript cell.
-
-    Plain strings default to Observable JavaScript because that is the notebook
-    language users normally expect inside ``ojs.Notebook``.
-    """
+    """Create an Observable JavaScript cell."""
 
     if isinstance(source, Cell):
         if any([name is not None, display is not True, mode != "ojs", raw, attrs]):
@@ -457,8 +443,6 @@ def _copy_data(data: Mapping[str, Any] | None) -> dict[str, Any]:
 
 
 def _cell_widgets_for_specs(specs: list[dict[str, Any]]) -> list[CellHandle]:
-    # One child widget per cell gives Python stable handles for reading cell
-    # values and lets anywidget composition render those handles independently.
     return [CellHandle(name=str(item.get("name") or "")) for item in specs]
 
 

@@ -76,8 +76,8 @@ pnpm test:js
 pnpm build
 ```
 
-Before packaging, also check the staged diff:
+Before handoff, also check the full diff:
 
 ```sh
-git diff --cached --check
+git diff --check
 ```

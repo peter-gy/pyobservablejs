@@ -2,9 +2,7 @@ import type { RenderProps, ResolvedWidget } from "@anywidget/types";
 import type { Cell, Notebook } from "@observablehq/notebook-kit";
 import type { NotebookRuntime } from "@observablehq/notebook-kit/runtime";
 
-// These types describe the anywidget trait contract shared with Python. The
-// names match trait names in src/observablejs/_notebook.py, including the
-// leading underscores on private wire traits.
+// Trait names match src/observablejs/_notebook.py, including underscored wire traits.
 
 export type AttachmentInfo = {
 	url: string;
@@ -18,15 +16,12 @@ export type WidgetModel = {
 	// Stable per-cell lifecycle key shared by anywidget initialize/render model proxies.
 	_cell_id?: string;
 	name?: string;
-	// Source-backed notebooks keep the original Notebook Kit HTML here.
 	source?: string;
-	// Python-authored notebooks send Notebook Kit's JSON notebook shape here.
 	spec?: Record<string, unknown>;
 	attachments?: Record<string, AttachmentInfo>;
 	base_url?: string;
 	// Serialized Python data. runtime.ts revives this as Observable builtins.
 	_data?: Record<string, unknown>;
-	// Notebook-level symbolic graph derived from Notebook Kit transpilation.
 	_graph?: NotebookGraph;
 	// Browser-produced values. On notebook models this is the aggregate of child
 	// cell values; on cell models this is the matching cell's own values.

@@ -21,9 +21,8 @@ import "@observablehq/notebook-kit/index.css";
 import "@observablehq/notebook-kit/theme-air.css";
 import "./widget.css";
 
-// The frontend has two widget roles. A Notebook model creates the Notebook Kit
-// runtime. A Cell model mirrors one OJS cell so Python can render that cell
-// independently and inspect its latest browser-side values.
+// Notebook models own the Notebook Kit runtime; cell models own per-cell handles
+// for rendering and synchronized values.
 
 type CellWidgetMount = {
 	el: HTMLElement;
@@ -57,8 +56,6 @@ function initialize({
 	model,
 	signal,
 }: InitializeProps<WidgetModel> & { signal?: AbortSignal }): CellExports | undefined {
-	// anywidget composition calls these exports when a notebook renders its child
-	// cell widgets. Notebook widgets do not need exported methods.
 	if (model.get("role") !== "cell") return undefined;
 	const key = getCellStateKey(model);
 	const exports = ensureLocalCellExports(model);
@@ -74,9 +71,7 @@ function initialize({
 }
 
 function createCellExports(model: RenderProps<WidgetModel>["model"], state: CellWidgetState): CellExports {
-	// A cell can be displayed inline by its parent notebook and separately as
-	// `notebook.cell("name")`. Keeping the latest runtime context lets existing
-	// standalone mounts re-render when the parent notebook is redefined.
+	// Standalone mounts re-render against the latest parent runtime context.
 	const exports: CellExports = {
 		bindRuntime(context: CellRenderContext) {
 			state.contexts = state.contexts.filter((item) => item !== context);
@@ -141,9 +136,6 @@ async function renderCurrent(
 	el.classList.add("observablejs");
 	if (signal.aborted) return;
 
-	// Python sends either source HTML or a spec, plus a parallel list of child
-	// widget refs. The index match is the bridge between Notebook Kit cells and
-	// Python-visible cell handles.
 	const notebook = getNotebook(model);
 	const cellRefs = getCellRefs(model.get("_cell_widgets"));
 	const compositionHost = host ? createCompositionHost(host) : createWidgetManagerCompositionHost(model, signal);
@@ -271,16 +263,12 @@ function parseWidgetRef(ref: string): string {
 }
 
 function getNotebook(model: RenderProps<WidgetModel>["model"]): Notebook {
-	// Source-backed notebooks preserve the original Notebook Kit HTML. Python
-	// authored notebooks arrive as the JSON shape created by Cell.to_spec.
 	const source = model.get("source");
 	if (source?.trim()) return deserialize(source);
 	return toNotebook(model.get("spec") ?? {});
 }
 
 function getNotebookOptions(model: RenderProps<WidgetModel>["model"]): NotebookOptions {
-	// `_data` has already been serialized by Python; runtime.ts performs the
-	// browser-side revival when it builds Observable runtime builtins.
 	return {
 		attachments: model.get("attachments") ?? {},
 		baseUrl: model.get("base_url") || document.baseURI,
@@ -299,9 +287,7 @@ async function renderComposedCells(
 	signal: AbortSignal,
 	host: CompositionHost,
 ): Promise<void> {
-	// Notebook Kit evaluates cells in a single runtime, but each OJS cell also
-	// has a child anywidget model. Rendering through the child keeps Python cell
-	// handles synchronized without splitting the notebook runtime.
+	// One Notebook Kit runtime, one child widget model per cell.
 	const cells = notebook.cells;
 	const wrappers = cells.map((_, index) => {
 		const wrapper = appendCellWrapper(root);
@@ -404,8 +390,7 @@ function isCellExports(value: unknown): value is CellExports {
 }
 
 function renderCellWidget(model: RenderProps<WidgetModel>["model"], el: HTMLElement, signal: AbortSignal): void {
-	// A direct render of a child model, such as mo.ui.anywidget(notebook.cell(...)),
-	// waits until the parent notebook binds a runtime context for that cell.
+	// Direct child renders wait until the parent binds a runtime context.
 	if (signal.aborted) return;
 	const state = getOrCreateCellState(model);
 	const composedContext = state.composedRenders.get(el);
@@ -555,9 +540,7 @@ function defineStandaloneDependencyVariables(
 	context: CellRenderContext,
 	signal: AbortSignal,
 ): void {
-	// Sibling values come from their child models' `variables` traits. This is
-	// why Python can render `notebook.cell("readout")` without also rendering the
-	// whole notebook beside it.
+	// Isolated `viewof` renders revive dependency values from sibling cell traits.
 	const cleanups: Array<() => void> = [];
 	try {
 		const definition = transpile(context.cell, { resolveLocalImports: true });
@@ -619,9 +602,6 @@ function renderCell(
 
 function defineCell(runtime: NotebookRuntime, root: HTMLDivElement, cell: Cell, sync?: CellVariableSync): void {
 	try {
-		// Notebook Kit transpiles each script cell to runtime inputs/outputs. The
-		// exposed output names are written to the child widget, then observer
-		// variables mirror the resolved OJS values back to Python.
 		const definition = transpile(cell, { resolveLocalImports: true });
 		const exposed = exposedVariableNames(definition);
 		sync?.setVariableNames(exposed);
@@ -693,8 +673,6 @@ function createCellObserver(sync: CellVariableSync, definition: ReturnType<typeo
 }
 
 function createSyncObserver(sync: CellVariableSync, name: string): RuntimeObserver {
-	// This observer is attached to a runtime alias of each exposed variable. It
-	// serializes the browser value into the child model whenever OJS recomputes.
 	return {
 		pending() {},
 		fulfilled(value: unknown) {
@@ -729,9 +707,7 @@ function isViewTarget(value: unknown): value is ViewTarget {
 }
 
 function createCellModelSync(model: RenderProps<WidgetModel>["model"], signal: AbortSignal): CellVariableSync {
-	// Child model traits are the only Python-visible state for an OJS cell:
-	// `variable_names` describes what the cell exposes, and `variables` carries
-	// the latest wire values.
+	// Cell models expose OJS state to Python through `variable_names` and `variables`.
 	const sync = createBaseSync(model, signal, {
 		readNames: () => model.get("variable_names") ?? [],
 		writeNames: (names) => {
@@ -787,9 +763,7 @@ function createBaseSync(
 }
 
 function applyModelVariablesToViews(sync: CellVariableSync): void {
-	// Python can mutate a cell widget's `variables` trait. When that variable is
-	// backed by an OJS view, reflect the new value into the DOM target and
-	// dispatch input/change so Observable recomputes dependent cells.
+	// Python writes to `variables` update backing `viewof` controls.
 	for (const [name, wireValue] of Object.entries(sync.currentVariables())) {
 		const view = sync.views.get(name);
 		if (!view) continue;

@@ -1,8 +1,7 @@
 const ARROW_URL = "https://cdn.jsdelivr.net/npm/apache-arrow@17.0.0/+esm";
 
-// Wire values must survive anywidget's JSON trait transport. Python and OJS
-// both use __observablejs_type__ tags for values that JSON cannot represent
-// directly, and each side revives only the tags it knows how to execute safely.
+// anywidget traits carry JSON. __observablejs_type__ tags preserve values that
+// need browser or Python revival.
 
 type WireContext = {
 	seen: WeakMap<object, number>;
@@ -10,9 +9,7 @@ type WireContext = {
 };
 
 export function toWireValue(value: unknown, context: WireContext = { seen: new WeakMap(), nextId: 1 }): unknown {
-	// Browser values flow back to Python through cell widget traits. DOM nodes,
-	// functions, errors, circular references, and typed arrays are summarized so
-	// trait sync never tries to clone live browser objects.
+	// Summarize live browser objects before trait sync attempts JSON cloning.
 	if (value === undefined) return { __observablejs_type__: "undefined" };
 	if (value === null || typeof value === "boolean" || typeof value === "string") return value;
 	if (typeof value === "number") {
@@ -80,9 +77,7 @@ export function toWireValue(value: unknown, context: WireContext = { seen: new W
 }
 
 export function reviveSyncedValue(value: unknown): unknown {
-	// Values in cell widget traits may be written by Python or by a previous OJS
-	// evaluation. Revive only the JSON tags that are meaningful as view values or
-	// standalone-cell dependencies.
+	// Cell traits store values used for `viewof` writes and isolated dependencies.
 	if (Array.isArray(value)) return value.map(reviveSyncedValue);
 	if (!isRecord(value)) return value;
 	const type = value.__observablejs_type__;
@@ -99,8 +94,7 @@ export function reviveSyncedValue(value: unknown): unknown {
 }
 
 export function createVariableBuiltins(variables: Record<string, unknown>): Record<string, () => unknown> {
-	// Observable builtins are thunks. Cache revived Python values per variable so
-	// repeated cell evaluations see stable object identity when possible.
+	// Observable builtins are thunks; cache revived Python values per variable.
 	const builtins: Record<string, () => unknown> = {};
 	const cache = new Map<string, unknown>();
 	for (const [name, value] of Object.entries(variables)) {
@@ -113,9 +107,7 @@ export function createVariableBuiltins(variables: Record<string, unknown>): Reco
 }
 
 function revivePythonValue(value: unknown): unknown {
-	// This is the browser half of src/observablejs/_variables.py. It turns the
-	// synced `_data` payload into values that Observable cells can reference by
-	// name just like any other runtime builtin.
+	// Browser half of src/observablejs/_variables.py for the synced `_data` trait.
 	if (Array.isArray(value)) {
 		return resolveMaybePromises(value.map(revivePythonValue), (items) => items);
 	}
