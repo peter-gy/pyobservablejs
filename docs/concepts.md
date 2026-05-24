@@ -33,6 +33,8 @@ order, and renders outputs into DOM nodes.
 - Python-authored cells are converted to Notebook Kit cell specs.
 - Existing Notebook Kit HTML can be loaded with `Notebook.from_file` or
   `Notebook.from_html`.
+- Public Observable notebooks can be fetched with `Notebook.from_url` and then
+  rendered through the same Notebook Kit runtime.
 
 ## anywidget and traitlets
 
@@ -111,11 +113,14 @@ variable.
 
 ## Source-backed Versus Python-authored
 
-There are two notebook entry points:
+There are three notebook entry points:
 
 - Python-authored notebooks: `Notebook(ojs.cell(...), ojs.md(...))`
 - Source-backed notebooks: `Notebook.from_file(...)` or `Notebook.from_html(...)`
+- Public Observable notebooks: `Notebook.from_url(...)`
 
 Python-authored notebooks are serialized to Notebook Kit HTML when needed.
 Source-backed notebooks keep their original Notebook Kit HTML and parse the
-script cells needed for Python-visible handles.
+script cells needed for Python-visible handles. URL-backed notebooks use
+Observable's document API, convert API `js` cells to Notebook Kit `ojs` cells,
+and register remote uploaded files as `FileAttachment` URLs.

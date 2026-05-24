@@ -151,6 +151,27 @@ ojs.Notebook.from_html(
 Create a source-backed notebook from an HTML string. `base_path` is used to
 resolve local attachments and imports when `portable=True`.
 
+### `Notebook.from_url`
+
+```python
+ojs.Notebook.from_url(
+    url,
+    data=None,
+    attachments=None,
+    show_pinned_source=False,
+    timeout=30,
+)
+```
+
+Load a public Observable notebook through the document API. `url` can be a full
+Observable URL, a slug such as `@mbostock/saving-svg`, a 16-character notebook
+id, or an Observable document API URL.
+
+Observable API `js` nodes are converted to Notebook Kit `ojs` cells. Uploaded
+files in the document response become URL-backed `FileAttachment` entries. Any
+explicit `attachments` mapping overrides discovered remote attachments with the
+same name.
+
 ## CellHandle
 
 `CellHandle` is the child anywidget model for one Observable cell. Users usually

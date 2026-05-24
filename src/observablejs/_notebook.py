@@ -15,6 +15,7 @@ import traitlets
 
 from ._files import FileInput, normalize_files, prepare_source
 from ._graph import CellInfo, NotebookGraph, graph_from_raw
+from ._observable import fetch_observable_notebook
 from ._serialize import SCRIPT_TYPES, Mode, serialize
 from ._variables import serialize_variables
 
@@ -372,6 +373,30 @@ class Notebook(_ObservableWidget):
             portable=portable,
             data=data,
             attachments=attachments,
+            show_pinned_source=show_pinned_source,
+            **kwargs,
+        )
+
+    @classmethod
+    def from_url(
+        cls,
+        url: str,
+        *,
+        data: Mapping[str, Any] | None = None,
+        attachments: Mapping[str, FileInput] | None = None,
+        show_pinned_source: bool = False,
+        timeout: float | None = 30,
+        **kwargs: Any,
+    ) -> "Notebook":
+        """Load a public Observable notebook URL through the document API."""
+
+        source, discovered = fetch_observable_notebook(url, timeout=timeout)
+        normalized = normalize_files(attachments, base_path=None)
+        kwargs.setdefault("attachments", {**discovered, **normalized})
+        return cls.from_html(
+            source,
+            portable=False,
+            data=data,
             show_pinned_source=show_pinned_source,
             **kwargs,
         )

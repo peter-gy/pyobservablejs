@@ -60,6 +60,8 @@ uv add "observablejs[data]"
 - `data={...}` exposes Python values as normal Observable variables.
 - `name="..."` gives a cell a stable Python handle through `notebook.cell(...)`.
 - `Notebook.from_file(...)` and `Notebook.from_html(...)` load Notebook Kit HTML.
+- `Notebook.from_url(...)` loads public Observable notebooks through Observable's
+  document API.
 
 ```python
 notebook = ojs.Notebook(
@@ -71,6 +73,17 @@ notebook = ojs.Notebook(
 notebook.cell("gain")
 notebook.value("double")
 ```
+
+## Public Observable Notebooks
+
+Load a public Observable notebook by URL, slug, or id:
+
+```python
+notebook = ojs.Notebook.from_url("https://observablehq.com/@mbostock/saving-svg")
+```
+
+Remote `FileAttachment(...)` entries are registered as URL-backed attachments,
+so Plot notebooks and examples with uploaded files can render in the widget.
 
 ## Notebook Kit HTML
 
@@ -95,7 +108,8 @@ embedded by default so the widget can move between notebook frontends.
 
 - [anywidget](https://anywidget.dev) for Python widget packaging
 - traitlets for synced widget state
-- [Observable Notebook Kit](https://github.com/observablehq/notebook-kit) for
+- [Observable Notebook Kit](https://github.com/observablehq/notebook-kit) and
+  [@observablehq/runtime](https://github.com/observablehq/runtime) for
   compilation and runtime execution in the browser
 - data URLs for portable local file attachments and imports
 
@@ -107,7 +121,7 @@ and the check commands used before sending changes for review.
 ## Acknowledgements
 
 `observablejs` builds on [Observable Notebook Kit](https://github.com/observablehq/notebook-kit)
-and the Notebook Kit browser runtime. It was also inspired by
+and [@observablehq/runtime](https://github.com/observablehq/runtime). It was also inspired by
 [`pyobsplot`](https://github.com/juba/pyobsplot), which shows a clean path for
 passing Python values into an Observable JavaScript context.
 

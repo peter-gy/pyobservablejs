@@ -8,6 +8,7 @@ import anywidget
 import observablejs as ojs
 import pytest
 import traitlets
+from observablejs._observable import observable_document_to_html, resolve_observable_url
 
 
 def test_public_namespace_is_small() -> None:
@@ -26,6 +27,115 @@ def test_public_namespace_is_small() -> None:
         "records",
         "sql",
     }
+
+
+def test_observable_url_resolution_matches_notebook_kit_and_framework() -> None:
+    assert (
+        resolve_observable_url("https://observablehq.com/@d3/bar-chart")
+        == "https://api.observablehq.com/document/@d3/bar-chart"
+    )
+    assert (
+        resolve_observable_url("https://observablehq.com/@d3/bar-chart/2")
+        == "https://api.observablehq.com/document/@d3/bar-chart/2"
+    )
+    assert (
+        resolve_observable_url("https://observablehq.com/@d3/bar-chart@latest")
+        == "https://api.observablehq.com/document/@d3/bar-chart@latest"
+    )
+    assert (
+        resolve_observable_url("https://example.com/@d3/bar-chart")
+        == "https://api.example.com/document/@d3/bar-chart"
+    )
+    assert (
+        resolve_observable_url("https://observablehq.com/d/1234567890abcdef")
+        == "https://api.observablehq.com/document/1234567890abcdef"
+    )
+    assert (
+        resolve_observable_url("@d3/bar-chart")
+        == "https://api.observablehq.com/document/@d3/bar-chart"
+    )
+    assert (
+        resolve_observable_url("1234567890abcdef")
+        == "https://api.observablehq.com/document/1234567890abcdef"
+    )
+
+
+def test_observable_document_serializes_to_notebook_kit_html() -> None:
+    source, attachments = observable_document_to_html(
+        {
+            "title": "Remote Plot",
+            "nodes": [
+                {
+                    "id": 0,
+                    "mode": "md",
+                    "value": "md`# Remote Plot`",
+                    "pinned": False,
+                },
+                {
+                    "id": 3,
+                    "mode": "js",
+                    "value": 'data = FileAttachment("data.csv").csv()',
+                    "pinned": True,
+                },
+            ],
+            "files": [
+                {
+                    "name": "data.csv",
+                    "download_url": "https://static.example/data.csv",
+                    "mime_type": "text/csv",
+                    "size": 12,
+                    "create_time": "2026-05-24T10:00:00.000Z",
+                }
+            ],
+        }
+    )
+
+    assert "<title>Remote Plot</title>" in source
+    assert 'id="0"' in source
+    assert 'type="application/vnd.observable.javascript"' in source
+    assert 'pinned=""' in source
+    assert attachments == {
+        "data.csv": {
+            "url": "https://static.example/data.csv",
+            "mimeType": "text/csv",
+            "size": 12,
+            "lastModified": 1779616800000,
+        }
+    }
+
+
+def test_notebook_from_url_fetches_source_and_remote_attachments(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_fetch(
+        url: str, *, timeout: float | None
+    ) -> tuple[str, dict[str, dict[str, Any]]]:
+        assert url == "https://observablehq.com/@d3/bar-chart"
+        assert timeout == 1
+        return (
+            """<!doctype html>
+<notebook>
+  <title>Remote</title>
+  <script id="1" type="application/vnd.observable.javascript">
+    answer = 42
+  </script>
+</notebook>
+""",
+            {"data.csv": {"url": "https://static.example/data.csv"}},
+        )
+
+    monkeypatch.setattr("observablejs._notebook.fetch_observable_notebook", fake_fetch)
+
+    widget = ojs.Notebook.from_url(
+        "https://observablehq.com/@d3/bar-chart",
+        timeout=1,
+        attachments={"local.csv": "https://example.test/local.csv"},
+    )
+
+    assert widget.source.startswith("<!doctype html>")
+    assert widget.attachments["data.csv"]["url"] == "https://static.example/data.csv"
+    assert widget.attachments["local.csv"]["url"] == "https://example.test/local.csv"
+    assert len(widget.cells) == 1
 
 
 def test_notebook_serializes_source_cells() -> None:

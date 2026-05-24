@@ -27,6 +27,8 @@ Use the workbench notebooks for manual exploration:
 ```sh
 uv run marimo edit workbench/python_vars.py
 uv run marimo edit workbench/gallery_examples.py
+uv run marimo edit workbench/construction_methods.py
+uv run marimo edit workbench/observable_urls.py
 ```
 
 `workbench/gallery_examples.py` can load the Observable Notebook Kit example
@@ -35,6 +37,15 @@ gallery when available:
 ```sh
 OBSERVABLEJS_GALLERY_ROOT=/path/to/notebook-kit/docs/ex uv run marimo edit workbench/gallery_examples.py
 ```
+
+The notebooks have separate purposes:
+
+- `python_vars.py`: Python `data` values, cell handles, and value sync.
+- `gallery_examples.py`: local Notebook Kit HTML examples.
+- `construction_methods.py`: Python cells, HTML strings, HTML files, and public
+  Observable URLs.
+- `observable_urls.py`: public Observable Plot URL loading and attachment smoke
+  checks.
 
 ## Documentation
 

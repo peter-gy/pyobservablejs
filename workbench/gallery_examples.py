@@ -23,6 +23,17 @@ def _():
 
 
 @app.cell
+def _(mo):
+    mo.md(r"""
+    # Notebook Kit example gallery
+
+    This workbench loads local Notebook Kit HTML examples from disk, with an
+    inline fallback when the upstream gallery checkout is not present.
+    """)
+    return
+
+
+@app.cell
 def _():
     fallback_examples = {
         "inline/bar-chart.html": """<!doctype html>

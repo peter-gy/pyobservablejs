@@ -23,6 +23,17 @@ def _():
 
 
 @app.cell
+def _(mo):
+    mo.md(r"""
+    # Python variables in Observable
+
+    This workbench focuses on `data={...}` values, cell handles, and
+    browser-to-Python value sync.
+    """)
+    return
+
+
+@app.cell
 def _(dt):
     letters = [
         {"letter": "A", "frequency": 0.0812, "seen": dt.date(2026, 5, 21)},

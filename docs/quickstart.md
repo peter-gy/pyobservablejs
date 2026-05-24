@@ -108,3 +108,16 @@ notebook = ojs.Notebook.from_file("chart.html")
 By default, local `FileAttachment(...)` references and relative JavaScript imports
 are embedded so the widget can travel with the notebook output. Use
 `portable=False` when you want to keep source references as they are.
+
+## Load a Public Observable Notebook
+
+Use `from_url` for a public Observable notebook:
+
+```python
+notebook = ojs.Notebook.from_url("https://observablehq.com/@mbostock/saving-svg")
+notebook
+```
+
+The URL can be a full Observable URL, a slug such as `@mbostock/saving-svg`, or a
+16-character notebook id. Remote file attachments are kept as URL-backed
+attachments.

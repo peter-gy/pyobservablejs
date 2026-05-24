@@ -26,6 +26,7 @@ The Python package builds the widget model.
 | `src/observablejs/_graph.py` | Immutable graph dataclasses and browser-trait decoding. |
 | `src/observablejs/_variables.py` | Python value serialization for `data`. |
 | `src/observablejs/_files.py` | Attachment discovery and portable source rewriting. |
+| `src/observablejs/_observable.py` | Observable document API URL resolution and response conversion. |
 | `src/observablejs/_serialize.py` | Notebook Kit HTML serialization for Python-authored cells. |
 
 `Notebook(...)` creates:
@@ -37,7 +38,9 @@ The Python package builds the widget model.
 
 `Notebook.from_file(...)` and `Notebook.from_html(...)` instead keep the original
 Notebook Kit HTML in `source`, then create the same child cell handles by parsing
-the HTML script cells.
+the HTML script cells. `Notebook.from_url(...)` follows Observable's document API
+shape, converts API `js` nodes to Notebook Kit `ojs` cells, and passes remote file
+metadata to the same attachment registry.
 
 ## Widget Traits
 
@@ -128,3 +131,8 @@ For source-backed notebooks, local files can be embedded:
 
 Portable source-backed notebooks can move between Python frontends without
 depending on the original local file tree.
+
+Public Observable URLs take a different portability path. The Python side
+fetches the document API response, serializes its nodes to Notebook Kit HTML, and
+keeps uploaded files as remote attachment URLs. The browser still uses Notebook
+Kit for transpilation, imports, graph metadata, and runtime execution.

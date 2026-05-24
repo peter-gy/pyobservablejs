@@ -38,6 +38,7 @@ ojs.Notebook(
 - Python values available as normal OJS variables.
 - Named cell handles for displaying or reading individual cells.
 - Notebook Kit HTML import for existing Observable-style notebooks.
+- Public Observable notebook URL loading.
 - Portable file attachments and local JavaScript imports.
 - anywidget packaging, so the same object works in Jupyter, marimo, and other
   compatible frontends.
