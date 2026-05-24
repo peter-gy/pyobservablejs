@@ -2,6 +2,7 @@ import type { InitializeProps, RenderProps } from "@anywidget/types";
 import { deserialize, toNotebook, transpile, type Cell, type Notebook } from "@observablehq/notebook-kit";
 import { observe, type NotebookRuntime } from "@observablehq/notebook-kit/runtime";
 import { registerAttachments } from "./attachments";
+import { createNotebookGraph, exposedVariableNames, unprefix } from "./graph";
 import { createRuntime, createRuntimeCleanup } from "./runtime";
 import type {
 	CellExports,
@@ -137,6 +138,7 @@ async function renderCurrent(
 	} else if (notebook.cells.length > 0) {
 		throw new Error(`Expected ${notebook.cells.length} cell widgets, received 0`);
 	}
+	if (cellRefs.length === 0) syncNotebookGraph(model, notebook);
 
 	const root = document.createElement("div");
 	root.className = "observablejs-notebook observablehq observablehq--block";
@@ -151,7 +153,7 @@ async function renderCurrent(
 
 	try {
 		if (cellRefs.length > 0 && compositionHost) {
-			await renderComposedCells(root, notebook, cellRefs, runtime, options, signal, compositionHost);
+			await renderComposedCells(model, root, notebook, cellRefs, runtime, options, signal, compositionHost);
 		}
 	} catch (error) {
 		if (!signal.aborted) cleanup();
@@ -245,6 +247,7 @@ function getNotebookOptions(model: RenderProps<WidgetModel>["model"]): NotebookO
 }
 
 async function renderComposedCells(
+	model: RenderProps<WidgetModel>["model"],
 	root: HTMLElement,
 	notebook: Notebook,
 	cellRefs: string[],
@@ -269,6 +272,10 @@ async function renderComposedCells(
 	const cellModels: Array<RenderProps<WidgetModel>["model"] | undefined> = resolvedCells.map((result) =>
 		result.status === "fulfilled" ? result.value[1] : undefined,
 	);
+	const graphCellModels = cellModels.filter(
+		(cellModel): cellModel is RenderProps<WidgetModel>["model"] => cellModel !== undefined,
+	);
+	if (graphCellModels.length === cells.length) syncNotebookGraph(model, notebook, graphCellModels);
 	for (let index = 0; index < cells.length; index++) {
 		if (signal.aborted) return;
 		const cell = cells[index];
@@ -504,19 +511,6 @@ function renderCellError(wrapper: HTMLElement, error: unknown): void {
 	wrapper.replaceChildren(renderTopLevelError(error));
 }
 
-function exposedVariableNames(definition: ReturnType<typeof transpile>): string[] {
-	if (definition.output) {
-		if (definition.autoview) return [unprefix(definition.output, "viewof$")];
-		if (definition.automutable) return [unprefix(definition.output, "mutable ")];
-		return [definition.output];
-	}
-	return definition.outputs ?? [];
-}
-
-function unprefix(value: string, prefix: string): string {
-	return value.startsWith(prefix) ? value.slice(prefix.length) : value;
-}
-
 function createCellObserver(sync: CellVariableSync, definition: ReturnType<typeof transpile>): typeof observe {
 	// `viewof x` returns the DOM/control target, while `x` is the current value.
 	// Capture the target so later Python writes can update the rendered control.
@@ -669,6 +663,19 @@ function writeViewValue(view: ViewTarget, value: unknown): void {
 
 function sameWireValue(left: unknown, right: unknown): boolean {
 	return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function syncNotebookGraph(
+	model: RenderProps<WidgetModel>["model"],
+	notebook: Notebook,
+	cellModels: Array<RenderProps<WidgetModel>["model"]> = [],
+): void {
+	const names = cellModels.map((cellModel) => cellModel?.get("name") ?? "");
+	const graph = createNotebookGraph(notebook, names);
+	if (!sameWireValue(model.get("_graph"), graph)) {
+		model.set("_graph", graph);
+		model.save_changes();
+	}
 }
 
 function getCellRefs(value: unknown): string[] {

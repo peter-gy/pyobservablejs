@@ -214,6 +214,28 @@ notebook = ojs.Notebook(
 mo.ui.anywidget(notebook.cell("gain"))
 ```
 
+## Notebook Graph
+
+After the browser renders a notebook, `notebook.graph` exposes Notebook
+Kit-derived symbolic metadata for the cells:
+
+```python
+graph = notebook.graph
+assert graph is not None
+graph.cells[0].defines
+graph.cells[0].references
+graph.edges
+
+notebook.cell("gain").info
+notebook.cell("gain").defines
+notebook.cell("gain").references
+notebook.defining_cell("gain")
+```
+
+The graph is produced in TypeScript from Notebook Kit `transpile(...)` metadata.
+It reports Python-visible variable names in `defines`, referenced variables in
+`references`, and raw runtime output names in `runtime_outputs`.
+
 ## Export
 
 `to_notebook_html()` returns Notebook Kit HTML for Python-authored notebooks, or

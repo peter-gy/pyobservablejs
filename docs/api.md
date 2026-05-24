@@ -44,8 +44,10 @@ Useful attributes and methods:
 ```python
 notebook.data
 notebook.data = {"rows": rows}
+notebook.graph
 notebook.cells
 notebook.cell("name")
+notebook.defining_cell("variable")
 notebook.values
 notebook.value("name")
 notebook.to_notebook_html()
@@ -148,3 +150,47 @@ notebook.value("answer")
 
 For `viewof` cells, the synchronized value is the current input value, not the DOM
 element.
+
+## Graph Metadata
+
+Graph metadata is populated after the browser renders and transpiles the
+notebook:
+
+```python
+graph = notebook.graph
+```
+
+Before the first browser render, `notebook.graph` is `None`.
+
+`graph` is a `NotebookGraph` with:
+
+- `cells`: `CellInfo` entries in notebook order
+- `edges`: cell-id-to-cell-id dependencies by runtime variable name
+- `defines`: all Python-visible variables defined by notebook cells
+- `references`: all variables referenced by notebook cells
+- `external_references`: referenced names not defined by another cell
+
+Each `DependencyEdge` has `source_id`, `target_id`, and `name`.
+
+Each `CellInfo` has:
+
+- `defines`: Python-visible variables exposed by that cell
+- `references` / `inputs`: variables read by that cell
+- `output`: Notebook Kit's raw singular runtime output, if present
+- `outputs`: Notebook Kit's raw plural output declarations
+- `runtime_outputs`: raw runtime names used when building dependency edges
+- `autodisplay`, `autoview`, and `automutable`
+- `error`, if Notebook Kit could not transpile that cell
+
+The matching cell handle exposes the same metadata:
+
+```python
+handle = notebook.cell("gain")
+handle.info
+handle.defines
+handle.references
+handle.runtime_outputs
+```
+
+Use `notebook.defining_cell("gain")` when you want the cell that defines an
+Observable variable rather than a Python handle name.

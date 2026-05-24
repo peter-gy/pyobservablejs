@@ -23,6 +23,7 @@ The Python package builds the widget model.
 | File | Responsibility |
 | --- | --- |
 | `src/observablejs/_notebook.py` | Public `Notebook`, `Cell`, and cell helper API. |
+| `src/observablejs/_graph.py` | Immutable graph dataclasses and browser-trait decoding. |
 | `src/observablejs/_variables.py` | Python value serialization for `data`. |
 | `src/observablejs/_files.py` | Attachment discovery and portable source rewriting. |
 | `src/observablejs/_serialize.py` | Notebook Kit HTML serialization for Python-authored cells. |
@@ -49,6 +50,7 @@ The Python and TypeScript sides communicate through these traits.
 | `attachments` | Python to browser | File metadata used by `FileAttachment`. |
 | `base_url` | Python to browser | Base URL for non-embedded source references. |
 | `_data` | Python to browser | Serialized Python values exposed as OJS variables. |
+| `_graph` | Browser to Python | Notebook Kit-derived symbolic graph for the notebook. |
 | `_cell_widgets` | Python to browser | anywidget refs for the child cell models. |
 | `variable_names` | Browser to Python | Names exposed by one OJS cell. |
 | `variables` | Browser to Python, then Python to browser for views | Latest wire values for one OJS cell. |
@@ -72,9 +74,15 @@ When the notebook renders, TypeScript:
    name.
 3. Registers file attachments for the widget instance.
 4. Resolves the child cell widgets from `_cell_widgets`.
-5. Transpiles and defines each OJS cell in one Notebook Kit runtime.
-6. Mirrors each exposed OJS variable into the matching child widget's `variables`
+5. Transpiles each cell with Notebook Kit and syncs the symbolic graph to
+   `_graph`.
+6. Defines each OJS cell in one Notebook Kit runtime.
+7. Mirrors each exposed OJS variable into the matching child widget's `variables`
    trait.
+
+The graph uses Notebook Kit's `transpile(cell, {resolveLocalImports: true})`
+result. It does not walk Observable runtime private fields such as `_scope`,
+`_inputs`, or `_outputs`.
 
 ## Why Child Cell Widgets Exist
 

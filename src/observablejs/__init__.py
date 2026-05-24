@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import importlib.metadata
 
+from ._graph import CellInfo, DependencyEdge, NotebookGraph
 from ._notebook import (
     Cell,
+    CellHandle,
     Notebook,
     cell,
     html,
@@ -22,7 +24,11 @@ except importlib.metadata.PackageNotFoundError:
 
 __all__ = [
     "Cell",
+    "CellHandle",
+    "CellInfo",
+    "DependencyEdge",
     "Notebook",
+    "NotebookGraph",
     "arrow",
     "cell",
     "html",

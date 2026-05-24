@@ -15,6 +15,7 @@ export type AttachmentInfo = {
 
 export type WidgetModel = {
 	role?: "notebook" | "cell";
+	name?: string;
 	// Source-backed notebooks keep the original Notebook Kit HTML here.
 	source?: string;
 	// Python-authored notebooks send Notebook Kit's JSON notebook shape here.
@@ -23,6 +24,8 @@ export type WidgetModel = {
 	base_url?: string;
 	// Serialized Python data. runtime.ts revives this as Observable builtins.
 	_data?: Record<string, unknown>;
+	// Notebook-level symbolic graph derived from Notebook Kit transpilation.
+	_graph?: NotebookGraph;
 	// Browser-produced cell values mirrored back to the matching Python child.
 	variables?: Record<string, unknown>;
 	variable_names?: string[];
@@ -96,3 +99,30 @@ export type WidgetManager = {
 };
 
 export type RuntimeObserver = Parameters<NotebookRuntime["main"]["variable"]>[0];
+
+export type CellGraph = {
+	id: number;
+	index: number;
+	name: string;
+	mode: Cell["mode"];
+	defines: string[];
+	references: string[];
+	output: string | null;
+	outputs: string[];
+	runtime_outputs: string[];
+	autodisplay: boolean;
+	autoview: boolean;
+	automutable: boolean;
+	error?: string;
+};
+
+export type GraphEdge = {
+	from: number;
+	to: number;
+	name: string;
+};
+
+export type NotebookGraph = {
+	cells: CellGraph[];
+	edges: GraphEdge[];
+};

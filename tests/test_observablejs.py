@@ -11,7 +11,11 @@ import pytest
 def test_public_namespace_is_small() -> None:
     assert set(ojs.__all__) == {
         "Cell",
+        "CellHandle",
+        "CellInfo",
+        "DependencyEdge",
         "Notebook",
+        "NotebookGraph",
         "arrow",
         "cell",
         "html",
@@ -66,8 +70,175 @@ def test_notebook_composes_python_cells_as_named_child_widgets() -> None:
     assert widget.cells[0].role == "cell"
     assert widget.cells[0].name == "title"
     assert not widget.cells[0].has_trait("cell")
+    assert widget.graph is None
+    assert not widget.cells[0].has_trait("_info")
+    assert widget.cells[0].info is None
     assert widget.cells[0].variables == {}
     assert widget.cells[0].variable_names == []
+
+
+def test_notebook_graph_exposes_symbolic_cell_metadata() -> None:
+    widget = ojs.Notebook(
+        ojs.cell("a = 1", name="a"),
+        ojs.cell("b = a + rows.length", name="b"),
+        data={"rows": [{"x": 1}]},
+    )
+    raw_graph = {
+        "cells": [
+            {
+                "id": 1,
+                "index": 0,
+                "name": "a",
+                "mode": "ojs",
+                "defines": ["a"],
+                "references": [],
+                "output": "a",
+                "outputs": [],
+                "runtime_outputs": ["a"],
+                "autodisplay": True,
+                "autoview": False,
+                "automutable": False,
+            },
+            {
+                "id": 2,
+                "index": 1,
+                "name": "b",
+                "mode": "ojs",
+                "defines": ["b"],
+                "references": ["a", "rows"],
+                "output": "b",
+                "outputs": [],
+                "runtime_outputs": ["b"],
+                "autodisplay": True,
+                "autoview": False,
+                "automutable": False,
+            },
+        ],
+        "edges": [{"from": 1, "to": 2, "name": "a"}],
+    }
+    widget.set_trait("_graph", raw_graph)
+
+    graph = widget.graph
+
+    assert isinstance(graph, ojs.NotebookGraph)
+    assert graph.defines == ("a", "b")
+    assert graph.references == ("a", "rows")
+    assert graph.external_references == ("rows",)
+    assert graph.edges == (ojs.DependencyEdge(source_id=1, target_id=2, name="a"),)
+    assert widget.cell("b").info == graph.cells[1]
+    assert widget.cell("b").defines == ("b",)
+    assert widget.cell("b").references == ("a", "rows")
+    assert widget.cell("b").inputs == ("a", "rows")
+    assert widget.cell("b").outputs == ()
+    assert widget.cell("b").runtime_outputs == ("b",)
+    assert widget.cell("b").output == "b"
+
+
+def test_cell_lookup_can_use_unique_graph_output() -> None:
+    widget = ojs.Notebook(
+        ojs.cell("answer = 42"),
+        ojs.cell("answer + 1", name="readout"),
+    )
+    widget.set_trait(
+        "_graph",
+        {
+            "cells": [
+                {
+                    "id": 1,
+                    "index": 0,
+                    "mode": "ojs",
+                    "defines": ["answer"],
+                    "references": [],
+                    "output": "answer",
+                    "runtime_outputs": ["answer"],
+                }
+            ],
+            "edges": [],
+        },
+    )
+
+    assert widget.cell("answer") is widget.cells[0]
+    assert widget.defining_cell("answer") is widget.cells[0]
+
+
+def test_cell_lookup_rejects_ambiguous_graph_output() -> None:
+    widget = ojs.Notebook(
+        ojs.cell("answer = 42"),
+        ojs.cell("answer = 43"),
+    )
+    widget.set_trait(
+        "_graph",
+        {
+            "cells": [
+                {"id": 1, "index": 0, "mode": "ojs", "defines": ["answer"]},
+                {"id": 2, "index": 1, "mode": "ojs", "defines": ["answer"]},
+            ],
+            "edges": [],
+        },
+    )
+
+    with pytest.raises(KeyError, match="Ambiguous Observable cell output"):
+        widget.cell("answer")
+
+
+def test_cell_lookup_rejects_handle_output_collision() -> None:
+    widget = ojs.Notebook(
+        ojs.cell("alpha = 1", name="conflict"),
+        ojs.cell("conflict = 2", name="other"),
+    )
+    widget.set_trait(
+        "_graph",
+        {
+            "cells": [
+                {"id": 1, "index": 0, "mode": "ojs", "defines": ["alpha"]},
+                {"id": 2, "index": 1, "mode": "ojs", "defines": ["conflict"]},
+            ],
+            "edges": [],
+        },
+    )
+
+    with pytest.raises(KeyError, match="Ambiguous Observable cell key"):
+        widget.cell("conflict")
+
+    assert widget.defining_cell("conflict") is widget.cells[1]
+
+
+def test_malformed_graph_entries_are_dropped() -> None:
+    widget = ojs.Notebook(ojs.cell("answer = 42"))
+    widget.set_trait(
+        "_graph",
+        {
+            "cells": [
+                {"id": "1", "index": "0", "mode": "ojs", "defines": ["answer"]},
+                {"id": "bad", "index": 1, "mode": "ojs", "defines": ["bad"]},
+            ],
+            "edges": [
+                {"from": "1", "to": "2", "name": "answer"},
+                {"from": "bad", "to": 2, "name": "bad"},
+            ],
+        },
+    )
+
+    graph = widget.graph
+
+    assert graph is not None
+    assert graph.cells == (
+        ojs.CellInfo(
+            id=1,
+            index=0,
+            mode="ojs",
+            name=None,
+            defines=("answer",),
+            references=(),
+            output=None,
+            outputs=(),
+            runtime_outputs=(),
+            autodisplay=False,
+            autoview=False,
+            automutable=False,
+        ),
+    )
+    assert graph.edges == (ojs.DependencyEdge(source_id=1, target_id=2, name="answer"),)
 
 
 def test_named_cell_handles_expose_values() -> None:

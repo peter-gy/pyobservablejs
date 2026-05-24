@@ -19,6 +19,7 @@ import anywidget
 import traitlets
 
 from ._files import FileInput, normalize_files, prepare_source
+from ._graph import CellInfo, NotebookGraph, graph_from_raw
 from ._serialize import SCRIPT_TYPES, Mode, serialize
 from ._variables import serialize_variables
 
@@ -92,12 +93,12 @@ class _ObservableWidget(anywidget.AnyWidget):
     _css = pathlib.Path(__file__).parent / "static" / "widget.css"
 
 
-class _CellWidget(_ObservableWidget):
+class CellHandle(_ObservableWidget):
     """Child anywidget model that mirrors one Observable cell.
 
     Notebook widgets compose these child widgets in the browser. Each child
-    receives the values exposed by its matching OJS cell through ``variables``;
-    Python can display the child separately or inspect its synchronized value.
+    receives values exposed by its matching OJS cell through ``variables``.
+    Symbolic metadata comes from the owning notebook's graph.
     """
 
     role = traitlets.Unicode("cell").tag(sync=True)
@@ -106,6 +107,51 @@ class _CellWidget(_ObservableWidget):
         sync=True
     )
     variables = traitlets.Dict(default_value={}).tag(sync=True)
+
+    def __init__(self, **kwargs: Any) -> None:
+        self._notebook: Notebook | None = None
+        self._notebook_index: int | None = None
+        super().__init__(**kwargs)
+
+    def _bind_notebook(self, notebook: Notebook, index: int) -> None:
+        self._notebook = notebook
+        self._notebook_index = index
+
+    @property
+    def info(self) -> CellInfo | None:
+        if self._notebook is None or self._notebook_index is None:
+            return None
+        graph = self._notebook.graph
+        return None if graph is None else graph.cell(self._notebook_index)
+
+    @property
+    def defines(self) -> tuple[str, ...]:
+        info = self.info
+        return () if info is None else info.defines
+
+    @property
+    def references(self) -> tuple[str, ...]:
+        info = self.info
+        return () if info is None else info.references
+
+    @property
+    def inputs(self) -> tuple[str, ...]:
+        return self.references
+
+    @property
+    def outputs(self) -> tuple[str, ...]:
+        info = self.info
+        return () if info is None else info.outputs
+
+    @property
+    def runtime_outputs(self) -> tuple[str, ...]:
+        info = self.info
+        return () if info is None else info.runtime_outputs
+
+    @property
+    def output(self) -> str | None:
+        info = self.info
+        return None if info is None else info.output
 
     @property
     def values(self) -> dict[str, Any]:
@@ -136,6 +182,7 @@ class Notebook(_ObservableWidget):
     attachments = traitlets.Dict().tag(sync=True)
     base_url = traitlets.Unicode("").tag(sync=True)
     _data = traitlets.Dict(default_value={}).tag(sync=True)
+    _graph = traitlets.Dict(default_value={}).tag(sync=True)
     options = traitlets.Dict().tag(sync=True)
     _cell_widgets = traitlets.List(
         anywidget.WidgetTrait(),
@@ -182,6 +229,9 @@ class Notebook(_ObservableWidget):
         kwargs.setdefault("options", {"show_source": show_pinned_source})
         kwargs.setdefault("_cell_widgets", cell_widgets)
         super().__init__(**kwargs)
+        for index, cell_widget in enumerate(self._cell_widgets):
+            if isinstance(cell_widget, CellHandle):
+                cell_widget._bind_notebook(self, index)
 
     @property
     def data(self) -> dict[str, Any]:
@@ -195,20 +245,58 @@ class Notebook(_ObservableWidget):
         self.set_trait("_data", serialize_variables(self._data_values))
 
     @property
-    def cells(self) -> list[_CellWidget]:
+    def graph(self) -> NotebookGraph | None:
+        """Latest browser-produced symbolic graph for the notebook."""
+
+        return graph_from_raw(self._graph)
+
+    @property
+    def cells(self) -> tuple[CellHandle, ...]:
         """Cell handles synchronized with the corresponding OJS cells."""
 
-        return list(self._cell_widgets)
+        return tuple(self._cell_widgets)
 
-    def cell(self, key: int | str) -> _CellWidget:
-        """Return a cell handle by position or by Observable variable name."""
+    def cell(self, key: int | str) -> CellHandle:
+        """Return a cell by index, handle name, or unique defined variable."""
 
         if isinstance(key, int):
             return self.cells[key]
-        for item in self.cells:
-            if item.name == key:
-                return item
-        raise KeyError(f"Unknown Observable cell: {key!r}")
+        cells = self.cells
+        handle_matches = [
+            (index, item) for index, item in enumerate(cells) if item.name == key
+        ]
+        if len(handle_matches) > 1:
+            raise KeyError(f"Ambiguous Observable cell handle: {key!r}")
+        graph = self.graph
+        output_matches = (
+            []
+            if graph is None
+            else [cell.index for cell in graph.cells if key in cell.defines]
+        )
+        if handle_matches:
+            index, item = handle_matches[0]
+            if any(output_index != index for output_index in output_matches):
+                raise KeyError(f"Ambiguous Observable cell key: {key!r}")
+            return item
+        return self.defining_cell(key)
+
+    def defining_cell(self, name: str) -> CellHandle:
+        """Return the unique cell that defines an Observable variable."""
+
+        graph = self.graph
+        cells = self.cells
+        matches = (
+            []
+            if graph is None
+            else [cell.index for cell in graph.cells if name in cell.defines]
+        )
+        if len(matches) == 1:
+            index = matches[0]
+            if 0 <= index < len(cells):
+                return cells[index]
+        if len(matches) > 1:
+            raise KeyError(f"Ambiguous Observable cell output: {name!r}")
+        raise KeyError(f"Unknown Observable cell output: {name!r}")
 
     @property
     def values(self) -> dict[str, Any]:
@@ -352,14 +440,14 @@ def _copy_data(data: Mapping[str, Any] | None) -> dict[str, Any]:
     return {} if data is None else dict(data)
 
 
-def _cell_widgets_for_specs(specs: list[dict[str, Any]]) -> list[_CellWidget]:
+def _cell_widgets_for_specs(specs: list[dict[str, Any]]) -> list[CellHandle]:
     # One child widget per cell gives Python stable handles for reading cell
     # values and lets anywidget composition render those handles independently.
-    return [_CellWidget(name=str(item.get("name") or "")) for item in specs]
+    return [CellHandle(name=str(item.get("name") or "")) for item in specs]
 
 
-def _cell_widgets_for_cells(cells: list[Cell]) -> list[_CellWidget]:
-    return [_CellWidget(name=item.name or "") for item in cells]
+def _cell_widgets_for_cells(cells: list[Cell]) -> list[CellHandle]:
+    return [CellHandle(name=item.name or "") for item in cells]
 
 
 _MODE_BY_SCRIPT_TYPE = {

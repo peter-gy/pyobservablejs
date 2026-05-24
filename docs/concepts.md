@@ -80,6 +80,32 @@ notebook.values
 This is what makes it possible to render a control cell separately from the full
 notebook while still keeping it connected to the same OJS computation.
 
+## Notebook Graph
+
+Once a notebook has rendered in the browser, Python can inspect the symbolic
+notebook graph:
+
+```python
+notebook.graph
+notebook.graph.cells
+notebook.graph.edges
+notebook.cell("gain").info
+notebook.defining_cell("gain")
+```
+
+This graph is not parsed in Python. It comes from Notebook Kit's `transpile`
+metadata on the TypeScript side, the same metadata used to define cells in the
+Observable runtime. Each cell reports:
+
+- `defines`: Python-visible variables exposed by the cell
+- `references`: variables the cell reads
+- `output`: Notebook Kit's raw singular runtime output, when present
+- `outputs`: Notebook Kit's raw plural output declarations
+- `runtime_outputs`: raw runtime names used for dependency edges
+
+Expression-only display cells can have `autodisplay=True` while defining no
+variable.
+
 ## Source-backed Versus Python-authored
 
 There are two notebook entry points:
