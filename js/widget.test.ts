@@ -49,6 +49,52 @@ describe("widget graph sync", () => {
 		controller.abort();
 	});
 
+	test("keeps notebook values reactive to slider-like child variable updates", async () => {
+		const model = createModel({
+			role: "notebook",
+			spec: {
+				cells: [
+					{ id: 1, mode: "ojs", value: "viewof gain = Inputs.range([0, 11], {value: 5})" },
+					{ id: 2, mode: "ojs", value: "gain * 2" },
+				],
+			},
+			attachments: {},
+			_data: {},
+			options: {},
+			_cell_widgets: ["anywidget:gain", "anywidget:readout"],
+		});
+		const childModels = new Map([
+			["anywidget:gain", createModel({ role: "cell", name: "gain", variables: {}, variable_names: [] })],
+			["anywidget:readout", createModel({ role: "cell", name: "readout", variables: {}, variable_names: [] })],
+		]);
+		const controller = new AbortController();
+
+		widget.render({
+			model,
+			el: document.createElement("div"),
+			signal: controller.signal,
+			host: createHost(childModels),
+		} as unknown as RenderProps<WidgetModel>);
+		await waitFor(() => model.get("_graph") as NotebookGraph | undefined);
+
+		const gainModel = childModels.get("anywidget:gain");
+		gainModel?.set("variable_names", ["gain"]);
+		gainModel?.set("variables", { gain: 5 });
+		expect(await waitFor(() => variableValue(model, "gain"))).toBe(5);
+
+		gainModel?.set("variables", { gain: 7.5 });
+		const changedGain = await waitFor(() => (variableValue(model, "gain") === 7.5 ? 7.5 : undefined));
+
+		childModels.get("anywidget:readout")?.set("variable_names", ["readout"]);
+		childModels.get("anywidget:readout")?.set("variables", { readout: 15 });
+		await waitFor(() => variableValue(model, "readout"));
+
+		expect(changedGain).toBe(7.5);
+		expect(model.get("variables")).toEqual({ gain: 7.5, readout: 15 });
+		expect(model.get("variable_names")).toEqual(["gain", "readout"]);
+		controller.abort();
+	});
+
 	test("syncs graph metadata for source-backed Notebook Kit HTML", async () => {
 		const model = createModel({
 			role: "notebook",
@@ -116,11 +162,20 @@ function createModel(initial: Partial<WidgetModel>): Model {
 	} as unknown as Model;
 }
 
-function createHost(childModels: Map<string, Model>): RenderProps<WidgetModel>["host"] {
+function createHost(
+	childModels: Map<string, Model>,
+	childExports: Map<string, CellExports> = new Map(),
+): RenderProps<WidgetModel>["host"] {
 	return {
 		getModel: async (ref: string) => childModels.get(ref),
-		getWidget: async () => ({ exports: noopCellExports }),
+		getWidget: async (ref: string) => ({ exports: childExports.get(ref) ?? noopCellExports }),
 	} as unknown as RenderProps<WidgetModel>["host"];
+}
+
+function variableValue(model: Model, name: string): unknown | undefined {
+	const variables = model.get("variables");
+	if (variables === null || typeof variables !== "object" || Array.isArray(variables)) return undefined;
+	return (variables as Record<string, unknown>)[name];
 }
 
 async function waitFor<T>(read: () => T | undefined): Promise<T> {

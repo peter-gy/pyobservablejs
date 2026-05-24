@@ -254,6 +254,21 @@ def test_named_cell_handles_expose_values() -> None:
     assert widget.values == {"gain": 7}
 
 
+def test_notebook_values_are_synced_trait_state() -> None:
+    widget = ojs.Notebook(ojs.cell("viewof gain = Inputs.range([0, 11])", name="gain"))
+    changes: list[dict[str, object]] = []
+    widget.observe(changes.append, names="variables")
+
+    widget.variables = {"gain": 8}
+    widget.variable_names = ["gain"]
+
+    assert widget.values == {"gain": 8}
+    assert widget.value("gain") == 8
+    assert widget.variable_names == ["gain"]
+    assert changes[-1]["name"] == "variables"
+    assert changes[-1]["new"] == {"gain": 8}
+
+
 def test_script_end_tag_is_escaped() -> None:
     widget = ojs.Notebook(ojs.cell("html`</script> </SCRIPT>`"))
 

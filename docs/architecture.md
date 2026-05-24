@@ -52,8 +52,8 @@ The Python and TypeScript sides communicate through these traits.
 | `_data` | Python to browser | Serialized Python values exposed as OJS variables. |
 | `_graph` | Browser to Python | Notebook Kit-derived symbolic graph for the notebook. |
 | `_cell_widgets` | Python to browser | anywidget refs for the child cell models. |
-| `variable_names` | Browser to Python | Names exposed by one OJS cell. |
-| `variables` | Browser to Python, then Python to browser for views | Latest wire values for one OJS cell. |
+| `variable_names` | Browser to Python | Names exposed by one cell, or by the whole notebook on notebook models. |
+| `variables` | Browser to Python, then Python to browser for views | Latest wire values for one cell, plus the aggregate notebook values on notebook models. |
 
 ## Browser Runtime
 
@@ -79,6 +79,8 @@ When the notebook renders, TypeScript:
 6. Defines each OJS cell in one Notebook Kit runtime.
 7. Mirrors each exposed OJS variable into the matching child widget's `variables`
    trait.
+8. Aggregates child `variables` into the notebook model's own `variables` trait,
+   which backs `notebook.values`.
 
 The graph uses Notebook Kit's `transpile(cell, {resolveLocalImports: true})`
 result. It does not walk Observable runtime private fields such as `_scope`,
@@ -99,6 +101,7 @@ This keeps these workflows aligned:
 - display the full notebook,
 - display `notebook.cell("gain")`,
 - read `notebook.value("gain")`,
+- read reactive aggregate values with `notebook.values`,
 - update a `viewof` value through synced widget state.
 
 ## Portability

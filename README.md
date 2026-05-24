@@ -198,7 +198,12 @@ notebook = ojs.Notebook(
 notebook.cell("gain")
 notebook.cell("gain").value
 notebook.value("gain")
+notebook.values
 ```
+
+`notebook.values` is synced on the notebook widget itself, so Python frontends
+can react when browser-side OJS values change. Per-cell values remain available
+through `notebook.cell("gain").values`.
 
 In marimo:
 

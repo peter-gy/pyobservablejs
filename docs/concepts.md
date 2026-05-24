@@ -77,6 +77,10 @@ notebook.cell("gain").value
 notebook.values
 ```
 
+`notebook.values` is synchronized on the notebook widget itself. When a `viewof`
+input changes in the browser, the matching child cell trait updates first and the
+notebook trait receives the aggregate values immediately after.
+
 This is what makes it possible to render a control cell separately from the full
 notebook while still keeping it connected to the same OJS computation.
 

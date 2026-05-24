@@ -43,7 +43,6 @@ const MODEL_CHANGE_EVENTS = [
 	"change:attachments",
 	"change:base_url",
 	"change:_data",
-	"change:variables",
 	"change:options",
 	"change:_cell_widgets",
 ] as const;
@@ -138,7 +137,10 @@ async function renderCurrent(
 	} else if (notebook.cells.length > 0) {
 		throw new Error(`Expected ${notebook.cells.length} cell widgets, received 0`);
 	}
-	if (cellRefs.length === 0) syncNotebookGraph(model, notebook);
+	if (cellRefs.length === 0) {
+		syncNotebookGraph(model, notebook);
+		syncNotebookValues(model, []);
+	}
 
 	const root = document.createElement("div");
 	root.className = "observablejs-notebook observablehq observablehq--block";
@@ -275,7 +277,10 @@ async function renderComposedCells(
 	const graphCellModels = cellModels.filter(
 		(cellModel): cellModel is RenderProps<WidgetModel>["model"] => cellModel !== undefined,
 	);
-	if (graphCellModels.length === cells.length) syncNotebookGraph(model, notebook, graphCellModels);
+	if (graphCellModels.length === cells.length) {
+		syncNotebookGraph(model, notebook, graphCellModels);
+		bindNotebookValueSync(model, graphCellModels, signal);
+	}
 	for (let index = 0; index < cells.length; index++) {
 		if (signal.aborted) return;
 		const cell = cells[index];
@@ -572,7 +577,7 @@ function createCellModelSync(model: RenderProps<WidgetModel>["model"], signal: A
 			model.set("variable_names", names);
 			model.save_changes();
 		},
-		readVariables: () => model.get("variables") ?? {},
+		readVariables: () => readModelVariables(model),
 		writeVariables: (variables) => {
 			model.set("variables", variables);
 			model.save_changes();
@@ -676,6 +681,67 @@ function syncNotebookGraph(
 		model.set("_graph", graph);
 		model.save_changes();
 	}
+}
+
+function bindNotebookValueSync(
+	model: RenderProps<WidgetModel>["model"],
+	cellModels: Array<RenderProps<WidgetModel>["model"]>,
+	signal: AbortSignal,
+): void {
+	const sync = () => syncNotebookValues(model, cellModels);
+	sync();
+	for (const cellModel of cellModels) {
+		cellModel.on("change:variable_names", sync);
+		cellModel.on("change:variables", sync);
+	}
+	signal.addEventListener(
+		"abort",
+		() => {
+			for (const cellModel of cellModels) {
+				cellModel.off("change:variable_names", sync);
+				cellModel.off("change:variables", sync);
+			}
+		},
+		{ once: true },
+	);
+}
+
+function syncNotebookValues(
+	model: RenderProps<WidgetModel>["model"],
+	cellModels: Array<RenderProps<WidgetModel>["model"]>,
+): void {
+	const names: string[] = [];
+	const variables: Record<string, unknown> = {};
+	for (const cellModel of cellModels) {
+		for (const name of readModelVariableNames(cellModel)) {
+			if (!names.includes(name)) names.push(name);
+		}
+		for (const [name, value] of Object.entries(readModelVariables(cellModel))) {
+			if (!names.includes(name)) names.push(name);
+			variables[name] = value;
+		}
+	}
+	let changed = false;
+	if (!sameWireValue(model.get("variable_names"), names)) {
+		model.set("variable_names", names);
+		changed = true;
+	}
+	if (!sameWireValue(model.get("variables"), variables)) {
+		model.set("variables", variables);
+		changed = true;
+	}
+	if (changed) model.save_changes();
+}
+
+function readModelVariableNames(model: RenderProps<WidgetModel>["model"]): string[] {
+	const value = model.get("variable_names");
+	return Array.isArray(value) ? value.filter((name): name is string => typeof name === "string") : [];
+}
+
+function readModelVariables(model: RenderProps<WidgetModel>["model"]): Record<string, unknown> {
+	const value = model.get("variables");
+	if (value === null || typeof value !== "object" || Array.isArray(value)) return {};
+	return value;
 }
 
 function getCellRefs(value: unknown): string[] {

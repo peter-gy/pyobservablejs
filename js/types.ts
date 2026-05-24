@@ -26,7 +26,8 @@ export type WidgetModel = {
 	_data?: Record<string, unknown>;
 	// Notebook-level symbolic graph derived from Notebook Kit transpilation.
 	_graph?: NotebookGraph;
-	// Browser-produced cell values mirrored back to the matching Python child.
+	// Browser-produced values. On notebook models this is the aggregate of child
+	// cell values; on cell models this is the matching cell's own values.
 	variables?: Record<string, unknown>;
 	variable_names?: string[];
 	options?: {

@@ -144,9 +144,14 @@ notebook = ojs.Notebook(
     ojs.cell("answer = 42", name="answer"),
 )
 
+notebook.values
 notebook.cell("answer").value
 notebook.value("answer")
 ```
+
+`notebook.values` is backed by a synced notebook trait, so Python frontends that
+react to traitlet changes can update when OJS values change. Cell handles still
+expose the per-cell view with `notebook.cell("answer").values`.
 
 For `viewof` cells, the synchronized value is the current input value, not the DOM
 element.

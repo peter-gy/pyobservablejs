@@ -183,6 +183,10 @@ class Notebook(_ObservableWidget):
     base_url = traitlets.Unicode("").tag(sync=True)
     _data = traitlets.Dict(default_value={}).tag(sync=True)
     _graph = traitlets.Dict(default_value={}).tag(sync=True)
+    variable_names = traitlets.List(traitlets.Unicode(), default_value=[]).tag(
+        sync=True
+    )
+    variables = traitlets.Dict(default_value={}).tag(sync=True)
     options = traitlets.Dict().tag(sync=True)
     _cell_widgets = traitlets.List(
         anywidget.WidgetTrait(),
@@ -302,6 +306,8 @@ class Notebook(_ObservableWidget):
     def values(self) -> dict[str, Any]:
         """Latest browser-synchronized values for all named notebook cells."""
 
+        if self.variables:
+            return dict(self.variables)
         merged: dict[str, Any] = {}
         for item in self.cells:
             merged.update(item.values)

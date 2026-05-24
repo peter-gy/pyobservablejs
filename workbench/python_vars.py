@@ -86,6 +86,12 @@ def _(frequency_floor, letters, ojs):
 
 
 @app.cell
+def _(notebook):
+    notebook.values
+    return
+
+
+@app.cell
 def _(mo, notebook):
     gain_cell = mo.ui.anywidget(notebook.cell("gain"))
     gain_cell
@@ -96,7 +102,7 @@ def _(mo, notebook):
 def _(mo, notebook):
     gain_readout_cell = mo.ui.anywidget(notebook.cell("gain_readout"))
     gain_readout_cell
-    return (gain_readout_cell,)
+    return
 
 
 @app.cell
