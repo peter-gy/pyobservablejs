@@ -5,7 +5,7 @@ import { registerAttachments } from "./attachments";
 import { createNotebookGraph, exposedVariableNames, unprefix } from "./graph";
 import { renderSource } from "./highlight";
 import { createRuntime, createRuntimeCleanup } from "./runtime";
-import { createRuntimeDataSync, readNotebookData } from "./runtime-data-sync";
+import { createRuntimeVariablesSync, readNotebookVariables } from "./runtime-variables-sync";
 import type {
 	CellExports,
 	CellRenderContext,
@@ -14,7 +14,7 @@ import type {
 	NotebookOptions,
 	ResolvedCell,
 	ResolvedCellWidget,
-	RuntimeDataSync,
+	RuntimeVariablesSync,
 	RuntimeObserver,
 	WidgetModel,
 } from "./types";
@@ -24,7 +24,7 @@ import "@observablehq/notebook-kit/index.css";
 import "@observablehq/notebook-kit/theme-air.css";
 import "./widget.css";
 
-// Notebook models own the Notebook Kit runtime. Cell models own per-cell handles
+// Notebook models own the Notebook Kit runtime. Cell models own per-cell names
 // for rendering and synchronized values. The widget lifecycle keeps anywidget
 // views, Observable runtime state, and standalone cell displays aligned with the
 // active parent notebook runtime.
@@ -135,7 +135,7 @@ async function renderCurrent(
 	el: HTMLElement,
 	signal: AbortSignal,
 	host: RenderProps<WidgetModel>["host"] | undefined,
-	onDataReset: () => void,
+	onInputReset: () => void,
 ): Promise<void> {
 	el.replaceChildren();
 	el.classList.add("observablejs");
@@ -166,19 +166,29 @@ async function renderCurrent(
 	const attachmentRegistry = registerAttachments(options.attachments);
 	const runtime = createRuntime(root, el, options, attachmentRegistry);
 	const cleanup = createRuntimeCleanup(runtime, attachmentRegistry);
-	const dataSync = createRuntimeDataSync({
+	const variablesSync = createRuntimeVariablesSync({
 		model,
 		runtime,
 		options,
 		viewNames: notebookViewNames(notebook),
 		signal,
-		onReset: onDataReset,
+		onReset: onInputReset,
 	});
 	signal.addEventListener("abort", cleanup, { once: true });
 
 	try {
 		if (cellRefs.length > 0 && compositionHost) {
-			await renderComposedCells(model, root, notebook, cellRefs, runtime, options, dataSync, signal, compositionHost);
+			await renderComposedCells(
+				model,
+				root,
+				notebook,
+				cellRefs,
+				runtime,
+				options,
+				variablesSync,
+				signal,
+				compositionHost,
+			);
 		}
 	} catch (error) {
 		if (!signal.aborted) cleanup();
@@ -285,7 +295,7 @@ function getNotebookOptions(model: RenderProps<WidgetModel>["model"]): NotebookO
 	return {
 		attachments: model.get("attachments") ?? {},
 		baseUrl: model.get("base_url") || document.baseURI,
-		data: readNotebookData(model),
+		variables: readNotebookVariables(model),
 		showSource: model.get("options")?.show_source === true,
 	};
 }
@@ -297,7 +307,7 @@ async function renderComposedCells(
 	cellRefs: string[],
 	runtime: NotebookRuntime,
 	options: NotebookOptions,
-	dataSync: RuntimeDataSync,
+	variablesSync: RuntimeVariablesSync,
 	signal: AbortSignal,
 	host: CompositionHost,
 ): Promise<void> {
@@ -334,7 +344,7 @@ async function renderComposedCells(
 			continue;
 		}
 		const [child, childModel] = resolved.value;
-		const sync = createCellModelSync(childModel, signal, dataSync);
+		const sync = createCellModelSync(childModel, signal, variablesSync);
 		const context: CellRenderContext = {
 			notebookModel: model,
 			runtime,
@@ -352,7 +362,7 @@ async function renderComposedCells(
 		renderTask = renderTask.then(() => child.render({ el: wrapper, signal }));
 	}
 	await renderTask;
-	if (!signal.aborted) dataSync.apply();
+	if (!signal.aborted) variablesSync.applyInitialViews();
 }
 
 async function resolveCellWidget(host: CompositionHost, ref: string, signal: AbortSignal): Promise<ResolvedCell> {
@@ -534,7 +544,7 @@ function renderIsolatedStandaloneCellWidget(
 	const attachmentRegistry = registerAttachments(context.options.attachments);
 	const runtime = createRuntime(root, el, context.options, attachmentRegistry);
 	const cleanup = createRuntimeCleanup(runtime, attachmentRegistry);
-	const dataSync = createRuntimeDataSync({
+	const variablesSync = createRuntimeVariablesSync({
 		model: context.notebookModel,
 		runtime,
 		options: context.options,
@@ -546,7 +556,7 @@ function renderIsolatedStandaloneCellWidget(
 				renderStandaloneCellWidget(
 					model,
 					el,
-					{ ...context, options: { ...context.options, data: readNotebookData(context.notebookModel) } },
+					{ ...context, options: { ...context.options, variables: readNotebookVariables(context.notebookModel) } },
 					signal,
 				);
 			}
@@ -563,10 +573,10 @@ function renderIsolatedStandaloneCellWidget(
 			runtime,
 			context.cell,
 			context.showSource,
-			createCellModelSync(model, renderSignal, dataSync),
+			createCellModelSync(model, renderSignal, variablesSync),
 			renderSignal,
 		);
-		dataSync.apply();
+		variablesSync.applyInitialViews();
 	} catch (error) {
 		if (!renderSignal.aborted) cleanup();
 		throw error;
@@ -588,7 +598,7 @@ function defineStandaloneDependencyVariables(
 	const cleanups: Array<() => void> = [];
 	try {
 		const definition = transpile(context.cell, { resolveLocalImports: true });
-		const inputs = new Set(definition.inputs ?? []);
+		const variables = new Set(definition.inputs ?? []);
 		for (let index = 0; index < context.cellModels.length; index++) {
 			if (index === context.cellIndex) continue;
 			const model = context.cellModels[index];
@@ -596,15 +606,15 @@ function defineStandaloneDependencyVariables(
 			const sibling = context.notebook.cells[index];
 			if (!sibling) continue;
 			for (const name of exposedVariableNames(transpile(sibling, { resolveLocalImports: true }))) {
-				if (!inputs.has(name)) continue;
+				if (!variables.has(name)) continue;
 				if (runtime.main.defines(name)) continue;
 				const variable = runtime.main.variable(true);
 				const defineCurrent = () => {
-					variable.define(name, [], () => reviveSyncedValue(model.get("variables")?.[name]));
+					variable.define(name, [], () => reviveSyncedValue(model.get("_values")?.[name]));
 				};
-				const cleanup = () => model.off("change:variables", defineCurrent);
+				const cleanup = () => model.off("change:_values", defineCurrent);
 				defineCurrent();
-				model.on("change:variables", defineCurrent);
+				model.on("change:_values", defineCurrent);
 				signal.addEventListener("abort", cleanup, { once: true });
 				cleanups.push(() => {
 					signal.removeEventListener("abort", cleanup);
@@ -649,7 +659,9 @@ function defineCell(runtime: NotebookRuntime, root: HTMLDivElement, cell: Cell, 
 	try {
 		const definition = transpile(cell, { resolveLocalImports: true });
 		const exposed = exposedVariableNames(definition);
-		sync?.setVariableNames(exposed);
+		const cellName = sync?.model.get("name") ?? (cell as { name?: string }).name;
+		const displayName = exposed.length === 0 && cellName ? cellName : null;
+		sync?.setVariableNames(displayName ? [displayName] : exposed);
 		runtime.define(
 			{
 				root,
@@ -657,7 +669,7 @@ function defineCell(runtime: NotebookRuntime, root: HTMLDivElement, cell: Cell, 
 				variables: [],
 			},
 			createRuntimeDefinition(cell, definition),
-			sync ? createCellObserver(sync, definition) : observe,
+			sync ? createCellObserver(sync, definition, displayName) : observe,
 		);
 		for (const name of exposed) {
 			if (sync) {
@@ -711,7 +723,11 @@ function renderCellError(wrapper: HTMLElement, error: unknown): void {
 	wrapper.replaceChildren(renderTopLevelError(error));
 }
 
-function createCellObserver(sync: CellVariableSync, definition: ReturnType<typeof transpile>): typeof observe {
+function createCellObserver(
+	sync: CellVariableSync,
+	definition: ReturnType<typeof transpile>,
+	displayName: string | null,
+): typeof observe {
 	// `viewof x` returns the DOM/control target. `x` carries the current value.
 	// Capture the target so later Python writes can update the rendered control.
 	return (state, runtimeDefinition) => {
@@ -720,6 +736,7 @@ function createCellObserver(sync: CellVariableSync, definition: ReturnType<typeo
 		observer.fulfilled = (value: unknown) => {
 			const viewName = viewVariableName(definition);
 			if (viewName) registerView(sync, viewName, value);
+			if (displayName) sync.setVariable(displayName, toWireValue(value));
 			fulfilled(value);
 		};
 		return observer;
@@ -760,13 +777,13 @@ function registerView(sync: CellVariableSync, name: string, value: unknown): voi
 	if (!isViewTarget(value)) return;
 	const previous = sync.views.get(name);
 	if (previous === value) {
-		sync.dataSync?.setView(name, value);
+		sync.variablesSync?.setView(name, value);
 		applyModelVariablesToViews(sync);
 		return;
 	}
 	sync.viewCleanups.get(name)?.();
 	sync.views.set(name, value);
-	sync.dataSync?.setView(name, value);
+	sync.variablesSync?.setView(name, value);
 	applyModelVariablesToViews(sync);
 	let cleanup!: () => void;
 	const abort = () => cleanup();
@@ -774,7 +791,7 @@ function registerView(sync: CellVariableSync, name: string, value: unknown): voi
 		sync.signal.removeEventListener("abort", abort);
 		if (sync.views.get(name) === value) sync.views.delete(name);
 		if (sync.viewCleanups.get(name) === cleanup) sync.viewCleanups.delete(name);
-		sync.dataSync?.deleteView(name, value);
+		sync.variablesSync?.deleteView(name, value);
 	};
 	sync.viewCleanups.set(name, cleanup);
 	sync.signal.addEventListener("abort", abort, { once: true });
@@ -783,29 +800,29 @@ function registerView(sync: CellVariableSync, name: string, value: unknown): voi
 function createCellModelSync(
 	model: RenderProps<WidgetModel>["model"],
 	signal: AbortSignal,
-	dataSync?: RuntimeDataSync,
+	variablesSync?: RuntimeVariablesSync,
 ): CellVariableSync {
-	// Cell models expose OJS state to Python through `variable_names` and `variables`.
+	// Cell models expose OJS state to Python through `_value_names` and `_values`.
 	const sync = createBaseSync(model, signal, {
-		readNames: () => model.get("variable_names") ?? [],
+		readNames: () => model.get("_value_names") ?? [],
 		writeNames: (names) => {
-			model.set("variable_names", names);
+			model.set("_value_names", names);
 			model.save_changes();
 		},
-		readVariables: () => readModelVariables(model),
-		writeVariables: (variables) => {
-			model.set("variables", variables);
+		readVars: () => readModelVariables(model),
+		writeVars: (variables) => {
+			model.set("_values", variables);
 			model.save_changes();
 		},
-		changeEvent: "change:variables",
+		changeEvent: "change:_values",
 	});
-	sync.dataSync = dataSync;
+	sync.variablesSync = variablesSync;
 	return sync;
 }
 
 function syncCellVariableNames(model: RenderProps<WidgetModel>["model"], names: string[]): void {
-	if (sameWireValue(model.get("variable_names"), names)) return;
-	model.set("variable_names", names);
+	if (sameWireValue(model.get("_value_names"), names)) return;
+	model.set("_value_names", names);
 	model.save_changes();
 }
 
@@ -815,8 +832,8 @@ function createBaseSync(
 	adapter: {
 		readNames(): string[];
 		writeNames(names: string[]): void;
-		readVariables(): Record<string, unknown>;
-		writeVariables(variables: Record<string, unknown>): void;
+		readVars(): Record<string, unknown>;
+		writeVars(variables: Record<string, unknown>): void;
 		changeEvent: string;
 	},
 ): CellVariableSync {
@@ -830,11 +847,11 @@ function createBaseSync(
 			adapter.writeNames(names);
 		},
 		setVariable(name, value) {
-			const variables = adapter.readVariables();
+			const variables = adapter.readVars();
 			if (sameWireValue(variables[name], value)) return;
-			adapter.writeVariables({ ...variables, [name]: value });
+			adapter.writeVars({ ...variables, [name]: value });
 		},
-		currentVariables: adapter.readVariables,
+		currentVariables: adapter.readVars,
 	};
 	const apply = () => applyModelVariablesToViews(sync);
 	model.on(adapter.changeEvent, apply);
@@ -843,7 +860,7 @@ function createBaseSync(
 }
 
 function applyModelVariablesToViews(sync: CellVariableSync): void {
-	// Python writes to `variables` update backing `viewof` controls.
+	// Python writes to `_values` update backing `viewof` controls.
 	for (const [name, wireValue] of Object.entries(sync.currentVariables())) {
 		const view = sync.views.get(name);
 		if (!view) continue;
@@ -873,15 +890,15 @@ function bindNotebookValueSync(
 	const sync = () => syncNotebookValues(model, cellModels);
 	sync();
 	for (const cellModel of cellModels) {
-		cellModel.on("change:variable_names", sync);
-		cellModel.on("change:variables", sync);
+		cellModel.on("change:_value_names", sync);
+		cellModel.on("change:_values", sync);
 	}
 	signal.addEventListener(
 		"abort",
 		() => {
 			for (const cellModel of cellModels) {
-				cellModel.off("change:variable_names", sync);
-				cellModel.off("change:variables", sync);
+				cellModel.off("change:_value_names", sync);
+				cellModel.off("change:_values", sync);
 			}
 		},
 		{ once: true },
@@ -893,35 +910,38 @@ function syncNotebookValues(
 	cellModels: Array<RenderProps<WidgetModel>["model"]>,
 ): void {
 	const names: string[] = [];
-	const variables: Record<string, unknown> = {};
+	const counts = new Map<string, number>();
+	const values: Record<string, unknown> = {};
 	for (const cellModel of cellModels) {
 		for (const name of readModelVariableNames(cellModel)) {
 			if (!names.includes(name)) names.push(name);
 		}
 		for (const [name, value] of Object.entries(readModelVariables(cellModel))) {
 			if (!names.includes(name)) names.push(name);
-			variables[name] = value;
+			counts.set(name, (counts.get(name) ?? 0) + 1);
+			values[name] = value;
 		}
 	}
+	const variables = Object.fromEntries(Object.entries(values).filter(([name]) => counts.get(name) === 1));
 	let changed = false;
-	if (!sameWireValue(model.get("variable_names"), names)) {
-		model.set("variable_names", names);
+	if (!sameWireValue(model.get("_value_names"), names)) {
+		model.set("_value_names", names);
 		changed = true;
 	}
-	if (!sameWireValue(model.get("variables"), variables)) {
-		model.set("variables", variables);
+	if (!sameWireValue(model.get("_values"), variables)) {
+		model.set("_values", variables);
 		changed = true;
 	}
 	if (changed) model.save_changes();
 }
 
 function readModelVariableNames(model: RenderProps<WidgetModel>["model"]): string[] {
-	const value = model.get("variable_names");
+	const value = model.get("_value_names");
 	return Array.isArray(value) ? value.filter((name): name is string => typeof name === "string") : [];
 }
 
 function readModelVariables(model: RenderProps<WidgetModel>["model"]): Record<string, unknown> {
-	const value = model.get("variables");
+	const value = model.get("_values");
 	if (value === null || typeof value !== "object" || Array.isArray(value)) return {};
 	return value;
 }

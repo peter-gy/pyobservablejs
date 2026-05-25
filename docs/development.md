@@ -40,12 +40,12 @@ OBSERVABLEJS_GALLERY_ROOT=/path/to/notebook-kit/docs/ex uv run marimo edit workb
 
 The notebooks cover separate runtime paths:
 
-- `python_vars.py`: Python `data` values, cell handles, and value sync.
+- `python_vars.py`: Python `variables` values, cell widgets, and value sync.
 - `gallery_examples.py`: local Notebook Kit HTML examples.
 - `construction_methods.py`: Python cells, HTML strings, HTML files, and public
   Observable URLs.
 - `observable_urls.py`: public Observable Plot URL loading, URL-backed
-  attachments, and a fixed Python data override smoke path.
+  attachments, and a fixed Python variable override smoke path.
 
 ## Documentation
 
@@ -98,5 +98,5 @@ Open `http://localhost:31401` and verify:
 
 - the selected public Observable notebook renders,
 - URL-backed file attachments still load,
-- enabling the Python data override smoke path changes the fixed scatterplot to
+- enabling the Python variable override smoke path changes the fixed scatterplot to
   the Python-provided rows.

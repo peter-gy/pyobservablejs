@@ -43,9 +43,9 @@ notebook
 Displaying `notebook` renders the full Observable notebook in any compatible
 widget frontend.
 
-## Pass Python Values
+## Pass Python Variables
 
-Pass a mapping with `data`. Each key becomes an OJS variable name, so keys must
+Pass a mapping with `variables`. Each key becomes an OJS variable name, so keys must
 be JavaScript identifiers. If a notebook defines the same variable, the Python
 value overrides that definition.
 
@@ -66,19 +66,26 @@ notebook = ojs.Notebook(
       marks: [Plot.lineY(events, {x: "day", y: "value", marker: true})]
     })
     """),
-    data={"events": events},
+    variables={"events": events},
 )
 ```
 
 :::{note}
-The browser receives a serialized trait payload for each `notebook.data`
-assignment. Dependent Observable cells recompute from the updated variables.
+The browser receives serialized trait updates from `replace_variables` and
+`update_variables`. Dependent Observable cells recompute from the updated
+variables.
 :::
 
-Update the data by assigning to `notebook.data`:
+Replace the Python-owned variables explicitly:
 
 ```python
-notebook.data = {"events": events[-2:]}
+notebook.replace_variables({"events": events[-2:]})
+```
+
+Patch the live runtime with `update_variables`:
+
+```python
+notebook.update_variables(events=events[-2:])
 ```
 
 ## Display One Cell
@@ -89,7 +96,7 @@ notebook.
 ```python
 notebook = ojs.Notebook(
     ojs.cell('viewof gain = Inputs.range([0, 11], {value: 5})', name="gain"),
-    ojs.cell("gain * 2", name="double"),
+    ojs.cell("double = gain * 2", name="double"),
 )
 
 notebook.cell("gain")
@@ -129,7 +136,7 @@ The URL can be a full Observable URL, a slug such as `@mbostock/saving-svg`, or 
 16-character notebook id. Remote file attachments are kept as URL-backed
 attachments.
 
-Use the same `data` mapping to override variables in a public notebook:
+Use the same `variables` mapping to override variables in a public notebook:
 
 ```python
 penguins = [
@@ -139,6 +146,6 @@ penguins = [
 ]
 notebook = ojs.Notebook.from_url(
     "https://observablehq.com/@observablehq/plot-scatterplot/2",
-    data={"penguins": penguins},
+    variables={"penguins": penguins},
 )
 ```

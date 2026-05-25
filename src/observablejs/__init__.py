@@ -5,16 +5,7 @@ from __future__ import annotations
 import importlib.metadata
 
 from ._graph import CellInfo, DependencyEdge, NotebookGraph
-from ._notebook import (
-    Cell,
-    CellHandle,
-    Notebook,
-    cell,
-    html,
-    md,
-    module,
-    sql,
-)
+from ._notebook import Cell, NotebookCell, Notebook, cell, html, js, md, sql
 from ._variables import arrow, records
 
 try:
@@ -24,7 +15,7 @@ except importlib.metadata.PackageNotFoundError:
 
 __all__ = [
     "Cell",
-    "CellHandle",
+    "NotebookCell",
     "CellInfo",
     "DependencyEdge",
     "Notebook",
@@ -32,8 +23,8 @@ __all__ = [
     "arrow",
     "cell",
     "html",
+    "js",
     "md",
-    "module",
     "records",
     "sql",
 ]

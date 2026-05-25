@@ -15,8 +15,8 @@ import {
 	waitFor,
 } from "./widget-test-utils";
 
-describe("widget runtime data sync", () => {
-	test("updates Python data through the runtime without rerendering the notebook", async () => {
+describe("widget runtime variable sync", () => {
+	test("updates Python variables through the runtime without rerendering the notebook", async () => {
 		const model = createModel({
 			role: "notebook",
 			spec: {
@@ -26,13 +26,13 @@ describe("widget runtime data sync", () => {
 				],
 			},
 			attachments: {},
-			_data: { base: 2 },
+			_variables: { base: 2 },
 			options: {},
 			_cell_widgets: ["anywidget:base", "anywidget:doubled"],
 		});
 		const childModels = new Map([
-			["anywidget:base", createModel({ role: "cell", name: "base_echo", variables: {}, variable_names: [] })],
-			["anywidget:doubled", createModel({ role: "cell", name: "doubled", variables: {}, variable_names: [] })],
+			["anywidget:base", createModel({ role: "cell", name: "base_echo", _values: {}, _value_names: [] })],
+			["anywidget:doubled", createModel({ role: "cell", name: "doubled", _values: {}, _value_names: [] })],
 		]);
 		const renderCounts = new Map<string, number>();
 		const childRenders = countingChildRenders(childModels, renderCounts);
@@ -51,7 +51,7 @@ describe("widget runtime data sync", () => {
 		);
 		expect(await waitFor(() => (variableValue(model, "doubled") === 4 ? 4 : undefined))).toBe(4);
 
-		model.set("_data", { base: 5 });
+		setVariables(model, 1, "set", { base: 5 });
 
 		expect(await waitFor(() => (variableValue(model, "doubled") === 10 ? 10 : undefined))).toBe(10);
 		expect(variableValue(model, "base_echo")).toBe(5);
@@ -65,7 +65,7 @@ describe("widget runtime data sync", () => {
 		controller.abort();
 	});
 
-	test("defines newly added Python data without rerendering the notebook", async () => {
+	test("defines newly added Python variables without rerendering the notebook", async () => {
 		const model = createModel({
 			role: "notebook",
 			spec: {
@@ -75,13 +75,13 @@ describe("widget runtime data sync", () => {
 				],
 			},
 			attachments: {},
-			_data: {},
+			_variables: {},
 			options: {},
 			_cell_widgets: ["anywidget:base", "anywidget:doubled"],
 		});
 		const childModels = new Map([
-			["anywidget:base", createModel({ role: "cell", name: "base_echo", variables: {}, variable_names: [] })],
-			["anywidget:doubled", createModel({ role: "cell", name: "doubled", variables: {}, variable_names: [] })],
+			["anywidget:base", createModel({ role: "cell", name: "base_echo", _values: {}, _value_names: [] })],
+			["anywidget:doubled", createModel({ role: "cell", name: "doubled", _values: {}, _value_names: [] })],
 		]);
 		const renderCounts = new Map<string, number>();
 		const childRenders = countingChildRenders(childModels, renderCounts);
@@ -96,7 +96,7 @@ describe("widget runtime data sync", () => {
 		} as unknown as RenderProps<WidgetModel>);
 		await waitFor(() => el.querySelector("[data-observablejs-composed='true']") ?? undefined);
 
-		model.set("_data", { base: 6 });
+		setVariables(model, 1, "set", { base: 6 });
 
 		expect(await waitFor(() => (variableValue(model, "doubled") === 12 ? 12 : undefined))).toBe(12);
 		expect(variableValue(model, "base_echo")).toBe(6);
@@ -109,7 +109,7 @@ describe("widget runtime data sync", () => {
 		controller.abort();
 	});
 
-	test("rerenders when Python data replacement removes keys", async () => {
+	test("rerenders when Python variables replacement removes keys", async () => {
 		const model = createModel({
 			role: "notebook",
 			spec: {
@@ -119,13 +119,13 @@ describe("widget runtime data sync", () => {
 				],
 			},
 			attachments: {},
-			_data: { base: 5 },
+			_variables: { base: 5 },
 			options: {},
 			_cell_widgets: ["anywidget:base", "anywidget:doubled"],
 		});
 		const childModels = new Map([
-			["anywidget:base", createModel({ role: "cell", name: "base", variables: {}, variable_names: [] })],
-			["anywidget:doubled", createModel({ role: "cell", name: "doubled", variables: {}, variable_names: [] })],
+			["anywidget:base", createModel({ role: "cell", name: "base", _values: {}, _value_names: [] })],
+			["anywidget:doubled", createModel({ role: "cell", name: "doubled", _values: {}, _value_names: [] })],
 		]);
 		const renderCounts = new Map<string, number>();
 		const childRenders = countingChildRenders(childModels, renderCounts);
@@ -144,7 +144,7 @@ describe("widget runtime data sync", () => {
 		);
 		expect(await waitFor(() => (variableValue(model, "doubled") === 10 ? 10 : undefined))).toBe(10);
 
-		model.set("_data", {});
+		setVariables(model, 1, "replace", {});
 
 		expect(await waitFor(() => (variableValue(model, "doubled") === 2 ? 2 : undefined))).toBe(2);
 		expect(el.querySelector("[data-observablejs-composed='true']")).not.toBe(firstCell);
@@ -157,7 +157,7 @@ describe("widget runtime data sync", () => {
 		controller.abort();
 	});
 
-	test("updates viewof data by mutating the existing control", async () => {
+	test("updates viewof variables by mutating the existing control", async () => {
 		const model = createModel({
 			role: "notebook",
 			spec: {
@@ -179,13 +179,13 @@ viewof gain = {
 				],
 			},
 			attachments: {},
-			_data: { gain: 5 },
+			_variables: { gain: 5 },
 			options: {},
 			_cell_widgets: ["anywidget:gain", "anywidget:doubled"],
 		});
 		const childModels = new Map([
-			["anywidget:gain", createModel({ role: "cell", name: "gain", variables: {}, variable_names: [] })],
-			["anywidget:doubled", createModel({ role: "cell", name: "doubled", variables: {}, variable_names: [] })],
+			["anywidget:gain", createModel({ role: "cell", name: "gain", _values: {}, _value_names: [] })],
+			["anywidget:doubled", createModel({ role: "cell", name: "doubled", _values: {}, _value_names: [] })],
 		]);
 		const renderCounts = new Map<string, number>();
 		const childRenders = countingChildRenders(childModels, renderCounts);
@@ -207,7 +207,7 @@ viewof gain = {
 		await waitFor(() => (input.valueAsNumber === 5 ? input : undefined));
 		expect(await waitFor(() => (variableValue(model, "doubled") === 10 ? 10 : undefined))).toBe(10);
 
-		model.set("_data", { gain: 7 });
+		setVariables(model, 1, "set", { gain: 7 });
 
 		await waitFor(() => (input.valueAsNumber === 7 ? input : undefined));
 		expect(await waitFor(() => (variableValue(model, "doubled") === 14 ? 14 : undefined))).toBe(14);
@@ -242,13 +242,13 @@ viewof gain = {
 				],
 			},
 			attachments: {},
-			_data: { seed: 1, gain: 5 },
+			_variables: { seed: 1, gain: 5 },
 			options: {},
 			_cell_widgets: ["anywidget:gain", "anywidget:doubled"],
 		});
 		const childModels = new Map([
-			["anywidget:gain", createModel({ role: "cell", name: "gain", variables: {}, variable_names: [] })],
-			["anywidget:doubled", createModel({ role: "cell", name: "doubled", variables: {}, variable_names: [] })],
+			["anywidget:gain", createModel({ role: "cell", name: "gain", _values: {}, _value_names: [] })],
+			["anywidget:doubled", createModel({ role: "cell", name: "doubled", _values: {}, _value_names: [] })],
 		]);
 		const renderCounts = new Map<string, number>();
 		const childRenders = countingChildRenders(childModels, renderCounts);
@@ -265,14 +265,14 @@ viewof gain = {
 		const firstInput = await waitFor(() => el.querySelector<HTMLInputElement>("input[type='range']") ?? undefined);
 		await waitFor(() => (firstInput.valueAsNumber === 5 ? firstInput : undefined));
 
-		model.set("_data", { seed: 2, gain: 5 });
+		setVariables(model, 1, "set", { seed: 2 });
 		const secondInput = await waitFor(() => {
 			const input = el.querySelector<HTMLInputElement>("input[type='range']");
 			return input && input !== firstInput ? input : undefined;
 		});
 		await waitFor(() => (secondInput.valueAsNumber === 5 ? secondInput : undefined));
 
-		model.set("_data", { seed: 2, gain: 7 });
+		setVariables(model, 2, "set", { gain: 7 });
 
 		await waitFor(() => (secondInput.valueAsNumber === 7 ? secondInput : undefined));
 		expect(firstInput.valueAsNumber).toBe(5);
@@ -286,24 +286,24 @@ viewof gain = {
 		controller.abort();
 	});
 
-	test("cleans isolated standalone data listeners when data removal resets a view", async () => {
+	test("cleans isolated standalone variable listeners when variable removal resets a view", async () => {
 		const notebookModel = createModel({
 			role: "notebook",
-			_data: { seed: 5, gain: 2 },
-			variables: {},
-			variable_names: [],
+			_variables: { seed: 5, gain: 2 },
+			_values: {},
+			_value_names: [],
 		});
 		const seedModel = createModel({
 			role: "cell",
 			name: "seed",
-			variables: { seed: 1 },
-			variable_names: ["seed"],
+			_values: { seed: 1 },
+			_value_names: ["seed"],
 		});
 		const gainModel = createModel({
 			role: "cell",
 			name: "gain",
-			variables: {},
-			variable_names: [],
+			_values: {},
+			_value_names: [],
 		});
 		const notebook = toNotebook({
 			cells: [
@@ -330,7 +330,7 @@ viewof gain = {
 			cell: notebook.cells[1],
 			cellIndex: 1,
 			notebook,
-			options: { attachments: {}, baseUrl: document.baseURI, data: { seed: 5, gain: 2 }, showSource: false },
+			options: { attachments: {}, baseUrl: document.baseURI, variables: { seed: 5, gain: 2 }, showSource: false },
 			cellModels: [seedModel, gainModel],
 			sync: {} as CellRenderContext["sync"],
 		});
@@ -346,19 +346,33 @@ viewof gain = {
 
 		const firstInput = await waitFor(() => el.querySelector<HTMLInputElement>("input[type='range']") ?? undefined);
 		await waitFor(() => (firstInput.valueAsNumber === 2 ? firstInput : undefined));
-		expect(notebookModel.listenerCount("change:_data")).toBe(1);
+		expect(notebookModel.listenerCount("change:_variable_update")).toBe(1);
 
-		notebookModel.set("_data", { gain: 3 });
+		setVariables(notebookModel, 1, "replace", { gain: 3 });
 		const secondInput = await waitFor(() => {
 			const input = el.querySelector<HTMLInputElement>("input[type='range']");
 			return input && input !== firstInput && input.valueAsNumber === 3 ? input : undefined;
 		});
 
-		expect(notebookModel.listenerCount("change:_data")).toBe(1);
-		notebookModel.set("_data", { gain: 4 });
+		expect(notebookModel.listenerCount("change:_variable_update")).toBe(1);
+		setVariables(notebookModel, 2, "set", { gain: 4 });
 		await waitFor(() => (secondInput.valueAsNumber === 4 ? secondInput : undefined));
-		expect(notebookModel.listenerCount("change:_data")).toBe(1);
+		expect(notebookModel.listenerCount("change:_variable_update")).toBe(1);
 		controller.abort();
-		expect(notebookModel.listenerCount("change:_data")).toBe(0);
+		expect(notebookModel.listenerCount("change:_variable_update")).toBe(0);
 	});
 });
+
+function setVariables(
+	model: ReturnType<typeof createModel>,
+	seq: number,
+	kind: "set" | "replace",
+	values: Record<string, unknown>,
+): void {
+	const previous = model.get("_variables");
+	model.set(
+		"_variables",
+		kind === "set" && previous && typeof previous === "object" ? { ...previous, ...values } : values,
+	);
+	model.set("_variable_update", { seq, kind, values });
+}

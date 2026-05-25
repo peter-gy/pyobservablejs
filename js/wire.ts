@@ -111,7 +111,7 @@ export function createVariableBuiltins(variables: Record<string, unknown>): Reco
 }
 
 export function revivePythonValue(value: unknown): unknown {
-	// Browser half of src/observablejs/_variables.py for the synced `_data` trait.
+	// Browser half of src/observablejs/_variables.py for the synced `_variables` trait.
 	if (Array.isArray(value)) {
 		return resolveMaybePromises(value.map(revivePythonValue), (items) => items);
 	}

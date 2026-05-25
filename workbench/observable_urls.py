@@ -121,7 +121,7 @@ def _(mo, selected_error, selected_notebook, selected_url, urls):
 @app.cell
 def _(mo):
     mo.md(r"""
-    ## Python data override smoke
+    ## Python variable override smoke
 
     This fixed example loads the Observable Plot scatterplot notebook and
     replaces its `penguins` variable with three Python rows.
@@ -132,7 +132,7 @@ def _(mo):
 @app.cell
 def _(mo):
     show_override_smoke = mo.ui.checkbox(
-        label="Show Python data override smoke",
+        label="Show Python variable override smoke",
         value=False,
     )
     show_override_smoke
@@ -159,7 +159,7 @@ def _(ojs, override_url, python_penguins, show_override_smoke):
         try:
             override_notebook = ojs.Notebook.from_url(
                 override_url,
-                data={"penguins": python_penguins},
+                variables={"penguins": python_penguins},
                 show_pinned_source=True,
             )
             override_error = ""

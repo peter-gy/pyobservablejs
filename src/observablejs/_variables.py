@@ -1,6 +1,6 @@
 """Serialize Python values for Observable JavaScript variables.
 
-Python sends data through anywidget as JSON-compatible trait state. Plain values
+Python sends variables through anywidget as JSON-compatible trait state. Plain values
 stay normal JSON. Values that need a browser-side type use
 ``__observablejs_type__`` tags that ``js/wire.ts`` revives before the OJS runtime
 evaluates cells.
@@ -24,35 +24,39 @@ _IDENTIFIER_RE = re.compile(r"^[A-Za-z_$][0-9A-Za-z_$]*$")
 
 
 @dataclasses.dataclass(frozen=True)
-class _ArrowValue:
+class Arrow:
+    """Wrapper requesting Arrow IPC transport for a dataframe-like value."""
+
     value: Any
 
 
 @dataclasses.dataclass(frozen=True)
-class _RecordsValue:
+class Records:
+    """Wrapper requesting row-record transport for a dataframe-like value."""
+
     value: Any
 
 
-def arrow(value: Any) -> _ArrowValue:
+def arrow(value: Any) -> Arrow:
     """Serialize a pandas or Polars dataframe as an Arrow IPC table."""
 
-    return _ArrowValue(value)
+    return Arrow(value)
 
 
-def records(value: Any) -> _RecordsValue:
+def records(value: Any) -> Records:
     """Serialize dataframe-like values as row records."""
 
-    return _RecordsValue(value)
+    return Records(value)
 
 
 def serialize_variables(values: Mapping[str, Any] | None) -> dict[str, Any]:
-    """Return the synced ``_data`` payload for Observable runtime builtins."""
+    """Return the synced ``_variables`` payload for Observable runtime builtins."""
 
     if values is None:
         return {}
     if not isinstance(values, Mapping):
         raise TypeError(
-            "data must be a mapping of JavaScript identifier names to values"
+            "variables must be a mapping of JavaScript identifier names to values"
         )
     out: dict[str, Any] = {}
     for name, value in values.items():
@@ -65,14 +69,14 @@ def serialize_variables(values: Mapping[str, Any] | None) -> dict[str, Any]:
 def serialize_value(value: Any) -> Any:
     """Convert one Python value into the JSON-compatible wire format."""
 
-    if isinstance(value, _ArrowValue):
+    if isinstance(value, Arrow):
         arrow_value = _try_arrow_table(value.value)
         if arrow_value is None:
             raise TypeError(
                 f"Value of type {type(value.value).__name__!r} cannot be serialized as Arrow"
             )
         return {TYPE_KEY: "arrow", "value": arrow_value}
-    if isinstance(value, _RecordsValue):
+    if isinstance(value, Records):
         records_value = _try_records(value.value)
         if records_value is None:
             raise TypeError(
@@ -115,6 +119,72 @@ def serialize_value(value: Any) -> Any:
         return [serialize_value(v) for v in value]
 
     raise TypeError(f"Value of type {type(value).__name__!r} is not serializable")
+
+
+def deserialize_value(value: Any) -> Any:
+    """Convert browser wire values into Python-facing values where possible."""
+
+    if isinstance(value, list):
+        return [deserialize_value(item) for item in value]
+    if not isinstance(value, Mapping):
+        return value
+
+    tag = value.get(TYPE_KEY)
+    if tag is None:
+        return {key: deserialize_value(item) for key, item in value.items()}
+    if tag == "undefined":
+        return None
+    if tag == "number":
+        raw = str(value.get("value"))
+        if raw == "NaN":
+            return math.nan
+        if raw == "Infinity":
+            return math.inf
+        if raw == "-Infinity":
+            return -math.inf
+        return float(raw)
+    if tag == "bigint":
+        return int(str(value.get("value")))
+    if tag == "datetime":
+        raw = str(value.get("value"))
+        try:
+            return _dt.datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            return raw
+    if tag == "bytes" or tag == "arraybuffer":
+        return base64.standard_b64decode(str(value.get("value")))
+    if tag == "typedarray":
+        return base64.standard_b64decode(str(value.get("value")))
+    if tag == "element":
+        return f"<{value.get('value')}>"
+    if tag == "function":
+        return f"[Function {value.get('value')}]"
+    if tag == "error":
+        return f"{value.get('name')}: {value.get('message')}"
+    if tag == "regexp":
+        return str(value.get("value"))
+    if tag == "file":
+        return {
+            "name": value.get("name"),
+            "size": value.get("size"),
+            "mime_type": value.get("mimeType"),
+        }
+    if tag == "blob":
+        return {"size": value.get("size"), "mime_type": value.get("mimeType")}
+    if tag == "reference":
+        return f"[Circular reference {value.get('value')}]"
+    if tag == "object":
+        return deserialize_value(value.get("value"))
+    if tag == "map" and isinstance(value.get("value"), list):
+        return [
+            tuple(deserialize_value(item) for item in entry)
+            if isinstance(entry, list)
+            else deserialize_value(entry)
+            for entry in value["value"]
+        ]
+    if tag == "set" and isinstance(value.get("value"), list):
+        return [deserialize_value(item) for item in value["value"]]
+    return {key: deserialize_value(item) for key, item in value.items()}
 
 
 def _try_arrow_table(value: Any) -> str | None:

@@ -4,8 +4,8 @@ Observable JavaScript notebooks as Python widgets.
 
 `observablejs` renders Observable JavaScript cells from Python and runs them with
 Observable Notebook Kit in the browser. Python owns the notebook model, synced
-data, and cell handles. TypeScript owns Notebook Kit evaluation, rendering, and
-runtime metadata.
+OJS variables, and cell widgets. TypeScript owns Notebook Kit evaluation,
+rendering, and runtime metadata.
 
 ```python
 import observablejs as ojs
@@ -31,7 +31,7 @@ ojs.Notebook(
       ]
     })
     """),
-    data={"rows": rows, "floor": 0.04},
+    variables={"rows": rows, "floor": 0.04},
 )
 ```
 
@@ -58,10 +58,10 @@ uv add "observablejs[data]"
 ## Notebook Model
 
 - `ojs.Notebook(...)` builds a Notebook Kit notebook from Python-authored cells.
-- `data={...}` sets OJS variables. A matching notebook variable is overridden.
-- `notebook.update_data(...)` pushes Python-side changes into the live OJS
+- `variables={...}` sets OJS variables. A matching notebook variable is overridden.
+- `notebook.update_variables(...)` pushes Python-side changes into the live OJS
   runtime.
-- `name="..."` gives Python a stable handle for a cell.
+- `name="..."` gives Python a stable name for a cell.
 - `notebook.values` and `notebook.cell("name").value` read browser-synchronized
   outputs after rendering.
 - `notebook.graph` exposes Notebook Kit-derived cell definitions, references, and
@@ -71,7 +71,7 @@ uv add "observablejs[data]"
 notebook = ojs.Notebook(
     ojs.md("# Inputs"),
     ojs.cell('viewof gain = Inputs.range([0, 11], {value: 5})', name="gain"),
-    ojs.cell("gain * 2", name="double"),
+    ojs.cell("double = gain * 2", name="double"),
 )
 
 notebook.cell("gain")
@@ -97,7 +97,7 @@ notebook = ojs.Notebook.from_url("https://observablehq.com/@mbostock/saving-svg"
 
 Remote `FileAttachment(...)` entries are registered as URL-backed attachments,
 so Plot notebooks and examples with uploaded files can render in the widget.
-Pass `data={...}` to override variables in a loaded notebook with Python values.
+Pass `variables={...}` to override variables in a loaded notebook with Python values.
 
 ## Documentation
 
@@ -127,7 +127,7 @@ and the check commands used before sending changes for review.
 `observablejs` builds on [Observable Notebook Kit](https://github.com/observablehq/notebook-kit)
 and [@observablehq/runtime](https://github.com/observablehq/runtime).
 [`pyobsplot`](https://github.com/juba/pyobsplot) informed the Python-to-OJS
-data-passing API.
+variable API.
 
 Thanks to [@manzt](https://github.com/manzt) (Trevor Manz) for the composable
 anywidgets demo that helped shape the widget design.

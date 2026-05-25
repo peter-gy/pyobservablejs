@@ -129,7 +129,7 @@ export function trackingCellExports(name: string, events: string[]): CellExports
 }
 
 export function variableValue(model: Model, name: string): unknown | undefined {
-	const variables = model.get("variables");
+	const variables = model.get("_values");
 	if (variables === null || typeof variables !== "object" || Array.isArray(variables)) return undefined;
 	return (variables as Record<string, unknown>)[name];
 }

@@ -13,7 +13,7 @@ class DependencyEdge:
 
     source_id: int
     target_id: int
-    name: str
+    variable: str
 
 
 @dataclasses.dataclass(frozen=True)
@@ -33,14 +33,6 @@ class CellInfo:
     autoview: bool
     automutable: bool
     error: str | None = None
-
-    @property
-    def inputs(self) -> tuple[str, ...]:
-        return self.references
-
-    @property
-    def visible_variables(self) -> tuple[str, ...]:
-        return self.defines
 
 
 @dataclasses.dataclass(frozen=True)
@@ -69,6 +61,14 @@ class NotebookGraph:
             if cell.index == index:
                 return cell
         return None
+
+    def cell_for_variable(self, variable: str) -> CellInfo:
+        matches = [cell for cell in self.cells if variable in cell.defines]
+        if len(matches) == 1:
+            return matches[0]
+        if len(matches) > 1:
+            raise KeyError(f"Ambiguous Observable variable: {variable!r}")
+        raise KeyError(f"Unknown Observable variable: {variable!r}")
 
 
 def graph_from_raw(raw: Any) -> NotebookGraph | None:
@@ -123,10 +123,15 @@ def _edge_from_raw(raw: Any) -> DependencyEdge | None:
         return None
     source_id = _int_field(raw, "from")
     target_id = _int_field(raw, "to")
-    name = raw.get("name")
-    if source_id is None or target_id is None or not isinstance(name, str) or not name:
+    variable = raw.get("variable")
+    if (
+        source_id is None
+        or target_id is None
+        or not isinstance(variable, str)
+        or not variable
+    ):
         return None
-    return DependencyEdge(source_id=source_id, target_id=target_id, name=name)
+    return DependencyEdge(source_id=source_id, target_id=target_id, variable=variable)
 
 
 def _unique(values: Iterable[str]) -> tuple[str, ...]:

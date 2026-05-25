@@ -6,7 +6,7 @@ description: Observable JavaScript notebooks as reusable Python widgets.
 # observablejs
 
 `observablejs` renders Observable JavaScript notebooks as Python widgets.
-Python builds the notebook model and synced data. The browser runs Observable
+Python builds the notebook model and synced variables. The browser runs Observable
 Notebook Kit, renders cells, and sends values and graph metadata back through
 traitlets.
 
@@ -27,22 +27,22 @@ ojs.Notebook(
       marks: [Plot.barY(rows, {x: "letter", y: "frequency"})]
     })
     """),
-    data={"rows": rows},
+    variables={"rows": rows},
 )
 ```
 
 ## Core Model
 
 - `Notebook(...)` creates one Observable notebook from Python-authored cells.
-- `data={...}` sets ordinary OJS variables and overrides matching notebook
+- `variables={...}` sets ordinary OJS variables and overrides matching notebook
   variables.
-- `notebook.update_data(...)` mutates those Python-backed values in the live
+- `notebook.update_variables(...)` mutates those Python-backed values in the live
   runtime.
-- Named cells provide Python handles for display and value sync.
+- Cells with `name=` provide Python names for display and value sync.
 - Notebook Kit HTML and public Observable notebooks enter the same runtime path.
 - `notebook.graph` reports Notebook Kit-derived definitions, references, and
   dependency edges after the browser renders.
-- anywidget composition lets notebook and cell handles render in Jupyter,
+- anywidget composition lets notebook and cell widgets render in Jupyter,
   marimo, and compatible frontends.
 
 :::{tip}
@@ -55,6 +55,6 @@ Use `Notebook.from_file(...)` when you already have Notebook Kit HTML. Use
 - [](./quickstart.md): create a notebook, pass Python values, and display cells.
 - [](./concepts.md): learn the Observable, Notebook Kit, and widget vocabulary.
 - [](./architecture.md): follow the Python-to-browser runtime path.
-- [](./composition.md): see how anywidget composition makes cell handles work.
+- [](./composition.md): see how anywidget composition makes cell widgets work.
 - [](./api.md): reference the public Python API.
 - [](./development.md): build, test, and work on the project locally.

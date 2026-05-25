@@ -6,8 +6,8 @@ description: The main ideas behind observablejs.
 # Concepts
 
 `observablejs` connects Python objects to the Observable notebook model. The
-main pieces are Observable cells, Notebook Kit, traitlets, Python data
-variables, cell handles, and graph metadata.
+main pieces are Observable cells, Notebook Kit, traitlets, Python-owned OJS
+variables, cell widgets, and graph metadata.
 
 ## Observable JavaScript
 
@@ -42,31 +42,31 @@ traitlets and gives the browser a TypeScript renderer for that model.
 
 The trait boundary carries widget state:
 
-- Python sets traits such as `spec`, `source`, `attachments`, and `_data`.
+- Python sets traits such as `spec`, `source`, `attachments`, and `_variables`.
 - TypeScript reads those traits and creates the Observable runtime.
 - TypeScript writes OJS cell outputs and metadata back to child widget traits.
 - Python can inspect those child widget traits with `notebook.cell(...)` and
   `notebook.value(...)`.
 
-## Python Values in OJS
+## Python Variables in OJS
 
-Python data enters OJS through `data={...}`. The mapping sets Observable
+Python values enter OJS through `variables={...}`. The mapping sets Observable
 variables and can override variables defined by Python-authored, source-backed,
 or URL-backed notebooks.
 
 ```python
 ojs.Notebook(
     ojs.cell("rows.length"),
-    data={"rows": [{"x": 1}, {"x": 2}]},
+    variables={"rows": [{"x": 1}, {"x": 2}]},
 )
 ```
 
 OJS code reads `rows` directly as a normal Observable variable. In source-backed
-and public Observable notebooks, a matching `data` key replaces the notebook's
+and public Observable notebooks, a matching `variables` key replaces the notebook's
 runtime value.
 
-For a live notebook, assign `notebook.data = {...}` or call
-`notebook.update_data(...)` to push new Python values into the existing
+For a live notebook, call `notebook.replace_variables({...})` or
+`notebook.update_variables(...)` to push new Python values into the existing
 Observable runtime. Ordinary variables are redefined through Observable Runtime.
 For `viewof` variables, the rendered control is updated and emits the same input
 event as a user interaction.
@@ -81,10 +81,10 @@ large tables, prefer existing `FileAttachment(...)` data files or Arrow payloads
 over repeatedly assigning large record lists.
 :::
 
-## Cell Handles
+## Cell Widgets
 
 Every notebook cell has a matching child widget. Named cells provide stable
-Python handles:
+Python names:
 
 ```python
 notebook.cell("gain")
@@ -108,7 +108,7 @@ notebook.graph
 notebook.graph.cells
 notebook.graph.edges
 notebook.cell("gain").info
-notebook.defining_cell("gain")
+notebook.cell_for_variable("gain")
 ```
 
 Notebook Kit `transpile` metadata in TypeScript supplies the graph, using the
@@ -134,6 +134,6 @@ The package has three notebook entry points:
 
 Python-authored notebooks are serialized to Notebook Kit HTML when needed.
 Source-backed notebooks keep their original Notebook Kit HTML and parse the
-script cells needed for Python-visible handles. URL-backed notebooks use
+script cells needed for Python-visible cell widgets. URL-backed notebooks use
 Observable's document API, convert API `js` cells to Notebook Kit `ojs` cells,
 and register remote uploaded files as `FileAttachment` URLs.

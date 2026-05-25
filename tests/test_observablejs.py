@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import inspect
 import pathlib
 from typing import Any
 
@@ -14,7 +15,7 @@ from observablejs._observable import observable_document_to_html, resolve_observ
 def test_public_namespace_is_small() -> None:
     assert set(ojs.__all__) == {
         "Cell",
-        "CellHandle",
+        "NotebookCell",
         "CellInfo",
         "DependencyEdge",
         "Notebook",
@@ -22,11 +23,46 @@ def test_public_namespace_is_small() -> None:
         "arrow",
         "cell",
         "html",
+        "js",
         "md",
-        "module",
         "records",
         "sql",
     }
+
+
+def test_public_signatures_hide_widget_internals() -> None:
+    notebook = inspect.signature(ojs.Notebook)
+    assert list(notebook.parameters) == [
+        "cells",
+        "title",
+        "theme",
+        "mode",
+        "attachments",
+        "base_path",
+        "variables",
+        "show_pinned_source",
+    ]
+    assert not any(name.startswith("_") for name in notebook.parameters)
+    assert "data" not in notebook.parameters
+
+    for constructor in (
+        ojs.Notebook.from_html,
+        ojs.Notebook.from_file,
+        ojs.Notebook.from_url,
+    ):
+        params = inspect.signature(constructor).parameters
+        assert "variables" in params
+        assert "data" not in params
+        assert not any(name.startswith("_") for name in params)
+
+
+def test_legacy_api_names_are_absent() -> None:
+    widget = ojs.Notebook()
+
+    assert not hasattr(widget, "data")
+    assert not hasattr(widget, "update_data")
+    assert not hasattr(widget, "defining_cell")
+    assert not hasattr(ojs.Notebook(ojs.cell("answer = 42")).cell(0), "get")
 
 
 def test_observable_url_resolution_matches_notebook_kit_and_framework() -> None:
@@ -130,21 +166,21 @@ def test_notebook_from_url_fetches_source_and_remote_attachments(
         "https://observablehq.com/@d3/bar-chart",
         timeout=1,
         attachments={"local.csv": "https://example.test/local.csv"},
-        data={"answer": 7},
+        variables={"answer": 7},
     )
 
     assert widget.source.startswith("<!doctype html>")
     assert widget.attachments["data.csv"]["url"] == "https://static.example/data.csv"
     assert widget.attachments["local.csv"]["url"] == "https://example.test/local.csv"
-    assert widget.data == {"answer": 7}
-    assert widget.get_state(["_data"]) == {"_data": {"answer": 7}}
+    assert widget.variables == {"answer": 7}
+    assert widget.get_state(["_variables"]) == {"_variables": {"answer": 7}}
     assert len(widget.cells) == 1
 
 
 def test_notebook_serializes_source_cells() -> None:
     widget = ojs.Notebook(
         ojs.md("# Title"),
-        ojs.module("const answer = 42;", attrs={"output": "answer"}),
+        ojs.js("const answer = 42;", output="answer"),
         title="Demo",
     )
 
@@ -190,8 +226,8 @@ def test_notebook_composes_python_cells_as_named_child_widgets() -> None:
     assert widget.graph is None
     assert not widget.cells[0].has_trait("_info")
     assert widget.cells[0].info is None
-    assert widget.cells[0].variables == {}
-    assert widget.cells[0].variable_names == []
+    assert widget.cells[0]._values == {}
+    assert widget.cells[0]._value_names == []
 
 
 def test_bare_widgettrait_list_does_not_serialize_child_refs() -> None:
@@ -214,18 +250,21 @@ def test_notebook_rejects_invalid_cell_widget_overrides() -> None:
     class OtherWidget(anywidget.AnyWidget):
         _esm = "export default {}"
 
+    widget = ojs.Notebook(ojs.cell("answer = 42"))
+    invalid_none: Any = [None]
+    invalid_other: Any = [OtherWidget()]
     with pytest.raises(traitlets.TraitError, match="_cell_widgets"):
-        ojs.Notebook(ojs.cell("answer = 42"), _cell_widgets=[None])
+        widget.set_trait("_cell_widgets", invalid_none)
 
     with pytest.raises(traitlets.TraitError, match="_cell_widgets"):
-        ojs.Notebook(ojs.cell("answer = 42"), _cell_widgets=[OtherWidget()])
+        widget.set_trait("_cell_widgets", invalid_other)
 
 
 def test_notebook_graph_exposes_symbolic_cell_metadata() -> None:
     widget = ojs.Notebook(
         ojs.cell("a = 1", name="a"),
         ojs.cell("b = a + rows.length", name="b"),
-        data={"rows": [{"x": 1}]},
+        variables={"rows": [{"x": 1}]},
     )
     raw_graph = {
         "cells": [
@@ -258,7 +297,7 @@ def test_notebook_graph_exposes_symbolic_cell_metadata() -> None:
                 "automutable": False,
             },
         ],
-        "edges": [{"from": 1, "to": 2, "name": "a"}],
+        "edges": [{"from": 1, "to": 2, "variable": "a"}],
     }
     widget.set_trait("_graph", raw_graph)
 
@@ -268,11 +307,10 @@ def test_notebook_graph_exposes_symbolic_cell_metadata() -> None:
     assert graph.defines == ("a", "b")
     assert graph.references == ("a", "rows")
     assert graph.external_references == ("rows",)
-    assert graph.edges == (ojs.DependencyEdge(source_id=1, target_id=2, name="a"),)
+    assert graph.edges == (ojs.DependencyEdge(source_id=1, target_id=2, variable="a"),)
     assert widget.cell("b").info == graph.cells[1]
     assert widget.cell("b").defines == ("b",)
     assert widget.cell("b").references == ("a", "rows")
-    assert widget.cell("b").inputs == ("a", "rows")
     assert widget.cell("b").outputs == ()
     assert widget.cell("b").runtime_outputs == ("b",)
     assert widget.cell("b").output == "b"
@@ -301,11 +339,12 @@ def test_cell_lookup_can_use_unique_graph_output() -> None:
         },
     )
 
-    assert widget.cell("answer") is widget.cells[0]
-    assert widget.defining_cell("answer") is widget.cells[0]
+    with pytest.raises(KeyError, match="Unknown Observable cell name"):
+        widget.cell("answer")
+    assert widget.cell_for_variable("answer") is widget.cells[0]
 
 
-def test_cell_lookup_rejects_ambiguous_graph_output() -> None:
+def test_cell_lookup_rejects_ambiguous_graph_variable() -> None:
     widget = ojs.Notebook(
         ojs.cell("answer = 42"),
         ojs.cell("answer = 43"),
@@ -321,11 +360,11 @@ def test_cell_lookup_rejects_ambiguous_graph_output() -> None:
         },
     )
 
-    with pytest.raises(KeyError, match="Ambiguous Observable cell output"):
-        widget.cell("answer")
+    with pytest.raises(KeyError, match="Ambiguous Observable variable"):
+        widget.cell_for_variable("answer")
 
 
-def test_cell_lookup_rejects_handle_output_collision() -> None:
+def test_cell_lookup_separates_python_name_from_ojs_variable() -> None:
     widget = ojs.Notebook(
         ojs.cell("alpha = 1", name="conflict"),
         ojs.cell("conflict = 2", name="other"),
@@ -341,10 +380,8 @@ def test_cell_lookup_rejects_handle_output_collision() -> None:
         },
     )
 
-    with pytest.raises(KeyError, match="Ambiguous Observable cell key"):
-        widget.cell("conflict")
-
-    assert widget.defining_cell("conflict") is widget.cells[1]
+    assert widget.cell("conflict") is widget.cells[0]
+    assert widget.cell_for_variable("conflict") is widget.cells[1]
 
 
 def test_malformed_graph_entries_are_dropped() -> None:
@@ -357,8 +394,8 @@ def test_malformed_graph_entries_are_dropped() -> None:
                 {"id": "bad", "index": 1, "mode": "ojs", "defines": ["bad"]},
             ],
             "edges": [
-                {"from": "1", "to": "2", "name": "answer"},
-                {"from": "bad", "to": 2, "name": "bad"},
+                {"from": "1", "to": "2", "variable": "answer"},
+                {"from": "bad", "to": 2, "variable": "bad"},
             ],
         },
     )
@@ -382,15 +419,17 @@ def test_malformed_graph_entries_are_dropped() -> None:
             automutable=False,
         ),
     )
-    assert graph.edges == (ojs.DependencyEdge(source_id=1, target_id=2, name="answer"),)
+    assert graph.edges == (
+        ojs.DependencyEdge(source_id=1, target_id=2, variable="answer"),
+    )
 
 
-def test_named_cell_handles_expose_values() -> None:
+def test_named_notebook_cells_expose_values() -> None:
     widget = ojs.Notebook(ojs.cell("viewof gain = Inputs.range([0, 11])", name="gain"))
     cell_widget = widget.cell("gain")
 
-    cell_widget.variables = {"gain": 7}
-    cell_widget.variable_names = ["gain", "doubled"]
+    cell_widget._values = {"gain": 7}
+    cell_widget._value_names = ["gain", "doubled"]
 
     assert cell_widget.value == 7
     assert cell_widget.values == {"gain": 7}
@@ -398,18 +437,26 @@ def test_named_cell_handles_expose_values() -> None:
     assert widget.values == {"gain": 7}
 
 
+def test_cell_value_error_points_to_values_mapping() -> None:
+    cell_widget = ojs.Notebook(ojs.cell("answer = 42", name="cell")).cell("cell")
+    cell_widget._values = {"answer": 42, "double": 84}
+
+    with pytest.raises(KeyError, match=r"cell\.values\[name\]"):
+        _ = cell_widget.value
+
+
 def test_notebook_values_are_synced_trait_state() -> None:
     widget = ojs.Notebook(ojs.cell("viewof gain = Inputs.range([0, 11])", name="gain"))
     changes: list[dict[str, object]] = []
-    widget.observe(changes.append, names="variables")
+    widget.observe(changes.append, names="_values")
 
-    widget.variables = {"gain": 8}
-    widget.variable_names = ["gain"]
+    widget._values = {"gain": 8}
+    widget._value_names = ["gain"]
 
     assert widget.values == {"gain": 8}
     assert widget.value("gain") == 8
-    assert widget.variable_names == ["gain"]
-    assert changes[-1]["name"] == "variables"
+    assert widget._value_names == ["gain"]
+    assert changes[-1]["name"] == "_values"
     assert changes[-1]["new"] == {"gain": 8}
 
 
@@ -420,10 +467,10 @@ def test_script_end_tag_is_escaped() -> None:
     assert "</SCRIPT>" not in widget.to_notebook_html()
 
 
-def test_notebook_serializes_python_data() -> None:
+def test_notebook_serializes_python_variables() -> None:
     widget = ojs.Notebook(
         ojs.cell("py_answer + rows.length"),
-        data={
+        variables={
             "py_answer": 42,
             "rows": [{"date": dt.date(2026, 5, 23), "value": float("nan")}],
             "raw": b"abc",
@@ -431,8 +478,8 @@ def test_notebook_serializes_python_data() -> None:
         },
     )
 
-    wire = widget.get_state(["_data"])["_data"]
-    assert widget.data["rows"][0]["date"] == dt.date(2026, 5, 23)
+    wire = widget.get_state(["_variables"])["_variables"]
+    assert widget.variables["rows"][0]["date"] == dt.date(2026, 5, 23)
     assert wire["py_answer"] == 42
     assert wire["rows"][0]["date"] == {
         "__observablejs_type__": "datetime",
@@ -449,22 +496,22 @@ def test_notebook_serializes_python_data() -> None:
     assert wire["span"] == [0, 1, 2]
 
 
-def test_data_updates_synced_wire_state() -> None:
+def test_variables_updates_synced_wire_state() -> None:
     widget = ojs.Notebook()
 
-    widget.data = {"py_value": 7}
+    widget.replace_variables({"py_value": 7})
 
-    assert widget.data == {"py_value": 7}
-    assert widget.get_state(["_data"]) == {"_data": {"py_value": 7}}
+    assert widget.variables == {"py_value": 7}
+    assert widget.get_state(["_variables"]) == {"_variables": {"py_value": 7}}
 
 
-def test_update_data_merges_synced_wire_state() -> None:
-    widget = ojs.Notebook(data={"py_value": 7})
+def test_variables_update_merges_synced_wire_state() -> None:
+    widget = ojs.Notebook(variables={"py_value": 7})
 
-    widget.update_data({"other": dt.date(2026, 5, 25)}, py_value=8)
+    widget.update_variables({"other": dt.date(2026, 5, 25)}, py_value=8)
 
-    assert widget.data == {"py_value": 8, "other": dt.date(2026, 5, 25)}
-    assert widget.get_state(["_data"])["_data"] == {
+    assert widget.variables == {"py_value": 8, "other": dt.date(2026, 5, 25)}
+    assert widget.get_state(["_variables"])["_variables"] == {
         "py_value": 8,
         "other": {
             "__observablejs_type__": "datetime",
@@ -473,17 +520,59 @@ def test_update_data_merges_synced_wire_state() -> None:
     }
 
 
-def test_invalid_python_data_name_raises() -> None:
+def test_variable_replacement_and_reset_update_synced_wire_state() -> None:
+    widget = ojs.Notebook(variables={"gain": 5, "rows": [{"x": 1}]})
+
+    widget.replace_variables({"rows": [{"x": 2}]})
+
+    assert widget.variables == {"rows": [{"x": 2}]}
+    assert widget.get_state(["_variable_update"])["_variable_update"] == {
+        "seq": 1,
+        "kind": "replace",
+        "values": {"rows": [{"x": 2}]},
+    }
+
+    widget.update_variables(gain=7)
+    widget.reset_variables("rows")
+
+    assert widget.variables == {"gain": 7}
+    assert widget.get_state(["_variable_update"])["_variable_update"] == {
+        "seq": 3,
+        "kind": "replace",
+        "values": {"gain": 7},
+    }
+
+
+def test_browser_values_are_python_facing_with_wire_escape_hatch() -> None:
+    widget = ojs.Notebook()
+
+    widget._values = {
+        "when": {
+            "__observablejs_type__": "datetime",
+            "value": "2026-05-25T10:00:00.000Z",
+        },
+        "raw": {"__observablejs_type__": "arraybuffer", "value": "YWJj"},
+    }
+
+    assert widget.values["when"] == dt.datetime(2026, 5, 25, 10, tzinfo=dt.timezone.utc)
+    assert widget.values["raw"] == b"abc"
+    assert widget.wire_values["raw"] == {
+        "__observablejs_type__": "arraybuffer",
+        "value": "YWJj",
+    }
+
+
+def test_invalid_python_var_name_raises() -> None:
     with pytest.raises(ValueError, match="Invalid Observable variable name"):
-        ojs.Notebook(data={"not-valid": 1})
+        ojs.Notebook(variables={"not-valid": 1})
 
 
-def test_python_data_mapping_preserves_wire_type_key() -> None:
+def test_python_variables_mapping_preserves_wire_type_key() -> None:
     widget = ojs.Notebook(
-        data={"row": {"__observablejs_type__": "not-a-wire-tag", "value": 1}}
+        variables={"row": {"__observablejs_type__": "not-a-wire-tag", "value": 1}}
     )
 
-    assert widget.get_state(["_data"])["_data"]["row"] == {
+    assert widget.get_state(["_variables"])["_variables"]["row"] == {
         "__observablejs_type__": "object",
         "value": {"__observablejs_type__": "not-a-wire-tag", "value": 1},
     }
@@ -497,9 +586,9 @@ def test_dataframe_like_values_serialize_as_records_by_default() -> None:
             assert orient == "records"
             return [{"x": 1}]
 
-    widget = ojs.Notebook(data={"rows": DataFrame()})
+    widget = ojs.Notebook(variables={"rows": DataFrame()})
 
-    assert widget.get_state(["_data"])["_data"]["rows"] == [{"x": 1}]
+    assert widget.get_state(["_variables"])["_variables"]["rows"] == [{"x": 1}]
 
 
 def test_records_helper_makes_record_conversion_explicit() -> None:
@@ -510,9 +599,9 @@ def test_records_helper_makes_record_conversion_explicit() -> None:
             assert orient == "records"
             return [{"x": 1}]
 
-    widget = ojs.Notebook(data={"rows": ojs.records(DataFrame())})
+    widget = ojs.Notebook(variables={"rows": ojs.records(DataFrame())})
 
-    assert widget.get_state(["_data"])["_data"]["rows"] == [{"x": 1}]
+    assert widget.get_state(["_variables"])["_variables"]["rows"] == [{"x": 1}]
 
 
 def test_from_file_embeds_file_attachments_and_local_imports(
@@ -548,7 +637,7 @@ def test_from_file_embeds_file_attachments_and_local_imports(
     assert widget.spec == {}
 
 
-def test_source_backed_notebook_creates_one_unique_cell_handle_per_script() -> None:
+def test_source_backed_notebook_creates_one_unique_notebook_cell_per_script() -> None:
     widget = ojs.Notebook.from_html(
         """<!doctype html>
 <notebook>

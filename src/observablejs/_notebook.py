@@ -6,7 +6,7 @@ import dataclasses
 import pathlib
 import textwrap
 import uuid
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from html.parser import HTMLParser
 from typing import Any, cast
 
@@ -17,7 +17,7 @@ from ._files import FileInput, normalize_files, prepare_source
 from ._graph import CellInfo, NotebookGraph, graph_from_raw
 from ._observable import fetch_observable_notebook
 from ._serialize import SCRIPT_TYPES, Mode, serialize
-from ._variables import serialize_variables
+from ._variables import deserialize_value, serialize_variables
 
 
 @dataclasses.dataclass(frozen=True)
@@ -62,7 +62,6 @@ class Cell:
 
 CellInput = str | Cell
 
-
 _WIDGET_TRAIT = anywidget.WidgetTrait()
 _WIDGET_TO_JSON = _WIDGET_TRAIT.metadata["to_json"]
 
@@ -84,16 +83,14 @@ class _ObservableWidget(anywidget.AnyWidget):
     _css = pathlib.Path(__file__).parent / "static" / "widget.css"
 
 
-class CellHandle(_ObservableWidget):
-    """Child widget model that tracks one Observable cell."""
+class NotebookCell(_ObservableWidget):
+    """Child widget model that tracks one rendered Observable cell."""
 
     role = traitlets.Unicode("cell").tag(sync=True)
     _cell_id = traitlets.Unicode("").tag(sync=True)
     name = traitlets.Unicode("").tag(sync=True)
-    variable_names = traitlets.List(traitlets.Unicode(), default_value=[]).tag(
-        sync=True
-    )
-    variables = traitlets.Dict(default_value={}).tag(sync=True)
+    _value_names = traitlets.List(traitlets.Unicode(), default_value=[]).tag(sync=True)
+    _values = traitlets.Dict(default_value={}).tag(sync=True)
 
     def __init__(self, **kwargs: Any) -> None:
         kwargs.setdefault("_cell_id", uuid.uuid4().hex)
@@ -125,10 +122,6 @@ class CellHandle(_ObservableWidget):
         return () if info is None else info.references
 
     @property
-    def inputs(self) -> tuple[str, ...]:
-        return self.references
-
-    @property
     def outputs(self) -> tuple[str, ...]:
         info = self.info
         return () if info is None else info.outputs
@@ -144,21 +137,40 @@ class CellHandle(_ObservableWidget):
         return None if info is None else info.output
 
     @property
+    def value_names(self) -> tuple[str, ...]:
+        """Names of browser-synchronized values currently exposed by this cell."""
+
+        return tuple(self._value_names)
+
+    @property
     def values(self) -> dict[str, Any]:
         """Latest browser-synchronized values exposed by this cell."""
 
-        return dict(self.variables)
+        return {name: deserialize_value(value) for name, value in self._values.items()}
+
+    @property
+    def wire_values(self) -> dict[str, Any]:
+        """Raw browser wire values for advanced inspection."""
+
+        return dict(self._values)
 
     @property
     def value(self) -> Any:
-        """Return the named value, sole value, or full values dictionary."""
+        """Return the value for this name when it is unambiguous."""
 
+        return self._value()
+
+    def _value(self, name: str | None = None) -> Any:
         values = self.values
+        if name is not None:
+            return values[name]
         if self.name and self.name in values:
             return values[self.name]
         if len(values) == 1:
             return next(iter(values.values()))
-        return values
+        if not values:
+            raise KeyError("Cell exposes no synchronized values")
+        raise KeyError("Cell exposes multiple values. Use cell.values[name]")
 
 
 class Notebook(_ObservableWidget):
@@ -169,12 +181,11 @@ class Notebook(_ObservableWidget):
     spec = traitlets.Dict().tag(sync=True)
     attachments = traitlets.Dict().tag(sync=True)
     base_url = traitlets.Unicode("").tag(sync=True)
-    _data = traitlets.Dict(default_value={}).tag(sync=True)
+    _variables = traitlets.Dict(default_value={}).tag(sync=True)
+    _variable_update = traitlets.Dict(default_value={}).tag(sync=True)
     _graph = traitlets.Dict(default_value={}).tag(sync=True)
-    variable_names = traitlets.List(traitlets.Unicode(), default_value=[]).tag(
-        sync=True
-    )
-    variables = traitlets.Dict(default_value={}).tag(sync=True)
+    _value_names = traitlets.List(traitlets.Unicode(), default_value=[]).tag(sync=True)
+    _values = traitlets.Dict(default_value={}).tag(sync=True)
     options = traitlets.Dict().tag(sync=True)
     _cell_widgets = traitlets.List(
         anywidget.WidgetTrait(),
@@ -182,11 +193,13 @@ class Notebook(_ObservableWidget):
     ).tag(sync=True, to_json=_widgets_to_json, from_json=_widgets_from_json)
 
     @traitlets.validate("_cell_widgets")
-    def _validate_cell_widgets(self, proposal: Any) -> list[CellHandle]:
+    def _validate_cell_widgets(self, proposal: Any) -> list[NotebookCell]:
         widgets = proposal["value"]
-        if not all(isinstance(item, CellHandle) for item in widgets):
-            raise traitlets.TraitError("_cell_widgets must contain CellHandle widgets")
-        return cast(list[CellHandle], widgets)
+        if not all(isinstance(item, NotebookCell) for item in widgets):
+            raise traitlets.TraitError(
+                "_cell_widgets must contain NotebookCell widgets"
+            )
+        return cast(list[NotebookCell], widgets)
 
     def __init__(
         self,
@@ -196,74 +209,146 @@ class Notebook(_ObservableWidget):
         mode: Mode = "ojs",
         attachments: Mapping[str, FileInput] | None = None,
         base_path: str | pathlib.Path | None = None,
-        data: Mapping[str, Any] | None = None,
+        variables: Mapping[str, Any] | None = None,
         show_pinned_source: bool = False,
-        **kwargs: Any,
     ) -> None:
-        """Create a notebook from Python-authored cells.
+        """Create a notebook from Python-authored cells."""
 
-        Args:
-            *cells: strings or ``Cell`` objects in notebook order.
-            title: title written to exported Notebook Kit HTML.
-            theme: Notebook Kit theme name or theme mapping.
-            mode: default mode for plain string cells.
-            attachments: explicit ``FileAttachment`` inputs.
-            base_path: base path for relative attachment inputs.
-            data: Python values that set or override Observable runtime variables.
-            show_pinned_source: render source for pinned Notebook Kit cells.
-        """
-
-        self._data_values = _copy_data(data)
         cell_specs = [
-            cell(item, mode=mode).to_spec(i) for i, item in enumerate(cells, start=1)
+            _coerce_cell(item, mode=mode).to_spec(i)
+            for i, item in enumerate(cells, start=1)
         ]
-        spec = {
-            "title": title,
-            "theme": theme,
-            "cells": cell_specs,
-        }
-        cell_widgets = list(
-            kwargs.get("_cell_widgets", _cell_widgets_for_specs(cell_specs))
+        self._initialize(
+            source="",
+            spec={"title": title, "theme": theme, "cells": cell_specs},
+            attachments=normalize_files(attachments, base_path=base_path),
+            variables=variables,
+            show_pinned_source=show_pinned_source,
+            cell_widgets=_cell_widgets_for_specs(cell_specs),
         )
-        kwargs.setdefault("spec", spec)
-        kwargs.setdefault(
-            "attachments",
-            normalize_files(attachments, base_path=base_path),
+
+    @classmethod
+    def _from_prepared(
+        cls,
+        *,
+        source: str,
+        spec: Mapping[str, Any],
+        attachments: Mapping[str, Any],
+        variables: Mapping[str, Any] | None,
+        show_pinned_source: bool,
+        cell_widgets: Sequence[NotebookCell],
+    ) -> "Notebook":
+        notebook = cls.__new__(cls)
+        notebook._initialize(
+            source=source,
+            spec=spec,
+            attachments=attachments,
+            variables=variables,
+            show_pinned_source=show_pinned_source,
+            cell_widgets=cell_widgets,
         )
-        kwargs.setdefault("_data", serialize_variables(self._data_values))
-        kwargs.setdefault("options", {"show_source": show_pinned_source})
-        kwargs.setdefault("_cell_widgets", cell_widgets)
-        super().__init__(**kwargs)
+        return notebook
+
+    def _initialize(
+        self,
+        *,
+        source: str,
+        spec: Mapping[str, Any],
+        attachments: Mapping[str, Any],
+        variables: Mapping[str, Any] | None,
+        show_pinned_source: bool,
+        cell_widgets: Sequence[NotebookCell],
+    ) -> None:
+        self._variable_values = _copy_variables(variables)
+        self._variable_update_seq = 0
+        super().__init__(
+            source=source,
+            spec=dict(spec),
+            attachments=dict(attachments),
+            _variables=serialize_variables(self._variable_values),
+            options={"show_source": show_pinned_source},
+            _cell_widgets=list(cell_widgets),
+        )
         for index, cell_widget in enumerate(self._cell_widgets):
-            if isinstance(cell_widget, CellHandle):
+            if isinstance(cell_widget, NotebookCell):
                 cell_widget._bind_notebook(self, index)
 
     @property
-    def data(self) -> dict[str, Any]:
-        """Original Python values that set or override Observable variables."""
+    def variables(self) -> dict[str, Any]:
+        """Current Python-owned Observable variables."""
 
-        return dict(self._data_values)
+        return dict(self._variable_values)
 
-    @data.setter
-    def data(self, value: Mapping[str, Any]) -> None:
-        self._data_values = _copy_data(value)
-        self.set_trait("_data", serialize_variables(self._data_values))
-
-    def update_data(
+    def update_variables(
         self,
-        values: Mapping[str, Any] | None = None,
+        values: Mapping[str, Any] | Iterable[tuple[str, Any]] | None = None,
         /,
         **kwargs: Any,
     ) -> None:
-        """Update Python-backed Observable variables in the live runtime."""
+        """Patch Python-owned variables in the live Observable runtime."""
 
-        updates: dict[str, Any] = {}
-        if values is not None:
-            if not isinstance(values, Mapping):
-                raise TypeError("values must be a mapping")
-            updates.update(values)
-        updates.update(kwargs)
-        self.data = {**self._data_values, **updates}
+        updates = _updates_from_args("update_variables", values, kwargs)
+        if updates:
+            self._patch_variables(updates)
+
+    def replace_variables(
+        self,
+        values: Mapping[str, Any] | Iterable[tuple[str, Any]] | None = None,
+        /,
+        **kwargs: Any,
+    ) -> None:
+        """Replace the full Python-owned variable environment."""
+
+        self._replace_variables(
+            _updates_from_args("replace_variables", values, kwargs),
+            update_kind="replace",
+        )
+
+    def reset_variables(self, *names: str) -> None:
+        """Release Python ownership for one or more variables."""
+
+        if not names:
+            return
+        values = dict(self._variable_values)
+        changed = False
+        for name in names:
+            if name in values:
+                del values[name]
+                changed = True
+        if changed:
+            self._replace_variables(values, update_kind="replace")
+
+    def _patch_variables(self, updates: Mapping[str, Any]) -> None:
+        serialized_updates = serialize_variables(updates)
+        self._variable_values = _copy_variables({**self._variable_values, **updates})
+        self._variable_update_seq += 1
+        self.set_trait(
+            "_variable_update",
+            {
+                "seq": self._variable_update_seq,
+                "kind": "set",
+                "values": serialized_updates,
+            },
+        )
+        self.set_trait("_variables", serialize_variables(self._variable_values))
+
+    def _replace_variables(
+        self,
+        value: Mapping[str, Any],
+        *,
+        update_kind: str = "replace",
+    ) -> None:
+        self._variable_values = _copy_variables(value)
+        self._variable_update_seq += 1
+        self.set_trait(
+            "_variable_update",
+            {
+                "seq": self._variable_update_seq,
+                "kind": update_kind,
+                "values": serialize_variables(self._variable_values),
+            },
+        )
+        self.set_trait("_variables", serialize_variables(self._variable_values))
 
     @property
     def graph(self) -> NotebookGraph | None:
@@ -272,36 +357,24 @@ class Notebook(_ObservableWidget):
         return graph_from_raw(self._graph)
 
     @property
-    def cells(self) -> tuple[CellHandle, ...]:
-        """Child cell handles in notebook order."""
+    def cells(self) -> tuple[NotebookCell, ...]:
+        """Child cell widgets in notebook order."""
 
         return tuple(self._cell_widgets)
 
-    def cell(self, key: int | str) -> CellHandle:
-        """Return a cell by index, handle name, or unique defined variable."""
+    def cell(self, key: int | str) -> NotebookCell:
+        """Return a cell widget by index or Python name."""
 
         if isinstance(key, int):
             return self.cells[key]
-        cells = self.cells
-        handle_matches = [
-            (index, item) for index, item in enumerate(cells) if item.name == key
-        ]
-        if len(handle_matches) > 1:
-            raise KeyError(f"Ambiguous Observable cell handle: {key!r}")
-        graph = self.graph
-        output_matches = (
-            []
-            if graph is None
-            else [cell.index for cell in graph.cells if key in cell.defines]
-        )
-        if handle_matches:
-            index, item = handle_matches[0]
-            if any(output_index != index for output_index in output_matches):
-                raise KeyError(f"Ambiguous Observable cell key: {key!r}")
-            return item
-        return self.defining_cell(key)
+        matches = [item for item in self.cells if item.name == key]
+        if len(matches) == 1:
+            return matches[0]
+        if len(matches) > 1:
+            raise KeyError(f"Ambiguous Observable cell name: {key!r}")
+        raise KeyError(f"Unknown Observable cell name: {key!r}")
 
-    def defining_cell(self, name: str) -> CellHandle:
+    def cell_for_variable(self, name: str) -> NotebookCell:
         """Return the unique cell that defines an Observable variable."""
 
         graph = self.graph
@@ -316,23 +389,44 @@ class Notebook(_ObservableWidget):
             if 0 <= index < len(cells):
                 return cells[index]
         if len(matches) > 1:
-            raise KeyError(f"Ambiguous Observable cell output: {name!r}")
-        raise KeyError(f"Unknown Observable cell output: {name!r}")
+            raise KeyError(f"Ambiguous Observable variable: {name!r}")
+        raise KeyError(f"Unknown Observable variable: {name!r}")
+
+    @property
+    def value_names(self) -> tuple[str, ...]:
+        """Names of browser-synchronized values currently exposed by the notebook."""
+
+        return tuple(self._value_names)
 
     @property
     def values(self) -> dict[str, Any]:
-        """Latest browser-synchronized values for all named notebook cells."""
+        """Latest browser-synchronized values for notebook cells."""
 
-        if self.variables:
-            return dict(self.variables)
-        merged: dict[str, Any] = {}
-        for item in self.cells:
-            merged.update(item.values)
-        return merged
+        if self._values:
+            return {
+                name: deserialize_value(value) for name, value in self._values.items()
+            }
+        return _unique_cell_values(self.cells)
+
+    @property
+    def wire_values(self) -> dict[str, Any]:
+        """Raw browser wire values for advanced inspection."""
+
+        if self._values:
+            return dict(self._values)
+        return _unique_cell_wire_values(self.cells)
 
     def value(self, name: str) -> Any:
         """Return the latest browser-synchronized value for ``name``."""
 
+        graph = self.graph
+        if graph is not None:
+            try:
+                cell = self.cell_for_variable(name)
+            except KeyError:
+                cell = None
+            if cell is not None and name in cell.values:
+                return cell.values[name]
         return self.values[name]
 
     @classmethod
@@ -343,16 +437,10 @@ class Notebook(_ObservableWidget):
         attachments: Mapping[str, FileInput] | None = None,
         base_path: str | pathlib.Path | None = None,
         portable: bool = True,
-        data: Mapping[str, Any] | None = None,
+        variables: Mapping[str, Any] | None = None,
         show_pinned_source: bool = False,
-        **kwargs: Any,
     ) -> "Notebook":
-        """Create a notebook from Notebook Kit HTML.
-
-        Local ``FileAttachment`` calls and relative imports can be embedded for
-        portability. Python ``data`` enters the OJS runtime through the same
-        ``_data`` trait used by Python-authored notebooks.
-        """
+        """Create a notebook from Notebook Kit HTML."""
 
         source, discovered = prepare_source(
             source,
@@ -361,13 +449,15 @@ class Notebook(_ObservableWidget):
             rewrite_imports=portable,
         )
         normalized = normalize_files(attachments, base_path=base_path)
-        kwargs.setdefault("source", source)
-        kwargs.setdefault("attachments", {**discovered, **normalized})
-        kwargs.setdefault("options", {"show_source": show_pinned_source})
         parsed = _parse_html_cells(source)
-        kwargs.setdefault("spec", {})
-        kwargs.setdefault("_cell_widgets", _cell_widgets_for_cells(parsed))
-        return cls(data=data, **kwargs)
+        return cls._from_prepared(
+            variables=variables,
+            show_pinned_source=show_pinned_source,
+            source=source,
+            spec={},
+            attachments={**discovered, **normalized},
+            cell_widgets=_cell_widgets_for_cells(parsed),
+        )
 
     @classmethod
     def from_file(
@@ -375,10 +465,9 @@ class Notebook(_ObservableWidget):
         path: str | pathlib.Path,
         *,
         portable: bool = True,
-        data: Mapping[str, Any] | None = None,
+        variables: Mapping[str, Any] | None = None,
         attachments: Mapping[str, FileInput] | None = None,
         show_pinned_source: bool = False,
-        **kwargs: Any,
     ) -> "Notebook":
         """Load Notebook Kit HTML from disk and create a notebook widget."""
 
@@ -387,10 +476,9 @@ class Notebook(_ObservableWidget):
             path.read_text(encoding="utf-8"),
             base_path=path.parent,
             portable=portable,
-            data=data,
+            variables=variables,
             attachments=attachments,
             show_pinned_source=show_pinned_source,
-            **kwargs,
         )
 
     @classmethod
@@ -398,23 +486,21 @@ class Notebook(_ObservableWidget):
         cls,
         url: str,
         *,
-        data: Mapping[str, Any] | None = None,
+        variables: Mapping[str, Any] | None = None,
         attachments: Mapping[str, FileInput] | None = None,
         show_pinned_source: bool = False,
         timeout: float | None = 30,
-        **kwargs: Any,
     ) -> "Notebook":
         """Load a public Observable notebook URL through the document API."""
 
         source, discovered = fetch_observable_notebook(url, timeout=timeout)
         normalized = normalize_files(attachments, base_path=None)
-        kwargs.setdefault("attachments", {**discovered, **normalized})
         return cls.from_html(
             source,
             portable=False,
-            data=data,
+            variables=variables,
+            attachments={**discovered, **normalized},
             show_pinned_source=show_pinned_source,
-            **kwargs,
         )
 
     def to_notebook_html(self) -> str:
@@ -430,14 +516,84 @@ def cell(
     *,
     name: str | None = None,
     display: bool = True,
-    mode: Mode = "ojs",
     raw: bool = False,
+    id: int | None = None,
+    pinned: bool = False,
+    output: str | None = None,
+    database: str | None = None,
+    format: str | None = None,
     attrs: Mapping[str, Any] | None = None,
 ) -> Cell:
-    """Return an Observable JavaScript cell spec."""
+    """Return an Observable JavaScript source cell."""
 
+    return _source_cell(
+        source,
+        mode="ojs",
+        name=name,
+        display=display,
+        raw=raw,
+        id=id,
+        pinned=pinned,
+        output=output,
+        database=database,
+        format=format,
+        attrs=attrs,
+    )
+
+
+def js(source: str, **kwargs: Any) -> Cell:
+    """Return a standard JavaScript module source cell."""
+
+    return _source_cell(source, mode="js", **kwargs)
+
+
+def md(source: str, **kwargs: Any) -> Cell:
+    """Return a Markdown source cell."""
+
+    return _source_cell(source, mode="md", **kwargs)
+
+
+def html(source: str, **kwargs: Any) -> Cell:
+    """Return an HTML source cell."""
+
+    return _source_cell(source, mode="html", **kwargs)
+
+
+def sql(source: str, **kwargs: Any) -> Cell:
+    """Return a SQL source cell."""
+
+    return _source_cell(source, mode="sql", **kwargs)
+
+
+def _source_cell(
+    source: CellInput,
+    *,
+    mode: Mode,
+    name: str | None = None,
+    display: bool = True,
+    raw: bool = False,
+    id: int | None = None,
+    pinned: bool = False,
+    output: str | None = None,
+    database: str | None = None,
+    format: str | None = None,
+    attrs: Mapping[str, Any] | None = None,
+) -> Cell:
     if isinstance(source, Cell):
-        if any([name is not None, display is not True, mode != "ojs", raw, attrs]):
+        if any(
+            [
+                name is not None,
+                display is not True,
+                mode != source.mode,
+                raw,
+                id is not None,
+                pinned,
+                output is not None,
+                database is not None,
+                format is not None,
+                attrs,
+            ]
+        ):
             raise TypeError("Cannot override an existing Cell")
         return source
     if not isinstance(source, str):
@@ -448,47 +604,95 @@ def cell(
         name=name,
         display=display,
         raw=raw,
-        attrs={} if attrs is None else attrs,
+        attrs=_cell_attrs(
+            attrs,
+            id=id,
+            pinned=pinned,
+            output=output,
+            database=database,
+            format=format,
+        ),
     )
 
 
-def module(source: str, **kwargs: Any) -> Cell:
-    """Return a standard JavaScript module cell spec."""
-
-    return cell(source, mode="js", **kwargs)
-
-
-def md(source: str, **kwargs: Any) -> Cell:
-    """Return a Markdown cell spec."""
-
-    return cell(source, mode="md", **kwargs)
+def _coerce_cell(source: CellInput, *, mode: Mode) -> Cell:
+    if isinstance(source, Cell):
+        return source
+    return _source_cell(source, mode=mode)
 
 
-def html(source: str, **kwargs: Any) -> Cell:
-    """Return an HTML cell spec."""
+def _cell_attrs(
+    attrs: Mapping[str, Any] | None,
+    *,
+    id: int | None,
+    pinned: bool,
+    output: str | None,
+    database: str | None,
+    format: str | None,
+) -> dict[str, Any]:
+    out = {} if attrs is None else dict(attrs)
+    if id is not None:
+        out["id"] = id
+    if pinned:
+        out["pinned"] = True
+    if output is not None:
+        out["output"] = output
+    if database is not None:
+        out["database"] = database
+    if format is not None:
+        out["format"] = format
+    return out
 
-    return cell(source, mode="html", **kwargs)
+
+def _updates_from_args(
+    name: str,
+    values: Mapping[str, Any] | Iterable[tuple[str, Any]] | None,
+    kwargs: Mapping[str, Any],
+) -> dict[str, Any]:
+    updates: dict[str, Any] = {}
+    if values is not None:
+        if isinstance(values, Mapping):
+            updates.update(values)
+        else:
+            try:
+                updates.update(dict(values))
+            except (TypeError, ValueError) as exc:
+                raise TypeError(f"{name} expects a mapping or key/value pairs") from exc
+    updates.update(kwargs)
+    return updates
 
 
-def sql(source: str, **kwargs: Any) -> Cell:
-    """Return a SQL cell spec."""
-
-    return cell(source, mode="sql", **kwargs)
-
-
-def _copy_data(data: Mapping[str, Any] | None) -> dict[str, Any]:
-    # Validation runs against Python-facing values. The synced `_data` trait
-    # carries the serialized representation.
-    serialize_variables(data)
-    return {} if data is None else dict(data)
+def _copy_variables(variables: Mapping[str, Any] | None) -> dict[str, Any]:
+    serialize_variables(variables)
+    return {} if variables is None else dict(variables)
 
 
-def _cell_widgets_for_specs(specs: list[dict[str, Any]]) -> list[CellHandle]:
-    return [CellHandle(name=str(item.get("name") or "")) for item in specs]
+def _unique_cell_values(cells: Sequence[NotebookCell]) -> dict[str, Any]:
+    counts: dict[str, int] = {}
+    values: dict[str, Any] = {}
+    for item in cells:
+        for name, value in item.values.items():
+            counts[name] = counts.get(name, 0) + 1
+            values[name] = value
+    return {name: value for name, value in values.items() if counts[name] == 1}
 
 
-def _cell_widgets_for_cells(cells: list[Cell]) -> list[CellHandle]:
-    return [CellHandle(name=item.name or "") for item in cells]
+def _unique_cell_wire_values(cells: Sequence[NotebookCell]) -> dict[str, Any]:
+    counts: dict[str, int] = {}
+    values: dict[str, Any] = {}
+    for item in cells:
+        for name, value in item.wire_values.items():
+            counts[name] = counts.get(name, 0) + 1
+            values[name] = value
+    return {name: value for name, value in values.items() if counts[name] == 1}
+
+
+def _cell_widgets_for_specs(specs: Sequence[Mapping[str, Any]]) -> list[NotebookCell]:
+    return [NotebookCell(name=str(item.get("name") or "")) for item in specs]
+
+
+def _cell_widgets_for_cells(cells: Sequence[Cell]) -> list[NotebookCell]:
+    return [NotebookCell(name=item.name or "") for item in cells]
 
 
 _MODE_BY_SCRIPT_TYPE = {

@@ -20,13 +20,18 @@ export type WidgetModel = {
 	spec?: Record<string, unknown>;
 	attachments?: Record<string, AttachmentInfo>;
 	base_url?: string;
-	// Serialized Python data. runtime.ts revives this as Observable builtins.
-	_data?: Record<string, unknown>;
+	// Serialized Python-owned Observable variables. runtime.ts revives this as Observable builtins.
+	_variables?: Record<string, unknown>;
+	_variable_update?: {
+		seq?: number;
+		kind?: "set" | "replace";
+		values?: Record<string, unknown>;
+	};
 	_graph?: NotebookGraph;
 	// Browser-produced values. Notebook models aggregate child cell values.
 	// Cell models hold values for their matching cell.
-	variables?: Record<string, unknown>;
-	variable_names?: string[];
+	_values?: Record<string, unknown>;
+	_value_names?: string[];
 	options?: {
 		show_source?: boolean;
 	};
@@ -37,7 +42,7 @@ export type WidgetModel = {
 export type NotebookOptions = {
 	attachments: Record<string, AttachmentInfo>;
 	baseUrl: string;
-	data: Record<string, unknown>;
+	variables: Record<string, unknown>;
 	showSource: boolean;
 };
 
@@ -50,7 +55,7 @@ export type AttachmentRegistry = {
 export type CellVariableSync = {
 	model: RenderProps<WidgetModel>["model"];
 	signal: AbortSignal;
-	dataSync?: RuntimeDataSync;
+	variablesSync?: RuntimeVariablesSync;
 	// OJS viewof cells expose DOM-ish targets. Python value updates write back
 	// into those targets so the rendered control and synced trait stay aligned.
 	views: Map<string, ViewTarget>;
@@ -60,8 +65,8 @@ export type CellVariableSync = {
 	currentVariables(): Record<string, unknown>;
 };
 
-export type RuntimeDataSync = {
-	apply(): void;
+export type RuntimeVariablesSync = {
+	applyInitialViews(): void;
 	setView(name: string, view: ViewTarget): void;
 	deleteView(name: string, view: ViewTarget): void;
 };
@@ -119,7 +124,7 @@ export type CellGraph = {
 export type GraphEdge = {
 	from: number;
 	to: number;
-	name: string;
+	variable: string;
 };
 
 export type NotebookGraph = {

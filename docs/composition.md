@@ -1,6 +1,6 @@
 ---
 title: Widget Composition
-description: How anywidget composition makes Observable cell handles possible.
+description: How anywidget composition makes Observable cell widgets possible.
 ---
 
 # Widget Composition
@@ -23,7 +23,7 @@ trait validates that a value is an anywidget-compatible object, then serializes
 that object as a reference string such as `anywidget:<model_id>`. The browser can
 resolve that reference through the `host` object passed to `render`.
 
-## Cell Handles and Runtime Ownership
+## Cell Widgets and Runtime Ownership
 
 An Observable notebook is one reactive graph. Python users need two views into
 that graph:
@@ -42,13 +42,13 @@ current value synchronized through the child model.
 
 ## Python Shape
 
-When Python creates a notebook, it creates one `CellHandle` child widget for each
-Notebook Kit cell.
+When Python creates a notebook, it creates one `NotebookCell` child widget for
+each Notebook Kit cell.
 
 ```python
 notebook = ojs.Notebook(
     ojs.cell('viewof gain = Inputs.range([0, 10])', name="gain"),
-    ojs.cell("gain * 2", name="double"),
+    ojs.cell("double = gain * 2", name="double"),
 )
 
 notebook.cell("gain")
@@ -56,7 +56,7 @@ notebook.cell("double")
 ```
 
 Internally, the notebook model syncs those child widgets through `_cell_widgets`.
-The trait is validated as a list of `CellHandle` widgets, then serialized to
+The trait is validated as a list of `NotebookCell` widgets, then serialized to
 browser references:
 
 ```json
@@ -68,7 +68,7 @@ browser references:
 }
 ```
 
-`_cell_widgets` is the Python-to-browser reference channel for cell handles.
+`_cell_widgets` is the Python-to-browser reference channel for cell widgets.
 
 ## Browser Shape
 
@@ -83,7 +83,7 @@ const resolved = await Promise.allSettled(
 
 For each child, `host.getWidget(ref)` returns the child widget's exports and
 render function. `host.getModel(ref)` returns the child's model so the parent can
-sync traits such as `variable_names` and `variables`.
+sync traits such as `_value_names` and `_values`.
 
 `observablejs` cell widgets export a small interface:
 
@@ -99,16 +99,16 @@ The parent calls `bindRuntime` with the Notebook Kit runtime, the Notebook Kit
 cell, notebook options, sibling cell models, and the value-sync adapter for that
 cell. It calls the child's `render` method with the target cell container.
 
-The child export protocol gives each cell handle the runtime context owned by
+The child export protocol gives each cell widget the runtime context owned by
 the parent notebook.
 
 ## Concrete Features Enabled
 
-**One runtime, many Python handles.** The parent creates one Notebook Kit runtime
+**One runtime, many Python names.** The parent creates one Notebook Kit runtime
 for the notebook. Child models hold references to cells inside that runtime.
 
 **Full notebook display.** The parent renders each child widget into a cell
-container in notebook order. Child handles are anywidget models. The notebook
+container in notebook order. Child cells are anywidget models. The notebook
 renderer controls their DOM placement.
 
 **Standalone cell display.** A child displayed separately renders against the
@@ -117,13 +117,13 @@ values from the notebook graph. `viewof` cells use an isolated render path with
 its own DOM target and a current value synced through the cell model.
 
 **Python-visible values.** Each child model syncs the variables exposed by its
-cell. The parent listens to child `variable_names` and `variables`, then
+cell. The parent listens to child `_value_names` and `_values`, then
 aggregates them onto the notebook model for `notebook.values`.
 
 **Graph and cell metadata.** The parent calls Notebook Kit `transpile` for each
 cell, records definitions, references, runtime outputs, and dependency edges,
 then syncs the graph to Python. Each graph entry is aligned with the matching
-child model, so `notebook.defining_cell("name")` and `notebook.cell("name").info`
+child model, so `notebook.cell_for_variable("name")` and `notebook.cell("name").info`
 refer to the same runtime cell.
 
 **Source panels and output state.** Pinned source rendering, error display, and
@@ -134,10 +134,10 @@ place those views. The child model owns its cell-specific state.
 
 Notebook rendering is abortable. A structural model change to `source`, `spec`,
 `attachments`, `base_url`, `options`, or `_cell_widgets` aborts the current
-render and starts a new one. Python data changes on `_data` apply to the active
+render and starts a new one. Python variable changes on `_variables` apply to the active
 Observable runtime. Ordinary variables use Observable Runtime `redefine`.
 `viewof` variables update the existing control target and emit its input event.
-When a replacement removes Python data keys, the notebook rebuilds so the
+When a replacement removes Python variable keys, the notebook rebuilds so the
 original Observable definitions are restored.
 The same `AbortSignal` is passed through child renders, Notebook Kit runtime
 cleanup, attachment registry cleanup, source highlighting, and trait listeners.
@@ -148,7 +148,7 @@ the parent one teardown boundary for all of that state.
 
 :::{warning}
 Widget composition is a host capability. Frontends need child-widget reference
-resolution for multi-cell notebooks with Python-visible cell handles. The widget
+resolution for multi-cell notebooks with Python-visible cell widgets. The widget
 raises a descriptive error when child-widget reference resolution is unavailable.
 :::
 
@@ -160,5 +160,5 @@ contract this package uses: a parent owns a Notebook Kit runtime, resolves child
 widgets inside its render function, passes a runtime context to those children,
 and cascades cleanup through one browser lifecycle.
 
-The parent notebook is the runtime owner. The child widgets are Python handles
+The parent notebook is the runtime owner. The child widgets are Python names
 into that runtime. anywidget composition connects those roles.

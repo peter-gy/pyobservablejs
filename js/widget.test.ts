@@ -28,13 +28,13 @@ describe("widget graph sync", () => {
 				],
 			},
 			attachments: {},
-			_data: {},
+			_variables: {},
 			options: {},
 			_cell_widgets: ["anywidget:cell-1", "anywidget:cell-2"],
 		});
 		const childModels = new Map([
-			["anywidget:cell-1", createModel({ role: "cell", name: "answer", variables: {}, variable_names: [] })],
-			["anywidget:cell-2", createModel({ role: "cell", name: "readout", variables: {}, variable_names: [] })],
+			["anywidget:cell-1", createModel({ role: "cell", name: "answer", _values: {}, _value_names: [] })],
+			["anywidget:cell-2", createModel({ role: "cell", name: "readout", _values: {}, _value_names: [] })],
 		]);
 		const controller = new AbortController();
 
@@ -50,7 +50,7 @@ describe("widget graph sync", () => {
 		expect(graph.cells.map((cell) => cell.name)).toEqual(["answer", "readout"]);
 		expect(graph.cells.map((cell) => cell.defines)).toEqual([["answer"], []]);
 		expect(graph.cells[1]?.references).toEqual(["answer"]);
-		expect(graph.edges).toEqual([{ from: 1, to: 2, name: "answer" }]);
+		expect(graph.edges).toEqual([{ from: 1, to: 2, variable: "answer" }]);
 		const childModel = childModels.get("anywidget:cell-1") as unknown as {
 			get(name: string): unknown;
 		};
@@ -68,13 +68,13 @@ describe("widget graph sync", () => {
 				],
 			},
 			attachments: {},
-			_data: {},
+			_variables: {},
 			options: {},
 			_cell_widgets: ["anywidget:gain", "anywidget:readout"],
 		});
 		const childModels = new Map([
-			["anywidget:gain", createModel({ role: "cell", name: "gain", variables: {}, variable_names: [] })],
-			["anywidget:readout", createModel({ role: "cell", name: "readout", variables: {}, variable_names: [] })],
+			["anywidget:gain", createModel({ role: "cell", name: "gain", _values: {}, _value_names: [] })],
+			["anywidget:readout", createModel({ role: "cell", name: "readout", _values: {}, _value_names: [] })],
 		]);
 		const controller = new AbortController();
 
@@ -87,24 +87,57 @@ describe("widget graph sync", () => {
 		await waitFor(() => model.get("_graph") as NotebookGraph | undefined);
 
 		const gainModel = childModels.get("anywidget:gain");
-		gainModel?.set("variable_names", ["gain"]);
-		gainModel?.set("variables", { gain: 5 });
+		gainModel?.set("_value_names", ["gain"]);
+		gainModel?.set("_values", { gain: 5 });
 		expect(await waitFor(() => variableValue(model, "gain"))).toBe(5);
 
-		gainModel?.set("variables", { gain: 7.5 });
+		gainModel?.set("_values", { gain: 7.5 });
 		const changedGain = await waitFor(() => (variableValue(model, "gain") === 7.5 ? 7.5 : undefined));
 
-		childModels.get("anywidget:readout")?.set("variable_names", ["readout"]);
-		childModels.get("anywidget:readout")?.set("variables", { readout: 15 });
+		childModels.get("anywidget:readout")?.set("_value_names", ["readout"]);
+		childModels.get("anywidget:readout")?.set("_values", { readout: 15 });
 		await waitFor(() => variableValue(model, "readout"));
 
 		expect(changedGain).toBe(7.5);
-		expect(model.get("variables")).toEqual({ gain: 7.5, readout: 15 });
-		expect(model.get("variable_names")).toEqual(["gain", "readout"]);
+		expect(model.get("_values")).toEqual({ gain: 7.5, readout: 15 });
+		expect(model.get("_value_names")).toEqual(["gain", "readout"]);
 		controller.abort();
 	});
 
-	test("lets Python data override notebook-defined variables", async () => {
+	test("syncs named display cell values under the cell name", async () => {
+		const model = createModel({
+			role: "notebook",
+			spec: {
+				cells: [
+					{ id: 1, mode: "ojs", value: "answer = 42" },
+					{ id: 2, mode: "ojs", value: "answer + 1" },
+				],
+			},
+			attachments: {},
+			_variables: {},
+			options: {},
+			_cell_widgets: ["anywidget:answer", "anywidget:readout"],
+		});
+		const readoutModel = createModel({ role: "cell", name: "readout", _values: {}, _value_names: [] });
+		const childModels = new Map([
+			["anywidget:answer", createModel({ role: "cell", name: "answer", _values: {}, _value_names: [] })],
+			["anywidget:readout", readoutModel],
+		]);
+		const controller = new AbortController();
+
+		widget.render({
+			model,
+			el: document.createElement("div"),
+			signal: controller.signal,
+			host: createHost(childModels, createCellExportsMap(childModels), renderChildrenThroughWidget(childModels)),
+		} as unknown as RenderProps<WidgetModel>);
+
+		expect(await waitFor(() => (variableValue(readoutModel, "readout") === 43 ? 43 : undefined))).toBe(43);
+		expect(await waitFor(() => (variableValue(model, "readout") === 43 ? 43 : undefined))).toBe(43);
+		controller.abort();
+	});
+
+	test("lets Python variables override notebook-defined variables", async () => {
 		const model = createModel({
 			role: "notebook",
 			spec: {
@@ -114,13 +147,13 @@ describe("widget graph sync", () => {
 				],
 			},
 			attachments: {},
-			_data: { answer: 41, unused: 1 },
+			_variables: { answer: 41, unused: 1 },
 			options: {},
 			_cell_widgets: ["anywidget:answer", "anywidget:doubled"],
 		});
 		const childModels = new Map([
-			["anywidget:answer", createModel({ role: "cell", name: "answer", variables: {}, variable_names: [] })],
-			["anywidget:doubled", createModel({ role: "cell", name: "doubled", variables: {}, variable_names: [] })],
+			["anywidget:answer", createModel({ role: "cell", name: "answer", _values: {}, _value_names: [] })],
+			["anywidget:doubled", createModel({ role: "cell", name: "doubled", _values: {}, _value_names: [] })],
 		]);
 		const childExports = createCellExportsMap(childModels);
 		const childRenders = renderChildrenThroughWidget(childModels);
@@ -165,14 +198,14 @@ describe("widget graph sync", () => {
 			attachments: {
 				"points.csv": { url: "https://static.example/points.csv", mimeType: "text/csv" },
 			},
-			_data: { rows: [{ x: 10 }, { x: 20 }], unused: 1 },
+			_variables: { rows: [{ x: 10 }, { x: 20 }], unused: 1 },
 			options: {},
 			_cell_widgets: ["anywidget:rows", "anywidget:count", "anywidget:attachment"],
 		});
 		const childModels = new Map([
-			["anywidget:rows", createModel({ role: "cell", name: "rows", variables: {}, variable_names: [] })],
-			["anywidget:count", createModel({ role: "cell", name: "count", variables: {}, variable_names: [] })],
-			["anywidget:attachment", createModel({ role: "cell", name: "attachmentUrl", variables: {}, variable_names: [] })],
+			["anywidget:rows", createModel({ role: "cell", name: "rows", _values: {}, _value_names: [] })],
+			["anywidget:count", createModel({ role: "cell", name: "count", _values: {}, _value_names: [] })],
+			["anywidget:attachment", createModel({ role: "cell", name: "attachmentUrl", _values: {}, _value_names: [] })],
 		]);
 		const controller = new AbortController();
 
@@ -204,13 +237,13 @@ describe("widget graph sync", () => {
 </notebook>
 `,
 			attachments: {},
-			_data: {},
+			_variables: {},
 			options: {},
 			_cell_widgets: ["anywidget:source-1", "anywidget:source-2"],
 		});
 		const childModels = new Map([
-			["anywidget:source-1", createModel({ role: "cell", name: "answer", variables: {}, variable_names: [] })],
-			["anywidget:source-2", createModel({ role: "cell", name: "double", variables: {}, variable_names: [] })],
+			["anywidget:source-1", createModel({ role: "cell", name: "answer", _values: {}, _value_names: [] })],
+			["anywidget:source-2", createModel({ role: "cell", name: "double", _values: {}, _value_names: [] })],
 		]);
 		const controller = new AbortController();
 
@@ -227,7 +260,7 @@ describe("widget graph sync", () => {
 		expect(graph.cells.map((cell) => cell.name)).toEqual(["answer", "double"]);
 		expect(graph.cells[1]?.defines).toEqual(["double"]);
 		expect(graph.cells[1]?.references).toEqual(["answer"]);
-		expect(graph.edges).toEqual([{ from: 1, to: 2, name: "answer" }]);
+		expect(graph.edges).toEqual([{ from: 1, to: 2, variable: "answer" }]);
 		controller.abort();
 	});
 
@@ -236,7 +269,7 @@ describe("widget graph sync", () => {
 			role: "notebook",
 			spec: { cells: [{ id: 1, mode: "ojs", value: "answer = 42" }] },
 			attachments: {},
-			_data: {},
+			_variables: {},
 			options: {},
 			_cell_widgets: ["anywidget:answer"],
 		});
@@ -244,15 +277,15 @@ describe("widget graph sync", () => {
 			role: "cell",
 			_cell_id: "answer-cell",
 			name: "answer",
-			variables: {},
-			variable_names: [],
+			_values: {},
+			_value_names: [],
 		});
 		const childRenderModel = createModel({
 			role: "cell",
 			_cell_id: "answer-cell",
 			name: "answer",
-			variables: {},
-			variable_names: [],
+			_values: {},
+			_value_names: [],
 		});
 		const childModels = new Map([["anywidget:answer", childRenderModel]]);
 		const childExports = new Map([["anywidget:answer", createCellExports(childInitModel)]]);
@@ -292,12 +325,12 @@ describe("widget graph sync", () => {
 			role: "notebook",
 			spec: { cells: [{ id: 1, mode: "ojs", value: source, pinned: true }] },
 			attachments: {},
-			_data: {},
+			_variables: {},
 			options: { show_source: true },
 			_cell_widgets: ["anywidget:answer"],
 		});
 		const childModels = new Map([
-			["anywidget:answer", createModel({ role: "cell", name: "answer", variables: {}, variable_names: [] })],
+			["anywidget:answer", createModel({ role: "cell", name: "answer", _values: {}, _value_names: [] })],
 		]);
 		const el = document.createElement("div");
 		const controller = new AbortController();
@@ -333,8 +366,8 @@ describe("widget graph sync", () => {
 		const childModel = createModel({
 			role: "cell",
 			name: "answer",
-			variables: {},
-			variable_names: [],
+			_values: {},
+			_value_names: [],
 		});
 		const childModels = new Map([["answer", childModel]]);
 		const model = createModel(
@@ -342,7 +375,7 @@ describe("widget graph sync", () => {
 				role: "notebook",
 				spec: { cells: [{ id: 1, mode: "ojs", value: "answer = 42" }] },
 				attachments: {},
-				_data: {},
+				_variables: {},
 				options: {},
 				_cell_widgets: ["anywidget:answer"],
 			},
@@ -377,13 +410,13 @@ describe("widget graph sync", () => {
 				],
 			},
 			attachments: {},
-			_data: {},
+			_variables: {},
 			options: {},
 			_cell_widgets: ["anywidget:answer", "anywidget:broken"],
 		});
 		const childModels = new Map([
-			["anywidget:answer", createModel({ role: "cell", name: "answer", variables: {}, variable_names: [] })],
-			["anywidget:broken", createModel({ role: "cell", name: "broken", variables: {}, variable_names: [] })],
+			["anywidget:answer", createModel({ role: "cell", name: "answer", _values: {}, _value_names: [] })],
+			["anywidget:broken", createModel({ role: "cell", name: "broken", _values: {}, _value_names: [] })],
 		]);
 		const events: string[] = [];
 		const childExports = new Map([
@@ -413,8 +446,8 @@ describe("widget graph sync", () => {
 		expect(events).toContain("unbind:answer");
 		expect(events).toContain("unbind:broken");
 		for (const childModel of childModels.values()) {
-			expect(childModel.listenerCount("change:variables")).toBe(0);
-			expect(childModel.listenerCount("change:variable_names")).toBe(0);
+			expect(childModel.listenerCount("change:_values")).toBe(0);
+			expect(childModel.listenerCount("change:_value_names")).toBe(0);
 		}
 	});
 
@@ -423,7 +456,7 @@ describe("widget graph sync", () => {
 			role: "notebook",
 			spec: { cells: [] },
 			attachments: {},
-			_data: {},
+			_variables: {},
 			options: {},
 			_cell_widgets: [],
 		});
@@ -442,18 +475,18 @@ describe("widget graph sync", () => {
 	});
 
 	test("cleans isolated standalone dependency listeners when dependency setup fails", async () => {
-		const model = createModel({ role: "cell", name: "target", variables: {}, variable_names: [] });
+		const model = createModel({ role: "cell", name: "target", _values: {}, _value_names: [] });
 		const siblingModel = createModel({
 			role: "cell",
 			name: "a",
-			variables: { a: 1 },
-			variable_names: ["a"],
+			_values: { a: 1 },
+			_value_names: ["a"],
 		});
 		const badSiblingModel = createModel({
 			role: "cell",
 			name: "b",
-			variables: {},
-			variable_names: [],
+			_values: {},
+			_value_names: [],
 		});
 		const notebook = toNotebook({
 			cells: [
@@ -464,13 +497,13 @@ describe("widget graph sync", () => {
 		});
 		const exports = createCellExports(model);
 		exports.bindRuntime({
-			notebookModel: createModel({ role: "notebook", _data: {}, variables: {}, variable_names: [] }),
+			notebookModel: createModel({ role: "notebook", _variables: {}, _values: {}, _value_names: [] }),
 			runtime: {} as CellRenderContext["runtime"],
 			showSource: false,
 			cell: notebook.cells[2],
 			cellIndex: 2,
 			notebook,
-			options: { attachments: {}, baseUrl: document.baseURI, data: {}, showSource: false },
+			options: { attachments: {}, baseUrl: document.baseURI, variables: {}, showSource: false },
 			cellModels: [siblingModel, badSiblingModel, model],
 			sync: {} as CellRenderContext["sync"],
 		});
@@ -484,7 +517,7 @@ describe("widget graph sync", () => {
 		} as unknown as RenderProps<WidgetModel>);
 
 		await waitFor(() => el.querySelector(".observablejs-error") ?? undefined);
-		expect(siblingModel.listenerCount("change:variables")).toBe(0);
+		expect(siblingModel.listenerCount("change:_values")).toBe(0);
 	});
 
 	test("standalone source cells use live notebook runtime dependencies", async () => {
@@ -497,7 +530,7 @@ describe("widget graph sync", () => {
 </notebook>
 `,
 			attachments: {},
-			_data: {},
+			_variables: {},
 			options: {},
 			_cell_widgets: ["anywidget:display", "anywidget:source"],
 		});
@@ -505,15 +538,15 @@ describe("widget graph sync", () => {
 			role: "cell",
 			_cell_id: "display-cell",
 			name: "display",
-			variables: {},
-			variable_names: [],
+			_values: {},
+			_value_names: [],
 		});
 		const sourceModel = createModel({
 			role: "cell",
 			_cell_id: "source-cell",
 			name: "source",
-			variables: {},
-			variable_names: [],
+			_values: {},
+			_value_names: [],
 		});
 		const childModels = new Map([
 			["anywidget:display", displayModel],

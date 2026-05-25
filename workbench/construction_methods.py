@@ -103,9 +103,9 @@ Plot.plot({
   marks: [Plot.barY(rows, {x: "letter", y: "frequency", tip: true})]
 })
 """,
-                attrs={"pinned": True},
+                pinned=True,
             ),
-            data={"rows": rows},
+            variables={"rows": rows},
             show_pinned_source=True,
         )
     elif method.value == "HTML string":

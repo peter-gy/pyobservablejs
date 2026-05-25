@@ -27,7 +27,7 @@ def _(mo):
     mo.md(r"""
     # Python variables in Observable
 
-    This workbench focuses on `data={...}` values, cell handles, and
+    This workbench focuses on `variables={...}` values, cell widgets, and
     browser-to-Python value sync.
     """)
     return
@@ -49,7 +49,7 @@ def _(dt):
 @app.cell
 def _(frequency_floor, letters, mo, ojs):
     notebook = ojs.Notebook(
-        ojs.md("# Python data in Observable", name="title"),
+        ojs.md("# Python variables in Observable", name="title"),
         ojs.cell(
             """
     Plot.plot({
@@ -90,7 +90,7 @@ def _(frequency_floor, letters, mo, ojs):
     """,
             name="dates",
         ),
-        data={"letters": letters, "frequencyFloor": frequency_floor},
+        variables={"letters": letters, "frequencyFloor": frequency_floor},
     )
     notebook_view = mo.ui.anywidget(notebook)
     notebook_view

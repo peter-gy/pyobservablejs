@@ -23,9 +23,9 @@ describe("notebook graph metadata", () => {
 		expect(graph.cells[2]?.runtime_outputs).toEqual(["viewof$gain"]);
 		expect(graph.cells[2]?.autoview).toBe(true);
 		expect(graph.edges).toEqual([
-			{ from: 1, to: 2, name: "a" },
-			{ from: 3, to: 4, name: "gain" },
-			{ from: 2, to: 4, name: "b" },
+			{ from: 1, to: 2, variable: "a" },
+			{ from: 3, to: 4, variable: "gain" },
+			{ from: 2, to: 4, variable: "b" },
 		]);
 	});
 
@@ -58,8 +58,8 @@ describe("notebook graph metadata", () => {
 		expect(graph.cells[0]?.runtime_outputs).toEqual(["mutable count", "mutable$count"]);
 		expect(graph.cells[0]?.automutable).toBe(true);
 		expect(graph.edges).toEqual([
-			{ from: 1, to: 2, name: "count" },
-			{ from: 1, to: 3, name: "mutable$count" },
+			{ from: 1, to: 2, variable: "count" },
+			{ from: 1, to: 3, variable: "mutable$count" },
 		]);
 	});
 
@@ -89,7 +89,7 @@ describe("notebook graph metadata", () => {
 		expect(graph.cells[3]?.autoview).toBe(true);
 		expect(graph.cells[4]?.defines).toEqual(["hidden"]);
 		expect(graph.cells[4]?.autodisplay).toBe(false);
-		expect(graph.edges).toContainEqual({ from: 1, to: 5, name: "answer" });
+		expect(graph.edges).toContainEqual({ from: 1, to: 5, variable: "answer" });
 	});
 
 	test("keeps imported Observable variables as plural outputs", () => {

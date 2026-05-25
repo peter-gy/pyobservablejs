@@ -112,7 +112,7 @@ Plot.plot({
         ),
         ojs.cell(
             """
-`Python data has ${letters.length} rows. Gain is ${gain.toFixed(1)}.`
+`Python variables have ${letters.length} rows. Gain is ${gain.toFixed(1)}.`
 """,
             name="data_readout",
         ),
@@ -124,7 +124,7 @@ letters
 """,
             name="dates",
         ),
-        data={"letters": [], "frequencyFloor": 0.04, "gain": 5},
+        variables={"letters": [], "frequencyFloor": 0.04, "gain": 5},
     )
     return (notebook,)
 
@@ -135,7 +135,7 @@ def _(frequency_floor, frequency_sliders, letters_base, notebook, python_gain):
         {**letter, "frequency": slider.value}
         for letter, slider in zip(letters_base, frequency_sliders)
     ]
-    notebook.update_data(
+    notebook.update_variables(
         letters=letters,
         frequencyFloor=frequency_floor.value,
         gain=python_gain.value,
@@ -166,7 +166,7 @@ def _(mo, notebook):
     gain_cell_view = mo.ui.anywidget(notebook.cell("gain"))
     mo.vstack(
         [
-            mo.md("**Gain cell handle**"),
+            mo.md("**Gain cell widget**"),
             gain_cell_view,
         ]
     )
@@ -190,7 +190,7 @@ def _(gain_cell_view, json, mo, notebook, notebook_view):
 @app.cell
 def _(frequency_floor, letters, mo, python_gain):
     mo.md(f"""
-    **Python data pushed to OJS:** `{len(letters)}` rows,
+    **Python variables pushed to OJS:** `{len(letters)}` rows,
     floor `{frequency_floor.value:.3f}`, gain `{python_gain.value:.1f}`
     """)
     return

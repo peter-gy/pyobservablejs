@@ -21,7 +21,7 @@ ojs.Notebook(
     mode="ojs",
     attachments=None,
     base_path=None,
-    data=None,
+    variables=None,
     show_pinned_source=False,
 )
 ```
@@ -35,8 +35,8 @@ runtime.
 - `theme`: Notebook Kit theme, usually `"air"`.
 - `mode`: default mode for plain string cells.
 - `attachments`: mapping from `FileAttachment` names to paths, URLs, or metadata.
-- `base_path`: base path for relative attachment inputs.
-- `data`: Python values exposed as OJS variables. Matching notebook variables
+- `base_path`: base path for relative attachments.
+- `variables`: Python values exposed as OJS variables. Matching notebook variables
   are overridden.
 - `show_pinned_source`: render source for pinned cells.
 
@@ -45,25 +45,28 @@ Plain string cells use `mode="ojs"` by default.
 Browser-populated fields such as `values`, `graph`, and cell metadata are empty
 until the widget has rendered.
 
-### `Notebook.data`
+### `Notebook.variables`
 
 ```python
-notebook.data
-notebook.data = {"rows": rows}
-notebook.update_data(rows=rows, floor=0.04)
+notebook.variables
+notebook.update_variables(rows=rows, floor=0.04)
+notebook.replace_variables({"rows": rows})
+notebook.reset_variables("floor")
 ```
 
-Returns the Python mapping currently exposed to the Observable runtime. Assigning
-a new mapping updates the synced widget trait. TypeScript revives the values as
-Observable builtins and redefines matching notebook variables so dependent cells
-settle on the Python-provided values.
+`variables` returns the current Python-owned variable environment exposed to the Observable runtime.
+TypeScript revives the values as Observable builtins and redefines matching
+notebook variables so dependent cells settle on the Python-provided values.
 
-`update_data` merges new keys into the current mapping before syncing the trait.
+`update_variables` merges new keys into the current mapping before syncing the trait.
 Use it when a stable notebook should receive Python-side state changes from a
 notebook host such as marimo or Jupyter.
 
-When assignment removes keys, the browser rebuilds the runtime to restore the
-notebook's original definitions for those names.
+`replace_variables(...)` swaps the full Python-owned environment. `reset_variables(...)`
+removes one or more Python-owned variables.
+
+When replacement or reset removes keys, the browser rebuilds the runtime to
+restore the notebook's original definitions for those names.
 
 ### `Notebook.cells`
 
@@ -71,8 +74,8 @@ notebook's original definitions for those names.
 notebook.cells
 ```
 
-Tuple of `CellHandle` objects in notebook order. Each Notebook Kit cell has one
-handle.
+Tuple of `NotebookCell` widgets in notebook order. Each Notebook Kit cell has one
+child widget.
 
 ### `Notebook.cell`
 
@@ -80,17 +83,16 @@ handle.
 notebook.cell(key)
 ```
 
-Return a `CellHandle` by zero-based index, handle name, or unique Observable
-variable defined by a cell. Ambiguous handle names or variable names raise
-`KeyError`.
+Return a `NotebookCell` by zero-based index or Python name. Ambiguous or
+unknown names raise `KeyError`.
 
-### `Notebook.defining_cell`
+### `Notebook.cell_for_variable`
 
 ```python
-notebook.defining_cell(name)
+notebook.cell_for_variable(name)
 ```
 
-Return the unique `CellHandle` whose graph metadata defines the Observable
+Return the unique `NotebookCell` whose graph metadata defines the Observable
 variable `name`. Graph metadata is available after the browser renders the
 notebook.
 
@@ -139,7 +141,7 @@ Source-backed notebooks return their original HTML source.
 ojs.Notebook.from_file(
     path,
     portable=True,
-    data=None,
+    variables=None,
     attachments=None,
     show_pinned_source=False,
 )
@@ -147,7 +149,7 @@ ojs.Notebook.from_file(
 
 Load Notebook Kit HTML from disk. With `portable=True`, local
 `FileAttachment(...)` references and relative JavaScript imports are embedded.
-Pass `data={...}` to set or override OJS variables.
+Pass `variables={...}` to set or override OJS variables.
 
 ### `Notebook.from_html`
 
@@ -155,7 +157,7 @@ Pass `data={...}` to set or override OJS variables.
 ojs.Notebook.from_html(
     source,
     portable=True,
-    data=None,
+    variables=None,
     attachments=None,
     base_path=None,
     show_pinned_source=False,
@@ -163,7 +165,7 @@ ojs.Notebook.from_html(
 ```
 
 Create a source-backed notebook from an HTML string. `base_path` is used to
-resolve local attachments and imports when `portable=True`. Pass `data={...}` to
+resolve local attachments and imports when `portable=True`. Pass `variables={...}` to
 set or override OJS variables.
 
 ### `Notebook.from_url`
@@ -171,7 +173,7 @@ set or override OJS variables.
 ```python
 ojs.Notebook.from_url(
     url,
-    data=None,
+    variables=None,
     attachments=None,
     show_pinned_source=False,
     timeout=30,
@@ -185,25 +187,24 @@ id, or an Observable document API URL.
 Observable API `js` nodes are converted to Notebook Kit `ojs` cells. Uploaded
 files in the document response become URL-backed `FileAttachment` entries. Any
 explicit `attachments` mapping overrides discovered remote attachments with the
-same name. Pass `data={...}` to set or override variables in the loaded
+same name. Pass `variables={...}` to set or override variables in the loaded
 notebook.
 
-## CellHandle
+## NotebookCell
 
-`CellHandle` is the child anywidget model for one Observable cell. Users usually
-obtain handles with `notebook.cell(...)`.
+`NotebookCell` is the child anywidget model for one rendered Observable cell.
+Users usually obtain cell widgets with `notebook.cell(...)`.
 
-### `CellHandle.value`
+### `NotebookCell.value`
 
 ```python
 notebook.cell("gain").value
 ```
 
-Return the resolved current value for the cell. If the handle name appears in
-its synced values, that value is returned. If the cell exposes exactly one value,
-that value is returned. Otherwise the full values dictionary is returned.
+Return the cell's browser-synchronized value when it is unambiguous. Use
+`notebook.cell("gain").values["gain"]` for explicit named access.
 
-### `CellHandle.values`
+### `NotebookCell.values`
 
 ```python
 notebook.cell("gain").values
@@ -211,7 +212,7 @@ notebook.cell("gain").values
 
 Return all browser-synchronized values exposed by the cell.
 
-### `CellHandle.info`
+### `NotebookCell.info`
 
 ```python
 notebook.cell("gain").info
@@ -222,15 +223,14 @@ Return the matching `CellInfo`, or `None` before graph metadata is available.
 ### Cell metadata shortcuts
 
 ```python
-handle.defines
-handle.references
-handle.inputs
-handle.outputs
-handle.output
-handle.runtime_outputs
+cell.defines
+cell.references
+cell.outputs
+cell.output
+cell.runtime_outputs
 ```
 
-These properties read from `handle.info` and return empty tuples or `None` before
+These properties read from `cell.info` and return empty tuples or `None` before
 the graph is available.
 
 ## Cell Helpers
@@ -238,35 +238,47 @@ the graph is available.
 | Helper | Cell mode |
 | --- | --- |
 | `ojs.cell(source, ...)` | Observable JavaScript |
-| `ojs.module(source, ...)` | ES module JavaScript |
+| `ojs.js(source, ...)` | ES module JavaScript |
 | `ojs.md(source, ...)` | Markdown |
 | `ojs.html(source, ...)` | HTML |
 | `ojs.sql(source, ...)` | SQL |
 
 ```python
-ojs.cell(source, name=None, display=True, mode="ojs", raw=False, attrs=None)
+ojs.cell(
+    source,
+    name=None,
+    display=True,
+    raw=False,
+    id=None,
+    pinned=False,
+    output=None,
+    database=None,
+    format=None,
+    attrs=None,
+)
 ```
 
-`ojs.cell(...)` accepts:
+`ojs.cell(...)` returns a source `Cell` and accepts:
 
-- `name`: a stable name for Python cell handles.
+- `name`: a stable Python name for `notebook.cell(...)`.
 - `display`: whether to render the cell output.
-- `mode`: Notebook Kit script mode for this cell.
 - `raw`: whether to preserve source whitespace exactly.
-- `attrs`: Notebook Kit script attributes such as `output`, `database`, or
-  `format`.
+- `id`: Notebook Kit cell id override.
+- `pinned`: whether Notebook Kit should treat the source as pinned.
+- `output`, `database`, `format`: common Notebook Kit script attributes.
+- `attrs`: additional Notebook Kit script attributes.
 
 Mode-specific helpers such as `ojs.md(...)` and `ojs.sql(...)` accept the same
 keywords except `mode`. Helper source strings are dedented and stripped of
 leading/trailing newlines unless `raw=True`.
 
-Use `ojs.module(...)` when you need an ES module cell:
+Use `ojs.js(...)` when you need an ES module cell:
 
 ```python
 ojs.Notebook(
-    ojs.module(
+    ojs.js(
         "const answer = 42",
-        attrs={"output": "answer"},
+        output="answer",
     ),
     ojs.cell("answer"),
 )
@@ -274,9 +286,9 @@ ojs.Notebook(
 
 Use `ojs.cell(...)` for ordinary Observable cells.
 
-## Python Data
+## Python Variables
 
-`data` accepts a mapping from JavaScript identifier names to serializable Python
+`variables` accepts a mapping from JavaScript identifier names to serializable Python
 values.
 
 Supported values include:
@@ -313,32 +325,32 @@ Before the first browser render, `notebook.graph` is `None`.
 `graph` is a `NotebookGraph` with:
 
 - `cells`: `CellInfo` entries in notebook order
-- `edges`: cell-id-to-cell-id dependencies by runtime variable name
+- `edges`: cell-id-to-cell-id dependencies by variable
 - `defines`: all Python-visible variables defined by notebook cells
 - `references`: all variables referenced by notebook cells
 - `external_references`: referenced names outside notebook cell definitions
 
-Each `DependencyEdge` has `source_id`, `target_id`, and `name`.
+Each `DependencyEdge` has `source_id`, `target_id`, and `variable`.
 
 Each `CellInfo` has:
 
 - `defines`: Python-visible variables exposed by that cell
-- `references` / `inputs`: variables read by that cell
+- `references`: variables read by that cell
 - `output`: Notebook Kit's raw singular runtime output, if present
 - `outputs`: Notebook Kit's raw plural output declarations
 - `runtime_outputs`: raw runtime names used when building dependency edges
 - `autodisplay`, `autoview`, and `automutable`
 - `error`: Notebook Kit transpilation error, when present
 
-The matching cell handle exposes the same metadata:
+The matching cell widget exposes the same metadata:
 
 ```python
-handle = notebook.cell("gain")
-handle.info
-handle.defines
-handle.references
-handle.runtime_outputs
+cell = notebook.cell("gain")
+cell.info
+cell.defines
+cell.references
+cell.runtime_outputs
 ```
 
-Use `notebook.defining_cell("gain")` to select the cell that defines the
+Use `notebook.cell_for_variable("gain")` to select the cell that defines the
 Observable variable `gain`.

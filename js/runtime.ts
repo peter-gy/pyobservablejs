@@ -4,7 +4,7 @@ import type { AttachmentRegistry, NotebookOptions } from "./types";
 import { createVariableBuiltins } from "./wire";
 
 type RuntimeBuiltins = NonNullable<ConstructorParameters<typeof NotebookRuntime>[0]>;
-type RuntimeBuiltinsWithVariables = RuntimeBuiltins & Record<string, () => unknown>;
+type RuntimeBuiltinsWithVars = RuntimeBuiltins & Record<string, () => unknown>;
 
 export function createRuntime(
 	root: HTMLElement,
@@ -12,14 +12,14 @@ export function createRuntime(
 	options: NotebookOptions,
 	attachmentRegistry: AttachmentRegistry,
 ): NotebookRuntime {
-	// Python data enters OJS as Observable builtins before Notebook Kit defines cells.
+	// Python variables enter OJS as Observable builtins before Notebook Kit defines cells.
 	const width = () => Math.max(320, Math.floor(root.getBoundingClientRect().width || el.clientWidth || 928));
 	const builtins = {
 		...library,
 		FileAttachment: () => createFileAttachment(options.baseUrl, attachmentRegistry),
 		width: width as RuntimeBuiltins["width"],
-		...createVariableBuiltins(options.data),
-	} as RuntimeBuiltinsWithVariables;
+		...createVariableBuiltins(options.variables),
+	} as RuntimeBuiltinsWithVars;
 	return new NotebookRuntime(builtins);
 }
 
@@ -28,8 +28,8 @@ type RedefinableModule = NotebookRuntime["main"] & {
 	redefine(name: string, inputs: string[], definition: () => unknown): unknown;
 };
 
-export function redefineRuntimeData(runtime: NotebookRuntime, data: Record<string, unknown>): void {
-	const definitions = createVariableBuiltins(data);
+export function redefineRuntimeVariables(runtime: NotebookRuntime, variables: Record<string, unknown>): void {
+	const definitions = createVariableBuiltins(variables);
 	for (const [name, define] of Object.entries(definitions)) {
 		try {
 			(runtime.main as RedefinableModule).redefine(name, [], define);
@@ -39,8 +39,8 @@ export function redefineRuntimeData(runtime: NotebookRuntime, data: Record<strin
 	}
 }
 
-export function setRuntimeData(runtime: NotebookRuntime, data: Record<string, unknown>): void {
-	const definitions = createVariableBuiltins(data);
+export function setRuntimeVariables(runtime: NotebookRuntime, variables: Record<string, unknown>): void {
+	const definitions = createVariableBuiltins(variables);
 	for (const [name, define] of Object.entries(definitions)) {
 		try {
 			(runtime.main as RedefinableModule).redefine(name, [], define);

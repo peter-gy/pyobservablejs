@@ -21,7 +21,7 @@ export function createNotebookGraph(notebook: Notebook, names: readonly string[]
 				.map((source) => ({
 					from: source.id,
 					to: target.id,
-					name,
+					variable: name,
 				})),
 		),
 	);
