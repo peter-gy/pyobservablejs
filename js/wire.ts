@@ -93,6 +93,10 @@ export function reviveSyncedValue(value: unknown): unknown {
 	return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, reviveSyncedValue(item)]));
 }
 
+export function sameWireValue(left: unknown, right: unknown): boolean {
+	return JSON.stringify(left) === JSON.stringify(right);
+}
+
 export function createVariableBuiltins(variables: Record<string, unknown>): Record<string, () => unknown> {
 	// Observable builtins are thunks. Cache revived Python values per variable.
 	const builtins: Record<string, () => unknown> = {};
@@ -106,7 +110,7 @@ export function createVariableBuiltins(variables: Record<string, unknown>): Reco
 	return builtins;
 }
 
-function revivePythonValue(value: unknown): unknown {
+export function revivePythonValue(value: unknown): unknown {
 	// Browser half of src/observablejs/_variables.py for the synced `_data` trait.
 	if (Array.isArray(value)) {
 		return resolveMaybePromises(value.map(revivePythonValue), (items) => items);

@@ -50,12 +50,20 @@ until the widget has rendered.
 ```python
 notebook.data
 notebook.data = {"rows": rows}
+notebook.update_data(rows=rows, floor=0.04)
 ```
 
 Returns the Python mapping currently exposed to the Observable runtime. Assigning
 a new mapping updates the synced widget trait. TypeScript revives the values as
 Observable builtins and redefines matching notebook variables so dependent cells
 settle on the Python-provided values.
+
+`update_data` merges new keys into the current mapping before syncing the trait.
+Use it when a stable notebook should receive Python-side state changes from a
+notebook host such as marimo or Jupyter.
+
+When assignment removes keys, the browser rebuilds the runtime to restore the
+notebook's original definitions for those names.
 
 ### `Notebook.cells`
 

@@ -65,6 +65,12 @@ OJS code reads `rows` directly as a normal Observable variable. In source-backed
 and public Observable notebooks, a matching `data` key replaces the notebook's
 runtime value.
 
+For a live notebook, assign `notebook.data = {...}` or call
+`notebook.update_data(...)` to push new Python values into the existing
+Observable runtime. Ordinary variables are redefined through Observable Runtime.
+For `viewof` variables, the rendered control is updated and emits the same input
+event as a user interaction.
+
 The serializer accepts JSON-like values, dates, bytes, NumPy values, and
 dataframe-like objects. Dataframes become records by default. Use
 `ojs.arrow(df)` when you want Arrow IPC and have `pyarrow` installed.

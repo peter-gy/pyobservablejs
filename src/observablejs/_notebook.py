@@ -249,6 +249,22 @@ class Notebook(_ObservableWidget):
         self._data_values = _copy_data(value)
         self.set_trait("_data", serialize_variables(self._data_values))
 
+    def update_data(
+        self,
+        values: Mapping[str, Any] | None = None,
+        /,
+        **kwargs: Any,
+    ) -> None:
+        """Update Python-backed Observable variables in the live runtime."""
+
+        updates: dict[str, Any] = {}
+        if values is not None:
+            if not isinstance(values, Mapping):
+                raise TypeError("values must be a mapping")
+            updates.update(values)
+        updates.update(kwargs)
+        self.data = {**self._data_values, **updates}
+
     @property
     def graph(self) -> NotebookGraph | None:
         """Symbolic cell graph synced from the browser runtime."""

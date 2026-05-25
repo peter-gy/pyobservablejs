@@ -24,6 +24,7 @@ export function createRuntime(
 }
 
 type RedefinableModule = NotebookRuntime["main"] & {
+	define(name: string, inputs: string[], definition: () => unknown): unknown;
 	redefine(name: string, inputs: string[], definition: () => unknown): unknown;
 };
 
@@ -34,6 +35,18 @@ export function redefineRuntimeData(runtime: NotebookRuntime, data: Record<strin
 			(runtime.main as RedefinableModule).redefine(name, [], define);
 		} catch (error) {
 			if (!isUnknownRuntimeVariable(error, name)) throw error;
+		}
+	}
+}
+
+export function setRuntimeData(runtime: NotebookRuntime, data: Record<string, unknown>): void {
+	const definitions = createVariableBuiltins(data);
+	for (const [name, define] of Object.entries(definitions)) {
+		try {
+			(runtime.main as RedefinableModule).redefine(name, [], define);
+		} catch (error) {
+			if (!isUnknownRuntimeVariable(error, name)) throw error;
+			(runtime.main as RedefinableModule).define(name, [], define);
 		}
 	}
 }

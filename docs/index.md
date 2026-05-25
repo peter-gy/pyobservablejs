@@ -36,6 +36,8 @@ ojs.Notebook(
 - `Notebook(...)` creates one Observable notebook from Python-authored cells.
 - `data={...}` sets ordinary OJS variables and overrides matching notebook
   variables.
+- `notebook.update_data(...)` mutates those Python-backed values in the live
+  runtime.
 - Named cells provide Python handles for display and value sync.
 - Notebook Kit HTML and public Observable notebooks enter the same runtime path.
 - `notebook.graph` reports Notebook Kit-derived definitions, references, and

@@ -4,7 +4,8 @@ import { observe, type NotebookRuntime } from "@observablehq/notebook-kit/runtim
 import { registerAttachments } from "./attachments";
 import { createNotebookGraph, exposedVariableNames, unprefix } from "./graph";
 import { renderSource } from "./highlight";
-import { createRuntime, createRuntimeCleanup, redefineRuntimeData } from "./runtime";
+import { createRuntime, createRuntimeCleanup } from "./runtime";
+import { createRuntimeDataSync, readNotebookData } from "./runtime-data-sync";
 import type {
 	CellExports,
 	CellRenderContext,
@@ -13,11 +14,12 @@ import type {
 	NotebookOptions,
 	ResolvedCell,
 	ResolvedCellWidget,
+	RuntimeDataSync,
 	RuntimeObserver,
-	ViewTarget,
 	WidgetModel,
 } from "./types";
-import { reviveSyncedValue, toWireValue } from "./wire";
+import { isViewTarget, readViewValue, writeViewValue } from "./view";
+import { reviveSyncedValue, sameWireValue, toWireValue } from "./wire";
 import "@observablehq/notebook-kit/index.css";
 import "@observablehq/notebook-kit/theme-air.css";
 import "./widget.css";
@@ -44,7 +46,6 @@ const MODEL_CHANGE_EVENTS = [
 	"change:spec",
 	"change:attachments",
 	"change:base_url",
-	"change:_data",
 	"change:options",
 	"change:_cell_widgets",
 ] as const;
@@ -110,7 +111,7 @@ function render({ model, el, signal, host }: RenderProps<WidgetModel> & { signal
 		current = createAbortController(signal);
 		const attempt = current;
 		const renderVersion = ++version;
-		void renderCurrent(model, el, attempt.signal, host).catch((error: unknown) => {
+		void renderCurrent(model, el, attempt.signal, host, rerender).catch((error: unknown) => {
 			if (attempt.signal.aborted || renderVersion !== version) return;
 			attempt.abort();
 			el.replaceChildren(renderTopLevelError(error));
@@ -134,6 +135,7 @@ async function renderCurrent(
 	el: HTMLElement,
 	signal: AbortSignal,
 	host: RenderProps<WidgetModel>["host"] | undefined,
+	onDataReset: () => void,
 ): Promise<void> {
 	el.replaceChildren();
 	el.classList.add("observablejs");
@@ -164,11 +166,19 @@ async function renderCurrent(
 	const attachmentRegistry = registerAttachments(options.attachments);
 	const runtime = createRuntime(root, el, options, attachmentRegistry);
 	const cleanup = createRuntimeCleanup(runtime, attachmentRegistry);
+	const dataSync = createRuntimeDataSync({
+		model,
+		runtime,
+		options,
+		viewNames: notebookViewNames(notebook),
+		signal,
+		onReset: onDataReset,
+	});
 	signal.addEventListener("abort", cleanup, { once: true });
 
 	try {
 		if (cellRefs.length > 0 && compositionHost) {
-			await renderComposedCells(model, root, notebook, cellRefs, runtime, options, signal, compositionHost);
+			await renderComposedCells(model, root, notebook, cellRefs, runtime, options, dataSync, signal, compositionHost);
 		}
 	} catch (error) {
 		if (!signal.aborted) cleanup();
@@ -275,7 +285,7 @@ function getNotebookOptions(model: RenderProps<WidgetModel>["model"]): NotebookO
 	return {
 		attachments: model.get("attachments") ?? {},
 		baseUrl: model.get("base_url") || document.baseURI,
-		data: model.get("_data") ?? {},
+		data: readNotebookData(model),
 		showSource: model.get("options")?.show_source === true,
 	};
 }
@@ -287,6 +297,7 @@ async function renderComposedCells(
 	cellRefs: string[],
 	runtime: NotebookRuntime,
 	options: NotebookOptions,
+	dataSync: RuntimeDataSync,
 	signal: AbortSignal,
 	host: CompositionHost,
 ): Promise<void> {
@@ -323,8 +334,9 @@ async function renderComposedCells(
 			continue;
 		}
 		const [child, childModel] = resolved.value;
-		const sync = createCellModelSync(childModel, signal);
+		const sync = createCellModelSync(childModel, signal, dataSync);
 		const context: CellRenderContext = {
+			notebookModel: model,
 			runtime,
 			showSource: options.showSource,
 			cell,
@@ -340,7 +352,7 @@ async function renderComposedCells(
 		renderTask = renderTask.then(() => child.render({ el: wrapper, signal }));
 	}
 	await renderTask;
-	if (!signal.aborted) redefineRuntimeData(runtime, options.data);
+	if (!signal.aborted) dataSync.apply();
 }
 
 async function resolveCellWidget(host: CompositionHost, ref: string, signal: AbortSignal): Promise<ResolvedCell> {
@@ -511,6 +523,8 @@ function renderIsolatedStandaloneCellWidget(
 	el.replaceChildren();
 	el.classList.add("observablejs");
 	if (signal.aborted) return;
+	const renderController = createAbortController(signal);
+	const renderSignal = renderController.signal;
 
 	const root = document.createElement("div");
 	root.className = "observablejs-notebook observablehq observablehq--block";
@@ -520,15 +534,41 @@ function renderIsolatedStandaloneCellWidget(
 	const attachmentRegistry = registerAttachments(context.options.attachments);
 	const runtime = createRuntime(root, el, context.options, attachmentRegistry);
 	const cleanup = createRuntimeCleanup(runtime, attachmentRegistry);
-	signal.addEventListener("abort", cleanup, { once: true });
+	const dataSync = createRuntimeDataSync({
+		model: context.notebookModel,
+		runtime,
+		options: context.options,
+		viewNames: notebookViewNames(context.notebook),
+		signal: renderSignal,
+		onReset() {
+			renderController.abort();
+			if (!signal.aborted) {
+				renderStandaloneCellWidget(
+					model,
+					el,
+					{ ...context, options: { ...context.options, data: readNotebookData(context.notebookModel) } },
+					signal,
+				);
+			}
+		},
+	});
+	renderSignal.addEventListener("abort", cleanup, { once: true });
 
 	try {
-		defineStandaloneDependencyVariables(runtime, context, signal);
+		defineStandaloneDependencyVariables(runtime, context, renderSignal);
 		const wrapper = appendCellWrapper(root);
 		wrapper.dataset.observablejsStandaloneCell = "true";
-		renderCell(wrapper, runtime, context.cell, context.showSource, createCellModelSync(model, signal), signal);
+		renderCell(
+			wrapper,
+			runtime,
+			context.cell,
+			context.showSource,
+			createCellModelSync(model, renderSignal, dataSync),
+			renderSignal,
+		);
+		dataSync.apply();
 	} catch (error) {
-		if (!signal.aborted) cleanup();
+		if (!renderSignal.aborted) cleanup();
 		throw error;
 	}
 }
@@ -703,24 +743,48 @@ function viewVariableName(definition: ReturnType<typeof transpile>): string | nu
 	return unprefix(definition.output, "viewof$");
 }
 
+function notebookViewNames(notebook: Notebook): Set<string> {
+	const names = new Set<string>();
+	for (const cell of notebook.cells) {
+		try {
+			const name = viewVariableName(transpile(cell, { resolveLocalImports: true }));
+			if (name) names.add(name);
+		} catch {
+			continue;
+		}
+	}
+	return names;
+}
+
 function registerView(sync: CellVariableSync, name: string, value: unknown): void {
 	if (!isViewTarget(value)) return;
+	const previous = sync.views.get(name);
+	if (previous === value) {
+		sync.dataSync?.setView(name, value);
+		applyModelVariablesToViews(sync);
+		return;
+	}
+	sync.viewCleanups.get(name)?.();
 	sync.views.set(name, value);
+	sync.dataSync?.setView(name, value);
 	applyModelVariablesToViews(sync);
-	sync.signal.addEventListener(
-		"abort",
-		() => {
-			sync.views.delete(name);
-		},
-		{ once: true },
-	);
+	let cleanup!: () => void;
+	const abort = () => cleanup();
+	cleanup = () => {
+		sync.signal.removeEventListener("abort", abort);
+		if (sync.views.get(name) === value) sync.views.delete(name);
+		if (sync.viewCleanups.get(name) === cleanup) sync.viewCleanups.delete(name);
+		sync.dataSync?.deleteView(name, value);
+	};
+	sync.viewCleanups.set(name, cleanup);
+	sync.signal.addEventListener("abort", abort, { once: true });
 }
 
-function isViewTarget(value: unknown): value is ViewTarget {
-	return value instanceof EventTarget && "value" in value;
-}
-
-function createCellModelSync(model: RenderProps<WidgetModel>["model"], signal: AbortSignal): CellVariableSync {
+function createCellModelSync(
+	model: RenderProps<WidgetModel>["model"],
+	signal: AbortSignal,
+	dataSync?: RuntimeDataSync,
+): CellVariableSync {
 	// Cell models expose OJS state to Python through `variable_names` and `variables`.
 	const sync = createBaseSync(model, signal, {
 		readNames: () => model.get("variable_names") ?? [],
@@ -735,6 +799,7 @@ function createCellModelSync(model: RenderProps<WidgetModel>["model"], signal: A
 		},
 		changeEvent: "change:variables",
 	});
+	sync.dataSync = dataSync;
 	return sync;
 }
 
@@ -759,6 +824,7 @@ function createBaseSync(
 		model,
 		signal,
 		views: new Map(),
+		viewCleanups: new Map(),
 		setVariableNames(names) {
 			if (sameWireValue(adapter.readNames(), names)) return;
 			adapter.writeNames(names);
@@ -784,45 +850,6 @@ function applyModelVariablesToViews(sync: CellVariableSync): void {
 		if (sameWireValue(toWireValue(readViewValue(view)), wireValue)) continue;
 		writeViewValue(view, reviveSyncedValue(wireValue));
 	}
-}
-
-function readViewValue(view: ViewTarget): unknown {
-	if (view instanceof HTMLInputElement) {
-		if (view.type === "checkbox") return view.checked;
-		if (view.type === "number" || view.type === "range") return view.valueAsNumber;
-		return view.value;
-	}
-	if (view instanceof HTMLSelectElement && view.multiple) {
-		return Array.from(view.selectedOptions, (option) => option.value);
-	}
-	return view.value;
-}
-
-function writeViewValue(view: ViewTarget, value: unknown): void {
-	if (view instanceof HTMLInputElement) {
-		if (view.type === "checkbox") {
-			view.checked = Boolean(value);
-			view.value = String(value);
-			view.dispatchEvent(new Event("click", { bubbles: true }));
-		} else if (view.type === "date" && value instanceof Date) {
-			view.value = value.toISOString().slice(0, 10);
-		} else if (view.type === "datetime-local" && value instanceof Date) {
-			view.value = value.toISOString().slice(0, 16);
-		} else {
-			view.value = value == null ? "" : String(value);
-		}
-	} else if (view instanceof HTMLSelectElement && view.multiple && Array.isArray(value)) {
-		const selected = new Set(value.map(String));
-		for (const option of view.options) option.selected = selected.has(option.value);
-	} else {
-		view.value = value;
-	}
-	view.dispatchEvent(new Event("input", { bubbles: true }));
-	view.dispatchEvent(new Event("change", { bubbles: true }));
-}
-
-function sameWireValue(left: unknown, right: unknown): boolean {
-	return JSON.stringify(left) === JSON.stringify(right);
 }
 
 function syncNotebookGraph(

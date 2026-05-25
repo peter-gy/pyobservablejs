@@ -132,11 +132,15 @@ place those views. The child model owns its cell-specific state.
 
 ## Lifecycle and Cleanup
 
-Notebook rendering is abortable. A model change to `source`, `spec`,
-`attachments`, `_data`, or `_cell_widgets` aborts the current render and starts a
-new one. The same `AbortSignal` is passed through child renders, Notebook Kit
-runtime cleanup, attachment registry cleanup, source highlighting, and trait
-listeners.
+Notebook rendering is abortable. A structural model change to `source`, `spec`,
+`attachments`, `base_url`, `options`, or `_cell_widgets` aborts the current
+render and starts a new one. Python data changes on `_data` apply to the active
+Observable runtime. Ordinary variables use Observable Runtime `redefine`.
+`viewof` variables update the existing control target and emit its input event.
+When a replacement removes Python data keys, the notebook rebuilds so the
+original Observable definitions are restored.
+The same `AbortSignal` is passed through child renders, Notebook Kit runtime
+cleanup, attachment registry cleanup, source highlighting, and trait listeners.
 
 Observable cells can hold DOM nodes, event listeners, runtime variables,
 attachment registrations, and async highlighting work. The signal chain gives

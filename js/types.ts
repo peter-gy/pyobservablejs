@@ -50,12 +50,20 @@ export type AttachmentRegistry = {
 export type CellVariableSync = {
 	model: RenderProps<WidgetModel>["model"];
 	signal: AbortSignal;
+	dataSync?: RuntimeDataSync;
 	// OJS viewof cells expose DOM-ish targets. Python value updates write back
 	// into those targets so the rendered control and synced trait stay aligned.
 	views: Map<string, ViewTarget>;
+	viewCleanups: Map<string, () => void>;
 	setVariableNames(names: string[]): void;
 	setVariable(name: string, value: unknown): void;
 	currentVariables(): Record<string, unknown>;
+};
+
+export type RuntimeDataSync = {
+	apply(): void;
+	setView(name: string, view: ViewTarget): void;
+	deleteView(name: string, view: ViewTarget): void;
 };
 
 export type ViewTarget = EventTarget & {
@@ -64,6 +72,7 @@ export type ViewTarget = EventTarget & {
 };
 
 export type CellRenderContext = {
+	notebookModel: RenderProps<WidgetModel>["model"];
 	runtime: NotebookRuntime;
 	showSource: boolean;
 	cell: Cell;

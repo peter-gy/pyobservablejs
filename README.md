@@ -59,6 +59,8 @@ uv add "observablejs[data]"
 
 - `ojs.Notebook(...)` builds a Notebook Kit notebook from Python-authored cells.
 - `data={...}` sets OJS variables. A matching notebook variable is overridden.
+- `notebook.update_data(...)` pushes Python-side changes into the live OJS
+  runtime.
 - `name="..."` gives Python a stable handle for a cell.
 - `notebook.values` and `notebook.cell("name").value` read browser-synchronized
   outputs after rendering.

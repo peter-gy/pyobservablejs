@@ -458,6 +458,21 @@ def test_data_updates_synced_wire_state() -> None:
     assert widget.get_state(["_data"]) == {"_data": {"py_value": 7}}
 
 
+def test_update_data_merges_synced_wire_state() -> None:
+    widget = ojs.Notebook(data={"py_value": 7})
+
+    widget.update_data({"other": dt.date(2026, 5, 25)}, py_value=8)
+
+    assert widget.data == {"py_value": 8, "other": dt.date(2026, 5, 25)}
+    assert widget.get_state(["_data"])["_data"] == {
+        "py_value": 8,
+        "other": {
+            "__observablejs_type__": "datetime",
+            "value": "2026-05-25",
+        },
+    }
+
+
 def test_invalid_python_data_name_raises() -> None:
     with pytest.raises(ValueError, match="Invalid Observable variable name"):
         ojs.Notebook(data={"not-valid": 1})

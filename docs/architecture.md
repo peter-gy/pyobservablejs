@@ -120,9 +120,14 @@ and browser rendering.
 - Matching `data` keys are applied with Observable Runtime `redefine`, so Python
   values can replace variables from Python-authored, source-backed, and public
   Observable notebooks.
+- Matching `viewof` keys write the existing input target and dispatch its input
+  event, so controls stay visually aligned with the runtime value.
 - `ojs.arrow(df)` sends Arrow IPC and lazily imports Apache Arrow in the browser.
-- Notebook updates re-render through anywidget model change events. The render
-  path aborts obsolete work before starting the next runtime.
+- Structural notebook updates re-render through anywidget model change events.
+  Python data updates mutate the current runtime through the synced `_data`
+  trait.
+- Removing Python data keys rebuilds the runtime, which restores the notebook's
+  own definitions for those names.
 - File attachments and relative imports can be embedded as data URLs. Embedding
   makes notebooks portable and increases trait/source payload size.
 - Shiki is initialized once with the imported languages and theme, and falls
