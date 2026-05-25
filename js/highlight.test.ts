@@ -13,17 +13,23 @@ describe("source highlighting", () => {
 		);
 		document.body.appendChild(panel);
 
-		expect(panel.querySelector(".observablejs-source-label")?.textContent).toBe("OJS");
+		const label = panel.querySelector(".observablejs-source-label");
+		const pre = panel.querySelector<HTMLPreElement>(".observablejs-source");
+		expect(label?.textContent).toBe("OJS");
+		expect(panel.querySelector(".observablejs-source-header")).toBeNull();
+		expect(pre?.nextElementSibling).toBe(label);
+		expect(pre?.contains(label)).toBe(false);
+		expect(pre?.getAttribute("aria-label")).toBe("OJS source");
 		expect(panel.querySelector("code")?.textContent).toBe(source);
 
-		const pre = await waitFor(() => {
-			const source = panel.querySelector<HTMLPreElement>(".observablejs-source");
-			return source?.dataset.highlight === "ready" ? source : undefined;
+		const highlighted = await waitFor(() => {
+			const sourcePre = panel.querySelector<HTMLPreElement>(".observablejs-source");
+			return sourcePre?.dataset.highlight === "ready" ? sourcePre : undefined;
 		});
 
-		expect(pre.textContent).toBe(source);
-		expect(pre.querySelectorAll(".observablejs-source-line")).toHaveLength(2);
-		expect(pre.querySelector(".observablejs-source-token")).not.toBeNull();
+		expect(highlighted.textContent).toBe(source);
+		expect(highlighted.querySelectorAll(".observablejs-source-line")).toHaveLength(2);
+		expect(highlighted.querySelector(".observablejs-source-token")).not.toBeNull();
 	});
 });
 

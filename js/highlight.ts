@@ -51,22 +51,20 @@ export function renderSource(cell: Cell, signal: AbortSignal): HTMLElement {
 	const panel = document.createElement("div");
 	panel.className = "observablejs-source-panel";
 
-	const header = document.createElement("div");
-	header.className = "observablejs-source-header";
 	const label = document.createElement("span");
 	label.className = "observablejs-source-label";
 	label.textContent = sourceMode.label;
-	header.appendChild(label);
 
 	const pre = document.createElement("pre");
 	pre.className = "observablejs-source";
 	pre.tabIndex = 0;
 	pre.dataset.highlight = "pending";
+	pre.setAttribute("aria-label", `${sourceMode.label} source`);
 	const code = document.createElement("code");
 	code.className = `language-${sourceMode.language ?? cell.mode}`;
 	code.textContent = cell.value;
 	pre.appendChild(code);
-	panel.append(header, pre);
+	panel.append(pre, label);
 
 	void highlightSource(cell, pre, code, signal);
 	return panel;

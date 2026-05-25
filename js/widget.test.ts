@@ -281,6 +281,49 @@ describe("widget graph sync", () => {
 		controller.abort();
 	});
 
+	test("renders pinned source chrome below the cell output", async () => {
+		const source = "answer = 42";
+		const model = createModel({
+			role: "notebook",
+			spec: { cells: [{ id: 1, mode: "ojs", value: source, pinned: true }] },
+			attachments: {},
+			_data: {},
+			options: { show_source: true },
+			_cell_widgets: ["anywidget:answer"],
+		});
+		const childModels = new Map([
+			["anywidget:answer", createModel({ role: "cell", name: "answer", variables: {}, variable_names: [] })],
+		]);
+		const el = document.createElement("div");
+		const controller = new AbortController();
+
+		widget.render({
+			model,
+			el,
+			signal: controller.signal,
+			host: createHost(childModels, createCellExportsMap(childModels), renderChildrenThroughWidget(childModels)),
+		} as unknown as RenderProps<WidgetModel>);
+
+		const wrapper = await waitFor(
+			() => el.querySelector<HTMLElement>("[data-observablejs-composed='true']") ?? undefined,
+		);
+		await waitFor(() => wrapper.querySelector(".observablejs-source-panel") ?? undefined);
+		const children = Array.from(wrapper.children);
+		const panel = wrapper.querySelector<HTMLElement>(".observablejs-source-panel");
+		const pre = panel?.querySelector<HTMLPreElement>(".observablejs-source");
+		const label = panel?.querySelector<HTMLElement>(".observablejs-source-label");
+
+		expect(children[0]?.classList.contains("observablehq--cell")).toBe(true);
+		expect(children[1]).toBe(panel);
+		expect(panel?.querySelector(".observablejs-source-header")).toBeNull();
+		expect(pre?.textContent).toBe(source);
+		expect(pre?.nextElementSibling).toBe(label);
+		expect(pre?.contains(label ?? null)).toBe(false);
+		expect(pre?.getAttribute("aria-label")).toBe("OJS source");
+		expect(label?.textContent).toBe("OJS");
+		controller.abort();
+	});
+
 	test("renders composed cells through widget_manager when host is absent", async () => {
 		const childModel = createModel({
 			role: "cell",
