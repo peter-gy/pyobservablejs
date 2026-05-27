@@ -49,12 +49,6 @@ uv add pyobservablejs
 
 `pyobservablejs` supports Python 3.10 through 3.14.
 
-For optional dataframe serialization support:
-
-```sh
-uv add "pyobservablejs[data]"
-```
-
 ## Notebook Model
 
 - `obs.Notebook(...)` builds a Notebook Kit notebook from Python-authored cells.
@@ -69,12 +63,12 @@ uv add "pyobservablejs[data]"
 
 Cell helpers keep the source mode explicit:
 
-| Helper | Source mode |
-| --- | --- |
-| `obs.ojs(...)` | Observable JavaScript |
-| `obs.js(...)` | ES module JavaScript |
-| `obs.md(...)` | Markdown |
-| `obs.html(...)` | HTML |
+| Helper          | Source mode           |
+| --------------- | --------------------- |
+| `obs.ojs(...)`  | Observable JavaScript |
+| `obs.js(...)`   | ES module JavaScript  |
+| `obs.md(...)`   | Markdown              |
+| `obs.html(...)` | HTML                  |
 
 ```python
 notebook = obs.Notebook(
@@ -84,24 +78,36 @@ notebook = obs.Notebook(
 )
 
 notebook.cell("gain")
+```
+
+After the notebook or cell widget has rendered in the browser, read the synced
+value from a later Python cell:
+
+```python
 notebook.value("double")
 ```
 
 ## Source Notebooks
 
-Load Notebook Kit HTML from disk:
+Load Notebook Kit HTML from a string:
 
 ```python
-notebook = obs.Notebook.from_file("chart.html")
+from pathlib import Path
+
+path = Path("chart.html")
+notebook = obs.Notebook.from_html(
+    path.read_text(encoding="utf-8"),
+    base_path=path.parent,
+)
 ```
 
 Local `FileAttachment(...)` references and relative JavaScript imports are
 embedded by default so the widget can move between notebook frontends.
 
-Load a public Observable notebook by URL, slug, or id:
+Load a public ObservableHQ notebook by URL, slug, or id:
 
 ```python
-notebook = obs.Notebook.from_url("https://observablehq.com/@mbostock/saving-svg")
+notebook = obs.Notebook.from_observablehq("https://observablehq.com/@mbostock/saving-svg")
 ```
 
 Remote `FileAttachment(...)` entries are registered as URL-backed attachments,
@@ -111,6 +117,7 @@ Pass `variables={...}` to override variables in a loaded notebook with Python va
 ## Documentation
 
 - [Quickstart](docs/quickstart.md)
+- [Examples](docs/examples.md)
 - [Concepts](docs/concepts.md)
 - [Architecture](docs/architecture.md)
 - [Widget composition](docs/composition.md)

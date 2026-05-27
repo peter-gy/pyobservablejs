@@ -31,11 +31,12 @@ uv run marimo edit workbench/construction_methods.py
 uv run marimo edit workbench/observable_urls.py
 ```
 
-`workbench/gallery_examples.py` can load the Observable Notebook Kit example
-gallery when available:
+`workbench/gallery_examples.py` can load a local Observable Notebook Kit example
+gallery. Set `NOTEBOOK_KIT_GALLERY_ROOT` to the `docs/ex` directory from a local
+`observablehq/notebook-kit` checkout:
 
 ```sh
-NOTEBOOK_KIT_GALLERY_ROOT=/path/to/notebook-kit/docs/ex uv run marimo edit workbench/gallery_examples.py
+NOTEBOOK_KIT_GALLERY_ROOT=/Users/petergy/Projects/opensource/observablehq/notebook-kit/docs/ex uv run marimo edit workbench/gallery_examples.py
 ```
 
 The notebooks cover separate runtime paths:
@@ -43,9 +44,9 @@ The notebooks cover separate runtime paths:
 - `python_vars.py`: Python `variables` values, cell widgets, and value sync.
 - `gallery_examples.py`: local Notebook Kit HTML examples.
 - `construction_methods.py`: Python cells, HTML strings, HTML files, and public
-  Observable URLs.
-- `observable_urls.py`: public Observable Plot URL loading, URL-backed
-  attachments, and a fixed Python variable override smoke path.
+  ObservableHQ notebooks.
+- `observable_urls.py`: public ObservableHQ Plot loading, URL-backed
+  attachments, and a fixed Python variable override example.
 
 ## Documentation
 
@@ -87,16 +88,26 @@ git diff --check
 
 ## Browser Deep Checks
 
-For widget-runtime, workbench, or docs examples that depend on frontend behavior,
-run a real frontend smoke check with `$agent-browser`.
+For widget frontend, notebook rendering, Observable runtime, Jupyter or marimo
+integration, docs site rendering, or user-visible UI changes, run the local
+frontends and verify them with `$agent-browser`.
 
 ```sh
-uv run marimo run workbench/observable_urls.py --headless --no-token --port 31401
+uv run jupyter lab --no-browser --port 27273 --ServerApp.token='' --ServerApp.password=''
+uv run marimo run --no-sandbox --headless --no-token --port 27271 workbench/python_vars.py
+NOTEBOOK_KIT_GALLERY_ROOT=/Users/petergy/Projects/opensource/observablehq/notebook-kit/docs/ex \
+  uv run marimo run --no-sandbox --headless --no-token --port 27272 workbench/gallery_examples.py
 ```
 
-Open `http://localhost:31401` and verify:
+Verify:
 
-- the selected public Observable notebook renders,
-- URL-backed file attachments still load,
-- enabling the Python variable override smoke path changes the fixed scatterplot to
-  the Python-provided rows.
+- `example.ipynb` can restart and run all in JupyterLab, then renders the
+  Observable title plus Plot output.
+- `workbench/python_vars.py` renders without browser errors, and interactive OJS
+  values propagate back to Python-visible `notebook.values`.
+- `workbench/gallery_examples.py` renders the default gallery example and can
+  switch to another example without console or page errors.
+
+Use `agent-browser console`, `agent-browser errors`, DOM or shadow-DOM
+inspection, and screenshots where they expose the failure. Stop local servers and
+browser sessions before handoff.

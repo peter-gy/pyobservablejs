@@ -18,7 +18,14 @@ class DependencyEdge:
 
 @dataclasses.dataclass(frozen=True)
 class CellInfo:
-    """Notebook Kit symbolic information for one cell."""
+    """Notebook Kit symbolic metadata for one rendered cell.
+
+    ``defines`` names Python-visible variables exposed by the cell.
+    ``references`` names variables read by the cell. ``outputs`` are Notebook Kit
+    declarations, and ``runtime_outputs`` are the raw runtime names used for
+    dependency edges. The auto flags mirror Notebook Kit display, ``viewof``, and
+    mutable output handling.
+    """
 
     id: int
     index: int

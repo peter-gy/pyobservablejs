@@ -15,7 +15,7 @@ import traitlets
 
 from ._files import FileInput, normalize_files, prepare_source
 from ._graph import CellInfo, NotebookGraph, graph_from_raw
-from ._observable import fetch_observable_notebook
+from ._observable import fetch_observablehq_notebook
 from ._serialize import AUTHOR_MODES, SCRIPT_TYPES, AuthorMode, Mode, serialize
 from ._variables import deserialize_value, serialize_variables
 
@@ -156,7 +156,12 @@ class NotebookCell(_ObservableWidget):
 
     @property
     def value(self) -> Any:
-        """Return the value for this name when it is unambiguous."""
+        """Return this cell's synchronized value.
+
+        Uses the cell's Python name when that name is present in ``values``.
+        Falls back to the only synchronized value. Raises ``KeyError`` when the
+        cell has no values or exposes multiple unnamed values.
+        """
 
         return self._value()
 
@@ -212,7 +217,17 @@ class Notebook(_ObservableWidget):
         variables: Mapping[str, Any] | None = None,
         show_pinned_source: bool = False,
     ) -> None:
-        """Create a notebook from Python-authored cells."""
+        """Create a notebook from Python-authored cells.
+
+        Plain strings use ``mode``. Helper-created cells keep their own modes.
+        ``attachments`` registers ``FileAttachment`` values, with ``base_path``
+        resolving relative local paths. ``variables`` sets Python-owned OJS
+        variables. ``show_pinned_source`` renders source for pinned cells.
+
+        Raises:
+            ValueError: ``mode`` or a variable name is invalid.
+            TypeError: A cell or variable value cannot be serialized.
+        """
 
         _ensure_author_mode(mode)
         cell_specs = [
@@ -286,7 +301,12 @@ class Notebook(_ObservableWidget):
         /,
         **kwargs: Any,
     ) -> None:
-        """Patch Python-owned variables in the live Observable runtime."""
+        """Merge Python-owned variable updates into the live runtime.
+
+        Accepts a mapping, key/value pairs, keyword arguments, or both. Nonempty
+        updates set ``_variable_update`` with kind ``"set"`` and refresh the
+        serialized ``_variables`` trait.
+        """
 
         updates = _updates_from_args("update_variables", values, kwargs)
         if updates:
@@ -298,7 +318,13 @@ class Notebook(_ObservableWidget):
         /,
         **kwargs: Any,
     ) -> None:
-        """Replace the full Python-owned variable environment."""
+        """Replace the full Python-owned variable environment.
+
+        Accepts a mapping, key/value pairs, keyword arguments, or both. Omitted
+        names are released. The browser receives a replacement update and
+        rebuilds the runtime so original notebook definitions return for
+        released names.
+        """
 
         self._replace_variables(
             _updates_from_args("replace_variables", values, kwargs),
@@ -306,7 +332,12 @@ class Notebook(_ObservableWidget):
         )
 
     def reset_variables(self, *names: str) -> None:
-        """Release Python ownership for one or more variables."""
+        """Release Python ownership for names that are currently overridden.
+
+        Empty calls and missing names are no-ops. Removing at least one name
+        sends a replacement update and restores original notebook definitions in
+        the browser runtime.
+        """
 
         if not names:
             return
@@ -418,7 +449,12 @@ class Notebook(_ObservableWidget):
         return _unique_cell_wire_values(self.cells)
 
     def value(self, name: str) -> Any:
-        """Return the latest browser-synchronized value for ``name``."""
+        """Return the synchronized value for ``name``.
+
+        Uses graph metadata to read the defining cell when available. Falls back
+        to notebook-level synchronized values. Raises ``KeyError`` when no value
+        has synchronized for ``name``.
+        """
 
         graph = self.graph
         if graph is not None:
@@ -441,8 +477,17 @@ class Notebook(_ObservableWidget):
         variables: Mapping[str, Any] | None = None,
         show_pinned_source: bool = False,
     ) -> "Notebook":
-        """Create a notebook from Notebook Kit HTML."""
+        """Create a source-backed notebook from a Notebook Kit HTML string.
 
+        With ``portable=True`` and ``base_path`` set, local file attachments are
+        embedded and relative JavaScript imports are rewritten to data URLs.
+        Explicit ``attachments`` override discovered attachments with the same
+        name. ``variables`` sets Python-owned OJS variables for the rendered
+        notebook.
+        """
+
+        if not isinstance(source, str):
+            raise TypeError("source must be a Notebook Kit HTML string")
         source, discovered = prepare_source(
             source,
             base_path=base_path,
@@ -461,40 +506,24 @@ class Notebook(_ObservableWidget):
         )
 
     @classmethod
-    def from_file(
+    def from_observablehq(
         cls,
-        path: str | pathlib.Path,
-        *,
-        portable: bool = True,
-        variables: Mapping[str, Any] | None = None,
-        attachments: Mapping[str, FileInput] | None = None,
-        show_pinned_source: bool = False,
-    ) -> "Notebook":
-        """Load Notebook Kit HTML from disk and create a notebook widget."""
-
-        path = pathlib.Path(path).expanduser().resolve()
-        return cls.from_html(
-            path.read_text(encoding="utf-8"),
-            base_path=path.parent,
-            portable=portable,
-            variables=variables,
-            attachments=attachments,
-            show_pinned_source=show_pinned_source,
-        )
-
-    @classmethod
-    def from_url(
-        cls,
-        url: str,
+        specifier: str,
         *,
         variables: Mapping[str, Any] | None = None,
         attachments: Mapping[str, FileInput] | None = None,
         show_pinned_source: bool = False,
         timeout: float | None = 30,
     ) -> "Notebook":
-        """Load a public Observable notebook URL through the document API."""
+        """Fetch a public ObservableHQ notebook through the document API.
 
-        source, discovered = fetch_observable_notebook(url, timeout=timeout)
+        ``specifier`` may be an ObservableHQ URL, slug, id, or document API URL.
+        Remote uploaded files become URL-backed attachments. ``timeout`` controls
+        the network request. Invalid specifiers or non-JSON responses raise
+        ``ValueError``. HTTP and network failures raise ``OSError``.
+        """
+
+        source, discovered = fetch_observablehq_notebook(specifier, timeout=timeout)
         normalized = normalize_files(attachments, base_path=None)
         return cls.from_html(
             source,

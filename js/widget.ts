@@ -32,10 +32,8 @@ import "@observablehq/notebook-kit/index.css";
 import "@observablehq/notebook-kit/theme-air.css";
 import "./widget.css";
 
-// Notebook models own the Notebook Kit runtime. Cell models own per-cell names
-// for rendering and synchronized values. The widget lifecycle keeps anywidget
-// views, Observable runtime state, and standalone cell displays aligned with the
-// active parent notebook runtime.
+// Child widgets render through the parent runtime context. Standalone mounts
+// must rerender when that context changes or aborts.
 
 type CellWidgetMount = {
 	el: HTMLElement;
@@ -315,7 +313,6 @@ async function renderComposedCells(
 	signal: AbortSignal,
 	host: CompositionHost,
 ): Promise<void> {
-	// One Notebook Kit runtime, one child widget model per cell.
 	const cells = notebook.cells;
 	const wrappers = cells.map((_, index) => {
 		return appendCellWrapper(root, { composedCellRef: cellRefs[index] ?? "" });
@@ -780,7 +777,6 @@ function createCellModelSync(
 	signal: AbortSignal,
 	variablesSync?: RuntimeVariablesSync,
 ): CellVariableSync {
-	// Cell models expose OJS state to Python through `_value_names` and `_values`.
 	const sync = createBaseSync(model, signal, {
 		readNames: () => model.get("_value_names") ?? [],
 		writeNames: (names) => {
@@ -838,7 +834,6 @@ function createBaseSync(
 }
 
 function applyModelVariablesToViews(sync: CellVariableSync): void {
-	// Python writes to `_values` update backing `viewof` controls.
 	for (const [name, wireValue] of Object.entries(sync.currentVariables())) {
 		const view = sync.views.get(name);
 		if (!view) continue;

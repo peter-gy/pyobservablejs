@@ -15,10 +15,11 @@ project:
   toc:
     - file: index.md
     - file: quickstart.md
+    - file: examples.md
     - file: concepts.md
+    - file: api.md
     - file: architecture.md
     - file: composition.md
-    - file: api.md
     - file: development.md
 site:
   template: book-theme

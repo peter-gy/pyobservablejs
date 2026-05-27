@@ -27,8 +27,8 @@ def _(mo):
     mo.md(r"""
     # Python variables in Observable
 
-    This workbench focuses on `variables={...}` values, cell widgets, and
-    browser-to-Python value sync.
+    Python `letters` and `frequencyFloor` feed OJS. Move the Gain control to
+    sync its value back through `notebook.values`.
     """)
     return
 

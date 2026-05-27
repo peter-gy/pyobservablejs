@@ -1,4 +1,4 @@
-"""Convert public Observable documents to Notebook Kit inputs."""
+"""Convert public ObservableHQ documents to Notebook Kit inputs."""
 
 from __future__ import annotations
 
@@ -20,10 +20,10 @@ _SLUG_SPECIFIER_RE = re.compile(
 )
 
 
-def resolve_observable_url(input: str) -> str:
-    """Return the Observable document API URL for a public notebook specifier."""
+def resolve_observablehq_api_url(specifier: str) -> str:
+    """Return the ObservableHQ document API URL for a public notebook specifier."""
 
-    value = input.strip()
+    value = specifier.strip()
     if _ID_SPECIFIER_RE.fullmatch(value):
         value = f"{_UI_ORIGIN}/d/{value}"
     elif _SLUG_SPECIFIER_RE.fullmatch(value):
@@ -31,9 +31,10 @@ def resolve_observable_url(input: str) -> str:
 
     url = urllib.parse.urlsplit(value)
     if not url.scheme or not url.netloc:
-        raise ValueError(f"Invalid Observable notebook URL: {input!r}")
+        raise ValueError(f"Invalid ObservableHQ notebook specifier: {specifier!r}")
+    if url.netloc not in {"observablehq.com", "api.observablehq.com"}:
+        raise ValueError(f"Invalid ObservableHQ notebook specifier: {specifier!r}")
 
-    api_host = url.netloc if url.netloc.startswith("api.") else f"api.{url.netloc}"
     if url.path.startswith("/document/"):
         api_path = url.path
     else:
@@ -41,17 +42,19 @@ def resolve_observable_url(input: str) -> str:
             url.path.replace("/d/", "/", 1) if url.path.startswith("/d/") else url.path
         )
         api_path = f"/document{path}"
-    return urllib.parse.urlunsplit((url.scheme, api_host, api_path, url.query, ""))
+    return urllib.parse.urlunsplit(
+        (url.scheme, "api.observablehq.com", api_path, url.query, "")
+    )
 
 
-def fetch_observable_notebook(
-    url: str,
+def fetch_observablehq_notebook(
+    specifier: str,
     *,
     timeout: float | None = 30,
 ) -> tuple[str, dict[str, dict[str, Any]]]:
-    """Fetch a public Observable notebook and return Notebook Kit HTML plus files."""
+    """Fetch a public ObservableHQ notebook and return Notebook Kit HTML plus files."""
 
-    api_url = resolve_observable_url(url)
+    api_url = resolve_observablehq_api_url(specifier)
     request = urllib.request.Request(
         api_url,
         headers={
@@ -64,18 +67,18 @@ def fetch_observable_notebook(
             raw = response.read().decode("utf-8")
     except urllib.error.HTTPError as error:
         raise OSError(
-            f"Unable to fetch Observable notebook {api_url}: HTTP {error.code}"
+            f"Unable to fetch ObservableHQ notebook {api_url}: HTTP {error.code}"
         ) from error
     except urllib.error.URLError as error:
         raise OSError(
-            f"Unable to fetch Observable notebook {api_url}: {error.reason}"
+            f"Unable to fetch ObservableHQ notebook {api_url}: {error.reason}"
         ) from error
 
     try:
         document = json.loads(raw)
     except json.JSONDecodeError as error:
         raise ValueError(
-            f"Observable document response was not JSON: {api_url}"
+            f"ObservableHQ document response was not JSON: {api_url}"
         ) from error
     return observable_document_to_html(document)
 

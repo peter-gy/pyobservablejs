@@ -27,8 +27,9 @@ def _(mo):
     mo.md(r"""
     # Bidirectional Observable state
 
-    This workbench keeps one Observable notebook widget alive while Python
-    controls update OJS variables and OJS controls sync values back to Python.
+    Move the Python sliders and the OJS gain control. The chart updates from
+    Python-owned variables, and the value readouts show what synced back to
+    Python.
     """)
     return
 

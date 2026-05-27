@@ -1,10 +1,9 @@
 {
-	"packageManager": "pnpm@10.33.3",
 	"scripts": {
-		"dev": "npm run build -- --sourcemap=inline --watch",
+		"dev": "pnpm run build -- --sourcemap=inline --watch",
 		"build": "esbuild js/widget.ts --minify --format=esm --bundle --outdir=src/pyobservablejs/static",
-		"format": "oxfmt -c oxfmtrc.jsonc \"js/**/*.ts\"",
-		"format:check": "oxfmt --check -c oxfmtrc.jsonc \"js/**/*.ts\"",
+		"format": "oxfmt -c oxfmtrc.jsonc \"**/*.{ts,tsx,js,jsx,mjs,cjs,json,jsonc,md,mdx,yml,yaml,toml,ipynb}\"",
+		"format:check": "oxfmt --check -c oxfmtrc.jsonc \"**/*.{ts,tsx,js,jsx,mjs,cjs,json,jsonc,md,mdx,yml,yaml,toml,ipynb}\"",
 		"lint": "oxlint -c oxlintrc.json --deny-warnings --report-unused-disable-directives js",
 		"test:js": "vitest run",
 		"typecheck": "tsc --noEmit"
@@ -25,5 +24,13 @@
 		"oxlint": "^1.66.0",
 		"typescript": "^6.0.2",
 		"vitest": "4.1.7"
-	}
+	},
+	"devEngines": {
+		"runtime": {
+			"name": "node",
+			"version": "^24.0.0",
+			"onFail": "download"
+		}
+	},
+	"packageManager": "pnpm@11.3.0+sha512.2c403d6594527287672b1f7056343a1f7c3634036a67ffabfcc2b3d7595d843768f8787148d1b57cf7956c90606bbd192857c363af19e96d2d0ec9ec5741d215"
 }

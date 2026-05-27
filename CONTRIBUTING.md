@@ -27,10 +27,11 @@ uv run marimo edit workbench/observable_urls.py
 ```
 
 `workbench/gallery_examples.py` can load the Observable Notebook Kit example
-gallery when available:
+gallery. Set `NOTEBOOK_KIT_GALLERY_ROOT` to the `docs/ex` directory from a local
+`observablehq/notebook-kit` checkout:
 
 ```sh
-NOTEBOOK_KIT_GALLERY_ROOT=/path/to/notebook-kit/docs/ex uv run marimo edit workbench/gallery_examples.py
+NOTEBOOK_KIT_GALLERY_ROOT=/Users/petergy/Projects/opensource/observablehq/notebook-kit/docs/ex uv run marimo edit workbench/gallery_examples.py
 ```
 
 ## Docs
@@ -64,3 +65,9 @@ pnpm build
 (cd docs && uv run jupyter book build --site)
 git diff --check
 ```
+
+## Browser Deep Checks
+
+Run the browser deep-check flow in [Development](docs/development.md) when a
+change touches the widget frontend, notebook rendering, Observable runtime,
+Jupyter or marimo integration, docs site rendering, or user-visible UI.

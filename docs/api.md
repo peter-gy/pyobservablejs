@@ -34,13 +34,24 @@ runtime.
 - `title`: title written to exported Notebook Kit HTML.
 - `theme`: Notebook Kit theme, usually `"air"`.
 - `mode`: default mode for plain string cells.
-- `attachments`: mapping from `FileAttachment` names to paths, URLs, or metadata.
+- `attachments`: mapping from `FileAttachment` names to local paths, URLs, or
+  metadata. Local paths resolve against `base_path` or the current working
+  directory and are read during construction. URL strings and metadata mappings
+  are not read locally.
 - `base_path`: base path for relative attachments.
 - `variables`: Python values exposed as OJS variables. Matching notebook variables
   are overridden.
 - `show_pinned_source`: render source for pinned cells.
 
 Plain string cells use `mode="ojs"` by default.
+
+Raises:
+
+- `ValueError`: `mode` or a variable name is invalid.
+- `TypeError`: a cell is not a string or `Cell`, or a variable value cannot be
+  serialized.
+- `FileNotFoundError` or `OSError`: an explicit local attachment path is missing
+  or unreadable.
 
 Browser-populated fields such as `values`, `graph`, and cell metadata are empty
 until the widget has rendered.
@@ -49,24 +60,61 @@ until the widget has rendered.
 
 ```python
 notebook.variables
-notebook.update_variables(rows=rows, floor=0.04)
-notebook.replace_variables({"rows": rows})
-notebook.reset_variables("floor")
 ```
 
-`variables` returns the current Python-owned variable environment exposed to the Observable runtime.
-TypeScript revives the values as Observable builtins and redefines matching
-notebook variables so dependent cells settle on the Python-provided values.
+Return a copy of the current Python-owned variable environment exposed to OJS.
+Matching notebook variables use the Python-provided values.
 
-`update_variables` merges new keys into the current mapping before syncing the trait.
-Use it when a stable notebook should receive Python-side state changes from a
-notebook host such as marimo or Jupyter.
+### `Notebook.update_variables`
 
-`replace_variables(...)` swaps the full Python-owned environment. `reset_variables(...)`
-removes one or more Python-owned variables.
+```python
+notebook.update_variables(rows=rows, floor=0.04)
+notebook.update_variables({"rows": rows})
+```
 
-When replacement or reset removes keys, the browser rebuilds the runtime to
-restore the notebook's original definitions for those names.
+Merge keys into the current Python-owned environment and sync a live update to
+the browser. Existing Python-owned keys that are not mentioned stay unchanged.
+
+- `values`: mapping or iterable of key/value pairs.
+- `**kwargs`: extra variable updates merged after `values`.
+- Returns `None`.
+- Empty input leaves the widget traits unchanged.
+- Raises `TypeError` when `values` is not a mapping or key/value iterable.
+- Raises `ValueError` when a variable name is not a JavaScript identifier.
+- Raises `TypeError` when a value cannot be serialized.
+
+### `Notebook.replace_variables`
+
+```python
+notebook.replace_variables({"rows": rows})
+notebook.replace_variables(rows=rows)
+```
+
+Replace the full Python-owned environment and sync a live replacement to the
+browser. Keys omitted from the replacement are released. The browser rebuilds the
+runtime so the notebook's original definitions return for those names.
+
+- `values`: mapping or iterable of key/value pairs.
+- `**kwargs`: extra variable values merged after `values`.
+- Returns `None`.
+- Raises `TypeError` when `values` is not a mapping or key/value iterable.
+- Raises `ValueError` when a variable name is not a JavaScript identifier.
+- Raises `TypeError` when a value cannot be serialized.
+
+### `Notebook.reset_variables`
+
+```python
+notebook.reset_variables(*names)
+```
+
+Release one or more Python-owned variables. Missing names and empty calls are
+no-ops. When a reset removes a key, the browser receives a replacement update and
+restores the notebook's original definition for that name.
+
+- `*names`: Python-owned variable names to release.
+- Returns `None`.
+- Sends a browser replacement update only when at least one owned name is
+  removed.
 
 ### `Notebook.cells`
 
@@ -86,15 +134,21 @@ notebook.cell(key)
 Return a `NotebookCell` by zero-based index or Python name. Ambiguous or
 unknown names raise `KeyError`.
 
+- Integer keys use tuple indexing, so negative indexes are allowed.
+- Out-of-range integer keys raise `IndexError`.
+- String keys match `name=` values on child cells.
+- Unknown or ambiguous names raise `KeyError`.
+
 ### `Notebook.cell_for_variable`
 
 ```python
 notebook.cell_for_variable(name)
 ```
 
-Return the unique `NotebookCell` whose graph metadata defines the Observable
-variable `name`. Graph metadata is available after the browser renders the
-notebook.
+Return the unique `NotebookCell` whose rendered graph metadata defines the
+Observable variable `name`. The graph is available after the browser renders the
+notebook. Before render, unknown names, and ambiguous definitions raise
+`KeyError`.
 
 ### `Notebook.values`
 
@@ -105,14 +159,19 @@ notebook.values
 Dictionary of the latest browser-synchronized values for named cells and exposed
 variables. Before the first browser render, this may be empty.
 
+Values cross as JSON-compatible trait state. Browser-only objects are summarized:
+DOM elements become tag names, functions become function labels, files and blobs
+become metadata dictionaries, and typed arrays or array buffers become bytes.
+
 ### `Notebook.value`
 
 ```python
 notebook.value(name)
 ```
 
-Return `notebook.values[name]`. Use this to read a single `viewof` input or
-computed cell value after browser evaluation.
+Return the synchronized value for `name`. When graph metadata exists, this first
+reads the cell that defines `name`. It falls back to `notebook.values[name]`.
+Missing or unsynchronized names raise `KeyError`.
 
 For `viewof` cells, synchronized values contain the current input values. DOM
 elements stay in the browser.
@@ -135,44 +194,43 @@ notebook.to_notebook_html()
 Return Notebook Kit HTML. Python-authored notebooks are serialized from `spec`.
 Source-backed notebooks return their original HTML source.
 
-### `Notebook.from_file`
-
-```python
-obs.Notebook.from_file(
-    path,
-    portable=True,
-    variables=None,
-    attachments=None,
-    show_pinned_source=False,
-)
-```
-
-Load Notebook Kit HTML from disk. With `portable=True`, local
-`FileAttachment(...)` references and relative JavaScript imports are embedded.
-Pass `variables={...}` to set or override OJS variables.
-
 ### `Notebook.from_html`
 
 ```python
 obs.Notebook.from_html(
     source,
-    portable=True,
-    variables=None,
     attachments=None,
     base_path=None,
+    portable=True,
+    variables=None,
     show_pinned_source=False,
 )
 ```
 
-Create a source-backed notebook from an HTML string. `base_path` is used to
-resolve local attachments and imports when `portable=True`. Pass `variables={...}` to
-set or override OJS variables.
+Create a source-backed notebook from a Notebook Kit HTML string. Load the HTML
+string before calling this method.
 
-### `Notebook.from_url`
+- `source`: Notebook Kit HTML string. Non-string values raise `TypeError`.
+- `base_path`: base directory for local `FileAttachment(...)` references,
+  relative imports, and explicit relative `attachments`.
+- `portable`: defaults to `True`. When `portable=True` and `base_path` is set,
+  local file attachments are embedded and relative JavaScript imports are
+  rewritten to data URLs.
+- `attachments`: explicit attachment mapping. These entries override discovered
+  attachments with the same name. Local paths resolve against `base_path` or the
+  current working directory and are read before browser render. URL strings and
+  metadata mappings are not read locally.
+- `variables`: Python-owned OJS variables. Invalid names raise `ValueError`.
+  Unsupported values raise `TypeError`.
+- `show_pinned_source`: render Notebook Kit pinned source panels in cell widgets.
+- Raises `FileNotFoundError` or `OSError` when an explicit local attachment path
+  is missing or unreadable.
+
+### `Notebook.from_observablehq`
 
 ```python
-obs.Notebook.from_url(
-    url,
+obs.Notebook.from_observablehq(
+    specifier,
     variables=None,
     attachments=None,
     show_pinned_source=False,
@@ -180,15 +238,25 @@ obs.Notebook.from_url(
 )
 ```
 
-Load a public Observable notebook through the document API. `url` can be a full
-Observable URL, a slug such as `@mbostock/saving-svg`, a 16-character notebook
-id, or an Observable document API URL.
+Load a public ObservableHQ notebook through the document API.
 
-Observable API `js` nodes are converted to Notebook Kit `ojs` cells. Uploaded
-files in the document response become URL-backed `FileAttachment` entries. Any
-explicit `attachments` mapping overrides discovered remote attachments with the
-same name. Pass `variables={...}` to set or override variables in the loaded
-notebook.
+- `specifier`: full ObservableHQ URL, slug such as `@mbostock/saving-svg`,
+  16-character notebook id, or ObservableHQ document API URL.
+- `timeout`: request timeout in seconds. Defaults to `30`. Pass `None` to use the
+  urllib default.
+- Performs network I/O against `api.observablehq.com`.
+- Only public notebooks can be fetched.
+- ObservableHQ API `js` nodes are converted to Notebook Kit `ojs` cells.
+- Uploaded files become URL-backed `FileAttachment` entries.
+- Explicit `attachments` override discovered remote attachments with the same
+  name. They may be local paths, URL strings, or metadata mappings. Local paths
+  resolve against the current working directory and are read before browser
+  render. URL strings and metadata mappings are not read locally.
+- `variables` sets or overrides variables in the loaded notebook.
+- Raises `ValueError` for invalid specifiers or non-JSON document responses.
+- Raises `OSError` for HTTP and network failures.
+- Raises `FileNotFoundError` or `OSError` when an explicit local attachment path
+  is missing or unreadable.
 
 ## NotebookCell
 
@@ -203,6 +271,13 @@ notebook.cell("gain").value
 
 Return the cell's browser-synchronized value when it is unambiguous. Use
 `notebook.cell("gain").values["gain"]` for explicit named access.
+
+Resolution order:
+
+1. Return `cell.values[cell.name]` when the named cell has a synchronized value.
+2. Return the only synchronized value when the cell exposes exactly one value.
+3. Raise `KeyError` before render, when no value exists, or when multiple unnamed
+   values exist.
 
 ### `NotebookCell.values`
 
@@ -235,12 +310,12 @@ the graph is available.
 
 ## Cell Helpers
 
-| Helper | Cell mode |
-| --- | --- |
-| `obs.ojs(source, ...)` | Observable JavaScript |
-| `obs.js(source, ...)` | ES module JavaScript |
-| `obs.md(source, ...)` | Markdown |
-| `obs.html(source, ...)` | HTML |
+| Helper                  | Cell mode             |
+| ----------------------- | --------------------- |
+| `obs.ojs(source, ...)`  | Observable JavaScript |
+| `obs.js(source, ...)`   | ES module JavaScript  |
+| `obs.md(source, ...)`   | Markdown              |
+| `obs.html(source, ...)` | HTML                  |
 
 ```python
 obs.ojs(
@@ -255,15 +330,29 @@ obs.ojs(
 )
 ```
 
-`obs.ojs(...)` returns a source `Cell` and accepts:
+The helper signatures are shared:
 
+```python
+obs.ojs(source, *, name=None, display=True, raw=False, id=None, pinned=False, output=None, attrs=None)
+obs.js(source, *, name=None, display=True, raw=False, id=None, pinned=False, output=None, attrs=None)
+obs.md(source, *, name=None, display=True, raw=False, id=None, pinned=False, output=None, attrs=None)
+obs.html(source, *, name=None, display=True, raw=False, id=None, pinned=False, output=None, attrs=None)
+```
+
+Each helper returns a source `Cell` and accepts:
+
+- `source`: a string, or an existing `Cell` with no override arguments.
 - `name`: a stable Python name for `notebook.cell(...)`.
 - `display`: whether to render the cell output.
 - `raw`: whether to preserve source whitespace exactly.
 - `id`: Notebook Kit cell id override.
 - `pinned`: whether Notebook Kit should treat the source as pinned.
 - `output`: Notebook Kit output attribute.
-- `attrs`: additional Notebook Kit script attributes for advanced cases.
+- `attrs`: attributes copied into the Notebook Kit cell spec. `id`, `pinned`, and
+  `output` helper arguments override matching `attrs` keys before the final cell
+  is built.
+- Raises `TypeError` when `source` is not a string or `Cell`, or when override
+  arguments are passed with an existing `Cell`.
 
 Mode-specific helpers such as `obs.md(...)` and `obs.html(...)` accept the same
 keywords except `mode`. Helper source strings are dedented and stripped of
@@ -285,8 +374,9 @@ Use `obs.ojs(...)` for ordinary Observable cells.
 
 ## Python Variables
 
-`variables` accepts a mapping from JavaScript identifier names to serializable Python
-values.
+`variables` must be a mapping from JavaScript identifier names to serializable
+Python values. Names must match `[A-Za-z_$][0-9A-Za-z_$]*`. Invalid names raise
+`ValueError`. Unsupported values raise `TypeError`.
 
 Supported values include:
 
@@ -296,9 +386,10 @@ Supported values include:
 - bytes-like values
 - NumPy scalar and array values through `item()` or `tolist()`
 - pandas and Polars series as lists
-- pandas and Polars dataframes as records
+- pandas and Polars dataframes as row dictionaries
 
-Dataframes are serialized as row dictionaries.
+Mappings containing `__pyobservablejs_type__` are escaped as ordinary objects so
+user data cannot be mistaken for the internal wire tags.
 
 ## Graph Metadata
 

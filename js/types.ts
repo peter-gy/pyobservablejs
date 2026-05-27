@@ -13,14 +13,12 @@ export type AttachmentInfo = {
 
 export type WidgetModel = {
 	role?: "notebook" | "cell";
-	// Stable per-cell lifecycle key shared by anywidget initialize/render model proxies.
 	_cell_id?: string;
 	name?: string;
 	source?: string;
 	spec?: Record<string, unknown>;
 	attachments?: Record<string, AttachmentInfo>;
 	base_url?: string;
-	// Serialized Python-owned Observable variables. runtime.ts revives this as Observable builtins.
 	_variables?: Record<string, unknown>;
 	_variable_update?: {
 		seq?: number;
@@ -28,14 +26,11 @@ export type WidgetModel = {
 		values?: Record<string, unknown>;
 	};
 	_graph?: NotebookGraph;
-	// Browser-produced values. Notebook models aggregate child cell values.
-	// Cell models hold values for their matching cell.
 	_values?: Record<string, unknown>;
 	_value_names?: string[];
 	options?: {
 		show_source?: boolean;
 	};
-	// anywidget references for one child model per Notebook Kit cell.
 	_cell_widgets?: string[];
 };
 
@@ -56,8 +51,8 @@ export type CellVariableSync = {
 	model: RenderProps<WidgetModel>["model"];
 	signal: AbortSignal;
 	variablesSync?: RuntimeVariablesSync;
-	// OJS viewof cells expose DOM-ish targets. Python value updates write back
-	// into those targets so the rendered control and synced trait stay aligned.
+	// OJS viewof cells expose EventTarget controls with value or checked state.
+	// Python writes mutate those controls before synced values update.
 	views: Map<string, ViewTarget>;
 	viewCleanups: Map<string, () => void>;
 	setVariableNames(names: string[]): void;

@@ -17,12 +17,6 @@ or with `uv`:
 uv add pyobservablejs
 ```
 
-For optional dataframe serialization support:
-
-```sh
-uv add "pyobservablejs[data]"
-```
-
 ## Create a Notebook
 
 Use `obs.Notebook` with cell helpers. `obs.ojs` creates Observable JavaScript
@@ -43,6 +37,12 @@ notebook
 
 Displaying `notebook` renders the full Observable notebook in any compatible
 widget frontend.
+
+What happens here:
+
+- `obs.Notebook(...)` creates one Notebook Kit notebook.
+- `obs.md(...)` and `obs.ojs(...)` keep each cell's source mode explicit.
+- `name="answer"` gives Python a stable handle for that cell.
 
 ## Pass Python Variables
 
@@ -71,11 +71,14 @@ notebook = obs.Notebook(
 )
 ```
 
-:::{note}
-The browser receives serialized trait updates from `replace_variables` and
-`update_variables`. Dependent Observable cells recompute from the updated
-variables.
-:::
+Dependent Observable cells recompute when Python variables change.
+
+Choose the update method by ownership change:
+
+| Method                   | Contract                                                                                                                                         |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `update_variables(...)`  | Merge keys into the current Python-owned environment. Existing keys that are not mentioned stay Python-owned.                                    |
+| `replace_variables(...)` | Swap the full Python-owned environment. Omitted keys are released and the browser rebuilds the runtime to restore original notebook definitions. |
 
 Replace the Python-owned variables explicitly:
 
@@ -101,6 +104,12 @@ notebook = obs.Notebook(
 )
 
 notebook.cell("gain")
+```
+
+After the notebook or cell widget has rendered in the browser, read the synced
+value from a later Python cell:
+
+```python
 notebook.value("double")
 ```
 
@@ -114,28 +123,36 @@ mo.ui.anywidget(notebook.cell("gain"))
 
 ## Load Notebook Kit HTML
 
-Use `from_file` or `from_html` for source-backed notebooks.
+Use `from_html` when you already have Notebook Kit HTML. The method accepts the
+HTML string directly, whether you read it from a file, database, or custom
+loader.
 
 ```python
-notebook = obs.Notebook.from_file("chart.html")
+from pathlib import Path
+
+path = Path("chart.html")
+notebook = obs.Notebook.from_html(
+    path.read_text(encoding="utf-8"),
+    base_path=path.parent,
+)
 ```
 
 By default, local `FileAttachment(...)` references and relative JavaScript
 imports are embedded so the widget can travel with the notebook output. Use
 `portable=False` when you want to keep source references as they are.
 
-## Load a Public Observable Notebook
+## Load a Public ObservableHQ Notebook
 
-Use `from_url` for a public Observable notebook:
+Use `from_observablehq` for a public ObservableHQ notebook:
 
 ```python
-notebook = obs.Notebook.from_url("https://observablehq.com/@mbostock/saving-svg")
+notebook = obs.Notebook.from_observablehq("https://observablehq.com/@mbostock/saving-svg")
 notebook
 ```
 
-The URL can be a full Observable URL, a slug such as `@mbostock/saving-svg`, or a
-16-character notebook id. Remote file attachments are kept as URL-backed
-attachments.
+The specifier can be a full ObservableHQ URL, a slug such as
+`@mbostock/saving-svg`, a 16-character notebook id, or an ObservableHQ document
+API URL. Remote file attachments are kept as URL-backed attachments.
 
 Use the same `variables` mapping to override variables in a public notebook:
 
@@ -145,7 +162,7 @@ penguins = [
     {"culmen_length_mm": 44.1, "culmen_depth_mm": 15.9},
     {"culmen_length_mm": 50.2, "culmen_depth_mm": 19.1},
 ]
-notebook = obs.Notebook.from_url(
+notebook = obs.Notebook.from_observablehq(
     "https://observablehq.com/@observablehq/plot-scatterplot/2",
     variables={"penguins": penguins},
 )

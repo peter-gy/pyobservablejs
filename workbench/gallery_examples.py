@@ -27,8 +27,8 @@ def _(mo):
     mo.md(r"""
     # Notebook Kit example gallery
 
-    This workbench loads local Notebook Kit HTML examples from disk, with an
-    inline fallback when the upstream gallery checkout is not present.
+    Load local Notebook Kit HTML examples from disk. An inline bar chart renders
+    when the upstream gallery checkout is not present.
     """)
     return
 
@@ -62,7 +62,9 @@ def _():
 
 @app.cell
 def _(Path, fallback_examples, os):
-    configured_root = os.environ.get("NOTEBOOK_KIT_GALLERY_ROOT")
+    configured_root = os.environ.get("OBSERVABLEJS_GALLERY_ROOT") or os.environ.get(
+        "NOTEBOOK_KIT_GALLERY_ROOT"
+    )
     gallery_roots = []
     if configured_root:
         gallery_roots.append(Path(configured_root).expanduser())
@@ -112,8 +114,9 @@ def _(default_example, example_options, mo):
 def _(Path, example_sources, mo, obs, selected_example):
     selected_source = example_sources[selected_example.value]
     if isinstance(selected_source, Path):
-        gallery_notebook = obs.Notebook.from_file(
-            selected_source,
+        gallery_notebook = obs.Notebook.from_html(
+            selected_source.read_text(encoding="utf-8"),
+            base_path=selected_source.parent,
             show_pinned_source=True,
         )
     else:

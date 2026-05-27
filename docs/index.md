@@ -5,10 +5,9 @@ description: Observable JavaScript notebooks as reusable Python widgets.
 
 # pyobservablejs
 
-`pyobservablejs` renders Observable JavaScript notebooks as Python widgets.
-Python builds the notebook model and synced variables. The browser runs Observable
-Notebook Kit, renders cells, and sends values and graph metadata back through
-traitlets.
+`pyobservablejs` renders Observable JavaScript notebooks from Python. Build cells,
+pass Python values, load Notebook Kit HTML, or reuse public ObservableHQ notebooks.
+The browser runs Notebook Kit and returns values through widget traits.
 
 ```python
 import pyobservablejs as obs
@@ -38,23 +37,22 @@ obs.Notebook(
   variables.
 - `notebook.update_variables(...)` mutates those Python-backed values in the live
   runtime.
-- Cells with `name=` provide Python names for display and value sync.
-- Notebook Kit HTML and public Observable notebooks enter the same runtime path.
-- `notebook.graph` reports Notebook Kit-derived definitions, references, and
-  dependency edges after the browser renders.
-- anywidget composition lets notebook and cell widgets render in Jupyter,
-  marimo, and compatible frontends.
+- Cells with `name=` provide Python names for separate display and value reads.
+- Notebook Kit HTML strings and public ObservableHQ notebooks use the same
+  rendering path as Python-authored notebooks.
+- The widget renders in Jupyter, marimo, and compatible anywidget frontends.
 
 :::{tip}
-Use `obs.Notebook.from_file(...)` when you already have Notebook Kit HTML. Use
+Use `obs.Notebook.from_html(...)` when you already have Notebook Kit HTML. Use
 `obs.Notebook(...)` for Python-authored cells.
 :::
 
 ## Read Next
 
 - [](./quickstart.md): create a notebook, pass Python values, and display cells.
+- [](./examples.md): copy small examples for common notebook tasks.
 - [](./concepts.md): learn the Observable, Notebook Kit, and widget vocabulary.
+- [](./api.md): reference the public Python API.
 - [](./architecture.md): follow the Python-to-browser runtime path.
 - [](./composition.md): see how anywidget composition makes cell widgets work.
-- [](./api.md): reference the public Python API.
 - [](./development.md): build, test, and work on the project locally.

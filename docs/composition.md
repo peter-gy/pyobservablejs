@@ -5,11 +5,11 @@ description: How anywidget composition makes Observable cell widgets possible.
 
 # Widget Composition
 
-`pyobservablejs` relies on the widget composition API introduced in
-[anywidget 0.11.0](https://github.com/manzt/anywidget/releases/tag/anywidget%400.11.0)
-and formalized in the
-[widget composition RFC](https://github.com/manzt/anywidget/blob/main/rfcs/0001-widget-composition-and-signals.md).
-That release added three browser-facing primitives:
+A `Notebook` owns one Notebook Kit runtime and passes `NotebookCell` references
+through anywidget composition. The parent notebook resolves each child widget,
+binds it to the runtime, and keeps the child model visible to Python.
+
+The composition contract uses three browser-facing primitives:
 
 - `signal`: an `AbortSignal` passed to `initialize` and `render` for cleanup.
 - `initialize` exports: a widget instance can expose a JavaScript interface to
@@ -17,6 +17,10 @@ That release added three browser-facing primitives:
 - `host.getWidget(ref)` and `host.getModel(ref)`: a parent widget can resolve a
   child widget reference, render it into its own DOM, and access the child's
   underlying model.
+
+Requires anywidget 0.11.0 or newer. The underlying browser contract comes from
+[anywidget 0.11.0](https://github.com/manzt/anywidget/releases/tag/anywidget%400.11.0)
+and the [widget composition RFC](https://github.com/manzt/anywidget/blob/main/rfcs/0001-widget-composition-and-signals.md).
 
 Python-side composition uses `anywidget.WidgetTrait`. A widget-valued
 trait validates that a value is an anywidget-compatible object, then serializes
@@ -61,10 +65,7 @@ browser references:
 
 ```json
 {
-  "_cell_widgets": [
-    "anywidget:<gain-model-id>",
-    "anywidget:<double-model-id>"
-  ]
+	"_cell_widgets": ["anywidget:<gain-model-id>", "anywidget:<double-model-id>"]
 }
 ```
 
@@ -76,9 +77,7 @@ The notebook renderer reads `_cell_widgets`, resolves each reference, and binds
 every child to the parent runtime.
 
 ```ts
-const resolved = await Promise.allSettled(
-  cellRefs.map((ref) => resolveCellWidget(host, ref, signal)),
-)
+const resolved = await Promise.allSettled(cellRefs.map((ref) => resolveCellWidget(host, ref, signal)));
 ```
 
 For each child, `host.getWidget(ref)` returns the child widget's exports and
@@ -89,9 +88,9 @@ sync traits such as `_value_names` and `_values`.
 
 ```ts
 interface CellExports {
-  bindRuntime(context: CellRenderContext): void
-  unbindRuntime(context: CellRenderContext): void
-  prepareComposedRender(el: HTMLElement, context: CellRenderContext): void
+	bindRuntime(context: CellRenderContext): void;
+	unbindRuntime(context: CellRenderContext): void;
+	prepareComposedRender(el: HTMLElement, context: CellRenderContext): void;
 }
 ```
 
@@ -132,33 +131,37 @@ place those views. The child model owns its cell-specific state.
 
 ## Lifecycle and Cleanup
 
-Notebook rendering is abortable. A structural model change to `source`, `spec`,
-`attachments`, `base_url`, `options`, or `_cell_widgets` aborts the current
-render and starts a new one. Python variable changes on `_variables` apply to the active
-Observable runtime. Ordinary variables use Observable Runtime `redefine`.
-`viewof` variables update the existing control target and emit its input event.
-When a replacement removes Python variable keys, the notebook rebuilds so the
-original Observable definitions are restored.
-The same `AbortSignal` is passed through child renders, Notebook Kit runtime
-cleanup, attachment registry cleanup, source highlighting, and trait listeners.
+Notebook rendering is abortable.
+
+- Structural model changes to `source`, `spec`, `attachments`, `base_url`,
+  `options`, or `_cell_widgets` abort the current render and start a new one.
+- Python variable changes on `_variables` patch the active Observable runtime.
+  Ordinary variables use Observable Runtime `redefine`.
+- `viewof` variables update the existing control target and emit its input event.
+- Replacements that remove Python variable keys rebuild the notebook so original
+  Observable definitions return.
+- The same `AbortSignal` tears down child renders, Notebook Kit runtime state,
+  attachment registrations, source highlighting, and trait listeners.
 
 Observable cells can hold DOM nodes, event listeners, runtime variables,
 attachment registrations, and async highlighting work. The signal chain gives
 the parent one teardown boundary for all of that state.
 
 :::{warning}
-Widget composition is a host capability. Frontends need child-widget reference
-resolution for multi-cell notebooks with Python-visible cell widgets. The widget
-raises a descriptive error when child-widget reference resolution is unavailable.
+Widget composition is a host capability. Multi-cell notebooks require
+child-widget reference resolution through `host.getWidget` and `host.getModel`.
+When the host does not provide that contract, the rendered widget reports:
+`This anywidget host does not expose composition APIs for cell widgets`.
 :::
 
 ## Host Layouts and Runtime Ownership
 
 Host layouts such as `ipywidgets.VBox`, `ipywidgets.HBox`, or marimo layout
 helpers arrange existing widgets. anywidget composition supplies the browser
-contract this package uses: a parent owns a Notebook Kit runtime, resolves child
+contract for this package: a parent owns a Notebook Kit runtime, resolves child
 widgets inside its render function, passes a runtime context to those children,
 and cascades cleanup through one browser lifecycle.
 
 The parent notebook is the runtime owner. The child widgets are Python names
-into that runtime. anywidget composition connects those roles.
+into that runtime. Use host layouts to arrange existing widgets. Use anywidget
+composition when a parent must resolve child models and pass runtime context.

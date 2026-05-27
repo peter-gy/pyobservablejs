@@ -12,11 +12,11 @@ import base64
 import datetime as _dt
 import math
 import re
+import sys
 from collections.abc import Iterable, Mapping
 from typing import Any
 
 TYPE_KEY = "__pyobservablejs_type__"
-# Keep this tag in sync with `revivePythonValue` and `toWireValue` in js/wire.ts.
 
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z_$][0-9A-Za-z_$]*$")
 
@@ -58,9 +58,13 @@ def serialize_value(value: Any) -> Any:
             "value": base64.standard_b64encode(data).decode("ascii"),
         }
 
-    records = _try_records(value)
+    records = _try_dataframe_records(value)
     if records is not None:
         return serialize_value(records)
+
+    series = _try_series_values(value)
+    if series is not None:
+        return serialize_value(series)
 
     numpy_value = _try_numpy_value(value)
     if numpy_value is not _MISSING:
@@ -80,7 +84,13 @@ def serialize_value(value: Any) -> Any:
 
 
 def deserialize_value(value: Any) -> Any:
-    """Convert browser wire values into Python-facing values where possible."""
+    """Convert browser wire values into Python-facing values.
+
+    Dates, bytes, array buffers, typed arrays, bigints, maps, sets, files, and
+    blobs are decoded to Python values or metadata. DOM elements, functions,
+    errors, regular expressions, circular references, and unknown tags become
+    strings or plain dictionaries.
+    """
 
     if isinstance(value, list):
         return [deserialize_value(item) for item in value]
@@ -145,16 +155,19 @@ def deserialize_value(value: Any) -> Any:
     return {key: deserialize_value(item) for key, item in value.items()}
 
 
-def _try_records(value: Any) -> Any | None:
-    module, class_name = _value_type(value)
-    if module == "pandas" and class_name == "DataFrame" and hasattr(value, "to_dict"):
-        return value.to_dict(orient="records")
-    if module == "pandas" and class_name == "Series" and hasattr(value, "tolist"):
-        return value.tolist()
-    if module == "polars" and class_name == "DataFrame" and hasattr(value, "to_dicts"):
+def _try_dataframe_records(value: Any) -> Any | None:
+    if _is_loaded_type(value, "polars", "DataFrame") and hasattr(value, "to_dicts"):
         return value.to_dicts()
-    if module == "polars" and class_name == "Series" and hasattr(value, "to_list"):
+    if _is_loaded_type(value, "pandas", "DataFrame") and hasattr(value, "to_dict"):
+        return value.to_dict(orient="records")
+    return None
+
+
+def _try_series_values(value: Any) -> Any | None:
+    if _is_loaded_type(value, "polars", "Series") and hasattr(value, "to_list"):
         return value.to_list()
+    if _is_loaded_type(value, "pandas", "Series") and hasattr(value, "tolist"):
+        return value.tolist()
     return None
 
 
@@ -162,8 +175,7 @@ _MISSING = object()
 
 
 def _try_numpy_value(value: Any) -> Any:
-    module, _ = _value_type(value)
-    if module != "numpy":
+    if not _is_loaded_module(value, "numpy"):
         return _MISSING
     if hasattr(value, "tolist"):
         return value.tolist()
@@ -172,6 +184,11 @@ def _try_numpy_value(value: Any) -> Any:
     return _MISSING
 
 
-def _value_type(value: Any) -> tuple[str, str]:
-    value_type = type(value)
-    return value_type.__module__.split(".", maxsplit=1)[0], value_type.__name__
+def _is_loaded_type(value: Any, module_name: str, type_name: str) -> bool:
+    module = sys.modules.get(module_name)
+    loaded_type = getattr(module, type_name, None)
+    return isinstance(loaded_type, type) and isinstance(value, loaded_type)
+
+
+def _is_loaded_module(value: Any, module_name: str) -> bool:
+    return type(value).__module__.split(".", maxsplit=1)[0] == module_name

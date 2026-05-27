@@ -27,8 +27,8 @@ def _(mo):
     mo.md(r"""
     # Notebook construction methods
 
-    The same widget can start from Python cells, Notebook Kit HTML, a local HTML
-    file, or a public Observable notebook URL.
+    The same widget can start from Python cells, Notebook Kit HTML text, a local
+    HTML file, or a public ObservableHQ notebook specifier.
     """)
     return
 
@@ -68,7 +68,7 @@ def _():
         "Python cells",
         "HTML string",
         "HTML file",
-        "Observable URL",
+        "ObservableHQ",
     ]
     return (methods,)
 
@@ -114,13 +114,15 @@ Plot.plot({
             show_pinned_source=True,
         )
     elif method.value == "HTML file":
-        selected_notebook = obs.Notebook.from_file(
-            html_file,
+        path = html_file
+        selected_notebook = obs.Notebook.from_html(
+            path.read_text(encoding="utf-8"),
+            base_path=path.parent,
             show_pinned_source=True,
         )
     else:
         try:
-            selected_notebook = obs.Notebook.from_url(
+            selected_notebook = obs.Notebook.from_observablehq(
                 "https://observablehq.com/@mbostock/saving-svg",
                 show_pinned_source=True,
             )

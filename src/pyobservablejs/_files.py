@@ -105,7 +105,13 @@ def prepare_source(
     embed: bool,
     rewrite_imports: bool,
 ) -> tuple[str, dict[str, dict[str, Any]]]:
-    """Return portable Notebook Kit HTML plus discovered file attachments."""
+    """Prepare Notebook Kit HTML and discovered attachments.
+
+    When ``embed`` is true and ``base_path`` is set, local ``FileAttachment``
+    files are discovered. When ``rewrite_imports`` is also true, relative
+    JavaScript imports are rewritten to data URLs. Other option combinations
+    return the original source with no discovered attachments.
+    """
 
     if not embed or base_path is None:
         return source, {}

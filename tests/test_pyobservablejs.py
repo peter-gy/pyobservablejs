@@ -4,6 +4,8 @@ import datetime as dt
 import importlib.util
 import inspect
 import pathlib
+import sys
+import types
 from typing import Any
 
 import anywidget
@@ -13,8 +15,16 @@ import traitlets
 from pyobservablejs._graph import CellInfo, DependencyEdge, NotebookGraph
 from pyobservablejs._observable import (
     observable_document_to_html,
-    resolve_observable_url,
+    resolve_observablehq_api_url,
 )
+
+
+def _notebook_from_html_file(path: pathlib.Path, **kwargs: Any) -> obs.Notebook:
+    return obs.Notebook.from_html(
+        path.read_text(encoding="utf-8"),
+        base_path=path.parent,
+        **kwargs,
+    )
 
 
 def test_public_namespace_is_small() -> None:
@@ -36,11 +46,7 @@ def test_public_signatures_hide_widget_internals() -> None:
     assert not any(name.startswith("_") for name in notebook.parameters)
     assert "data" not in notebook.parameters
 
-    for constructor in (
-        obs.Notebook.from_html,
-        obs.Notebook.from_file,
-        obs.Notebook.from_url,
-    ):
+    for constructor in (obs.Notebook.from_html, obs.Notebook.from_observablehq):
         params = inspect.signature(constructor).parameters
         assert "variables" in params
         assert "data" not in params
@@ -85,6 +91,8 @@ def test_legacy_api_names_are_absent() -> None:
     assert not hasattr(obs, "NotebookGraph")
     assert not hasattr(obs, "arrow")
     assert not hasattr(obs, "records")
+    assert not hasattr(obs.Notebook, "from_file")
+    assert not hasattr(obs.Notebook, "from_url")
     assert not hasattr(obs.Notebook(obs.ojs("answer = 42")).cell(0), "get")
 
 
@@ -94,35 +102,33 @@ def test_sql_mode_is_not_publicly_authorable() -> None:
         obs.Notebook("select 1", mode=mode)
 
 
-def test_observable_url_resolution_matches_notebook_kit_and_framework() -> None:
+def test_observablehq_specifier_resolution_matches_document_api() -> None:
     assert (
-        resolve_observable_url("https://observablehq.com/@d3/bar-chart")
+        resolve_observablehq_api_url("https://observablehq.com/@d3/bar-chart")
         == "https://api.observablehq.com/document/@d3/bar-chart"
     )
     assert (
-        resolve_observable_url("https://observablehq.com/@d3/bar-chart/2")
+        resolve_observablehq_api_url("https://observablehq.com/@d3/bar-chart/2")
         == "https://api.observablehq.com/document/@d3/bar-chart/2"
     )
     assert (
-        resolve_observable_url("https://observablehq.com/@d3/bar-chart@latest")
+        resolve_observablehq_api_url("https://observablehq.com/@d3/bar-chart@latest")
         == "https://api.observablehq.com/document/@d3/bar-chart@latest"
     )
     assert (
-        resolve_observable_url("https://example.com/@d3/bar-chart")
-        == "https://api.example.com/document/@d3/bar-chart"
-    )
-    assert (
-        resolve_observable_url("https://observablehq.com/d/1234567890abcdef")
+        resolve_observablehq_api_url("https://observablehq.com/d/1234567890abcdef")
         == "https://api.observablehq.com/document/1234567890abcdef"
     )
     assert (
-        resolve_observable_url("@d3/bar-chart")
+        resolve_observablehq_api_url("@d3/bar-chart")
         == "https://api.observablehq.com/document/@d3/bar-chart"
     )
     assert (
-        resolve_observable_url("1234567890abcdef")
+        resolve_observablehq_api_url("1234567890abcdef")
         == "https://api.observablehq.com/document/1234567890abcdef"
     )
+    with pytest.raises(ValueError, match="Invalid ObservableHQ notebook specifier"):
+        resolve_observablehq_api_url("https://example.com/@d3/bar-chart")
 
 
 def test_observable_document_serializes_to_notebook_kit_html() -> None:
@@ -169,7 +175,7 @@ def test_observable_document_serializes_to_notebook_kit_html() -> None:
     }
 
 
-def test_notebook_from_url_fetches_source_and_remote_attachments(
+def test_notebook_from_observablehq_fetches_source_and_remote_attachments(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def fake_fetch(
@@ -190,10 +196,10 @@ def test_notebook_from_url_fetches_source_and_remote_attachments(
         )
 
     monkeypatch.setattr(
-        "pyobservablejs._notebook.fetch_observable_notebook", fake_fetch
+        "pyobservablejs._notebook.fetch_observablehq_notebook", fake_fetch
     )
 
-    widget = obs.Notebook.from_url(
+    widget = obs.Notebook.from_observablehq(
         "https://observablehq.com/@d3/bar-chart",
         timeout=1,
         attachments={"local.csv": "https://example.test/local.csv"},
@@ -607,20 +613,49 @@ def test_python_variables_mapping_preserves_wire_type_key() -> None:
     }
 
 
-def test_dataframe_like_values_serialize_as_records_by_default() -> None:
+def test_dataframe_like_values_serialize_as_records_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     class DataFrame:
-        __module__ = "pandas"
-
         def to_dict(self, orient: str) -> list[dict[str, int]]:
             assert orient == "records"
             return [{"x": 1}]
+
+    monkeypatch.setitem(
+        sys.modules, "pandas", types.SimpleNamespace(DataFrame=DataFrame)
+    )
 
     widget = obs.Notebook(variables={"rows": DataFrame()})
 
     assert widget.get_state(["_variables"])["_variables"]["rows"] == [{"x": 1}]
 
 
-def test_from_file_embeds_file_attachments_and_local_imports(
+def test_polars_like_values_serialize_when_polars_is_loaded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class DataFrame:
+        def to_dicts(self) -> list[dict[str, int]]:
+            return [{"x": 1}]
+
+    class Series:
+        def to_list(self) -> list[int]:
+            return [1, 2]
+
+    monkeypatch.setitem(
+        sys.modules,
+        "polars",
+        types.SimpleNamespace(DataFrame=DataFrame, Series=Series),
+    )
+
+    widget = obs.Notebook(variables={"rows": DataFrame(), "x": Series()})
+
+    assert widget.get_state(["_variables"])["_variables"] == {
+        "rows": [{"x": 1}],
+        "x": [1, 2],
+    }
+
+
+def test_from_html_embeds_file_attachments_and_local_imports(
     tmp_path: pathlib.Path,
 ) -> None:
     data = tmp_path / "data"
@@ -642,7 +677,7 @@ def test_from_file_embeds_file_attachments_and_local_imports(
         encoding="utf-8",
     )
 
-    widget = obs.Notebook.from_file(notebook)
+    widget = _notebook_from_html_file(notebook)
 
     assert "data/points.csv" in widget.attachments
     assert widget.attachments["data/points.csv"]["url"].startswith(
@@ -651,6 +686,15 @@ def test_from_file_embeds_file_attachments_and_local_imports(
     assert 'from "data:text/javascript;base64,' in widget.source
     assert len(widget.cells) == 1
     assert widget.spec == {}
+
+
+def test_from_html_requires_html_string(tmp_path: pathlib.Path) -> None:
+    path = tmp_path / "chart.html"
+    path.write_text("<notebook></notebook>", encoding="utf-8")
+    bad_source: Any = path
+
+    with pytest.raises(TypeError, match="HTML string"):
+        obs.Notebook.from_html(bad_source)
 
 
 def test_source_backed_notebook_creates_one_unique_notebook_cell_per_script() -> None:
@@ -672,7 +716,7 @@ def test_source_backed_notebook_creates_one_unique_notebook_cell_per_script() ->
     assert widget.get_state(["_cell_widgets"]) == {"_cell_widgets": cell_refs}
 
 
-def test_from_file_rewrites_only_javascript_imports(tmp_path: pathlib.Path) -> None:
+def test_from_html_rewrites_only_javascript_imports(tmp_path: pathlib.Path) -> None:
     (tmp_path / "helper.js").write_text("export const value = 1;\n", encoding="utf-8")
     notebook = tmp_path / "example.html"
     notebook.write_text(
@@ -696,7 +740,7 @@ def test_from_file_rewrites_only_javascript_imports(tmp_path: pathlib.Path) -> N
         encoding="utf-8",
     )
 
-    widget = obs.Notebook.from_file(notebook)
+    widget = _notebook_from_html_file(notebook)
 
     assert 'from "./helper.js"' in widget.source
     assert 'import "data:text/javascript;base64,' in widget.source
@@ -708,7 +752,7 @@ def test_from_file_rewrites_only_javascript_imports(tmp_path: pathlib.Path) -> N
     assert len(widget.cells) == 2
 
 
-def test_from_file_does_not_rewrite_import_named_methods(
+def test_from_html_does_not_rewrite_import_named_methods(
     tmp_path: pathlib.Path,
 ) -> None:
     (tmp_path / "helper.js").write_text("export const value = 1;\n", encoding="utf-8")
@@ -727,7 +771,7 @@ def test_from_file_does_not_rewrite_import_named_methods(
         encoding="utf-8",
     )
 
-    widget = obs.Notebook.from_file(notebook)
+    widget = _notebook_from_html_file(notebook)
 
     assert 'obj.import("./helper.js")' in widget.source
     assert 'obj?.import("./helper.js")' in widget.source
@@ -735,7 +779,7 @@ def test_from_file_does_not_rewrite_import_named_methods(
     assert widget.source.count("data:text/javascript;base64,") == 1
 
 
-def test_from_file_allows_comments_between_file_attachment_tokens(
+def test_from_html_allows_comments_between_file_attachment_tokens(
     tmp_path: pathlib.Path,
 ) -> None:
     (tmp_path / "data.csv").write_text("x,y\n1,2\n", encoding="utf-8")
@@ -753,12 +797,12 @@ def test_from_file_allows_comments_between_file_attachment_tokens(
         encoding="utf-8",
     )
 
-    widget = obs.Notebook.from_file(notebook)
+    widget = _notebook_from_html_file(notebook)
 
     assert set(widget.attachments) == {"data.csv"}
 
 
-def test_from_file_embeds_only_standalone_file_attachment_calls(
+def test_from_html_embeds_only_standalone_file_attachment_calls(
     tmp_path: pathlib.Path,
 ) -> None:
     (tmp_path / "data.csv").write_text("x,y\n1,2\n", encoding="utf-8")
@@ -779,12 +823,12 @@ def test_from_file_embeds_only_standalone_file_attachment_calls(
         encoding="utf-8",
     )
 
-    widget = obs.Notebook.from_file(notebook)
+    widget = _notebook_from_html_file(notebook)
 
     assert set(widget.attachments) == {"data.csv"}
 
 
-def test_from_file_embeds_only_executable_file_attachments(
+def test_from_html_embeds_only_executable_file_attachments(
     tmp_path: pathlib.Path,
 ) -> None:
     (tmp_path / "points.csv").write_text("x,y\n1,2\n", encoding="utf-8")
@@ -827,13 +871,13 @@ def test_from_file_embeds_only_executable_file_attachments(
         encoding="utf-8",
     )
 
-    widget = obs.Notebook.from_file(notebook)
+    widget = _notebook_from_html_file(notebook)
 
     assert set(widget.attachments) == {"points.csv"}
     assert widget.attachments["points.csv"]["url"].startswith("data:text/csv;base64,")
 
 
-def test_from_file_keeps_method_calls_before_division_executable(
+def test_from_html_keeps_method_calls_before_division_executable(
     tmp_path: pathlib.Path,
 ) -> None:
     (tmp_path / "data.csv").write_text("x,y\n1,2\n", encoding="utf-8")
@@ -849,12 +893,12 @@ def test_from_file_keeps_method_calls_before_division_executable(
         encoding="utf-8",
     )
 
-    widget = obs.Notebook.from_file(notebook)
+    widget = _notebook_from_html_file(notebook)
 
     assert set(widget.attachments) == {"data.csv"}
 
 
-def test_from_file_keeps_property_names_before_division_executable(
+def test_from_html_keeps_property_names_before_division_executable(
     tmp_path: pathlib.Path,
 ) -> None:
     (tmp_path / "data.csv").write_text("x,y\n1,2\n", encoding="utf-8")
@@ -871,12 +915,12 @@ def test_from_file_keeps_property_names_before_division_executable(
         encoding="utf-8",
     )
 
-    widget = obs.Notebook.from_file(notebook)
+    widget = _notebook_from_html_file(notebook)
 
     assert set(widget.attachments) == {"data.csv"}
 
 
-def test_from_file_keeps_private_names_before_division_executable(
+def test_from_html_keeps_private_names_before_division_executable(
     tmp_path: pathlib.Path,
 ) -> None:
     (tmp_path / "data.csv").write_text("x,y\n1,2\n", encoding="utf-8")
@@ -893,12 +937,12 @@ def test_from_file_keeps_private_names_before_division_executable(
         encoding="utf-8",
     )
 
-    widget = obs.Notebook.from_file(notebook)
+    widget = _notebook_from_html_file(notebook)
 
     assert set(widget.attachments) == {"data.csv"}
 
 
-def test_from_file_respects_unquoted_script_types(tmp_path: pathlib.Path) -> None:
+def test_from_html_respects_unquoted_script_types(tmp_path: pathlib.Path) -> None:
     (tmp_path / "helper.js").write_text("export const value = 1;\n", encoding="utf-8")
     (tmp_path / "points.csv").write_text("x,y\n1,2\n", encoding="utf-8")
     (tmp_path / "secret.csv").write_text("x,y\n9,9\n", encoding="utf-8")
@@ -919,14 +963,14 @@ def test_from_file_respects_unquoted_script_types(tmp_path: pathlib.Path) -> Non
         encoding="utf-8",
     )
 
-    widget = obs.Notebook.from_file(notebook)
+    widget = _notebook_from_html_file(notebook)
 
     assert 'import "./helper.js"' in widget.source
     assert 'import "data:text/javascript;base64,' in widget.source
     assert set(widget.attachments) == {"points.csv"}
 
 
-def test_from_file_ignores_data_type_when_script_type_is_absent(
+def test_from_html_ignores_data_type_when_script_type_is_absent(
     tmp_path: pathlib.Path,
 ) -> None:
     (tmp_path / "helper.js").write_text("export const value = 1;\n", encoding="utf-8")
@@ -948,13 +992,13 @@ def test_from_file_ignores_data_type_when_script_type_is_absent(
         encoding="utf-8",
     )
 
-    widget = obs.Notebook.from_file(notebook)
+    widget = _notebook_from_html_file(notebook)
 
     assert 'import "data:text/javascript;base64,' in widget.source
     assert set(widget.attachments) == {"points.csv"}
 
 
-def test_from_file_handles_gt_in_script_attribute_values(
+def test_from_html_handles_gt_in_script_attribute_values(
     tmp_path: pathlib.Path,
 ) -> None:
     (tmp_path / "helper.js").write_text("export const value = 1;\n", encoding="utf-8")
@@ -972,13 +1016,13 @@ def test_from_file_handles_gt_in_script_attribute_values(
         encoding="utf-8",
     )
 
-    widget = obs.Notebook.from_file(notebook)
+    widget = _notebook_from_html_file(notebook)
 
     assert 'import "data:text/javascript;base64,' in widget.source
     assert set(widget.attachments) == {"points.csv"}
 
 
-def test_from_file_ignores_scripts_outside_notebook(tmp_path: pathlib.Path) -> None:
+def test_from_html_ignores_scripts_outside_notebook(tmp_path: pathlib.Path) -> None:
     (tmp_path / "helper.js").write_text("export const value = 1;\n", encoding="utf-8")
     (tmp_path / "secret.csv").write_text("x,y\n9,9\n", encoding="utf-8")
     notebook = tmp_path / "example.html"
@@ -997,14 +1041,14 @@ def test_from_file_ignores_scripts_outside_notebook(tmp_path: pathlib.Path) -> N
         encoding="utf-8",
     )
 
-    widget = obs.Notebook.from_file(notebook)
+    widget = _notebook_from_html_file(notebook)
 
     assert 'import "./helper.js";' in widget.source
     assert widget.source.count('import "./helper.js";') == 2
     assert widget.attachments == {}
 
 
-def test_from_file_ignores_script_tags_inside_html_comments(
+def test_from_html_ignores_script_tags_inside_html_comments(
     tmp_path: pathlib.Path,
 ) -> None:
     (tmp_path / "helper.js").write_text("export const value = 1;\n", encoding="utf-8")
@@ -1027,14 +1071,14 @@ def test_from_file_ignores_script_tags_inside_html_comments(
         encoding="utf-8",
     )
 
-    widget = obs.Notebook.from_file(notebook)
+    widget = _notebook_from_html_file(notebook)
 
     assert 'import "./helper.js";' in widget.source
     assert "data:text/javascript;base64," not in widget.source
     assert widget.attachments == {}
 
 
-def test_from_file_ignores_longer_closing_tag_prefixes(
+def test_from_html_ignores_longer_closing_tag_prefixes(
     tmp_path: pathlib.Path,
 ) -> None:
     (tmp_path / "helper.js").write_text("export const value = 1;\n", encoding="utf-8")
@@ -1053,13 +1097,13 @@ def test_from_file_ignores_longer_closing_tag_prefixes(
         encoding="utf-8",
     )
 
-    widget = obs.Notebook.from_file(notebook)
+    widget = _notebook_from_html_file(notebook)
 
     assert 'import "data:text/javascript;base64,' in widget.source
     assert set(widget.attachments) == {"points.csv"}
 
 
-def test_from_file_ignores_notebook_close_text_inside_script(
+def test_from_html_ignores_notebook_close_text_inside_script(
     tmp_path: pathlib.Path,
 ) -> None:
     (tmp_path / "helper.js").write_text("export const value = 1;\n", encoding="utf-8")
@@ -1078,7 +1122,7 @@ def test_from_file_ignores_notebook_close_text_inside_script(
         encoding="utf-8",
     )
 
-    widget = obs.Notebook.from_file(notebook)
+    widget = _notebook_from_html_file(notebook)
 
     assert 'import "data:text/javascript;base64,' in widget.source
     assert set(widget.attachments) == {"points.csv"}
@@ -1098,7 +1142,7 @@ def test_from_html_treats_unknown_script_type_as_javascript() -> None:
     assert len(widget.cells) == 1
 
 
-def test_from_file_rewrites_unknown_script_type_as_javascript(
+def test_from_html_rewrites_unknown_script_type_as_javascript(
     tmp_path: pathlib.Path,
 ) -> None:
     (tmp_path / "helper.js").write_text("export const value = 1;\n", encoding="utf-8")
@@ -1116,13 +1160,13 @@ def test_from_file_rewrites_unknown_script_type_as_javascript(
         encoding="utf-8",
     )
 
-    widget = obs.Notebook.from_file(notebook)
+    widget = _notebook_from_html_file(notebook)
 
     assert 'import "data:text/javascript;base64,' in widget.source
     assert set(widget.attachments) == {"points.csv"}
 
 
-def test_from_file_rewrites_minified_static_imports(tmp_path: pathlib.Path) -> None:
+def test_from_html_rewrites_minified_static_imports(tmp_path: pathlib.Path) -> None:
     (tmp_path / "helper.js").write_text("export const value = 1;\n", encoding="utf-8")
     notebook = tmp_path / "example.html"
     notebook.write_text(
@@ -1137,7 +1181,7 @@ def test_from_file_rewrites_minified_static_imports(tmp_path: pathlib.Path) -> N
         encoding="utf-8",
     )
 
-    widget = obs.Notebook.from_file(notebook)
+    widget = _notebook_from_html_file(notebook)
 
     assert 'from"data:text/javascript;base64,' in widget.source
     assert widget.source.count("data:text/javascript;base64,") == 2
