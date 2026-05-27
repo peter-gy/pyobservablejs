@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "observablejs"
+name = "pyobservablejs"
 version = "0.1.0"
 description = "Observable JavaScript notebooks as reusable Python widgets"
 readme = "README.md"
@@ -35,13 +35,12 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/peterg-y/observablejs"
-Source = "https://github.com/peterg-y/observablejs"
-Issues = "https://github.com/peterg-y/observablejs/issues"
+Homepage = "https://github.com/peterg-y/pyobservablejs"
+Source = "https://github.com/peterg-y/pyobservablejs"
+Issues = "https://github.com/peterg-y/pyobservablejs/issues"
 
 [project.optional-dependencies]
-arrow = ["pyarrow>=16"]
-data = ["pandas>=2", "polars>=1", "pyarrow>=16"]
+data = ["pandas>=2", "polars>=1"]
 dev = ["watchfiles", "jupyterlab", "jupyter-book>=2.1.5"]
 pandas = ["pandas>=2"]
 polars = ["polars>=1"]
@@ -60,7 +59,7 @@ dev = [
 
 [tool.hatch.build]
 only-packages = true
-artifacts = ["src/observablejs/static/*"]
+artifacts = ["src/pyobservablejs/static/*"]
 
 [tool.hatch.build.targets.sdist.force-include]
 "js" = "js"
@@ -70,8 +69,8 @@ artifacts = ["src/observablejs/static/*"]
 [tool.hatch.build.hooks.jupyter-builder]
 build-function = "hatch_jupyter_builder.npm_builder"
 ensured-targets = [
-    "src/observablejs/static/widget.js",
-    "src/observablejs/static/widget.css",
+    "src/pyobservablejs/static/widget.js",
+    "src/pyobservablejs/static/widget.css",
 ]
 dependencies = ["hatch-jupyter-builder>=0.5.0"]
 

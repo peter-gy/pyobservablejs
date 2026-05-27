@@ -1,6 +1,6 @@
 ---
 title: Quickstart
-description: Install observablejs and create a small notebook from Python.
+description: Install pyobservablejs and create a small notebook from Python.
 ---
 
 # Quickstart
@@ -8,33 +8,34 @@ description: Install observablejs and create a small notebook from Python.
 ## Install
 
 ```sh
-pip install observablejs
+pip install pyobservablejs
 ```
 
 or with `uv`:
 
 ```sh
-uv add observablejs
+uv add pyobservablejs
 ```
 
-For dataframe and Arrow helpers:
+For optional dataframe serialization support:
 
 ```sh
-uv add "observablejs[data]"
+uv add "pyobservablejs[data]"
 ```
 
 ## Create a Notebook
 
-Use `ojs.Notebook` with cell helpers. `ojs.cell` creates an Observable
-JavaScript cell.
+Use `obs.Notebook` with cell helpers. `obs.ojs` creates Observable JavaScript
+cells, `obs.js` creates ES module JavaScript cells, `obs.md` creates Markdown
+cells, and `obs.html` creates HTML cells.
 
 ```python
-import observablejs as ojs
+import pyobservablejs as obs
 
-notebook = ojs.Notebook(
-    ojs.md("# A small notebook"),
-    ojs.cell("answer = 40 + 2", name="answer"),
-    ojs.cell("md`The answer is **${answer}**.`"),
+notebook = obs.Notebook(
+    obs.md("# A small notebook"),
+    obs.ojs("answer = 40 + 2", name="answer"),
+    obs.ojs("md`The answer is **${answer}**.`"),
 )
 
 notebook
@@ -50,7 +51,7 @@ be JavaScript identifiers. If a notebook defines the same variable, the Python
 value overrides that definition.
 
 ```python
-import observablejs as ojs
+import pyobservablejs as obs
 
 events = [
     {"day": "Mon", "value": 12},
@@ -58,8 +59,8 @@ events = [
     {"day": "Wed", "value": 15},
 ]
 
-notebook = ojs.Notebook(
-    ojs.cell("""
+notebook = obs.Notebook(
+    obs.ojs("""
     Plot.plot({
       height: 220,
       y: {grid: true},
@@ -94,9 +95,9 @@ Name cells that Python needs to display or read separately from the full
 notebook.
 
 ```python
-notebook = ojs.Notebook(
-    ojs.cell('viewof gain = Inputs.range([0, 11], {value: 5})', name="gain"),
-    ojs.cell("double = gain * 2", name="double"),
+notebook = obs.Notebook(
+    obs.ojs('viewof gain = Inputs.range([0, 11], {value: 5})', name="gain"),
+    obs.ojs("double = gain * 2", name="double"),
 )
 
 notebook.cell("gain")
@@ -116,7 +117,7 @@ mo.ui.anywidget(notebook.cell("gain"))
 Use `from_file` or `from_html` for source-backed notebooks.
 
 ```python
-notebook = ojs.Notebook.from_file("chart.html")
+notebook = obs.Notebook.from_file("chart.html")
 ```
 
 By default, local `FileAttachment(...)` references and relative JavaScript
@@ -128,7 +129,7 @@ imports are embedded so the widget can travel with the notebook output. Use
 Use `from_url` for a public Observable notebook:
 
 ```python
-notebook = ojs.Notebook.from_url("https://observablehq.com/@mbostock/saving-svg")
+notebook = obs.Notebook.from_url("https://observablehq.com/@mbostock/saving-svg")
 notebook
 ```
 
@@ -144,7 +145,7 @@ penguins = [
     {"culmen_length_mm": 44.1, "culmen_depth_mm": 15.9},
     {"culmen_length_mm": 50.2, "culmen_depth_mm": 19.1},
 ]
-notebook = ojs.Notebook.from_url(
+notebook = obs.Notebook.from_url(
     "https://observablehq.com/@observablehq/plot-scatterplot/2",
     variables={"penguins": penguins},
 )

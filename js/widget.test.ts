@@ -3,6 +3,7 @@
 import type { RenderProps } from "@anywidget/types";
 import { toNotebook } from "@observablehq/notebook-kit";
 import { describe, expect, test } from "vitest";
+import { SELECTORS } from "./dom-contract";
 import type { CellRenderContext, NotebookGraph, WidgetModel } from "./types";
 import widget from "./widget";
 import {
@@ -312,9 +313,7 @@ describe("widget graph sync", () => {
 			host: createHost(childModels, childExports, childRenders),
 		} as unknown as RenderProps<WidgetModel>);
 
-		const cell = await waitFor(
-			() => el.querySelector("[data-observablejs-composed='true'] .observablehq--cell") ?? undefined,
-		);
+		const cell = await waitFor(() => el.querySelector(`${SELECTORS.composedCell} .observablehq--cell`) ?? undefined);
 		expect(cell.id).toBe("cell-1");
 		controller.abort();
 	});
@@ -342,18 +341,16 @@ describe("widget graph sync", () => {
 			host: createHost(childModels, createCellExportsMap(childModels), renderChildrenThroughWidget(childModels)),
 		} as unknown as RenderProps<WidgetModel>);
 
-		const wrapper = await waitFor(
-			() => el.querySelector<HTMLElement>("[data-observablejs-composed='true']") ?? undefined,
-		);
-		await waitFor(() => wrapper.querySelector(".observablejs-source-panel") ?? undefined);
+		const wrapper = await waitFor(() => el.querySelector<HTMLElement>(SELECTORS.composedCell) ?? undefined);
+		await waitFor(() => wrapper.querySelector(SELECTORS.sourcePanel) ?? undefined);
 		const children = Array.from(wrapper.children);
-		const panel = wrapper.querySelector<HTMLElement>(".observablejs-source-panel");
-		const pre = panel?.querySelector<HTMLPreElement>(".observablejs-source");
-		const label = panel?.querySelector<HTMLElement>(".observablejs-source-label");
+		const panel = wrapper.querySelector<HTMLElement>(SELECTORS.sourcePanel);
+		const pre = panel?.querySelector<HTMLPreElement>(SELECTORS.source);
+		const label = panel?.querySelector<HTMLElement>(SELECTORS.sourceLabel);
 
 		expect(children[0]?.classList.contains("observablehq--cell")).toBe(true);
 		expect(children[1]).toBe(panel);
-		expect(panel?.querySelector(".observablejs-source-header")).toBeNull();
+		expect(panel?.querySelector(SELECTORS.sourceHeader)).toBeNull();
 		expect(pre?.textContent).toBe(source);
 		expect(pre?.nextElementSibling).toBe(label);
 		expect(pre?.contains(label ?? null)).toBe(false);
@@ -393,9 +390,7 @@ describe("widget graph sync", () => {
 			host: undefined,
 		} as unknown as RenderProps<WidgetModel>);
 
-		const cell = await waitFor(
-			() => el.querySelector("[data-observablejs-composed='true'] .observablehq--cell") ?? undefined,
-		);
+		const cell = await waitFor(() => el.querySelector(`${SELECTORS.composedCell} .observablehq--cell`) ?? undefined);
 		expect(cell.id).toBe("cell-1");
 		controller.abort();
 	});
@@ -441,7 +436,7 @@ describe("widget graph sync", () => {
 			host: createHost(childModels, childExports, childRenders),
 		} as unknown as RenderProps<WidgetModel>);
 
-		await waitFor(() => el.querySelector(".observablejs-error") ?? undefined);
+		await waitFor(() => el.querySelector(SELECTORS.error) ?? undefined);
 
 		expect(events).toContain("unbind:answer");
 		expect(events).toContain("unbind:broken");
@@ -516,7 +511,7 @@ describe("widget graph sync", () => {
 			host: createHost(new Map()),
 		} as unknown as RenderProps<WidgetModel>);
 
-		await waitFor(() => el.querySelector(".observablejs-error") ?? undefined);
+		await waitFor(() => el.querySelector(SELECTORS.error) ?? undefined);
 		expect(siblingModel.listenerCount("change:_values")).toBe(0);
 	});
 
@@ -587,7 +582,7 @@ describe("widget graph sync", () => {
 		} as unknown as RenderProps<WidgetModel>);
 
 		await waitFor(() => (standaloneEl.textContent?.includes("live-svg") ? standaloneEl : undefined));
-		expect(standaloneEl.querySelector("[data-observablejs-standalone-cell='true'] #cell-2")).not.toBeNull();
+		expect(standaloneEl.querySelector(`${SELECTORS.standaloneCell} #cell-2`)).not.toBeNull();
 		controller.abort();
 	});
 });

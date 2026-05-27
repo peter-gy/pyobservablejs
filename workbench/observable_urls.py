@@ -14,9 +14,9 @@ app = marimo.App(width="full")
 @app.cell
 def _():
     import marimo as mo
-    import observablejs as ojs
+    import pyobservablejs as obs
 
-    return mo, ojs
+    return mo, obs
 
 
 @app.cell
@@ -79,9 +79,9 @@ def _(mo, urls):
 
 
 @app.cell
-def _(ojs, selected_url):
+def _(obs, selected_url):
     try:
-        selected_notebook = ojs.Notebook.from_url(
+        selected_notebook = obs.Notebook.from_url(
             selected_url.value,
             show_pinned_source=True,
         )
@@ -151,13 +151,13 @@ def _():
 
 
 @app.cell
-def _(ojs, override_url, python_penguins, show_override_smoke):
+def _(obs, override_url, python_penguins, show_override_smoke):
     if not show_override_smoke.value:
         override_notebook = None
         override_error = ""
     else:
         try:
-            override_notebook = ojs.Notebook.from_url(
+            override_notebook = obs.Notebook.from_url(
                 override_url,
                 variables={"penguins": python_penguins},
                 show_pinned_source=True,

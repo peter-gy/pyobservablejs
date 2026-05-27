@@ -2,6 +2,7 @@
 
 import { toCell } from "@observablehq/notebook-kit";
 import { describe, expect, test } from "vitest";
+import { SELECTORS } from "./dom-contract";
 import { renderSource } from "./highlight";
 
 describe("source highlighting", () => {
@@ -13,23 +14,23 @@ describe("source highlighting", () => {
 		);
 		document.body.appendChild(panel);
 
-		const label = panel.querySelector(".observablejs-source-label");
-		const pre = panel.querySelector<HTMLPreElement>(".observablejs-source");
+		const label = panel.querySelector(SELECTORS.sourceLabel);
+		const pre = panel.querySelector<HTMLPreElement>(SELECTORS.source);
 		expect(label?.textContent).toBe("OJS");
-		expect(panel.querySelector(".observablejs-source-header")).toBeNull();
+		expect(panel.querySelector(SELECTORS.sourceHeader)).toBeNull();
 		expect(pre?.nextElementSibling).toBe(label);
 		expect(pre?.contains(label)).toBe(false);
 		expect(pre?.getAttribute("aria-label")).toBe("OJS source");
 		expect(panel.querySelector("code")?.textContent).toBe(source);
 
 		const highlighted = await waitFor(() => {
-			const sourcePre = panel.querySelector<HTMLPreElement>(".observablejs-source");
+			const sourcePre = panel.querySelector<HTMLPreElement>(SELECTORS.source);
 			return sourcePre?.dataset.highlight === "ready" ? sourcePre : undefined;
 		});
 
 		expect(highlighted.textContent).toBe(source);
-		expect(highlighted.querySelectorAll(".observablejs-source-line")).toHaveLength(2);
-		expect(highlighted.querySelector(".observablejs-source-token")).not.toBeNull();
+		expect(highlighted.querySelectorAll(SELECTORS.sourceLine)).toHaveLength(2);
+		expect(highlighted.querySelector(SELECTORS.sourceToken)).not.toBeNull();
 	});
 });
 

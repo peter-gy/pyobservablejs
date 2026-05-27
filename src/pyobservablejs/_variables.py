@@ -2,51 +2,23 @@
 
 Python sends variables through anywidget as JSON-compatible trait state. Plain values
 stay normal JSON. Values that need a browser-side type use
-``__observablejs_type__`` tags that ``js/wire.ts`` revives before the OJS runtime
+``__pyobservablejs_type__`` tags that ``js/wire.ts`` revives before the OJS runtime
 evaluates cells.
 """
 
 from __future__ import annotations
 
 import base64
-import dataclasses
 import datetime as _dt
-import importlib
 import math
 import re
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-TYPE_KEY = "__observablejs_type__"
+TYPE_KEY = "__pyobservablejs_type__"
 # Keep this tag in sync with `revivePythonValue` and `toWireValue` in js/wire.ts.
 
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z_$][0-9A-Za-z_$]*$")
-
-
-@dataclasses.dataclass(frozen=True)
-class Arrow:
-    """Wrapper requesting Arrow IPC transport for a dataframe-like value."""
-
-    value: Any
-
-
-@dataclasses.dataclass(frozen=True)
-class Records:
-    """Wrapper requesting row-record transport for a dataframe-like value."""
-
-    value: Any
-
-
-def arrow(value: Any) -> Arrow:
-    """Serialize a pandas or Polars dataframe as an Arrow IPC table."""
-
-    return Arrow(value)
-
-
-def records(value: Any) -> Records:
-    """Serialize dataframe-like values as row records."""
-
-    return Records(value)
 
 
 def serialize_variables(values: Mapping[str, Any] | None) -> dict[str, Any]:
@@ -69,20 +41,6 @@ def serialize_variables(values: Mapping[str, Any] | None) -> dict[str, Any]:
 def serialize_value(value: Any) -> Any:
     """Convert one Python value into the JSON-compatible wire format."""
 
-    if isinstance(value, Arrow):
-        arrow_value = _try_arrow_table(value.value)
-        if arrow_value is None:
-            raise TypeError(
-                f"Value of type {type(value.value).__name__!r} cannot be serialized as Arrow"
-            )
-        return {TYPE_KEY: "arrow", "value": arrow_value}
-    if isinstance(value, Records):
-        records_value = _try_records(value.value)
-        if records_value is None:
-            raise TypeError(
-                f"Value of type {type(value.value).__name__!r} cannot be serialized as records"
-            )
-        return serialize_value(records_value)
     if value is None or isinstance(value, bool | int | str):
         return value
     if isinstance(value, float):
@@ -185,39 +143,6 @@ def deserialize_value(value: Any) -> Any:
     if tag == "set" and isinstance(value.get("value"), list):
         return [deserialize_value(item) for item in value["value"]]
     return {key: deserialize_value(item) for key, item in value.items()}
-
-
-def _try_arrow_table(value: Any) -> str | None:
-    # Arrow keeps typed dataframe columns available in OJS. Records remain the
-    # dependency-free default.
-    module, class_name = _value_type(value)
-    is_pandas_dataframe = module == "pandas" and class_name == "DataFrame"
-    is_polars_dataframe = (
-        module == "polars" and class_name == "DataFrame" and hasattr(value, "to_arrow")
-    )
-    if not (is_pandas_dataframe or is_polars_dataframe):
-        return None
-
-    try:
-        pa = importlib.import_module("pyarrow")
-    except ImportError:
-        return None
-
-    try:
-        if is_pandas_dataframe:
-            table = pa.Table.from_pandas(value, preserve_index=False)
-        else:
-            table = value.to_arrow()
-    except Exception:
-        return None
-
-    try:
-        sink = pa.BufferOutputStream()
-        with pa.ipc.new_file(sink, table.schema) as writer:
-            writer.write_table(table)
-        return base64.standard_b64encode(sink.getvalue().to_pybytes()).decode("ascii")
-    except Exception:
-        return None
 
 
 def _try_records(value: Any) -> Any | None:

@@ -19,6 +19,14 @@ import type {
 	WidgetModel,
 } from "./types";
 import { isViewTarget, readViewValue, writeViewValue } from "./view";
+import {
+	appendCellWrapper,
+	createCellOutput,
+	createNotebookRoot,
+	createTopLevelError,
+	markWidgetShell,
+	prepareWidgetShell,
+} from "./widget-dom";
 import { reviveSyncedValue, sameWireValue, toWireValue } from "./wire";
 import "@observablehq/notebook-kit/index.css";
 import "@observablehq/notebook-kit/theme-air.css";
@@ -114,7 +122,7 @@ function render({ model, el, signal, host }: RenderProps<WidgetModel> & { signal
 		void renderCurrent(model, el, attempt.signal, host, rerender).catch((error: unknown) => {
 			if (attempt.signal.aborted || renderVersion !== version) return;
 			attempt.abort();
-			el.replaceChildren(renderTopLevelError(error));
+			el.replaceChildren(createTopLevelError(error));
 		});
 	};
 
@@ -137,8 +145,7 @@ async function renderCurrent(
 	host: RenderProps<WidgetModel>["host"] | undefined,
 	onInputReset: () => void,
 ): Promise<void> {
-	el.replaceChildren();
-	el.classList.add("observablejs");
+	prepareWidgetShell(el);
 	if (signal.aborted) return;
 
 	const notebook = getNotebook(model);
@@ -157,10 +164,7 @@ async function renderCurrent(
 		syncNotebookValues(model, []);
 	}
 
-	const root = document.createElement("div");
-	root.className = "observablejs-notebook observablehq observablehq--block";
-	root.dataset.theme = typeof notebook.theme === "string" ? notebook.theme : "light-dark";
-	el.appendChild(root);
+	const root = createNotebookRoot(el, notebook.theme);
 
 	const options = getNotebookOptions(model);
 	const attachmentRegistry = registerAttachments(options.attachments);
@@ -314,10 +318,7 @@ async function renderComposedCells(
 	// One Notebook Kit runtime, one child widget model per cell.
 	const cells = notebook.cells;
 	const wrappers = cells.map((_, index) => {
-		const wrapper = appendCellWrapper(root);
-		wrapper.dataset.observablejsComposed = "true";
-		wrapper.dataset.observablejsCellRef = cellRefs[index] ?? "";
-		return wrapper;
+		return appendCellWrapper(root, { composedCellRef: cellRefs[index] ?? "" });
 	});
 	const resolvedCells = await Promise.allSettled(cellRefs.map((ref) => resolveCellWidget(host, ref, signal)));
 	if (signal.aborted) return;
@@ -393,7 +394,7 @@ async function resolveCellWidgetAttempt(
 		return resolveCellWidgetAttempt(host, ref, signal, deadline, error);
 	}
 	if (!isCellExports(child.exports)) {
-		throw new Error(`Cell widget ${ref} does not expose observablejs cell exports`);
+		throw new Error(`Cell widget ${ref} does not expose pyobservablejs cell exports`);
 	}
 	return [child, childModel];
 }
@@ -452,7 +453,7 @@ function renderCellWidgetMount(model: RenderProps<WidgetModel>["model"], mount: 
 	} catch (error) {
 		const shouldRenderError = !signal.aborted;
 		mount.controller?.abort();
-		if (shouldRenderError) mount.el.replaceChildren(renderTopLevelError(error));
+		if (shouldRenderError) mount.el.replaceChildren(createTopLevelError(error));
 	}
 }
 
@@ -481,21 +482,13 @@ function renderLiveStandaloneCellWidget(
 	definition: ReturnType<typeof transpile>,
 	signal: AbortSignal,
 ): void {
-	el.replaceChildren();
-	el.classList.add("observablejs");
+	prepareWidgetShell(el);
 	if (signal.aborted) return;
 
-	const root = document.createElement("div");
-	root.className = "observablejs-notebook observablehq observablehq--block";
-	root.dataset.theme = typeof context.notebook.theme === "string" ? context.notebook.theme : "light-dark";
-	el.appendChild(root);
+	const root = createNotebookRoot(el, context.notebook.theme);
 
-	const wrapper = appendCellWrapper(root);
-	wrapper.dataset.observablejsStandaloneCell = "true";
-	const output = document.createElement("div");
-	output.id = `cell-${context.cell.id}`;
-	output.className = "observablehq observablehq--cell";
-	wrapper.appendChild(output);
+	const wrapper = appendCellWrapper(root, { standalone: true });
+	const output = createCellOutput(wrapper, context.cell);
 
 	syncCellVariableNames(model, exposedVariableNames(definition));
 	const state: Parameters<NotebookRuntime["define"]>[0] = {
@@ -530,16 +523,12 @@ function renderIsolatedStandaloneCellWidget(
 	context: CellRenderContext,
 	signal: AbortSignal,
 ): void {
-	el.replaceChildren();
-	el.classList.add("observablejs");
+	prepareWidgetShell(el);
 	if (signal.aborted) return;
 	const renderController = createAbortController(signal);
 	const renderSignal = renderController.signal;
 
-	const root = document.createElement("div");
-	root.className = "observablejs-notebook observablehq observablehq--block";
-	root.dataset.theme = typeof context.notebook.theme === "string" ? context.notebook.theme : "light-dark";
-	el.appendChild(root);
+	const root = createNotebookRoot(el, context.notebook.theme);
 
 	const attachmentRegistry = registerAttachments(context.options.attachments);
 	const runtime = createRuntime(root, el, context.options, attachmentRegistry);
@@ -566,8 +555,7 @@ function renderIsolatedStandaloneCellWidget(
 
 	try {
 		defineStandaloneDependencyVariables(runtime, context, renderSignal);
-		const wrapper = appendCellWrapper(root);
-		wrapper.dataset.observablejsStandaloneCell = "true";
+		const wrapper = appendCellWrapper(root, { standalone: true });
 		renderCell(
 			wrapper,
 			runtime,
@@ -584,7 +572,7 @@ function renderIsolatedStandaloneCellWidget(
 }
 
 function renderComposedCellWidget(el: HTMLElement, context: CellRenderContext, signal: AbortSignal): void {
-	el.classList.add("observablejs");
+	markWidgetShell(el);
 	if (signal.aborted) return;
 	renderCell(el, context.runtime, context.cell, context.showSource, context.sync, signal);
 }
@@ -628,13 +616,6 @@ function defineStandaloneDependencyVariables(
 	}
 }
 
-function appendCellWrapper(root: HTMLElement): HTMLElement {
-	const wrapper = document.createElement("div");
-	wrapper.className = "observablejs-cell";
-	root.appendChild(wrapper);
-	return wrapper;
-}
-
 function renderCell(
 	wrapper: HTMLElement,
 	runtime: NotebookRuntime,
@@ -644,10 +625,7 @@ function renderCell(
 	signal: AbortSignal,
 ): void {
 	wrapper.replaceChildren();
-	const output = document.createElement("div");
-	output.id = `cell-${cell.id}`;
-	output.className = "observablehq observablehq--cell";
-	wrapper.appendChild(output);
+	const output = createCellOutput(wrapper, cell);
 	defineCell(runtime, output, cell, sync);
 
 	if (showSource && cell.pinned) {
@@ -678,7 +656,7 @@ function defineCell(runtime: NotebookRuntime, root: HTMLDivElement, cell: Cell, 
 		}
 		if (sync) applyModelVariablesToViews(sync);
 	} catch (error) {
-		root.appendChild(renderTopLevelError(error));
+		root.appendChild(createTopLevelError(error));
 	}
 }
 
@@ -720,7 +698,7 @@ function createStandaloneDisplayDefinition(
 }
 
 function renderCellError(wrapper: HTMLElement, error: unknown): void {
-	wrapper.replaceChildren(renderTopLevelError(error));
+	wrapper.replaceChildren(createTopLevelError(error));
 }
 
 function createCellObserver(
@@ -949,13 +927,6 @@ function readModelVariables(model: RenderProps<WidgetModel>["model"]): Record<st
 function getCellRefs(value: unknown): string[] {
 	if (!Array.isArray(value)) return [];
 	return value.filter((item): item is string => typeof item === "string");
-}
-
-function renderTopLevelError(error: unknown): HTMLElement {
-	const pre = document.createElement("pre");
-	pre.className = "observablejs-error";
-	pre.textContent = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
-	return pre;
 }
 
 function createAbortController(parent: AbortSignal): AbortController {

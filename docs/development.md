@@ -1,6 +1,6 @@
 ---
 title: Development
-description: Local setup, docs, and checks for observablejs contributors.
+description: Local setup, docs, and checks for pyobservablejs contributors.
 ---
 
 # Development
@@ -35,7 +35,7 @@ uv run marimo edit workbench/observable_urls.py
 gallery when available:
 
 ```sh
-OBSERVABLEJS_GALLERY_ROOT=/path/to/notebook-kit/docs/ex uv run marimo edit workbench/gallery_examples.py
+NOTEBOOK_KIT_GALLERY_ROOT=/path/to/notebook-kit/docs/ex uv run marimo edit workbench/gallery_examples.py
 ```
 
 The notebooks cover separate runtime paths:

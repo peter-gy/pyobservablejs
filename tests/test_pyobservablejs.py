@@ -1,37 +1,28 @@
 from __future__ import annotations
 
 import datetime as dt
+import importlib.util
 import inspect
 import pathlib
 from typing import Any
 
 import anywidget
-import observablejs as ojs
+import pyobservablejs as obs
 import pytest
 import traitlets
-from observablejs._observable import observable_document_to_html, resolve_observable_url
+from pyobservablejs._graph import CellInfo, DependencyEdge, NotebookGraph
+from pyobservablejs._observable import (
+    observable_document_to_html,
+    resolve_observable_url,
+)
 
 
 def test_public_namespace_is_small() -> None:
-    assert set(ojs.__all__) == {
-        "Cell",
-        "NotebookCell",
-        "CellInfo",
-        "DependencyEdge",
-        "Notebook",
-        "NotebookGraph",
-        "arrow",
-        "cell",
-        "html",
-        "js",
-        "md",
-        "records",
-        "sql",
-    }
+    assert set(obs.__all__) == {"Notebook", "html", "js", "md", "ojs"}
 
 
 def test_public_signatures_hide_widget_internals() -> None:
-    notebook = inspect.signature(ojs.Notebook)
+    notebook = inspect.signature(obs.Notebook)
     assert list(notebook.parameters) == [
         "cells",
         "title",
@@ -46,23 +37,61 @@ def test_public_signatures_hide_widget_internals() -> None:
     assert "data" not in notebook.parameters
 
     for constructor in (
-        ojs.Notebook.from_html,
-        ojs.Notebook.from_file,
-        ojs.Notebook.from_url,
+        obs.Notebook.from_html,
+        obs.Notebook.from_file,
+        obs.Notebook.from_url,
     ):
         params = inspect.signature(constructor).parameters
         assert "variables" in params
         assert "data" not in params
         assert not any(name.startswith("_") for name in params)
 
+    helper_names = [
+        "source",
+        "name",
+        "display",
+        "raw",
+        "id",
+        "pinned",
+        "output",
+        "attrs",
+    ]
+    for helper in (obs.ojs, obs.js, obs.md, obs.html):
+        params = inspect.signature(helper).parameters
+        assert list(params) == helper_names
+        assert params["source"].kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
+        assert all(
+            param.kind is inspect.Parameter.KEYWORD_ONLY
+            for name, param in params.items()
+            if name != "source"
+        )
+        assert "database" not in params
+        assert "format" not in params
+
 
 def test_legacy_api_names_are_absent() -> None:
-    widget = ojs.Notebook()
+    widget = obs.Notebook()
 
+    assert importlib.util.find_spec("observablejs") is None
     assert not hasattr(widget, "data")
     assert not hasattr(widget, "update_data")
     assert not hasattr(widget, "defining_cell")
-    assert not hasattr(ojs.Notebook(ojs.cell("answer = 42")).cell(0), "get")
+    assert not hasattr(obs, "cell")
+    assert not hasattr(obs, "sql")
+    assert not hasattr(obs, "Cell")
+    assert not hasattr(obs, "NotebookCell")
+    assert not hasattr(obs, "CellInfo")
+    assert not hasattr(obs, "DependencyEdge")
+    assert not hasattr(obs, "NotebookGraph")
+    assert not hasattr(obs, "arrow")
+    assert not hasattr(obs, "records")
+    assert not hasattr(obs.Notebook(obs.ojs("answer = 42")).cell(0), "get")
+
+
+def test_sql_mode_is_not_publicly_authorable() -> None:
+    mode: Any = "sql"
+    with pytest.raises(ValueError, match="Unsupported Python-authored cell mode"):
+        obs.Notebook("select 1", mode=mode)
 
 
 def test_observable_url_resolution_matches_notebook_kit_and_framework() -> None:
@@ -160,9 +189,11 @@ def test_notebook_from_url_fetches_source_and_remote_attachments(
             {"data.csv": {"url": "https://static.example/data.csv"}},
         )
 
-    monkeypatch.setattr("observablejs._notebook.fetch_observable_notebook", fake_fetch)
+    monkeypatch.setattr(
+        "pyobservablejs._notebook.fetch_observable_notebook", fake_fetch
+    )
 
-    widget = ojs.Notebook.from_url(
+    widget = obs.Notebook.from_url(
         "https://observablehq.com/@d3/bar-chart",
         timeout=1,
         attachments={"local.csv": "https://example.test/local.csv"},
@@ -178,9 +209,9 @@ def test_notebook_from_url_fetches_source_and_remote_attachments(
 
 
 def test_notebook_serializes_source_cells() -> None:
-    widget = ojs.Notebook(
-        ojs.md("# Title"),
-        ojs.js("const answer = 42;", output="answer"),
+    widget = obs.Notebook(
+        obs.md("# Title"),
+        obs.js("const answer = 42;", output="answer"),
         title="Demo",
     )
 
@@ -191,7 +222,7 @@ def test_notebook_serializes_source_cells() -> None:
 
 
 def test_cell_defaults_to_observable_js_and_dedents() -> None:
-    item = ojs.cell(
+    item = obs.ojs(
         """
         answer = 42
         """
@@ -202,15 +233,15 @@ def test_cell_defaults_to_observable_js_and_dedents() -> None:
 
 
 def test_notebook_rejects_list_wrapped_cells() -> None:
-    bad_cells: Any = [ojs.cell("answer = 42")]
+    bad_cells: Any = [obs.ojs("answer = 42")]
     with pytest.raises(TypeError, match="strings or Cell objects"):
-        ojs.Notebook(bad_cells)
+        obs.Notebook(bad_cells)
 
 
 def test_notebook_composes_python_cells_as_named_child_widgets() -> None:
-    widget = ojs.Notebook(
-        ojs.md("# Title", name="title"),
-        ojs.cell("answer = 42", name="answer"),
+    widget = obs.Notebook(
+        obs.md("# Title", name="title"),
+        obs.ojs("answer = 42", name="answer"),
         title="Composed",
     )
 
@@ -237,7 +268,7 @@ def test_bare_widgettrait_list_does_not_serialize_child_refs() -> None:
             sync=True
         )
 
-    widget = ojs.Notebook(ojs.cell("answer = 42", name="answer"))
+    widget = obs.Notebook(obs.ojs("answer = 42", name="answer"))
     bare = BareParent(children=[widget.cell("answer")])
 
     assert bare.get_state(["children"]) == {"children": [widget.cell("answer")]}
@@ -250,7 +281,7 @@ def test_notebook_rejects_invalid_cell_widget_overrides() -> None:
     class OtherWidget(anywidget.AnyWidget):
         _esm = "export default {}"
 
-    widget = ojs.Notebook(ojs.cell("answer = 42"))
+    widget = obs.Notebook(obs.ojs("answer = 42"))
     invalid_none: Any = [None]
     invalid_other: Any = [OtherWidget()]
     with pytest.raises(traitlets.TraitError, match="_cell_widgets"):
@@ -261,9 +292,9 @@ def test_notebook_rejects_invalid_cell_widget_overrides() -> None:
 
 
 def test_notebook_graph_exposes_symbolic_cell_metadata() -> None:
-    widget = ojs.Notebook(
-        ojs.cell("a = 1", name="a"),
-        ojs.cell("b = a + rows.length", name="b"),
+    widget = obs.Notebook(
+        obs.ojs("a = 1", name="a"),
+        obs.ojs("b = a + rows.length", name="b"),
         variables={"rows": [{"x": 1}]},
     )
     raw_graph = {
@@ -303,11 +334,11 @@ def test_notebook_graph_exposes_symbolic_cell_metadata() -> None:
 
     graph = widget.graph
 
-    assert isinstance(graph, ojs.NotebookGraph)
+    assert isinstance(graph, NotebookGraph)
     assert graph.defines == ("a", "b")
     assert graph.references == ("a", "rows")
     assert graph.external_references == ("rows",)
-    assert graph.edges == (ojs.DependencyEdge(source_id=1, target_id=2, variable="a"),)
+    assert graph.edges == (DependencyEdge(source_id=1, target_id=2, variable="a"),)
     assert widget.cell("b").info == graph.cells[1]
     assert widget.cell("b").defines == ("b",)
     assert widget.cell("b").references == ("a", "rows")
@@ -317,9 +348,9 @@ def test_notebook_graph_exposes_symbolic_cell_metadata() -> None:
 
 
 def test_cell_lookup_can_use_unique_graph_output() -> None:
-    widget = ojs.Notebook(
-        ojs.cell("answer = 42"),
-        ojs.cell("answer + 1", name="readout"),
+    widget = obs.Notebook(
+        obs.ojs("answer = 42"),
+        obs.ojs("answer + 1", name="readout"),
     )
     widget.set_trait(
         "_graph",
@@ -345,9 +376,9 @@ def test_cell_lookup_can_use_unique_graph_output() -> None:
 
 
 def test_cell_lookup_rejects_ambiguous_graph_variable() -> None:
-    widget = ojs.Notebook(
-        ojs.cell("answer = 42"),
-        ojs.cell("answer = 43"),
+    widget = obs.Notebook(
+        obs.ojs("answer = 42"),
+        obs.ojs("answer = 43"),
     )
     widget.set_trait(
         "_graph",
@@ -365,9 +396,9 @@ def test_cell_lookup_rejects_ambiguous_graph_variable() -> None:
 
 
 def test_cell_lookup_separates_python_name_from_ojs_variable() -> None:
-    widget = ojs.Notebook(
-        ojs.cell("alpha = 1", name="conflict"),
-        ojs.cell("conflict = 2", name="other"),
+    widget = obs.Notebook(
+        obs.ojs("alpha = 1", name="conflict"),
+        obs.ojs("conflict = 2", name="other"),
     )
     widget.set_trait(
         "_graph",
@@ -385,7 +416,7 @@ def test_cell_lookup_separates_python_name_from_ojs_variable() -> None:
 
 
 def test_malformed_graph_entries_are_dropped() -> None:
-    widget = ojs.Notebook(ojs.cell("answer = 42"))
+    widget = obs.Notebook(obs.ojs("answer = 42"))
     widget.set_trait(
         "_graph",
         {
@@ -404,7 +435,7 @@ def test_malformed_graph_entries_are_dropped() -> None:
 
     assert graph is not None
     assert graph.cells == (
-        ojs.CellInfo(
+        CellInfo(
             id=1,
             index=0,
             mode="ojs",
@@ -419,13 +450,11 @@ def test_malformed_graph_entries_are_dropped() -> None:
             automutable=False,
         ),
     )
-    assert graph.edges == (
-        ojs.DependencyEdge(source_id=1, target_id=2, variable="answer"),
-    )
+    assert graph.edges == (DependencyEdge(source_id=1, target_id=2, variable="answer"),)
 
 
 def test_named_notebook_cells_expose_values() -> None:
-    widget = ojs.Notebook(ojs.cell("viewof gain = Inputs.range([0, 11])", name="gain"))
+    widget = obs.Notebook(obs.ojs("viewof gain = Inputs.range([0, 11])", name="gain"))
     cell_widget = widget.cell("gain")
 
     cell_widget._values = {"gain": 7}
@@ -438,7 +467,7 @@ def test_named_notebook_cells_expose_values() -> None:
 
 
 def test_cell_value_error_points_to_values_mapping() -> None:
-    cell_widget = ojs.Notebook(ojs.cell("answer = 42", name="cell")).cell("cell")
+    cell_widget = obs.Notebook(obs.ojs("answer = 42", name="cell")).cell("cell")
     cell_widget._values = {"answer": 42, "double": 84}
 
     with pytest.raises(KeyError, match=r"cell\.values\[name\]"):
@@ -446,7 +475,7 @@ def test_cell_value_error_points_to_values_mapping() -> None:
 
 
 def test_notebook_values_are_synced_trait_state() -> None:
-    widget = ojs.Notebook(ojs.cell("viewof gain = Inputs.range([0, 11])", name="gain"))
+    widget = obs.Notebook(obs.ojs("viewof gain = Inputs.range([0, 11])", name="gain"))
     changes: list[dict[str, object]] = []
     widget.observe(changes.append, names="_values")
 
@@ -461,15 +490,15 @@ def test_notebook_values_are_synced_trait_state() -> None:
 
 
 def test_script_end_tag_is_escaped() -> None:
-    widget = ojs.Notebook(ojs.cell("html`</script> </SCRIPT>`"))
+    widget = obs.Notebook(obs.ojs("html`</script> </SCRIPT>`"))
 
     assert "<\\/script>" in widget.to_notebook_html()
     assert "</SCRIPT>" not in widget.to_notebook_html()
 
 
 def test_notebook_serializes_python_variables() -> None:
-    widget = ojs.Notebook(
-        ojs.cell("py_answer + rows.length"),
+    widget = obs.Notebook(
+        obs.ojs("py_answer + rows.length"),
         variables={
             "py_answer": 42,
             "rows": [{"date": dt.date(2026, 5, 23), "value": float("nan")}],
@@ -482,22 +511,22 @@ def test_notebook_serializes_python_variables() -> None:
     assert widget.variables["rows"][0]["date"] == dt.date(2026, 5, 23)
     assert wire["py_answer"] == 42
     assert wire["rows"][0]["date"] == {
-        "__observablejs_type__": "datetime",
+        "__pyobservablejs_type__": "datetime",
         "value": "2026-05-23",
     }
     assert wire["rows"][0]["value"] == {
-        "__observablejs_type__": "number",
+        "__pyobservablejs_type__": "number",
         "value": "NaN",
     }
     assert wire["raw"] == {
-        "__observablejs_type__": "bytes",
+        "__pyobservablejs_type__": "bytes",
         "value": "YWJj",
     }
     assert wire["span"] == [0, 1, 2]
 
 
 def test_variables_updates_synced_wire_state() -> None:
-    widget = ojs.Notebook()
+    widget = obs.Notebook()
 
     widget.replace_variables({"py_value": 7})
 
@@ -506,7 +535,7 @@ def test_variables_updates_synced_wire_state() -> None:
 
 
 def test_variables_update_merges_synced_wire_state() -> None:
-    widget = ojs.Notebook(variables={"py_value": 7})
+    widget = obs.Notebook(variables={"py_value": 7})
 
     widget.update_variables({"other": dt.date(2026, 5, 25)}, py_value=8)
 
@@ -514,14 +543,14 @@ def test_variables_update_merges_synced_wire_state() -> None:
     assert widget.get_state(["_variables"])["_variables"] == {
         "py_value": 8,
         "other": {
-            "__observablejs_type__": "datetime",
+            "__pyobservablejs_type__": "datetime",
             "value": "2026-05-25",
         },
     }
 
 
 def test_variable_replacement_and_reset_update_synced_wire_state() -> None:
-    widget = ojs.Notebook(variables={"gain": 5, "rows": [{"x": 1}]})
+    widget = obs.Notebook(variables={"gain": 5, "rows": [{"x": 1}]})
 
     widget.replace_variables({"rows": [{"x": 2}]})
 
@@ -544,37 +573,37 @@ def test_variable_replacement_and_reset_update_synced_wire_state() -> None:
 
 
 def test_browser_values_are_python_facing_with_wire_escape_hatch() -> None:
-    widget = ojs.Notebook()
+    widget = obs.Notebook()
 
     widget._values = {
         "when": {
-            "__observablejs_type__": "datetime",
+            "__pyobservablejs_type__": "datetime",
             "value": "2026-05-25T10:00:00.000Z",
         },
-        "raw": {"__observablejs_type__": "arraybuffer", "value": "YWJj"},
+        "raw": {"__pyobservablejs_type__": "arraybuffer", "value": "YWJj"},
     }
 
     assert widget.values["when"] == dt.datetime(2026, 5, 25, 10, tzinfo=dt.timezone.utc)
     assert widget.values["raw"] == b"abc"
     assert widget.wire_values["raw"] == {
-        "__observablejs_type__": "arraybuffer",
+        "__pyobservablejs_type__": "arraybuffer",
         "value": "YWJj",
     }
 
 
 def test_invalid_python_var_name_raises() -> None:
     with pytest.raises(ValueError, match="Invalid Observable variable name"):
-        ojs.Notebook(variables={"not-valid": 1})
+        obs.Notebook(variables={"not-valid": 1})
 
 
 def test_python_variables_mapping_preserves_wire_type_key() -> None:
-    widget = ojs.Notebook(
-        variables={"row": {"__observablejs_type__": "not-a-wire-tag", "value": 1}}
+    widget = obs.Notebook(
+        variables={"row": {"__pyobservablejs_type__": "not-a-wire-tag", "value": 1}}
     )
 
     assert widget.get_state(["_variables"])["_variables"]["row"] == {
-        "__observablejs_type__": "object",
-        "value": {"__observablejs_type__": "not-a-wire-tag", "value": 1},
+        "__pyobservablejs_type__": "object",
+        "value": {"__pyobservablejs_type__": "not-a-wire-tag", "value": 1},
     }
 
 
@@ -586,20 +615,7 @@ def test_dataframe_like_values_serialize_as_records_by_default() -> None:
             assert orient == "records"
             return [{"x": 1}]
 
-    widget = ojs.Notebook(variables={"rows": DataFrame()})
-
-    assert widget.get_state(["_variables"])["_variables"]["rows"] == [{"x": 1}]
-
-
-def test_records_helper_makes_record_conversion_explicit() -> None:
-    class DataFrame:
-        __module__ = "pandas"
-
-        def to_dict(self, orient: str) -> list[dict[str, int]]:
-            assert orient == "records"
-            return [{"x": 1}]
-
-    widget = ojs.Notebook(variables={"rows": ojs.records(DataFrame())})
+    widget = obs.Notebook(variables={"rows": DataFrame()})
 
     assert widget.get_state(["_variables"])["_variables"]["rows"] == [{"x": 1}]
 
@@ -626,7 +642,7 @@ def test_from_file_embeds_file_attachments_and_local_imports(
         encoding="utf-8",
     )
 
-    widget = ojs.Notebook.from_file(notebook)
+    widget = obs.Notebook.from_file(notebook)
 
     assert "data/points.csv" in widget.attachments
     assert widget.attachments["data/points.csv"]["url"].startswith(
@@ -638,7 +654,7 @@ def test_from_file_embeds_file_attachments_and_local_imports(
 
 
 def test_source_backed_notebook_creates_one_unique_notebook_cell_per_script() -> None:
-    widget = ojs.Notebook.from_html(
+    widget = obs.Notebook.from_html(
         """<!doctype html>
 <notebook>
   <script id="10" type="text/markdown"># Title</script>
@@ -680,7 +696,7 @@ def test_from_file_rewrites_only_javascript_imports(tmp_path: pathlib.Path) -> N
         encoding="utf-8",
     )
 
-    widget = ojs.Notebook.from_file(notebook)
+    widget = obs.Notebook.from_file(notebook)
 
     assert 'from "./helper.js"' in widget.source
     assert 'import "data:text/javascript;base64,' in widget.source
@@ -711,7 +727,7 @@ def test_from_file_does_not_rewrite_import_named_methods(
         encoding="utf-8",
     )
 
-    widget = ojs.Notebook.from_file(notebook)
+    widget = obs.Notebook.from_file(notebook)
 
     assert 'obj.import("./helper.js")' in widget.source
     assert 'obj?.import("./helper.js")' in widget.source
@@ -737,7 +753,7 @@ def test_from_file_allows_comments_between_file_attachment_tokens(
         encoding="utf-8",
     )
 
-    widget = ojs.Notebook.from_file(notebook)
+    widget = obs.Notebook.from_file(notebook)
 
     assert set(widget.attachments) == {"data.csv"}
 
@@ -763,7 +779,7 @@ def test_from_file_embeds_only_standalone_file_attachment_calls(
         encoding="utf-8",
     )
 
-    widget = ojs.Notebook.from_file(notebook)
+    widget = obs.Notebook.from_file(notebook)
 
     assert set(widget.attachments) == {"data.csv"}
 
@@ -811,7 +827,7 @@ def test_from_file_embeds_only_executable_file_attachments(
         encoding="utf-8",
     )
 
-    widget = ojs.Notebook.from_file(notebook)
+    widget = obs.Notebook.from_file(notebook)
 
     assert set(widget.attachments) == {"points.csv"}
     assert widget.attachments["points.csv"]["url"].startswith("data:text/csv;base64,")
@@ -833,7 +849,7 @@ def test_from_file_keeps_method_calls_before_division_executable(
         encoding="utf-8",
     )
 
-    widget = ojs.Notebook.from_file(notebook)
+    widget = obs.Notebook.from_file(notebook)
 
     assert set(widget.attachments) == {"data.csv"}
 
@@ -855,7 +871,7 @@ def test_from_file_keeps_property_names_before_division_executable(
         encoding="utf-8",
     )
 
-    widget = ojs.Notebook.from_file(notebook)
+    widget = obs.Notebook.from_file(notebook)
 
     assert set(widget.attachments) == {"data.csv"}
 
@@ -877,7 +893,7 @@ def test_from_file_keeps_private_names_before_division_executable(
         encoding="utf-8",
     )
 
-    widget = ojs.Notebook.from_file(notebook)
+    widget = obs.Notebook.from_file(notebook)
 
     assert set(widget.attachments) == {"data.csv"}
 
@@ -903,7 +919,7 @@ def test_from_file_respects_unquoted_script_types(tmp_path: pathlib.Path) -> Non
         encoding="utf-8",
     )
 
-    widget = ojs.Notebook.from_file(notebook)
+    widget = obs.Notebook.from_file(notebook)
 
     assert 'import "./helper.js"' in widget.source
     assert 'import "data:text/javascript;base64,' in widget.source
@@ -932,7 +948,7 @@ def test_from_file_ignores_data_type_when_script_type_is_absent(
         encoding="utf-8",
     )
 
-    widget = ojs.Notebook.from_file(notebook)
+    widget = obs.Notebook.from_file(notebook)
 
     assert 'import "data:text/javascript;base64,' in widget.source
     assert set(widget.attachments) == {"points.csv"}
@@ -956,7 +972,7 @@ def test_from_file_handles_gt_in_script_attribute_values(
         encoding="utf-8",
     )
 
-    widget = ojs.Notebook.from_file(notebook)
+    widget = obs.Notebook.from_file(notebook)
 
     assert 'import "data:text/javascript;base64,' in widget.source
     assert set(widget.attachments) == {"points.csv"}
@@ -981,7 +997,7 @@ def test_from_file_ignores_scripts_outside_notebook(tmp_path: pathlib.Path) -> N
         encoding="utf-8",
     )
 
-    widget = ojs.Notebook.from_file(notebook)
+    widget = obs.Notebook.from_file(notebook)
 
     assert 'import "./helper.js";' in widget.source
     assert widget.source.count('import "./helper.js";') == 2
@@ -1011,7 +1027,7 @@ def test_from_file_ignores_script_tags_inside_html_comments(
         encoding="utf-8",
     )
 
-    widget = ojs.Notebook.from_file(notebook)
+    widget = obs.Notebook.from_file(notebook)
 
     assert 'import "./helper.js";' in widget.source
     assert "data:text/javascript;base64," not in widget.source
@@ -1037,7 +1053,7 @@ def test_from_file_ignores_longer_closing_tag_prefixes(
         encoding="utf-8",
     )
 
-    widget = ojs.Notebook.from_file(notebook)
+    widget = obs.Notebook.from_file(notebook)
 
     assert 'import "data:text/javascript;base64,' in widget.source
     assert set(widget.attachments) == {"points.csv"}
@@ -1062,14 +1078,14 @@ def test_from_file_ignores_notebook_close_text_inside_script(
         encoding="utf-8",
     )
 
-    widget = ojs.Notebook.from_file(notebook)
+    widget = obs.Notebook.from_file(notebook)
 
     assert 'import "data:text/javascript;base64,' in widget.source
     assert set(widget.attachments) == {"points.csv"}
 
 
 def test_from_html_treats_unknown_script_type_as_javascript() -> None:
-    widget = ojs.Notebook.from_html(
+    widget = obs.Notebook.from_html(
         """<!doctype html>
 <notebook>
   <script id="1" type="text/javascript">
@@ -1100,7 +1116,7 @@ def test_from_file_rewrites_unknown_script_type_as_javascript(
         encoding="utf-8",
     )
 
-    widget = ojs.Notebook.from_file(notebook)
+    widget = obs.Notebook.from_file(notebook)
 
     assert 'import "data:text/javascript;base64,' in widget.source
     assert set(widget.attachments) == {"points.csv"}
@@ -1121,7 +1137,7 @@ def test_from_file_rewrites_minified_static_imports(tmp_path: pathlib.Path) -> N
         encoding="utf-8",
     )
 
-    widget = ojs.Notebook.from_file(notebook)
+    widget = obs.Notebook.from_file(notebook)
 
     assert 'from"data:text/javascript;base64,' in widget.source
     assert widget.source.count("data:text/javascript;base64,") == 2

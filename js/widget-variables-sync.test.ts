@@ -3,6 +3,7 @@
 import type { RenderProps } from "@anywidget/types";
 import { toNotebook } from "@observablehq/notebook-kit";
 import { describe, expect, test } from "vitest";
+import { SELECTORS } from "./dom-contract";
 import type { CellRenderContext, WidgetModel } from "./types";
 import widget from "./widget";
 import {
@@ -46,16 +47,14 @@ describe("widget runtime variable sync", () => {
 			host: createHost(childModels, createCellExportsMap(childModels), childRenders),
 		} as unknown as RenderProps<WidgetModel>);
 
-		const firstCell = await waitFor(
-			() => el.querySelector<HTMLElement>("[data-observablejs-composed='true']") ?? undefined,
-		);
+		const firstCell = await waitFor(() => el.querySelector<HTMLElement>(SELECTORS.composedCell) ?? undefined);
 		expect(await waitFor(() => (variableValue(model, "doubled") === 4 ? 4 : undefined))).toBe(4);
 
 		setVariables(model, 1, "set", { base: 5 });
 
 		expect(await waitFor(() => (variableValue(model, "doubled") === 10 ? 10 : undefined))).toBe(10);
 		expect(variableValue(model, "base_echo")).toBe(5);
-		expect(el.querySelector("[data-observablejs-composed='true']")).toBe(firstCell);
+		expect(el.querySelector(SELECTORS.composedCell)).toBe(firstCell);
 		expect(renderCounts).toEqual(
 			new Map([
 				["anywidget:base", 1],
@@ -94,7 +93,7 @@ describe("widget runtime variable sync", () => {
 			signal: controller.signal,
 			host: createHost(childModels, createCellExportsMap(childModels), childRenders),
 		} as unknown as RenderProps<WidgetModel>);
-		await waitFor(() => el.querySelector("[data-observablejs-composed='true']") ?? undefined);
+		await waitFor(() => el.querySelector(SELECTORS.composedCell) ?? undefined);
 
 		setVariables(model, 1, "set", { base: 6 });
 
@@ -139,15 +138,13 @@ describe("widget runtime variable sync", () => {
 			host: createHost(childModels, createCellExportsMap(childModels), childRenders),
 		} as unknown as RenderProps<WidgetModel>);
 
-		const firstCell = await waitFor(
-			() => el.querySelector<HTMLElement>("[data-observablejs-composed='true']") ?? undefined,
-		);
+		const firstCell = await waitFor(() => el.querySelector<HTMLElement>(SELECTORS.composedCell) ?? undefined);
 		expect(await waitFor(() => (variableValue(model, "doubled") === 10 ? 10 : undefined))).toBe(10);
 
 		setVariables(model, 1, "replace", {});
 
 		expect(await waitFor(() => (variableValue(model, "doubled") === 2 ? 2 : undefined))).toBe(2);
-		expect(el.querySelector("[data-observablejs-composed='true']")).not.toBe(firstCell);
+		expect(el.querySelector(SELECTORS.composedCell)).not.toBe(firstCell);
 		expect(renderCounts).toEqual(
 			new Map([
 				["anywidget:base", 2],
@@ -200,7 +197,7 @@ viewof gain = {
 		} as unknown as RenderProps<WidgetModel>);
 
 		const input = await waitFor(() => {
-			const error = el.querySelector(".observablejs-error")?.textContent;
+			const error = el.querySelector(SELECTORS.error)?.textContent;
 			if (error) throw new Error(error);
 			return el.querySelector<HTMLInputElement>("input[type='range']") ?? undefined;
 		});

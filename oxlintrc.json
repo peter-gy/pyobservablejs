@@ -11,6 +11,6 @@
 	},
 	"ignorePatterns": [
 		"node_modules/**",
-		"src/observablejs/static/**"
+		"src/pyobservablejs/static/**"
 	]
 }

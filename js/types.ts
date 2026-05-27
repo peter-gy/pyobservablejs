@@ -2,7 +2,7 @@ import type { RenderProps, ResolvedWidget } from "@anywidget/types";
 import type { Cell, Notebook } from "@observablehq/notebook-kit";
 import type { NotebookRuntime } from "@observablehq/notebook-kit/runtime";
 
-// Trait names match src/observablejs/_notebook.py, including underscored wire traits.
+// Trait names match src/pyobservablejs/_notebook.py, including underscored wire traits.
 
 export type AttachmentInfo = {
 	url: string;

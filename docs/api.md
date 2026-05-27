@@ -1,20 +1,20 @@
 ---
 title: API
-description: Public Python API reference for observablejs.
+description: Public Python API reference for pyobservablejs.
 ---
 
 # API
 
-Import the package as `ojs`:
+Import the package as `obs`:
 
 ```python
-import observablejs as ojs
+import pyobservablejs as obs
 ```
 
 ## Notebook
 
 ```python
-ojs.Notebook(
+obs.Notebook(
     *cells,
     title="Untitled",
     theme="air",
@@ -30,7 +30,7 @@ Create an anywidget model from Python-authored cells. Displaying the notebook in
 a compatible frontend renders the cells with the Observable Notebook Kit browser
 runtime.
 
-- `*cells`: strings or `Cell` objects.
+- `*cells`: strings or helper-created cell objects.
 - `title`: title written to exported Notebook Kit HTML.
 - `theme`: Notebook Kit theme, usually `"air"`.
 - `mode`: default mode for plain string cells.
@@ -138,7 +138,7 @@ Source-backed notebooks return their original HTML source.
 ### `Notebook.from_file`
 
 ```python
-ojs.Notebook.from_file(
+obs.Notebook.from_file(
     path,
     portable=True,
     variables=None,
@@ -154,7 +154,7 @@ Pass `variables={...}` to set or override OJS variables.
 ### `Notebook.from_html`
 
 ```python
-ojs.Notebook.from_html(
+obs.Notebook.from_html(
     source,
     portable=True,
     variables=None,
@@ -171,7 +171,7 @@ set or override OJS variables.
 ### `Notebook.from_url`
 
 ```python
-ojs.Notebook.from_url(
+obs.Notebook.from_url(
     url,
     variables=None,
     attachments=None,
@@ -237,14 +237,13 @@ the graph is available.
 
 | Helper | Cell mode |
 | --- | --- |
-| `ojs.cell(source, ...)` | Observable JavaScript |
-| `ojs.js(source, ...)` | ES module JavaScript |
-| `ojs.md(source, ...)` | Markdown |
-| `ojs.html(source, ...)` | HTML |
-| `ojs.sql(source, ...)` | SQL |
+| `obs.ojs(source, ...)` | Observable JavaScript |
+| `obs.js(source, ...)` | ES module JavaScript |
+| `obs.md(source, ...)` | Markdown |
+| `obs.html(source, ...)` | HTML |
 
 ```python
-ojs.cell(
+obs.ojs(
     source,
     name=None,
     display=True,
@@ -252,39 +251,37 @@ ojs.cell(
     id=None,
     pinned=False,
     output=None,
-    database=None,
-    format=None,
     attrs=None,
 )
 ```
 
-`ojs.cell(...)` returns a source `Cell` and accepts:
+`obs.ojs(...)` returns a source `Cell` and accepts:
 
 - `name`: a stable Python name for `notebook.cell(...)`.
 - `display`: whether to render the cell output.
 - `raw`: whether to preserve source whitespace exactly.
 - `id`: Notebook Kit cell id override.
 - `pinned`: whether Notebook Kit should treat the source as pinned.
-- `output`, `database`, `format`: common Notebook Kit script attributes.
-- `attrs`: additional Notebook Kit script attributes.
+- `output`: Notebook Kit output attribute.
+- `attrs`: additional Notebook Kit script attributes for advanced cases.
 
-Mode-specific helpers such as `ojs.md(...)` and `ojs.sql(...)` accept the same
+Mode-specific helpers such as `obs.md(...)` and `obs.html(...)` accept the same
 keywords except `mode`. Helper source strings are dedented and stripped of
 leading/trailing newlines unless `raw=True`.
 
-Use `ojs.js(...)` when you need an ES module cell:
+Use `obs.js(...)` when you need an ES module cell:
 
 ```python
-ojs.Notebook(
-    ojs.js(
+obs.Notebook(
+    obs.js(
         "const answer = 42",
         output="answer",
     ),
-    ojs.cell("answer"),
+    obs.ojs("answer"),
 )
 ```
 
-Use `ojs.cell(...)` for ordinary Observable cells.
+Use `obs.ojs(...)` for ordinary Observable cells.
 
 ## Python Variables
 
@@ -301,15 +298,7 @@ Supported values include:
 - pandas and Polars series as lists
 - pandas and Polars dataframes as records
 
-Use these helpers to choose dataframe transport explicitly:
-
-```python
-ojs.records(df)
-ojs.arrow(df)
-```
-
-`ojs.records(df)` sends dataframe-like values as row dictionaries. `ojs.arrow(df)`
-requires `pyarrow` and sends Arrow IPC to the browser.
+Dataframes are serialized as row dictionaries.
 
 ## Graph Metadata
 

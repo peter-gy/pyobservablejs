@@ -8,4 +8,4 @@ docs/_build
 __pycache__
 .ipynb_checkpoints
 
-src/observablejs/static
+src/pyobservablejs/static

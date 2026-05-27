@@ -1,17 +1,17 @@
 ---
-title: observablejs
+title: pyobservablejs
 description: Observable JavaScript notebooks as reusable Python widgets.
 ---
 
-# observablejs
+# pyobservablejs
 
-`observablejs` renders Observable JavaScript notebooks as Python widgets.
+`pyobservablejs` renders Observable JavaScript notebooks as Python widgets.
 Python builds the notebook model and synced variables. The browser runs Observable
 Notebook Kit, renders cells, and sends values and graph metadata back through
 traitlets.
 
 ```python
-import observablejs as ojs
+import pyobservablejs as obs
 
 rows = [
     {"letter": "A", "frequency": 0.0812},
@@ -19,9 +19,9 @@ rows = [
     {"letter": "C", "frequency": 0.0271},
 ]
 
-ojs.Notebook(
-    ojs.md("# Letter frequencies"),
-    ojs.cell("""
+obs.Notebook(
+    obs.md("# Letter frequencies"),
+    obs.ojs("""
     Plot.plot({
       y: {grid: true},
       marks: [Plot.barY(rows, {x: "letter", y: "frequency"})]
@@ -33,7 +33,7 @@ ojs.Notebook(
 
 ## Core Model
 
-- `Notebook(...)` creates one Observable notebook from Python-authored cells.
+- `obs.Notebook(...)` creates one Observable notebook from Python-authored cells.
 - `variables={...}` sets ordinary OJS variables and overrides matching notebook
   variables.
 - `notebook.update_variables(...)` mutates those Python-backed values in the live
@@ -46,8 +46,8 @@ ojs.Notebook(
   marimo, and compatible frontends.
 
 :::{tip}
-Use `Notebook.from_file(...)` when you already have Notebook Kit HTML. Use
-`Notebook(...)` for Python-authored cells.
+Use `obs.Notebook.from_file(...)` when you already have Notebook Kit HTML. Use
+`obs.Notebook(...)` for Python-authored cells.
 :::
 
 ## Read Next

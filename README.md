@@ -1,14 +1,14 @@
-# observablejs
+# pyobservablejs
 
 Observable JavaScript notebooks as Python widgets.
 
-`observablejs` renders Observable JavaScript cells from Python and runs them with
+`pyobservablejs` renders Observable JavaScript cells from Python and runs them with
 Observable Notebook Kit in the browser. Python owns the notebook model, synced
 OJS variables, and cell widgets. TypeScript owns Notebook Kit evaluation,
 rendering, and runtime metadata.
 
 ```python
-import observablejs as ojs
+import pyobservablejs as obs
 
 rows = [
     {"letter": "A", "frequency": 0.0812},
@@ -18,9 +18,9 @@ rows = [
     {"letter": "E", "frequency": 0.1202},
 ]
 
-ojs.Notebook(
-    ojs.md("# Letter frequencies"),
-    ojs.cell("""
+obs.Notebook(
+    obs.md("# Letter frequencies"),
+    obs.ojs("""
     Plot.plot({
       height: 260,
       marginLeft: 48,
@@ -38,26 +38,26 @@ ojs.Notebook(
 ## Install
 
 ```sh
-pip install observablejs
+pip install pyobservablejs
 ```
 
 or:
 
 ```sh
-uv add observablejs
+uv add pyobservablejs
 ```
 
-`observablejs` supports Python 3.10 through 3.14.
+`pyobservablejs` supports Python 3.10 through 3.14.
 
-For dataframe and Arrow helpers:
+For optional dataframe serialization support:
 
 ```sh
-uv add "observablejs[data]"
+uv add "pyobservablejs[data]"
 ```
 
 ## Notebook Model
 
-- `ojs.Notebook(...)` builds a Notebook Kit notebook from Python-authored cells.
+- `obs.Notebook(...)` builds a Notebook Kit notebook from Python-authored cells.
 - `variables={...}` sets OJS variables. A matching notebook variable is overridden.
 - `notebook.update_variables(...)` pushes Python-side changes into the live OJS
   runtime.
@@ -67,11 +67,20 @@ uv add "observablejs[data]"
 - `notebook.graph` exposes Notebook Kit-derived cell definitions, references, and
   dependency edges.
 
+Cell helpers keep the source mode explicit:
+
+| Helper | Source mode |
+| --- | --- |
+| `obs.ojs(...)` | Observable JavaScript |
+| `obs.js(...)` | ES module JavaScript |
+| `obs.md(...)` | Markdown |
+| `obs.html(...)` | HTML |
+
 ```python
-notebook = ojs.Notebook(
-    ojs.md("# Inputs"),
-    ojs.cell('viewof gain = Inputs.range([0, 11], {value: 5})', name="gain"),
-    ojs.cell("double = gain * 2", name="double"),
+notebook = obs.Notebook(
+    obs.md("# Inputs"),
+    obs.ojs('viewof gain = Inputs.range([0, 11], {value: 5})', name="gain"),
+    obs.ojs("double = gain * 2", name="double"),
 )
 
 notebook.cell("gain")
@@ -83,7 +92,7 @@ notebook.value("double")
 Load Notebook Kit HTML from disk:
 
 ```python
-notebook = ojs.Notebook.from_file("chart.html")
+notebook = obs.Notebook.from_file("chart.html")
 ```
 
 Local `FileAttachment(...)` references and relative JavaScript imports are
@@ -92,7 +101,7 @@ embedded by default so the widget can move between notebook frontends.
 Load a public Observable notebook by URL, slug, or id:
 
 ```python
-notebook = ojs.Notebook.from_url("https://observablehq.com/@mbostock/saving-svg")
+notebook = obs.Notebook.from_url("https://observablehq.com/@mbostock/saving-svg")
 ```
 
 Remote `FileAttachment(...)` entries are registered as URL-backed attachments,
@@ -124,7 +133,7 @@ and the check commands used before sending changes for review.
 
 ## Acknowledgements
 
-`observablejs` builds on [Observable Notebook Kit](https://github.com/observablehq/notebook-kit)
+`pyobservablejs` builds on [Observable Notebook Kit](https://github.com/observablehq/notebook-kit)
 and [@observablehq/runtime](https://github.com/observablehq/runtime).
 [`pyobsplot`](https://github.com/juba/pyobsplot) informed the Python-to-OJS
 variable API.

@@ -1,11 +1,11 @@
 ---
 title: Concepts
-description: The main ideas behind observablejs.
+description: The main ideas behind pyobservablejs.
 ---
 
 # Concepts
 
-`observablejs` connects Python objects to the Observable notebook model. The
+`pyobservablejs` connects Python objects to the Observable notebook model. The
 main pieces are Observable cells, Notebook Kit, traitlets, Python-owned OJS
 variables, cell widgets, and graph metadata.
 
@@ -27,12 +27,12 @@ Observable Notebook Kit provides the browser compiler and runtime used here. It
 turns notebook cells into runtime definitions, evaluates them in dependency
 order, and renders outputs into DOM nodes.
 
-`observablejs` accepts three Notebook Kit entry points:
+`pyobservablejs` accepts three Notebook Kit entry points:
 
 - Python-authored cells are converted to Notebook Kit cell specs.
-- Existing Notebook Kit HTML can be loaded with `Notebook.from_file` or
-  `Notebook.from_html`.
-- Public Observable notebooks can be fetched with `Notebook.from_url` and then
+- Existing Notebook Kit HTML can be loaded with `obs.Notebook.from_file` or
+  `obs.Notebook.from_html`.
+- Public Observable notebooks can be fetched with `obs.Notebook.from_url` and then
   rendered through the same Notebook Kit runtime.
 
 ## anywidget and traitlets
@@ -55,8 +55,8 @@ variables and can override variables defined by Python-authored, source-backed,
 or URL-backed notebooks.
 
 ```python
-ojs.Notebook(
-    ojs.cell("rows.length"),
+obs.Notebook(
+    obs.ojs("rows.length"),
     variables={"rows": [{"x": 1}, {"x": 2}]},
 )
 ```
@@ -72,13 +72,12 @@ For `viewof` variables, the rendered control is updated and emits the same input
 event as a user interaction.
 
 The serializer accepts JSON-like values, dates, bytes, NumPy values, and
-dataframe-like objects. Dataframes become records by default. Use
-`ojs.arrow(df)` when you want Arrow IPC and have `pyarrow` installed.
+dataframe-like objects. Dataframes become records by default.
 
 :::{warning}
 Large values cross the Python/browser boundary as widget trait payloads. For
-large tables, prefer existing `FileAttachment(...)` data files or Arrow payloads
-over repeatedly assigning large record lists.
+large tables, prefer existing `FileAttachment(...)` data files over repeatedly
+assigning large record lists.
 :::
 
 ## Cell Widgets
@@ -128,9 +127,9 @@ list.
 
 The package has three notebook entry points:
 
-- Python-authored notebooks: `Notebook(ojs.cell(...), ojs.md(...))`
-- Source-backed notebooks: `Notebook.from_file(...)` or `Notebook.from_html(...)`
-- Public Observable notebooks: `Notebook.from_url(...)`
+- Python-authored notebooks: `obs.Notebook(obs.ojs(...), obs.md(...))`
+- Source-backed notebooks: `obs.Notebook.from_file(...)` or `obs.Notebook.from_html(...)`
+- Public Observable notebooks: `obs.Notebook.from_url(...)`
 
 Python-authored notebooks are serialized to Notebook Kit HTML when needed.
 Source-backed notebooks keep their original Notebook Kit HTML and parse the

@@ -7,6 +7,13 @@ import re
 from collections.abc import Mapping
 from typing import Any, Literal
 
+AuthorMode = Literal[
+    "js",
+    "ojs",
+    "md",
+    "html",
+]
+
 Mode = Literal[
     "js",
     "ojs",
@@ -14,6 +21,8 @@ Mode = Literal[
     "html",
     "sql",
 ]
+
+AUTHOR_MODES: frozenset[str] = frozenset(("js", "ojs", "md", "html"))
 
 SCRIPT_TYPES = {
     "js": "module",

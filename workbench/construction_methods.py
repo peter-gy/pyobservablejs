@@ -17,9 +17,9 @@ def _():
     from pathlib import Path
 
     import marimo as mo
-    import observablejs as ojs
+    import pyobservablejs as obs
 
-    return Path, mo, ojs, tempfile
+    return Path, mo, obs, tempfile
 
 
 @app.cell
@@ -57,7 +57,7 @@ Plot.plot({
 
 @app.cell
 def _(Path, html_source, tempfile):
-    html_file = Path(tempfile.gettempdir()) / "observablejs-construction-methods.html"
+    html_file = Path(tempfile.gettempdir()) / "pyobservablejs-construction-methods.html"
     html_file.write_text(html_source, encoding="utf-8")
     return (html_file,)
 
@@ -85,7 +85,7 @@ def _(methods, mo):
 
 
 @app.cell
-def _(html_file, html_source, method, ojs):
+def _(html_file, html_source, method, obs):
     rows = [
         {"letter": "A", "frequency": 0.0812},
         {"letter": "B", "frequency": 0.0149},
@@ -93,9 +93,9 @@ def _(html_file, html_source, method, ojs):
     ]
     selected_error = ""
     if method.value == "Python cells":
-        selected_notebook = ojs.Notebook(
-            ojs.md("# Python cells"),
-            ojs.cell(
+        selected_notebook = obs.Notebook(
+            obs.md("# Python cells"),
+            obs.ojs(
                 """
 Plot.plot({
   height: 220,
@@ -109,18 +109,18 @@ Plot.plot({
             show_pinned_source=True,
         )
     elif method.value == "HTML string":
-        selected_notebook = ojs.Notebook.from_html(
+        selected_notebook = obs.Notebook.from_html(
             html_source,
             show_pinned_source=True,
         )
     elif method.value == "HTML file":
-        selected_notebook = ojs.Notebook.from_file(
+        selected_notebook = obs.Notebook.from_file(
             html_file,
             show_pinned_source=True,
         )
     else:
         try:
-            selected_notebook = ojs.Notebook.from_url(
+            selected_notebook = obs.Notebook.from_url(
                 "https://observablehq.com/@mbostock/saving-svg",
                 show_pinned_source=True,
             )

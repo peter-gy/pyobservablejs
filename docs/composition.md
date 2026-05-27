@@ -5,7 +5,7 @@ description: How anywidget composition makes Observable cell widgets possible.
 
 # Widget Composition
 
-`observablejs` relies on the widget composition API introduced in
+`pyobservablejs` relies on the widget composition API introduced in
 [anywidget 0.11.0](https://github.com/manzt/anywidget/releases/tag/anywidget%400.11.0)
 and formalized in the
 [widget composition RFC](https://github.com/manzt/anywidget/blob/main/rfcs/0001-widget-composition-and-signals.md).
@@ -46,9 +46,9 @@ When Python creates a notebook, it creates one `NotebookCell` child widget for
 each Notebook Kit cell.
 
 ```python
-notebook = ojs.Notebook(
-    ojs.cell('viewof gain = Inputs.range([0, 10])', name="gain"),
-    ojs.cell("double = gain * 2", name="double"),
+notebook = obs.Notebook(
+    obs.ojs('viewof gain = Inputs.range([0, 10])', name="gain"),
+    obs.ojs("double = gain * 2", name="double"),
 )
 
 notebook.cell("gain")
@@ -85,7 +85,7 @@ For each child, `host.getWidget(ref)` returns the child widget's exports and
 render function. `host.getModel(ref)` returns the child's model so the parent can
 sync traits such as `_value_names` and `_values`.
 
-`observablejs` cell widgets export a small interface:
+`pyobservablejs` cell widgets export a small interface:
 
 ```ts
 interface CellExports {

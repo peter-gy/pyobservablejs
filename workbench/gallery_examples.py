@@ -17,9 +17,9 @@ def _():
     from pathlib import Path
 
     import marimo as mo
-    import observablejs as ojs
+    import pyobservablejs as obs
 
-    return Path, mo, ojs, os
+    return Path, mo, obs, os
 
 
 @app.cell
@@ -62,7 +62,7 @@ def _():
 
 @app.cell
 def _(Path, fallback_examples, os):
-    configured_root = os.environ.get("OBSERVABLEJS_GALLERY_ROOT")
+    configured_root = os.environ.get("NOTEBOOK_KIT_GALLERY_ROOT")
     gallery_roots = []
     if configured_root:
         gallery_roots.append(Path(configured_root).expanduser())
@@ -109,15 +109,15 @@ def _(default_example, example_options, mo):
 
 
 @app.cell
-def _(Path, example_sources, mo, ojs, selected_example):
+def _(Path, example_sources, mo, obs, selected_example):
     selected_source = example_sources[selected_example.value]
     if isinstance(selected_source, Path):
-        gallery_notebook = ojs.Notebook.from_file(
+        gallery_notebook = obs.Notebook.from_file(
             selected_source,
             show_pinned_source=True,
         )
     else:
-        gallery_notebook = ojs.Notebook.from_html(
+        gallery_notebook = obs.Notebook.from_html(
             selected_source,
             show_pinned_source=True,
         )

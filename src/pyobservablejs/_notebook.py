@@ -16,7 +16,7 @@ import traitlets
 from ._files import FileInput, normalize_files, prepare_source
 from ._graph import CellInfo, NotebookGraph, graph_from_raw
 from ._observable import fetch_observable_notebook
-from ._serialize import SCRIPT_TYPES, Mode, serialize
+from ._serialize import AUTHOR_MODES, SCRIPT_TYPES, AuthorMode, Mode, serialize
 from ._variables import deserialize_value, serialize_variables
 
 
@@ -206,7 +206,7 @@ class Notebook(_ObservableWidget):
         *cells: CellInput,
         title: str = "Untitled",
         theme: str | Mapping[str, str] = "air",
-        mode: Mode = "ojs",
+        mode: AuthorMode = "ojs",
         attachments: Mapping[str, FileInput] | None = None,
         base_path: str | pathlib.Path | None = None,
         variables: Mapping[str, Any] | None = None,
@@ -214,6 +214,7 @@ class Notebook(_ObservableWidget):
     ) -> None:
         """Create a notebook from Python-authored cells."""
 
+        _ensure_author_mode(mode)
         cell_specs = [
             _coerce_cell(item, mode=mode).to_spec(i)
             for i, item in enumerate(cells, start=1)
@@ -511,7 +512,7 @@ class Notebook(_ObservableWidget):
         return serialize(self.spec)
 
 
-def cell(
+def ojs(
     source: CellInput,
     *,
     name: str | None = None,
@@ -520,8 +521,6 @@ def cell(
     id: int | None = None,
     pinned: bool = False,
     output: str | None = None,
-    database: str | None = None,
-    format: str | None = None,
     attrs: Mapping[str, Any] | None = None,
 ) -> Cell:
     """Return an Observable JavaScript source cell."""
@@ -535,34 +534,86 @@ def cell(
         id=id,
         pinned=pinned,
         output=output,
-        database=database,
-        format=format,
         attrs=attrs,
     )
 
 
-def js(source: str, **kwargs: Any) -> Cell:
+def js(
+    source: CellInput,
+    *,
+    name: str | None = None,
+    display: bool = True,
+    raw: bool = False,
+    id: int | None = None,
+    pinned: bool = False,
+    output: str | None = None,
+    attrs: Mapping[str, Any] | None = None,
+) -> Cell:
     """Return a standard JavaScript module source cell."""
 
-    return _source_cell(source, mode="js", **kwargs)
+    return _source_cell(
+        source,
+        mode="js",
+        name=name,
+        display=display,
+        raw=raw,
+        id=id,
+        pinned=pinned,
+        output=output,
+        attrs=attrs,
+    )
 
 
-def md(source: str, **kwargs: Any) -> Cell:
+def md(
+    source: CellInput,
+    *,
+    name: str | None = None,
+    display: bool = True,
+    raw: bool = False,
+    id: int | None = None,
+    pinned: bool = False,
+    output: str | None = None,
+    attrs: Mapping[str, Any] | None = None,
+) -> Cell:
     """Return a Markdown source cell."""
 
-    return _source_cell(source, mode="md", **kwargs)
+    return _source_cell(
+        source,
+        mode="md",
+        name=name,
+        display=display,
+        raw=raw,
+        id=id,
+        pinned=pinned,
+        output=output,
+        attrs=attrs,
+    )
 
 
-def html(source: str, **kwargs: Any) -> Cell:
+def html(
+    source: CellInput,
+    *,
+    name: str | None = None,
+    display: bool = True,
+    raw: bool = False,
+    id: int | None = None,
+    pinned: bool = False,
+    output: str | None = None,
+    attrs: Mapping[str, Any] | None = None,
+) -> Cell:
     """Return an HTML source cell."""
 
-    return _source_cell(source, mode="html", **kwargs)
-
-
-def sql(source: str, **kwargs: Any) -> Cell:
-    """Return a SQL source cell."""
-
-    return _source_cell(source, mode="sql", **kwargs)
+    return _source_cell(
+        source,
+        mode="html",
+        name=name,
+        display=display,
+        raw=raw,
+        id=id,
+        pinned=pinned,
+        output=output,
+        attrs=attrs,
+    )
 
 
 def _source_cell(
@@ -575,8 +626,6 @@ def _source_cell(
     id: int | None = None,
     pinned: bool = False,
     output: str | None = None,
-    database: str | None = None,
-    format: str | None = None,
     attrs: Mapping[str, Any] | None = None,
 ) -> Cell:
     if isinstance(source, Cell):
@@ -589,8 +638,6 @@ def _source_cell(
                 id is not None,
                 pinned,
                 output is not None,
-                database is not None,
-                format is not None,
                 attrs,
             ]
         ):
@@ -609,16 +656,19 @@ def _source_cell(
             id=id,
             pinned=pinned,
             output=output,
-            database=database,
-            format=format,
         ),
     )
 
 
-def _coerce_cell(source: CellInput, *, mode: Mode) -> Cell:
+def _coerce_cell(source: CellInput, *, mode: AuthorMode) -> Cell:
     if isinstance(source, Cell):
         return source
     return _source_cell(source, mode=mode)
+
+
+def _ensure_author_mode(mode: str) -> None:
+    if mode not in AUTHOR_MODES:
+        raise ValueError(f"Unsupported Python-authored cell mode: {mode!r}")
 
 
 def _cell_attrs(
@@ -627,8 +677,6 @@ def _cell_attrs(
     id: int | None,
     pinned: bool,
     output: str | None,
-    database: str | None,
-    format: str | None,
 ) -> dict[str, Any]:
     out = {} if attrs is None else dict(attrs)
     if id is not None:
@@ -637,10 +685,6 @@ def _cell_attrs(
         out["pinned"] = True
     if output is not None:
         out["output"] = output
-    if database is not None:
-        out["database"] = database
-    if format is not None:
-        out["format"] = format
     return out
 
 

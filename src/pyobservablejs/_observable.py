@@ -56,7 +56,7 @@ def fetch_observable_notebook(
         api_url,
         headers={
             "Accept": "application/json",
-            "User-Agent": "observablejs",
+            "User-Agent": "pyobservablejs",
         },
     )
     try:

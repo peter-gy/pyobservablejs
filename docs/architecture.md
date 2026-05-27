@@ -5,7 +5,7 @@ description: Python traits, Observable cells, browser runtime, and graph metadat
 
 # Architecture
 
-`observablejs` has one runtime boundary: Python defines notebook state, and the
+`pyobservablejs` has one runtime boundary: Python defines notebook state, and the
 browser evaluates Observable cells.
 
 ```text
@@ -24,7 +24,7 @@ metadata back to Python.
 
 :::{note} Runtime ownership
 Notebook Kit and `@observablehq/runtime` own cell parsing, dependency analysis,
-runtime variables, `viewof` semantics, and DOM output. `observablejs` keeps those
+runtime variables, `viewof` semantics, and DOM output. `pyobservablejs` keeps those
 results display to Python through widget traits.
 :::
 
@@ -32,17 +32,18 @@ results display to Python through widget traits.
 
 | File | Role |
 | --- | --- |
-| `src/observablejs/_notebook.py` | Public `Notebook`, authored `Cell`, runtime `NotebookCell`, and cell helpers. |
-| `src/observablejs/_variables.py` | Python value serialization for `variables`. |
-| `src/observablejs/_files.py` | `FileAttachment` discovery and portable source rewriting. |
-| `src/observablejs/_graph.py` | Immutable Python view of browser-produced graph metadata. |
-| `src/observablejs/_observable.py` | Observable document API URL resolution and response conversion. |
-| `src/observablejs/_serialize.py` | Notebook Kit HTML serialization for Python-authored cells. |
+| `src/pyobservablejs/_notebook.py` | Public `Notebook`, authored cell records, runtime `NotebookCell`, and cell helpers. |
+| `src/pyobservablejs/_variables.py` | Python value serialization for `variables`. |
+| `src/pyobservablejs/_files.py` | `FileAttachment` discovery and portable source rewriting. |
+| `src/pyobservablejs/_graph.py` | Immutable Python view of browser-produced graph metadata. |
+| `src/pyobservablejs/_observable.py` | Observable document API URL resolution and response conversion. |
+| `src/pyobservablejs/_serialize.py` | Notebook Kit HTML serialization for Python-authored cells. |
 
-`Notebook(...)` builds a Notebook Kit `spec`, serializes `variables`, creates one
-`NotebookCell` per cell, and records attachment metadata. `Notebook.from_file(...)`
-and `Notebook.from_html(...)` keep the source HTML and derive the same cell
-names by reading Notebook Kit script tags. `Notebook.from_url(...)` fetches
+`obs.Notebook(...)` builds a Notebook Kit `spec`, serializes `variables`, creates
+one `NotebookCell` per cell, and records attachment metadata.
+`obs.Notebook.from_file(...)` and `obs.Notebook.from_html(...)` keep the source
+HTML and derive the same cell names by reading Notebook Kit script tags.
+`obs.Notebook.from_url(...)` fetches
 Observable's document API and converts API nodes to Notebook Kit cells.
 
 See [](./composition.md) for the anywidget composition contract that makes those
@@ -122,7 +123,7 @@ and browser rendering.
   Observable notebooks.
 - Matching `viewof` keys write the existing input target and dispatch its input
   event, so controls stay visually aligned with the runtime value.
-- `ojs.arrow(df)` sends Arrow IPC and lazily imports Apache Arrow in the browser.
+- Optional dataframe support sends tabular values through the widget wire format.
 - Structural notebook updates re-render through anywidget model change events.
   Python variable updates mutate the current runtime through the synced `_variables`
   trait.
@@ -145,8 +146,8 @@ time.
 
 Large files correspond to cross-boundary concerns.
 
-`src/observablejs/_notebook.py`
-: Defines the public Python model boundary. It aligns `Notebook`, `Cell`,
+`src/pyobservablejs/_notebook.py`
+: Defines the public Python model boundary. It aligns `Notebook`, authored cells,
   Python-authored cells, source-backed constructors, child anywidget composition,
   trait initialization, browser-synced values, and graph state with
   TypeScript-owned OJS evaluation and transpilation.
@@ -157,16 +158,16 @@ Large files correspond to cross-boundary concerns.
   The core invariant is one parent runtime per displayed notebook, with child
   models acting as names into that runtime.
 
-`src/observablejs/_files.py`
+`src/pyobservablejs/_files.py`
 : Rewrites source-backed notebooks through static source analysis. It finds
   `FileAttachment(...)` and relative import specifiers inside real notebook
   script cells. Comments, strings, template literals, regex literals, and
   non-JavaScript script types are excluded from those matches.
 
-`src/observablejs/_variables.py` and `js/wire.ts`
-: Define the cross-language wire format. Tagged `__observablejs_type__` values
-  carry dates, bytes, non-finite numbers, Arrow tables, DOM summaries, typed
-  arrays, and errors across the trait boundary.
+`src/pyobservablejs/_variables.py` and `js/wire.ts`
+: Define the cross-language wire format. Tagged `__pyobservablejs_type__` values
+  carry dates, bytes, non-finite numbers, DOM summaries, typed arrays, and
+  errors across the trait boundary.
 
 `js/highlight.ts`
 : Uses Shiki for pinned source panels with a selected language and theme set.

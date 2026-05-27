@@ -1,4 +1,4 @@
-.observablejs {
+.pyobservablejs {
 	--syntax-atom: #032f62;
 	--syntax-comment: var(--theme-foreground-muted);
 	--syntax-definition: #005cc5;
@@ -27,24 +27,24 @@
 	width: 100%;
 }
 
-.observablejs-notebook {
+.pyobservablejs-notebook {
 	box-sizing: border-box;
 	container-type: inline-size;
 	max-width: 100%;
 	padding: 0.25rem 0;
 }
 
-.observablejs-cell {
+.pyobservablejs-cell {
 	margin: 0 0 1rem;
 	max-width: 100%;
 }
 
-.observablejs .observablehq--cell {
+.pyobservablejs .observablehq--cell {
 	max-width: 100%;
 	overflow-x: auto;
 }
 
-.observablejs-source-panel {
+.pyobservablejs-source-panel {
 	background: #ffffff;
 	border: 1px solid #d8dee9;
 	border-radius: 6px;
@@ -56,8 +56,8 @@
 	overflow: hidden;
 }
 
-.observablejs-source-label {
-	background: color-mix(in srgb, var(--observablejs-source-bg, #ffffff) 88%, transparent);
+.pyobservablejs-source-label {
+	background: color-mix(in srgb, var(--pyobservablejs-source-bg, #ffffff) 88%, transparent);
 	border: 1px solid #d8dee9;
 	border-radius: 999px;
 	box-shadow: 0 1px 2px rgba(31, 35, 40, 0.04);
@@ -73,12 +73,12 @@
 	text-transform: uppercase;
 }
 
-.observablejs-source {
-	background: var(--observablejs-source-bg, #ffffff);
+.pyobservablejs-source {
+	background: var(--pyobservablejs-source-bg, #ffffff);
 	border: 0;
 	border-radius: 0;
 	box-sizing: border-box;
-	color: var(--observablejs-source-color, #1f2328);
+	color: var(--pyobservablejs-source-color, #1f2328);
 	font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 	grid-column: 1;
 	grid-row: 1;
@@ -91,25 +91,25 @@
 	white-space: pre;
 }
 
-.observablejs-source:focus {
+.pyobservablejs-source:focus {
 	outline: 2px solid #0969da;
 	outline-offset: -2px;
 }
 
-.observablejs-source code {
+.pyobservablejs-source code {
 	display: block;
 	min-width: max-content;
 }
 
-.observablejs-source-line {
+.pyobservablejs-source-line {
 	display: inline;
 }
 
-.observablejs-source-token {
+.pyobservablejs-source-token {
 	color: inherit;
 }
 
-.observablejs-error {
+.pyobservablejs-error {
 	background: #fff5f5;
 	border: 1px solid #efb4b4;
 	border-radius: 6px;

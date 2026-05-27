@@ -8,6 +8,7 @@ import githubLightDefault from "@shikijs/themes/github-light-default";
 import { createHighlighterCore } from "@shikijs/core";
 import { createJavaScriptRegexEngine } from "@shikijs/engine-javascript";
 import type { HighlighterCore, ThemedToken } from "@shikijs/types";
+import { CLASS_NAMES, CSS_VARIABLES } from "./dom-contract";
 
 type HighlightLanguage = "html" | "javascript" | "markdown" | "sql" | "typescript";
 
@@ -49,14 +50,14 @@ let highlighterPromise: Promise<HighlighterCore> | undefined;
 export function renderSource(cell: Cell, signal: AbortSignal): HTMLElement {
 	const sourceMode = SOURCE_MODE_BY_CELL_MODE[cell.mode];
 	const panel = document.createElement("div");
-	panel.className = "observablejs-source-panel";
+	panel.className = CLASS_NAMES.sourcePanel;
 
 	const label = document.createElement("span");
-	label.className = "observablejs-source-label";
+	label.className = CLASS_NAMES.sourceLabel;
 	label.textContent = sourceMode.label;
 
 	const pre = document.createElement("pre");
-	pre.className = "observablejs-source";
+	pre.className = CLASS_NAMES.source;
 	pre.tabIndex = 0;
 	pre.dataset.highlight = "pending";
 	pre.setAttribute("aria-label", `${sourceMode.label} source`);
@@ -81,8 +82,8 @@ async function highlightSource(cell: Cell, pre: HTMLPreElement, code: HTMLElemen
 		const highlighted = await getHighlightedSource(cell.value, sourceMode.language);
 		if (signal.aborted) return;
 		renderTokenLines(code, highlighted.tokens);
-		if (highlighted.background) pre.style.setProperty("--observablejs-source-bg", highlighted.background);
-		if (highlighted.color) pre.style.setProperty("--observablejs-source-color", highlighted.color);
+		if (highlighted.background) pre.style.setProperty(CSS_VARIABLES.sourceBackground, highlighted.background);
+		if (highlighted.color) pre.style.setProperty(CSS_VARIABLES.sourceColor, highlighted.color);
 		pre.dataset.highlight = "ready";
 	} catch {
 		if (!signal.aborted) pre.dataset.highlight = "plain";
@@ -122,7 +123,7 @@ function renderTokenLines(code: HTMLElement, lines: ThemedToken[][]): void {
 	for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
 		if (lineIndex > 0) code.appendChild(document.createTextNode("\n"));
 		const line = document.createElement("span");
-		line.className = "observablejs-source-line";
+		line.className = CLASS_NAMES.sourceLine;
 		for (const token of lines[lineIndex] ?? []) line.appendChild(renderToken(token));
 		code.appendChild(line);
 	}
@@ -133,7 +134,7 @@ function renderToken(token: ThemedToken): Text | HTMLSpanElement {
 		return document.createTextNode(token.content);
 	}
 	const span = document.createElement("span");
-	span.className = "observablejs-source-token";
+	span.className = CLASS_NAMES.sourceToken;
 	span.textContent = token.content;
 	if (token.color) span.style.color = token.color;
 	if (token.bgColor) span.style.backgroundColor = token.bgColor;

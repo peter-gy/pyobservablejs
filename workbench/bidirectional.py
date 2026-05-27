@@ -17,9 +17,9 @@ def _():
     import json
 
     import marimo as mo
-    import observablejs as ojs
+    import pyobservablejs as obs
 
-    return dt, json, mo, ojs
+    return dt, json, mo, obs
 
 
 @app.cell
@@ -77,10 +77,10 @@ def _(initial_frequencies, letters_base, mo):
 
 
 @app.cell
-def _(ojs):
-    notebook = ojs.Notebook(
-        ojs.md("# One live Observable runtime", name="title"),
-        ojs.cell(
+def _(obs):
+    notebook = obs.Notebook(
+        obs.md("# One live Observable runtime", name="title"),
+        obs.ojs(
             """
 viewof gain = Inputs.range([0, 12], {
   value: 5,
@@ -90,7 +90,7 @@ viewof gain = Inputs.range([0, 12], {
 """,
             name="gain",
         ),
-        ojs.cell(
+        obs.ojs(
             """
 Plot.plot({
   height: 260,
@@ -110,13 +110,13 @@ Plot.plot({
 """,
             name="chart",
         ),
-        ojs.cell(
+        obs.ojs(
             """
 `Python variables have ${letters.length} rows. Gain is ${gain.toFixed(1)}.`
 """,
             name="data_readout",
         ),
-        ojs.cell(
+        obs.ojs(
             """
 letters
   .map((d) => `${d.letter}: ${d.seen.toISOString().slice(0, 10)}`)

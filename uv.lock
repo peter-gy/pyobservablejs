@@ -1743,76 +1743,6 @@ wheels = [
 ]
 
 [[package]]
-name = "observablejs"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "anywidget" },
-    { name = "traitlets" },
-]
-
-[package.optional-dependencies]
-arrow = [
-    { name = "pyarrow" },
-]
-data = [
-    { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "pandas", version = "3.0.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-    { name = "polars" },
-    { name = "pyarrow" },
-]
-dev = [
-    { name = "jupyter-book" },
-    { name = "jupyterlab" },
-    { name = "watchfiles" },
-]
-pandas = [
-    { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "pandas", version = "3.0.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-]
-polars = [
-    { name = "polars" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "jupyter-book" },
-    { name = "jupyterlab" },
-    { name = "marimo", extra = ["recommended"] },
-    { name = "pytest" },
-    { name = "ruff" },
-    { name = "ty" },
-    { name = "watchfiles" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "anywidget", specifier = ">=0.11.0" },
-    { name = "jupyter-book", marker = "extra == 'dev'", specifier = ">=2.1.5" },
-    { name = "jupyterlab", marker = "extra == 'dev'" },
-    { name = "pandas", marker = "extra == 'data'", specifier = ">=2" },
-    { name = "pandas", marker = "extra == 'pandas'", specifier = ">=2" },
-    { name = "polars", marker = "extra == 'data'", specifier = ">=1" },
-    { name = "polars", marker = "extra == 'polars'", specifier = ">=1" },
-    { name = "pyarrow", marker = "extra == 'arrow'", specifier = ">=16" },
-    { name = "pyarrow", marker = "extra == 'data'", specifier = ">=16" },
-    { name = "traitlets", specifier = ">=5" },
-    { name = "watchfiles", marker = "extra == 'dev'" },
-]
-provides-extras = ["arrow", "data", "dev", "pandas", "polars"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "jupyter-book", specifier = ">=2.1.5" },
-    { name = "jupyterlab" },
-    { name = "marimo", extras = ["recommended"], specifier = ">=0.23.8" },
-    { name = "pytest", specifier = ">=9.0.3" },
-    { name = "ruff", specifier = ">=0.15.14" },
-    { name = "ty", specifier = ">=0.0.39" },
-    { name = "watchfiles" },
-]
-
-[[package]]
 name = "openai"
 version = "2.38.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2432,6 +2362,70 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/9e/26/d1015444da4d952a1ca487a236b522eb979766f0295a0bd0c5fc089989a9/pymdown_extensions-10.21.3.tar.gz", hash = "sha256:72cfcf55f07aea0d4af2c4f11dd4e52466ddfb1bb819673146398e0bd3a77354", size = 854140, upload-time = "2026-05-13T12:57:32.267Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/7e/85/545a951eecc270fcd688288c600017e2050a1aacb56c711d208586d3e470/pymdown_extensions-10.21.3-py3-none-any.whl", hash = "sha256:d7a5d08014fc571e80ca21dd6f854e31f94c489800350564d55d15b3c41e76b6", size = 269002, upload-time = "2026-05-13T12:57:30.296Z" },
+]
+
+[[package]]
+name = "pyobservablejs"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "anywidget" },
+    { name = "traitlets" },
+]
+
+[package.optional-dependencies]
+data = [
+    { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "pandas", version = "3.0.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "polars" },
+]
+dev = [
+    { name = "jupyter-book" },
+    { name = "jupyterlab" },
+    { name = "watchfiles" },
+]
+pandas = [
+    { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "pandas", version = "3.0.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+]
+polars = [
+    { name = "polars" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "jupyter-book" },
+    { name = "jupyterlab" },
+    { name = "marimo", extra = ["recommended"] },
+    { name = "pytest" },
+    { name = "ruff" },
+    { name = "ty" },
+    { name = "watchfiles" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "anywidget", specifier = ">=0.11.0" },
+    { name = "jupyter-book", marker = "extra == 'dev'", specifier = ">=2.1.5" },
+    { name = "jupyterlab", marker = "extra == 'dev'" },
+    { name = "pandas", marker = "extra == 'data'", specifier = ">=2" },
+    { name = "pandas", marker = "extra == 'pandas'", specifier = ">=2" },
+    { name = "polars", marker = "extra == 'data'", specifier = ">=1" },
+    { name = "polars", marker = "extra == 'polars'", specifier = ">=1" },
+    { name = "traitlets", specifier = ">=5" },
+    { name = "watchfiles", marker = "extra == 'dev'" },
+]
+provides-extras = ["data", "dev", "pandas", "polars"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "jupyter-book", specifier = ">=2.1.5" },
+    { name = "jupyterlab" },
+    { name = "marimo", extras = ["recommended"], specifier = ">=0.23.8" },
+    { name = "pytest", specifier = ">=9.0.3" },
+    { name = "ruff", specifier = ">=0.15.14" },
+    { name = "ty", specifier = ">=0.0.39" },
+    { name = "watchfiles" },
 ]
 
 [[package]]

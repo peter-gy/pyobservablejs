@@ -1,6 +1,6 @@
-const ARROW_URL = "https://cdn.jsdelivr.net/npm/apache-arrow@17.0.0/+esm";
+const TYPE_KEY = "__pyobservablejs_type__";
 
-// anywidget traits carry JSON. __observablejs_type__ tags preserve values that
+// anywidget traits carry JSON. __pyobservablejs_type__ tags preserve values that
 // need browser or Python revival.
 
 type WireContext = {
@@ -10,77 +10,77 @@ type WireContext = {
 
 export function toWireValue(value: unknown, context: WireContext = { seen: new WeakMap(), nextId: 1 }): unknown {
 	// Summarize live browser objects before trait sync attempts JSON cloning.
-	if (value === undefined) return { __observablejs_type__: "undefined" };
+	if (value === undefined) return { [TYPE_KEY]: "undefined" };
 	if (value === null || typeof value === "boolean" || typeof value === "string") return value;
 	if (typeof value === "number") {
 		if (Number.isFinite(value)) return value;
-		if (Number.isNaN(value)) return { __observablejs_type__: "number", value: "NaN" };
-		return { __observablejs_type__: "number", value: value > 0 ? "Infinity" : "-Infinity" };
+		if (Number.isNaN(value)) return { [TYPE_KEY]: "number", value: "NaN" };
+		return { [TYPE_KEY]: "number", value: value > 0 ? "Infinity" : "-Infinity" };
 	}
 	if (typeof value === "bigint") {
-		return { __observablejs_type__: "bigint", value: value.toString() };
+		return { [TYPE_KEY]: "bigint", value: value.toString() };
 	}
 	if (typeof value === "function") {
-		return { __observablejs_type__: "function", value: value.name || "anonymous" };
+		return { [TYPE_KEY]: "function", value: value.name || "anonymous" };
 	}
 	if (value instanceof Date) {
-		return { __observablejs_type__: "datetime", value: value.toISOString() };
+		return { [TYPE_KEY]: "datetime", value: value.toISOString() };
 	}
 	if (value instanceof Element) {
-		return { __observablejs_type__: "element", value: value.tagName.toLowerCase() };
+		return { [TYPE_KEY]: "element", value: value.tagName.toLowerCase() };
 	}
 	if (value instanceof Error) {
-		return { __observablejs_type__: "error", name: value.name, message: value.message };
+		return { [TYPE_KEY]: "error", name: value.name, message: value.message };
 	}
 	if (value instanceof RegExp) {
-		return { __observablejs_type__: "regexp", value: String(value) };
+		return { [TYPE_KEY]: "regexp", value: String(value) };
 	}
 	if (typeof File !== "undefined" && value instanceof File) {
-		return { __observablejs_type__: "file", name: value.name, size: value.size, mimeType: value.type };
+		return { [TYPE_KEY]: "file", name: value.name, size: value.size, mimeType: value.type };
 	}
 	if (typeof Blob !== "undefined" && value instanceof Blob) {
-		return { __observablejs_type__: "blob", size: value.size, mimeType: value.type };
+		return { [TYPE_KEY]: "blob", size: value.size, mimeType: value.type };
 	}
 	if (value instanceof ArrayBuffer) {
-		return { __observablejs_type__: "arraybuffer", value: bytesToBase64(new Uint8Array(value)) };
+		return { [TYPE_KEY]: "arraybuffer", value: bytesToBase64(new Uint8Array(value)) };
 	}
 	if (ArrayBuffer.isView(value)) {
 		const bytes = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
 		return {
-			__observablejs_type__: "typedarray",
+			[TYPE_KEY]: "typedarray",
 			name: value.constructor.name,
 			value: bytesToBase64(bytes),
 		};
 	}
 	if (Array.isArray(value)) {
 		const ref = context.seen.get(value);
-		if (ref !== undefined) return { __observablejs_type__: "reference", value: ref };
+		if (ref !== undefined) return { [TYPE_KEY]: "reference", value: ref };
 		context.seen.set(value, context.nextId++);
 		return value.map((item) => toWireValue(item, context));
 	}
 	if (isRecord(value)) {
 		const ref = context.seen.get(value);
-		if (ref !== undefined) return { __observablejs_type__: "reference", value: ref };
+		if (ref !== undefined) return { [TYPE_KEY]: "reference", value: ref };
 		context.seen.set(value, context.nextId++);
 		if (value instanceof Map) {
 			return {
-				__observablejs_type__: "map",
+				[TYPE_KEY]: "map",
 				value: Array.from(value, ([key, item]) => [toWireValue(key, context), toWireValue(item, context)]),
 			};
 		}
 		if (value instanceof Set) {
-			return { __observablejs_type__: "set", value: Array.from(value, (item) => toWireValue(item, context)) };
+			return { [TYPE_KEY]: "set", value: Array.from(value, (item) => toWireValue(item, context)) };
 		}
 		return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, toWireValue(item, context)]));
 	}
-	return { __observablejs_type__: typeof value, value: String(value) };
+	return { [TYPE_KEY]: typeof value, value: String(value) };
 }
 
 export function reviveSyncedValue(value: unknown): unknown {
 	// Cell traits store values used for `viewof` writes and isolated dependencies.
 	if (Array.isArray(value)) return value.map(reviveSyncedValue);
 	if (!isRecord(value)) return value;
-	const type = value.__observablejs_type__;
+	const type = value[TYPE_KEY];
 	if (type === "undefined") return undefined;
 	if (type === "number") return reviveNumber(String(value.value));
 	if (type === "bigint") return BigInt(String(value.value));
@@ -111,16 +111,15 @@ export function createVariableBuiltins(variables: Record<string, unknown>): Reco
 }
 
 export function revivePythonValue(value: unknown): unknown {
-	// Browser half of src/observablejs/_variables.py for the synced `_variables` trait.
+	// Browser half of src/pyobservablejs/_variables.py for the synced `_variables` trait.
 	if (Array.isArray(value)) {
 		return resolveMaybePromises(value.map(revivePythonValue), (items) => items);
 	}
 	if (!isRecord(value)) return value;
 
-	const type = value.__observablejs_type__;
+	const type = value[TYPE_KEY];
 	if (type === "datetime") return new Date(String(value.value));
 	if (type === "bytes") return base64ToBytes(String(value.value));
-	if (type === "arrow") return reviveArrowTable(String(value.value));
 	if (type === "number") return reviveNumber(String(value.value));
 	if (type === "object") return revivePythonValue(value.value);
 
@@ -149,11 +148,6 @@ function reviveNumber(value: string): number {
 	if (value === "Infinity") return Number.POSITIVE_INFINITY;
 	if (value === "-Infinity") return Number.NEGATIVE_INFINITY;
 	return Number(value);
-}
-
-async function reviveArrowTable(value: string): Promise<unknown> {
-	const Arrow = (await import(/* @vite-ignore */ ARROW_URL)) as { tableFromIPC(data: Uint8Array): unknown };
-	return Arrow.tableFromIPC(base64ToBytes(value));
 }
 
 function base64ToBytes(value: string): Uint8Array {

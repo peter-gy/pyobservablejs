@@ -41,5 +41,5 @@ export function registerAttachments(attachments: Record<string, AttachmentInfo>)
 
 function createAttachmentRegistryBase(): string {
 	const id = typeof crypto.randomUUID === "function" ? crypto.randomUUID() : Math.random().toString(36).slice(2);
-	return new URL(`.observablejs/${id}/`, document.baseURI).href;
+	return new URL(`.pyobservablejs/${id}/`, document.baseURI).href;
 }
