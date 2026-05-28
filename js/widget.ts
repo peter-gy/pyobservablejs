@@ -1,6 +1,6 @@
 import type { InitializeProps, RenderProps } from "@anywidget/types";
 import { deserialize, toNotebook, transpile, type Cell, type Notebook } from "@observablehq/notebook-kit";
-import { observe, type NotebookRuntime } from "@observablehq/notebook-kit/runtime";
+import { observe, type DefineState, type NotebookRuntime } from "@observablehq/notebook-kit/runtime";
 import { registerAttachments } from "./attachments";
 import { createNotebookGraph, exposedVariableNames, unprefix } from "./graph";
 import { renderSource } from "./highlight";
@@ -551,7 +551,8 @@ function renderIsolatedStandaloneCellWidget(
 	renderSignal.addEventListener("abort", cleanup, { once: true });
 
 	try {
-		defineStandaloneDependencyVariables(runtime, context, renderSignal);
+		const definition = transpile(context.cell, { resolveLocalImports: true });
+		defineStandaloneDependencyCells(runtime, context, definition, renderSignal);
 		const wrapper = appendCellWrapper(root, { standalone: true });
 		renderCell(
 			wrapper,
@@ -574,43 +575,242 @@ function renderComposedCellWidget(el: HTMLElement, context: CellRenderContext, s
 	renderCell(el, context.runtime, context.cell, context.showSource, context.sync, signal);
 }
 
-function defineStandaloneDependencyVariables(
+function defineStandaloneDependencyCells(
 	runtime: NotebookRuntime,
 	context: CellRenderContext,
+	targetDefinition: ReturnType<typeof transpile>,
 	signal: AbortSignal,
 ): void {
-	// Isolated `viewof` renders revive dependency values from sibling cell traits.
-	const cleanups: Array<() => void> = [];
-	try {
-		const definition = transpile(context.cell, { resolveLocalImports: true });
-		const variables = new Set(definition.inputs ?? []);
-		for (let index = 0; index < context.cellModels.length; index++) {
-			if (index === context.cellIndex) continue;
-			const model = context.cellModels[index];
-			if (!model) continue;
-			const sibling = context.notebook.cells[index];
-			if (!sibling) continue;
-			for (const name of exposedVariableNames(transpile(sibling, { resolveLocalImports: true }))) {
-				if (!variables.has(name)) continue;
-				if (runtime.main.defines(name)) continue;
-				const variable = runtime.main.variable(true);
-				const defineCurrent = () => {
-					variable.define(name, [], () => reviveSyncedValue(model.get("_values")?.[name]));
-				};
-				const cleanup = () => model.off("change:_values", defineCurrent);
-				defineCurrent();
-				model.on("change:_values", defineCurrent);
-				signal.addEventListener("abort", cleanup, { once: true });
-				cleanups.push(() => {
-					signal.removeEventListener("abort", cleanup);
-					cleanup();
-				});
-			}
+	// Isolated `viewof` renders need the real dependency graph, not JSON trait
+	// snapshots. Function-valued imports and helpers cannot cross the anywidget
+	// wire format and must be evaluated from notebook source inside this runtime.
+	const states: DefineState[] = [];
+	const listenerCleanups: Array<() => void> = [];
+	const definitions = new Map<number, ReturnType<typeof transpile>>();
+	const defining = new Set<number>();
+	const defined = new Set<number>();
+	const liveDefined = new Set<string>();
+	const cleanup = () => {
+		for (const listenerCleanup of listenerCleanups.reverse()) listenerCleanup();
+		listenerCleanups.length = 0;
+		for (const state of states.reverse()) {
+			for (const variable of state.variables) variable.delete();
+			state.root.replaceChildren();
 		}
+		states.length = 0;
+	};
+	signal.addEventListener("abort", cleanup, { once: true });
+
+	try {
+		const targetInputs = targetDefinition.inputs ?? [];
+		for (const input of targetInputs) defineLiveDependency(input);
+		for (const input of targetInputs) defineDependenciesForName(input);
 	} catch (error) {
-		for (const cleanup of cleanups.reverse()) cleanup();
+		signal.removeEventListener("abort", cleanup);
+		cleanup();
 		throw error;
 	}
+
+	function defineDependenciesForName(name: string): void {
+		if (runtime.main.defines(name)) return;
+		if (defineLiveDependency(name)) return;
+		for (const index of dependencyCellIndexes(context, name, definitions)) defineDependencyCell(index);
+	}
+
+	function defineDependencyCell(index: number): void {
+		if (index === context.cellIndex || defined.has(index) || defining.has(index)) return;
+		defining.add(index);
+		const definition = transpileDependencyCell(context, definitions, index);
+		const inputs = definition.inputs ?? [];
+		for (const input of inputs) defineLiveDependency(input);
+		for (const input of inputs) defineDependenciesForName(input);
+		defining.delete(index);
+		defined.add(index);
+
+		const state: DefineState = {
+			root: document.createElement("div"),
+			expanded: [],
+			variables: [],
+		};
+		states.push(state);
+		const cell = context.notebook.cells[index];
+		const runtimeDefinition = createRuntimeDefinition(cell, definition);
+		if (runtimeVariableNames(definition).some((name) => runtime.main.defines(name))) {
+			defineMissingRuntimeVariables(runtime, state, runtimeDefinition);
+		} else {
+			runtime.define(state, runtimeDefinition, observe);
+		}
+	}
+
+	function defineLiveDependency(name: string): boolean {
+		if (liveDefined.has(name)) return true;
+		const model = liveDependencyModel(context, name);
+		if (!model) return false;
+		const variable = runtime.main.variable(true);
+		const defineCurrent = () => {
+			const value = readModelVariables(model)[name];
+			if (!canReviveDependencyValue(value)) return;
+			variable.define(name, [], () => reviveSyncedValue(value));
+		};
+		defineCurrent();
+		model.on("change:_values", defineCurrent);
+		listenerCleanups.push(() => {
+			model.off("change:_values", defineCurrent);
+			variable.delete();
+		});
+		liveDefined.add(name);
+		return true;
+	}
+}
+
+function defineMissingRuntimeVariables(
+	runtime: NotebookRuntime,
+	state: DefineState,
+	definition: Parameters<NotebookRuntime["define"]>[1],
+): void {
+	const main = runtime.main as RuntimeModule;
+	const sourceRuntime = createRuntimeModule(runtime);
+	const sourceMain = sourceRuntime.main as RuntimeModule;
+	const sourceImports: DefineState["variables"] = [];
+	for (const input of definition.inputs ?? []) {
+		if (!sourceRuntime.main.defines(input) && runtime.main.defines(input)) {
+			sourceImports.push(sourceMain.import(input, runtime.main));
+		}
+	}
+	sourceRuntime.define(state, definition, observe);
+	state.variables.push(...sourceImports);
+	for (const name of runtimeDefinitionNames(definition)) {
+		if (!runtime.main.defines(name)) {
+			state.variables.push(main.import(name, sourceRuntime.main));
+		}
+	}
+}
+
+function createRuntimeModule(runtime: NotebookRuntime): NotebookRuntime {
+	const sourceRuntime = Object.create(Object.getPrototypeOf(runtime)) as NotebookRuntime;
+	Object.defineProperties(sourceRuntime, {
+		runtime: { value: runtime.runtime },
+		main: { value: runtime.runtime.module() },
+	});
+	return sourceRuntime;
+}
+
+function runtimeDefinitionNames(definition: Parameters<NotebookRuntime["define"]>[1]): string[] {
+	const names = new Set<string>();
+	if (definition.output) {
+		names.add(definition.output);
+		if (definition.autoview) names.add(unprefix(definition.output, "viewof$"));
+		if (definition.automutable) {
+			const name = unprefix(definition.output, "mutable ");
+			names.add(name);
+			names.add(`mutable$${name}`);
+		}
+	} else {
+		for (const name of definition.outputs ?? []) names.add(name);
+	}
+	return Array.from(names);
+}
+
+type RuntimeModule = NotebookRuntime["main"] & {
+	define(...args: unknown[]): DefineState["variables"][number];
+	import(...args: unknown[]): DefineState["variables"][number];
+	variable(
+		observer?: unknown,
+		options?: unknown,
+	): {
+		define(...args: unknown[]): DefineState["variables"][number];
+	};
+};
+
+function dependencyCellIndexes(
+	context: CellRenderContext,
+	name: string,
+	definitions: Map<number, ReturnType<typeof transpile>>,
+): number[] {
+	const graph = context.notebookModel.get("_graph");
+	if (isNotebookGraphLike(graph)) {
+		return graph.cells
+			.filter((cell) => cell.index !== context.cellIndex)
+			.filter((cell) => cell.defines.includes(name) || cell.runtime_outputs.includes(name))
+			.map((cell) => cell.index);
+	}
+	const indexes: number[] = [];
+	for (let index = 0; index < context.notebook.cells.length; index++) {
+		if (index === context.cellIndex) continue;
+		let definition: ReturnType<typeof transpile>;
+		try {
+			definition = transpileDependencyCell(context, definitions, index);
+		} catch {
+			continue;
+		}
+		if (runtimeVariableNames(definition).includes(name)) indexes.push(index);
+	}
+	return indexes;
+}
+
+function transpileDependencyCell(
+	context: CellRenderContext,
+	definitions: Map<number, ReturnType<typeof transpile>>,
+	index: number,
+): ReturnType<typeof transpile> {
+	const existing = definitions.get(index);
+	if (existing) return existing;
+	const cell = context.notebook.cells[index];
+	if (!cell) throw new Error(`Missing notebook cell at index ${index}`);
+	const definition = transpile(cell, { resolveLocalImports: true });
+	definitions.set(index, definition);
+	return definition;
+}
+
+function liveDependencyModel(context: CellRenderContext, name: string): RenderProps<WidgetModel>["model"] | undefined {
+	const matches = context.cellModels.filter((model): model is RenderProps<WidgetModel>["model"] => {
+		if (!model) return false;
+		const values = readModelVariables(model);
+		return Object.prototype.hasOwnProperty.call(values, name) && canReviveDependencyValue(values[name]);
+	});
+	return matches.length === 1 ? matches[0] : undefined;
+}
+
+function canReviveDependencyValue(value: unknown): boolean {
+	if (Array.isArray(value)) return value.every(canReviveDependencyValue);
+	if (value === null || typeof value !== "object") return true;
+	const record = value as Record<string, unknown>;
+	const type = record.__pyobservablejs_type__;
+	if (typeof type === "string") {
+		if (
+			["function", "element", "error", "regexp", "reference", "file", "blob", "arraybuffer", "typedarray"].includes(
+				type,
+			)
+		) {
+			return false;
+		}
+		if (type === "map" || type === "set") {
+			return Array.isArray(record.value) && record.value.every(canReviveDependencyValue);
+		}
+		if (type === "object") return canReviveDependencyValue(record.value);
+		return ["undefined", "number", "bigint", "datetime"].includes(type);
+	}
+	return Object.values(record).every(canReviveDependencyValue);
+}
+
+function isNotebookGraphLike(value: unknown): value is NonNullable<WidgetModel["_graph"]> {
+	return (
+		value !== null &&
+		typeof value === "object" &&
+		Array.isArray((value as { cells?: unknown }).cells) &&
+		Array.isArray((value as { edges?: unknown }).edges)
+	);
+}
+
+function runtimeVariableNames(definition: ReturnType<typeof transpile>): string[] {
+	const names = new Set(exposedVariableNames(definition));
+	if (definition.output) {
+		names.add(definition.output);
+		if (definition.automutable) names.add(`mutable$${unprefix(definition.output, "mutable ")}`);
+	} else {
+		for (const name of definition.outputs ?? []) names.add(name);
+	}
+	return Array.from(names);
 }
 
 function renderCell(
