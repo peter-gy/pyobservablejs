@@ -118,6 +118,7 @@ Pass `variables={...}` to override variables in a loaded notebook with Python va
 
 - [Quickstart](docs/quickstart.md)
 - [Examples](docs/examples.md)
+- [Tutorials](docs/tutorials/index.md)
 - [Concepts](docs/concepts.md)
 - [Architecture](docs/architecture.md)
 - [Widget composition](docs/composition.md)

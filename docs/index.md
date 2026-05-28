@@ -51,6 +51,7 @@ Use `obs.Notebook.from_html(...)` when you already have Notebook Kit HTML. Use
 
 - [](./quickstart.md): create a notebook, pass Python values, and display cells.
 - [](./examples.md): copy small examples for common notebook tasks.
+- [](./tutorials/index.md): use `pyobservablejs` in notebook frontends such as marimo.
 - [](./concepts.md): learn the Observable, Notebook Kit, and widget vocabulary.
 - [](./api.md): reference the public Python API.
 - [](./architecture.md): follow the Python-to-browser runtime path.

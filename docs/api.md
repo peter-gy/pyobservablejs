@@ -32,7 +32,10 @@ runtime.
 
 - `*cells`: strings or helper-created cell objects.
 - `title`: title written to exported Notebook Kit HTML.
-- `theme`: Notebook Kit theme, usually `"air"`.
+- `theme`: Notebook Kit theme. Defaults to `"air"`. Pass a string theme name or
+  a mapping with `light` and `dark` theme names. Theme mappings serialize as
+  `light-dark(light, dark)`. Missing mapping keys raise `KeyError` when the
+  notebook is serialized.
 - `mode`: default mode for plain string cells.
 - `attachments`: mapping from `FileAttachment` names to local paths, URLs, or
   metadata. Local paths resolve against `base_path` or the current working
@@ -41,7 +44,7 @@ runtime.
 - `base_path`: base path for relative attachments.
 - `variables`: Python values exposed as OJS variables. Matching notebook variables
   are overridden.
-- `show_pinned_source`: render source for pinned cells.
+- `show_pinned_source`: render source panels for cells marked `pinned=True`.
 
 Plain string cells use `mode="ojs"` by default.
 
@@ -114,7 +117,9 @@ restores the notebook's original definition for that name.
 - `*names`: Python-owned variable names to release.
 - Returns `None`.
 - Sends a browser replacement update only when at least one owned name is
-  removed.
+  released.
+- Restores the notebook's original definition for each released name after the
+  next browser update.
 
 ### `Notebook.cells`
 
@@ -346,7 +351,7 @@ obs.ojs(
 
 The helper signatures are shared:
 
-```python
+```text
 obs.ojs(source, *, name=None, display=True, raw=False, id=None, pinned=False, output=None, attrs=None)
 obs.js(source, *, name=None, display=True, raw=False, id=None, pinned=False, output=None, attrs=None)
 obs.md(source, *, name=None, display=True, raw=False, id=None, pinned=False, output=None, attrs=None)
@@ -371,6 +376,11 @@ Each helper returns a source `Cell` and accepts:
 Mode-specific helpers such as `obs.md(...)` and `obs.html(...)` accept the same
 keywords except `mode`. Helper source strings are dedented and stripped of
 leading/trailing newlines unless `raw=True`.
+
+Use `obs.md(...)` for Notebook Kit Markdown cells. Public ObservableHQ notebooks
+fetched with `from_observablehq` may contain hosted OJS cells such as
+``md`# Title` ``. Those cells render through the ObservableHQ compatibility path
+for imported notebooks.
 
 Use `obs.js(...)` when you need an ES module cell:
 

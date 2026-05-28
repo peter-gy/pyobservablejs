@@ -16,6 +16,9 @@ project:
     - file: index.md
     - file: quickstart.md
     - file: examples.md
+    - file: tutorials/index.md
+    - file: tutorials/python-variables.md
+    - file: tutorials/cell-views.md
     - file: concepts.md
     - file: api.md
     - file: architecture.md

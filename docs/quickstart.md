@@ -113,13 +113,8 @@ value from a later Python cell:
 notebook.value("double")
 ```
 
-In marimo:
-
-```python
-import marimo as mo
-
-mo.ui.anywidget(notebook.cell("gain"))
-```
+Notebook frontends display the returned `NotebookCell` through their normal
+anywidget path. See [](./tutorials/cell-views.md) for a marimo workflow.
 
 ## Load Notebook Kit HTML
 
