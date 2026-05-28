@@ -12,6 +12,7 @@ import {
 	createCellExportsMap,
 	createHost,
 	createModel,
+	objectValuedSelectSource,
 	variableValue,
 	waitFor,
 } from "./widget-test-utils";
@@ -225,33 +226,7 @@ viewof gain = {
 					{
 						id: 1,
 						mode: "ojs",
-						value: `
-Select = (items, options = {}) => {
-  const form = document.createElement("form");
-  const select = document.createElement("select");
-  let selected = options.value ?? items[0];
-  for (const [index, item] of items.entries()) {
-    const option = document.createElement("option");
-    option.value = String(index);
-    option.textContent = String(item.pointDensity);
-    select.appendChild(option);
-  }
-  select.value = String(items.indexOf(selected));
-  const update = () => {
-    selected = items[select.selectedIndex] ?? null;
-  };
-  select.addEventListener("input", update);
-  select.addEventListener("change", update);
-  Object.defineProperty(form, "value", {
-    get() { return selected; },
-    set(value) {
-      selected = items.includes(value) ? value : null;
-      select.selectedIndex = items.indexOf(value);
-    },
-  });
-  form.appendChild(select);
-  return form;
-}`,
+						value: objectValuedSelectSource,
 					},
 					{ id: 2, mode: "ojs", value: "presetsArray = [{pointDensity: 7}, {pointDensity: 21}]" },
 					{ id: 3, mode: "ojs", value: "viewof presets = Select(presetsArray, {value: presetsArray[0]})" },

@@ -8,6 +8,34 @@ export type TestModel = Model & {
 };
 export type ChildRender = (options: { el: HTMLElement; signal?: AbortSignal }) => Promise<void> | void;
 
+export const objectValuedSelectSource = `
+Select = (items, options = {}) => {
+  const form = document.createElement("form");
+  const select = document.createElement("select");
+  let selected = options.value ?? items[0];
+  for (const [index, item] of items.entries()) {
+    const option = document.createElement("option");
+    option.value = String(index);
+    option.textContent = String(item.pointDensity);
+    select.appendChild(option);
+  }
+  select.value = String(items.indexOf(selected));
+  const update = () => {
+    selected = items[select.selectedIndex] ?? null;
+  };
+  select.addEventListener("input", update);
+  select.addEventListener("change", update);
+  Object.defineProperty(form, "value", {
+    get() { return selected; },
+    set(value) {
+      selected = items.includes(value) ? value : null;
+      select.selectedIndex = items.indexOf(value);
+    },
+  });
+  form.appendChild(select);
+  return form;
+}`;
+
 const noopCellExports: CellExports = {
 	bindRuntime() {},
 	unbindRuntime() {},

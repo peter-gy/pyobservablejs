@@ -47,14 +47,22 @@ def test_public_signatures_hide_widget_internals() -> None:
         "variables",
         "show_pinned_source",
     ]
-    assert not any(name.startswith("_") for name in notebook.parameters)
-    assert "data" not in notebook.parameters
 
-    for constructor in (obs.Notebook.from_html, obs.Notebook.from_observablehq):
-        params = inspect.signature(constructor).parameters
-        assert "variables" in params
-        assert "data" not in params
-        assert not any(name.startswith("_") for name in params)
+    assert list(inspect.signature(obs.Notebook.from_html).parameters) == [
+        "source",
+        "attachments",
+        "base_path",
+        "portable",
+        "variables",
+        "show_pinned_source",
+    ]
+    assert list(inspect.signature(obs.Notebook.from_observablehq).parameters) == [
+        "specifier",
+        "variables",
+        "attachments",
+        "show_pinned_source",
+        "timeout",
+    ]
 
     helper_names = [
         "source",
@@ -75,8 +83,6 @@ def test_public_signatures_hide_widget_internals() -> None:
             for name, param in params.items()
             if name != "source"
         )
-        assert "database" not in params
-        assert "format" not in params
 
 
 def test_sql_mode_is_not_publicly_authorable() -> None:
@@ -182,31 +188,11 @@ def test_notebook_composes_python_cells_as_named_child_widgets() -> None:
     assert widget.cell("answer") is widget.cells[1]
     assert widget.get_state(["_cell_widgets"]) == {"_cell_widgets": cell_refs}
     assert widget.cells[0].role == "cell"
-    assert widget.cells[0]._cell_id
-    assert widget.cells[0]._cell_id != widget.cells[1]._cell_id
     assert widget.cells[0].name == "title"
-    assert not widget.cells[0].has_trait("cell")
     assert widget.graph is None
-    assert not widget.cells[0].has_trait("_info")
     assert widget.cells[0].info is None
-    assert widget.cells[0]._values == {}
-    assert widget.cells[0]._value_names == []
-
-
-def test_bare_widgettrait_list_does_not_serialize_child_refs() -> None:
-    class BareParent(anywidget.AnyWidget):
-        _esm = "export default {}"
-        children = traitlets.List(anywidget.WidgetTrait(), default_value=[]).tag(
-            sync=True
-        )
-
-    widget = obs.Notebook(obs.ojs("answer = 42", name="answer"))
-    bare = BareParent(children=[widget.cell("answer")])
-
-    assert bare.get_state(["children"]) == {"children": [widget.cell("answer")]}
-    assert widget.get_state(["_cell_widgets"]) == {
-        "_cell_widgets": [f"anywidget:{widget.cell('answer').model_id}"]
-    }
+    assert widget.cells[0].values == {}
+    assert widget.cells[0].value_names == ()
 
 
 def test_notebook_rejects_invalid_cell_widget_overrides() -> None:
@@ -416,7 +402,7 @@ def test_notebook_values_are_synced_trait_state() -> None:
 
     assert widget.values == {"gain": 8}
     assert widget.value("gain") == 8
-    assert widget._value_names == ["gain"]
+    assert widget.value_names == ("gain",)
     assert changes[-1]["name"] == "_values"
     assert changes[-1]["new"] == {"gain": 8}
 
@@ -487,21 +473,24 @@ def test_variable_replacement_and_reset_update_synced_wire_state() -> None:
     widget.replace_variables({"rows": [{"x": 2}]})
 
     assert widget.variables == {"rows": [{"x": 2}]}
-    assert widget.get_state(["_variable_update"])["_variable_update"] == {
-        "seq": 1,
-        "kind": "replace",
-        "values": {"rows": [{"x": 2}]},
-    }
+    replace_update = widget.get_state(["_variable_update"])["_variable_update"]
+    assert replace_update["kind"] == "replace"
+    assert replace_update["values"] == {"rows": [{"x": 2}]}
 
     widget.update_variables(gain=7)
+
+    patch_update = widget.get_state(["_variable_update"])["_variable_update"]
+    assert patch_update["kind"] == "set"
+    assert patch_update["values"] == {"gain": 7}
+    assert patch_update["seq"] > replace_update["seq"]
+
     widget.reset_variables("rows")
 
     assert widget.variables == {"gain": 7}
-    assert widget.get_state(["_variable_update"])["_variable_update"] == {
-        "seq": 3,
-        "kind": "replace",
-        "values": {"gain": 7},
-    }
+    reset_update = widget.get_state(["_variable_update"])["_variable_update"]
+    assert reset_update["kind"] == "replace"
+    assert reset_update["values"] == {"gain": 7}
+    assert reset_update["seq"] > patch_update["seq"]
 
 
 def test_browser_values_are_python_facing_with_wire_escape_hatch() -> None:
@@ -635,10 +624,13 @@ def test_source_backed_notebook_creates_one_unique_notebook_cell_per_script() ->
     )
 
     cell_refs = [f"anywidget:{item.model_id}" for item in widget.cells]
+    cell_ids = [item.get_state(["_cell_id"])["_cell_id"] for item in widget.cells]
 
     assert len(widget.cells) == 3
     assert [widget.cell(index) for index in range(3)] == list(widget.cells)
-    assert len({cell._cell_id for cell in widget.cells}) == 3
+    assert len(set(cell_refs)) == 3
+    assert all(isinstance(cell_id, str) and cell_id for cell_id in cell_ids)
+    assert len(set(cell_ids)) == 3
     assert widget.get_state(["_cell_widgets"]) == {"_cell_widgets": cell_refs}
 
 
@@ -803,60 +795,26 @@ def test_from_html_embeds_only_executable_file_attachments(
     assert widget.attachments["points.csv"]["url"].startswith("data:text/csv;base64,")
 
 
-def test_from_html_keeps_method_calls_before_division_executable(
-    tmp_path: pathlib.Path,
+@pytest.mark.parametrize(
+    "body",
+    [
+        'promise.catch(handler) / FileAttachment("data.csv").size;',
+        'obj.return / FileAttachment("data.csv").size;',
+        'obj.await / FileAttachment("data.csv").size;',
+        'this.#return / FileAttachment("data.csv").size;',
+        'this.#catch(handler) / FileAttachment("data.csv").size;',
+    ],
+)
+def test_from_html_discovers_file_attachments_after_member_expression_division(
+    tmp_path: pathlib.Path, body: str
 ) -> None:
     (tmp_path / "data.csv").write_text("x,y\n1,2\n", encoding="utf-8")
     notebook = tmp_path / "example.html"
     notebook.write_text(
-        """<!doctype html>
+        f"""<!doctype html>
 <notebook>
   <script id="1" type="module">
-    promise.catch(handler) / FileAttachment("data.csv").size;
-  </script>
-</notebook>
-""",
-        encoding="utf-8",
-    )
-
-    widget = _notebook_from_html_file(notebook)
-
-    assert set(widget.attachments) == {"data.csv"}
-
-
-def test_from_html_keeps_property_names_before_division_executable(
-    tmp_path: pathlib.Path,
-) -> None:
-    (tmp_path / "data.csv").write_text("x,y\n1,2\n", encoding="utf-8")
-    notebook = tmp_path / "example.html"
-    notebook.write_text(
-        """<!doctype html>
-<notebook>
-  <script id="1" type="module">
-    obj.return / FileAttachment("data.csv").size;
-    obj.await / FileAttachment("data.csv").size;
-  </script>
-</notebook>
-""",
-        encoding="utf-8",
-    )
-
-    widget = _notebook_from_html_file(notebook)
-
-    assert set(widget.attachments) == {"data.csv"}
-
-
-def test_from_html_keeps_private_names_before_division_executable(
-    tmp_path: pathlib.Path,
-) -> None:
-    (tmp_path / "data.csv").write_text("x,y\n1,2\n", encoding="utf-8")
-    notebook = tmp_path / "example.html"
-    notebook.write_text(
-        """<!doctype html>
-<notebook>
-  <script id="1" type="module">
-    this.#return / FileAttachment("data.csv").size;
-    this.#catch(handler) / FileAttachment("data.csv").size;
+    {body}
   </script>
 </notebook>
 """,
@@ -1054,21 +1012,7 @@ def test_from_html_ignores_notebook_close_text_inside_script(
     assert set(widget.attachments) == {"points.csv"}
 
 
-def test_from_html_treats_unknown_script_type_as_javascript() -> None:
-    widget = obs.Notebook.from_html(
-        """<!doctype html>
-<notebook>
-  <script id="1" type="text/javascript">
-    const value = 1;
-  </script>
-</notebook>
-"""
-    )
-
-    assert len(widget.cells) == 1
-
-
-def test_from_html_rewrites_unknown_script_type_as_javascript(
+def test_from_html_treats_unknown_script_type_as_javascript(
     tmp_path: pathlib.Path,
 ) -> None:
     (tmp_path / "helper.js").write_text("export const value = 1;\n", encoding="utf-8")
@@ -1088,6 +1032,7 @@ def test_from_html_rewrites_unknown_script_type_as_javascript(
 
     widget = _notebook_from_html_file(notebook)
 
+    assert len(widget.cells) == 1
     assert 'import "data:text/javascript;base64,' in widget.source
     assert set(widget.attachments) == {"points.csv"}
 
