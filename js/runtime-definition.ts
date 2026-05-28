@@ -7,7 +7,7 @@ type RuntimeBody = RuntimeDefinition["body"];
 type TranspiledDefinition = ReturnType<typeof transpile>;
 
 export function createRuntimeDefinition(cell: Cell, definition: TranspiledDefinition): RuntimeDefinition {
-	const body = new Function(`return (${definition.body});`)() as RuntimeBody;
+	const body = new Function(`"use strict"; return (${definition.body});`)() as RuntimeBody;
 	return {
 		id: cell.id,
 		body,

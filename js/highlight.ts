@@ -8,7 +8,7 @@ import githubLightDefault from "@shikijs/themes/github-light-default";
 import { createHighlighterCore } from "@shikijs/core";
 import { createJavaScriptRegexEngine } from "@shikijs/engine-javascript";
 import type { HighlighterCore, ThemedToken } from "@shikijs/types";
-import { CLASS_NAMES, CSS_VARIABLES } from "./dom-contract";
+import { CLASS_NAMES, CSS_VARIABLES, DATASET_KEYS } from "./dom-contract";
 
 type HighlightLanguage = "html" | "javascript" | "markdown" | "sql" | "typescript";
 
@@ -59,7 +59,7 @@ export function renderSource(cell: Cell, signal: AbortSignal): HTMLElement {
 	const pre = document.createElement("pre");
 	pre.className = CLASS_NAMES.source;
 	pre.tabIndex = 0;
-	pre.dataset.highlight = "pending";
+	pre.dataset[DATASET_KEYS.sourceHighlight] = "pending";
 	pre.setAttribute("aria-label", `${sourceMode.label} source`);
 	const code = document.createElement("code");
 	code.className = `language-${sourceMode.language ?? cell.mode}`;
@@ -72,22 +72,31 @@ export function renderSource(cell: Cell, signal: AbortSignal): HTMLElement {
 }
 
 async function highlightSource(cell: Cell, pre: HTMLPreElement, code: HTMLElement, signal: AbortSignal): Promise<void> {
-	const sourceMode = SOURCE_MODE_BY_CELL_MODE[cell.mode];
-	if (!sourceMode.language || cell.value.length > MAX_HIGHLIGHT_CHARS || signal.aborted) {
-		pre.dataset.highlight = "plain";
+	if (signal.aborted) {
+		pre.dataset[DATASET_KEYS.sourceHighlight] = "plain";
 		return;
 	}
 
 	try {
-		const highlighted = await getHighlightedSource(cell.value, sourceMode.language);
+		const highlighted = await highlightSourceText(cell.value, cell.mode);
 		if (signal.aborted) return;
+		if (!highlighted) {
+			pre.dataset[DATASET_KEYS.sourceHighlight] = "plain";
+			return;
+		}
 		renderTokenLines(code, highlighted.tokens);
 		if (highlighted.background) pre.style.setProperty(CSS_VARIABLES.sourceBackground, highlighted.background);
 		if (highlighted.color) pre.style.setProperty(CSS_VARIABLES.sourceColor, highlighted.color);
-		pre.dataset.highlight = "ready";
+		pre.dataset[DATASET_KEYS.sourceHighlight] = "ready";
 	} catch {
-		if (!signal.aborted) pre.dataset.highlight = "plain";
+		if (!signal.aborted) pre.dataset[DATASET_KEYS.sourceHighlight] = "plain";
 	}
+}
+
+function highlightSourceText(source: string, mode: Cell["mode"]): Promise<HighlightResult | null> {
+	const sourceMode = SOURCE_MODE_BY_CELL_MODE[mode];
+	if (!sourceMode.language || source.length > MAX_HIGHLIGHT_CHARS) return Promise.resolve(null);
+	return getHighlightedSource(source, sourceMode.language);
 }
 
 function getHighlightedSource(source: string, language: HighlightLanguage): Promise<HighlightResult> {

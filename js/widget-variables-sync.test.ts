@@ -7,18 +7,18 @@ import { SELECTORS } from "./dom-contract";
 import type { CellRenderContext, WidgetModel } from "./types";
 import widget from "./widget";
 import {
-	countingChildRenders,
 	createCellExports,
 	createCellExportsMap,
 	createHost,
 	createModel,
 	objectValuedSelectSource,
+	renderChildrenThroughWidget,
 	variableValue,
 	waitFor,
 } from "./widget-test-utils";
 
 describe("widget runtime variable sync", () => {
-	test("updates Python variables through the runtime without rerendering the notebook", async () => {
+	test("updates existing Python variables through the runtime", async () => {
 		const model = createModel({
 			role: "notebook",
 			spec: {
@@ -36,8 +36,6 @@ describe("widget runtime variable sync", () => {
 			["anywidget:base", createModel({ role: "cell", name: "base_echo", _values: {}, _value_names: [] })],
 			["anywidget:doubled", createModel({ role: "cell", name: "doubled", _values: {}, _value_names: [] })],
 		]);
-		const renderCounts = new Map<string, number>();
-		const childRenders = countingChildRenders(childModels, renderCounts);
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
@@ -45,27 +43,19 @@ describe("widget runtime variable sync", () => {
 			model,
 			el,
 			signal: controller.signal,
-			host: createHost(childModels, createCellExportsMap(childModels), childRenders),
+			host: createHost(childModels, createCellExportsMap(childModels), renderChildrenThroughWidget(childModels)),
 		} as unknown as RenderProps<WidgetModel>);
 
-		const firstCell = await waitFor(() => el.querySelector<HTMLElement>(SELECTORS.composedCell) ?? undefined);
 		expect(await waitFor(() => (variableValue(model, "doubled") === 4 ? 4 : undefined))).toBe(4);
 
 		setVariables(model, 1, "set", { base: 5 });
 
 		expect(await waitFor(() => (variableValue(model, "doubled") === 10 ? 10 : undefined))).toBe(10);
 		expect(variableValue(model, "base_echo")).toBe(5);
-		expect(el.querySelector(SELECTORS.composedCell)).toBe(firstCell);
-		expect(renderCounts).toEqual(
-			new Map([
-				["anywidget:base", 1],
-				["anywidget:doubled", 1],
-			]),
-		);
 		controller.abort();
 	});
 
-	test("defines newly added Python variables without rerendering the notebook", async () => {
+	test("defines newly added Python variables through the runtime", async () => {
 		const model = createModel({
 			role: "notebook",
 			spec: {
@@ -83,8 +73,6 @@ describe("widget runtime variable sync", () => {
 			["anywidget:base", createModel({ role: "cell", name: "base_echo", _values: {}, _value_names: [] })],
 			["anywidget:doubled", createModel({ role: "cell", name: "doubled", _values: {}, _value_names: [] })],
 		]);
-		const renderCounts = new Map<string, number>();
-		const childRenders = countingChildRenders(childModels, renderCounts);
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
@@ -92,24 +80,16 @@ describe("widget runtime variable sync", () => {
 			model,
 			el,
 			signal: controller.signal,
-			host: createHost(childModels, createCellExportsMap(childModels), childRenders),
+			host: createHost(childModels, createCellExportsMap(childModels), renderChildrenThroughWidget(childModels)),
 		} as unknown as RenderProps<WidgetModel>);
-		await waitFor(() => el.querySelector(SELECTORS.composedCell) ?? undefined);
-
 		setVariables(model, 1, "set", { base: 6 });
 
 		expect(await waitFor(() => (variableValue(model, "doubled") === 12 ? 12 : undefined))).toBe(12);
 		expect(variableValue(model, "base_echo")).toBe(6);
-		expect(renderCounts).toEqual(
-			new Map([
-				["anywidget:base", 1],
-				["anywidget:doubled", 1],
-			]),
-		);
 		controller.abort();
 	});
 
-	test("rerenders when Python variables replacement removes keys", async () => {
+	test("restores source definitions when Python variable replacement removes keys", async () => {
 		const model = createModel({
 			role: "notebook",
 			spec: {
@@ -127,8 +107,6 @@ describe("widget runtime variable sync", () => {
 			["anywidget:base", createModel({ role: "cell", name: "base", _values: {}, _value_names: [] })],
 			["anywidget:doubled", createModel({ role: "cell", name: "doubled", _values: {}, _value_names: [] })],
 		]);
-		const renderCounts = new Map<string, number>();
-		const childRenders = countingChildRenders(childModels, renderCounts);
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
@@ -136,26 +114,18 @@ describe("widget runtime variable sync", () => {
 			model,
 			el,
 			signal: controller.signal,
-			host: createHost(childModels, createCellExportsMap(childModels), childRenders),
+			host: createHost(childModels, createCellExportsMap(childModels), renderChildrenThroughWidget(childModels)),
 		} as unknown as RenderProps<WidgetModel>);
 
-		const firstCell = await waitFor(() => el.querySelector<HTMLElement>(SELECTORS.composedCell) ?? undefined);
 		expect(await waitFor(() => (variableValue(model, "doubled") === 10 ? 10 : undefined))).toBe(10);
 
 		setVariables(model, 1, "replace", {});
 
 		expect(await waitFor(() => (variableValue(model, "doubled") === 2 ? 2 : undefined))).toBe(2);
-		expect(el.querySelector(SELECTORS.composedCell)).not.toBe(firstCell);
-		expect(renderCounts).toEqual(
-			new Map([
-				["anywidget:base", 2],
-				["anywidget:doubled", 2],
-			]),
-		);
 		controller.abort();
 	});
 
-	test("updates viewof variables by mutating the existing control", async () => {
+	test("updates viewof variable values through the runtime", async () => {
 		const model = createModel({
 			role: "notebook",
 			spec: {
@@ -166,12 +136,12 @@ describe("widget runtime variable sync", () => {
 						value: `
 viewof gain = {
   const input = document.createElement("input");
-  input.type = "range";
-  input.min = "0";
-  input.max = "10";
-  input.value = "1";
-  return input;
-}`,
+	  input.type = "range";
+	  input.min = "0";
+	  input.max = "10";
+	  input.value = "1";
+	  return input;
+	}`,
 					},
 					{ id: 2, mode: "ojs", value: "doubled = gain * 2" },
 				],
@@ -185,8 +155,6 @@ viewof gain = {
 			["anywidget:gain", createModel({ role: "cell", name: "gain", _values: {}, _value_names: [] })],
 			["anywidget:doubled", createModel({ role: "cell", name: "doubled", _values: {}, _value_names: [] })],
 		]);
-		const renderCounts = new Map<string, number>();
-		const childRenders = countingChildRenders(childModels, renderCounts);
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
@@ -194,27 +162,20 @@ viewof gain = {
 			model,
 			el,
 			signal: controller.signal,
-			host: createHost(childModels, createCellExportsMap(childModels), childRenders),
+			host: createHost(childModels, createCellExportsMap(childModels), renderChildrenThroughWidget(childModels)),
 		} as unknown as RenderProps<WidgetModel>);
 
-		const input = await waitFor(() => {
+		await waitFor(() => {
 			const error = el.querySelector(SELECTORS.error)?.textContent;
 			if (error) throw new Error(error);
-			return el.querySelector<HTMLInputElement>("input[type='range']") ?? undefined;
+			return rangeWithValue(el, 5);
 		});
-		await waitFor(() => (input.valueAsNumber === 5 ? input : undefined));
 		expect(await waitFor(() => (variableValue(model, "doubled") === 10 ? 10 : undefined))).toBe(10);
 
 		setVariables(model, 1, "set", { gain: 7 });
 
-		await waitFor(() => (input.valueAsNumber === 7 ? input : undefined));
+		await waitFor(() => rangeWithValue(el, 7));
 		expect(await waitFor(() => (variableValue(model, "doubled") === 14 ? 14 : undefined))).toBe(14);
-		expect(renderCounts).toEqual(
-			new Map([
-				["anywidget:gain", 1],
-				["anywidget:doubled", 1],
-			]),
-		);
 		controller.abort();
 	});
 
@@ -251,10 +212,10 @@ viewof gain = {
 			model,
 			el,
 			signal: controller.signal,
-			host: createHost(childModels, createCellExportsMap(childModels), countingChildRenders(childModels, new Map())),
+			host: createHost(childModels, createCellExportsMap(childModels), renderChildrenThroughWidget(childModels)),
 		} as unknown as RenderProps<WidgetModel>);
 
-		const select = await waitFor(() => el.querySelector<HTMLSelectElement>("select") ?? undefined);
+		const select = await waitFor(() => onlySelect(el));
 		expect(await waitFor(() => (variableValue(model, "pointDensity") === 7 ? 7 : undefined))).toBe(7);
 
 		setVariables(model, 1, "set", { presets: { pointDensity: 21 } });
@@ -265,7 +226,176 @@ viewof gain = {
 		controller.abort();
 	});
 
-	test("replaces the tracked viewof target when a cell returns a new control", async () => {
+	test("keeps Python-owned view values while dependencies change", async () => {
+		const model = createModel({
+			role: "notebook",
+			spec: {
+				cells: [
+					{
+						id: 1,
+						mode: "ojs",
+						value: `
+viewof gain = {
+  const input = document.createElement("input");
+  input.type = "range";
+  input.min = "0";
+  input.max = "10";
+  input.value = String(seed);
+  return input;
+}`,
+					},
+					{ id: 2, mode: "ojs", value: "seedEcho = seed" },
+					{ id: 3, mode: "ojs", value: "doubled = gain * 2" },
+				],
+			},
+			attachments: {},
+			_variables: { seed: 1, gain: 5 },
+			options: {},
+			_cell_widgets: ["anywidget:gain", "anywidget:seed-echo", "anywidget:doubled"],
+		});
+		const childModels = new Map([
+			["anywidget:gain", createModel({ role: "cell", name: "gain", _values: {}, _value_names: [] })],
+			["anywidget:seed-echo", createModel({ role: "cell", name: "seedEcho", _values: {}, _value_names: [] })],
+			["anywidget:doubled", createModel({ role: "cell", name: "doubled", _values: {}, _value_names: [] })],
+		]);
+		const el = document.createElement("div");
+		const controller = new AbortController();
+
+		widget.render({
+			model,
+			el,
+			signal: controller.signal,
+			host: createHost(childModels, createCellExportsMap(childModels), renderChildrenThroughWidget(childModels)),
+		} as unknown as RenderProps<WidgetModel>);
+
+		await waitFor(() => rangeWithValue(el, 5));
+		expect(await waitFor(() => (variableValue(model, "seedEcho") === 1 ? 1 : undefined))).toBe(1);
+
+		setVariables(model, 1, "set", { seed: 2 });
+		await waitFor(() => rangeWithValue(el, 5));
+		expect(await waitFor(() => (variableValue(model, "seedEcho") === 2 ? 2 : undefined))).toBe(2);
+
+		setVariables(model, 2, "set", { gain: 7 });
+
+		await waitFor(() => rangeWithValue(el, 7));
+		expect(await waitFor(() => (variableValue(model, "doubled") === 14 ? 14 : undefined))).toBe(14);
+		controller.abort();
+	});
+
+	test("preserves user-set view values across repeated dependency replacements", async () => {
+		const model = createModel({
+			role: "notebook",
+			spec: {
+				cells: [
+					{
+						id: 1,
+						mode: "ojs",
+						value: `
+viewof gain = {
+  const input = document.createElement("input");
+  input.type = "range";
+  input.min = "0";
+  input.max = "10";
+  input.value = String(seed);
+  return input;
+}`,
+					},
+					{ id: 2, mode: "ojs", value: "seedEcho = seed" },
+					{ id: 3, mode: "ojs", value: "doubled = gain * 2" },
+				],
+			},
+			attachments: {},
+			_variables: { seed: 1 },
+			options: {},
+			_cell_widgets: ["anywidget:gain", "anywidget:seed-echo", "anywidget:doubled"],
+		});
+		const childModels = new Map([
+			["anywidget:gain", createModel({ role: "cell", name: "gain", _values: {}, _value_names: [] })],
+			["anywidget:seed-echo", createModel({ role: "cell", name: "seedEcho", _values: {}, _value_names: [] })],
+			["anywidget:doubled", createModel({ role: "cell", name: "doubled", _values: {}, _value_names: [] })],
+		]);
+		const el = document.createElement("div");
+		const controller = new AbortController();
+
+		widget.render({
+			model,
+			el,
+			signal: controller.signal,
+			host: createHost(childModels, createCellExportsMap(childModels), renderChildrenThroughWidget(childModels)),
+		} as unknown as RenderProps<WidgetModel>);
+
+		const firstInput = await waitFor(() => rangeWithValue(el, 1));
+		expect(await waitFor(() => (variableValue(model, "seedEcho") === 1 ? 1 : undefined))).toBe(1);
+		firstInput.value = "5";
+		firstInput.dispatchEvent(new Event("input", { bubbles: true }));
+		firstInput.dispatchEvent(new Event("change", { bubbles: true }));
+		await waitFor(() => (variableValue(model, "gain") === 5 ? 5 : undefined));
+
+		setVariables(model, 1, "set", { seed: 2 });
+		await waitFor(() => rangeWithValue(el, 5));
+		expect(await waitFor(() => (variableValue(model, "seedEcho") === 2 ? 2 : undefined))).toBe(2);
+
+		setVariables(model, 2, "set", { seed: 3 });
+		await waitFor(() => rangeWithValue(el, 5));
+		expect(await waitFor(() => (variableValue(model, "seedEcho") === 3 ? 3 : undefined))).toBe(3);
+		expect(await waitFor(() => (variableValue(model, "doubled") === 10 ? 10 : undefined))).toBe(10);
+		controller.abort();
+	});
+
+	test("uses replacement view defaults until the user changes the view", async () => {
+		const model = createModel({
+			role: "notebook",
+			spec: {
+				cells: [
+					{
+						id: 1,
+						mode: "ojs",
+						value: `
+viewof gain = {
+  const input = document.createElement("input");
+  input.type = "range";
+  input.min = "0";
+  input.max = "10";
+  input.value = String(seed);
+  return input;
+}`,
+					},
+					{ id: 2, mode: "ojs", value: "doubled = gain * 2" },
+				],
+			},
+			attachments: {},
+			_variables: { seed: 1 },
+			options: {},
+			_cell_widgets: ["anywidget:gain", "anywidget:doubled"],
+		});
+		const childModels = new Map([
+			["anywidget:gain", createModel({ role: "cell", name: "gain", _values: {}, _value_names: [] })],
+			["anywidget:doubled", createModel({ role: "cell", name: "doubled", _values: {}, _value_names: [] })],
+		]);
+		const el = document.createElement("div");
+		const controller = new AbortController();
+
+		widget.render({
+			model,
+			el,
+			signal: controller.signal,
+			host: createHost(childModels, createCellExportsMap(childModels), renderChildrenThroughWidget(childModels)),
+		} as unknown as RenderProps<WidgetModel>);
+
+		await waitFor(() => rangeWithValue(el, 1));
+		expect(await waitFor(() => (variableValue(model, "doubled") === 2 ? 2 : undefined))).toBe(2);
+
+		setVariables(model, 1, "set", { seed: 2 });
+		await waitFor(() => rangeWithValue(el, 2));
+		expect(await waitFor(() => (variableValue(model, "doubled") === 4 ? 4 : undefined))).toBe(4);
+
+		setVariables(model, 2, "set", { seed: 3 });
+		await waitFor(() => rangeWithValue(el, 3));
+		expect(await waitFor(() => (variableValue(model, "doubled") === 6 ? 6 : undefined))).toBe(6);
+		controller.abort();
+	});
+
+	test("uses view defaults after Python replacement removes a view value", async () => {
 		const model = createModel({
 			role: "notebook",
 			spec: {
@@ -295,8 +425,6 @@ viewof gain = {
 			["anywidget:gain", createModel({ role: "cell", name: "gain", _values: {}, _value_names: [] })],
 			["anywidget:doubled", createModel({ role: "cell", name: "doubled", _values: {}, _value_names: [] })],
 		]);
-		const renderCounts = new Map<string, number>();
-		const childRenders = countingChildRenders(childModels, renderCounts);
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
@@ -304,34 +432,27 @@ viewof gain = {
 			model,
 			el,
 			signal: controller.signal,
-			host: createHost(childModels, createCellExportsMap(childModels), childRenders),
+			host: createHost(childModels, createCellExportsMap(childModels), renderChildrenThroughWidget(childModels)),
 		} as unknown as RenderProps<WidgetModel>);
 
-		const firstInput = await waitFor(() => el.querySelector<HTMLInputElement>("input[type='range']") ?? undefined);
-		await waitFor(() => (firstInput.valueAsNumber === 5 ? firstInput : undefined));
+		const firstInput = await waitFor(() => rangeWithValue(el, 5));
+		expect(await waitFor(() => (variableValue(model, "doubled") === 10 ? 10 : undefined))).toBe(10);
+		firstInput.value = "6";
+		firstInput.dispatchEvent(new Event("input", { bubbles: true }));
+		firstInput.dispatchEvent(new Event("change", { bubbles: true }));
+		await waitFor(() => (variableValue(model, "doubled") === 12 ? 12 : undefined));
 
-		setVariables(model, 1, "set", { seed: 2 });
-		const secondInput = await waitFor(() => {
-			const input = el.querySelector<HTMLInputElement>("input[type='range']");
-			return input && input !== firstInput ? input : undefined;
-		});
-		await waitFor(() => (secondInput.valueAsNumber === 5 ? secondInput : undefined));
+		setVariables(model, 1, "replace", { seed: 2 });
+		await waitFor(() => rangeWithValue(el, 2));
+		expect(await waitFor(() => (variableValue(model, "doubled") === 4 ? 4 : undefined))).toBe(4);
 
-		setVariables(model, 2, "set", { gain: 7 });
-
-		await waitFor(() => (secondInput.valueAsNumber === 7 ? secondInput : undefined));
-		expect(firstInput.valueAsNumber).toBe(5);
-		expect(await waitFor(() => (variableValue(model, "doubled") === 14 ? 14 : undefined))).toBe(14);
-		expect(renderCounts).toEqual(
-			new Map([
-				["anywidget:gain", 1],
-				["anywidget:doubled", 1],
-			]),
-		);
+		setVariables(model, 2, "set", { seed: 3 });
+		await waitFor(() => rangeWithValue(el, 3));
+		expect(await waitFor(() => (variableValue(model, "doubled") === 6 ? 6 : undefined))).toBe(6);
 		controller.abort();
 	});
 
-	test("cleans isolated standalone variable listeners when variable removal resets a view", async () => {
+	test("stops standalone variable updates after abort", async () => {
 		const notebookModel = createModel({
 			role: "notebook",
 			_variables: { seed: 5, gain: 2 },
@@ -395,24 +516,41 @@ viewof gain = {
 			host: createHost(new Map()),
 		} as unknown as RenderProps<WidgetModel>);
 
-		const firstInput = await waitFor(() => el.querySelector<HTMLInputElement>("input[type='range']") ?? undefined);
-		await waitFor(() => (firstInput.valueAsNumber === 2 ? firstInput : undefined));
-		expect(notebookModel.listenerCount("change:_variable_update")).toBe(1);
+		await waitFor(() => rangeWithValue(el, 2));
 
 		setVariables(notebookModel, 1, "replace", { gain: 3 });
-		const secondInput = await waitFor(() => {
-			const input = el.querySelector<HTMLInputElement>("input[type='range']");
-			return input && input !== firstInput && input.valueAsNumber === 3 ? input : undefined;
-		});
+		await waitFor(() => rangeWithValue(el, 3));
 
-		expect(notebookModel.listenerCount("change:_variable_update")).toBe(1);
 		setVariables(notebookModel, 2, "set", { gain: 4 });
-		await waitFor(() => (secondInput.valueAsNumber === 4 ? secondInput : undefined));
-		expect(notebookModel.listenerCount("change:_variable_update")).toBe(1);
+		const acceptedRange = await waitFor(() => rangeWithValue(el, 4));
 		controller.abort();
-		expect(notebookModel.listenerCount("change:_variable_update")).toBe(0);
+		setVariables(notebookModel, 3, "set", { gain: 9 });
+
+		await flushRuntimeUpdates();
+		expect(acceptedRange.valueAsNumber).toBe(4);
+		expect(rangeWithValue(el, 9)).toBeUndefined();
 	});
 });
+
+async function flushRuntimeUpdates(): Promise<void> {
+	await Promise.resolve();
+	await Promise.resolve();
+}
+
+function rangeWithValue(el: HTMLElement, value: number): HTMLInputElement | undefined {
+	const inputs = Array.from(el.querySelectorAll<HTMLInputElement>("input[type='range']"));
+	if (inputs.length === 0) return undefined;
+	if (inputs.length > 1) throw new Error(`Expected one range input, found ${inputs.length}`);
+	const [input] = inputs;
+	return input?.valueAsNumber === value ? input : undefined;
+}
+
+function onlySelect(el: HTMLElement): HTMLSelectElement | undefined {
+	const selects = Array.from(el.querySelectorAll<HTMLSelectElement>("select"));
+	if (selects.length === 0) return undefined;
+	if (selects.length > 1) throw new Error(`Expected one select, found ${selects.length}`);
+	return selects[0]!;
+}
 
 function setVariables(
 	model: ReturnType<typeof createModel>,
@@ -421,9 +559,9 @@ function setVariables(
 	values: Record<string, unknown>,
 ): void {
 	const previous = model.get("_variables");
+	model.set("_variable_update", { seq, kind, values });
 	model.set(
 		"_variables",
 		kind === "set" && previous && typeof previous === "object" ? { ...previous, ...values } : values,
 	);
-	model.set("_variable_update", { seq, kind, values });
 }

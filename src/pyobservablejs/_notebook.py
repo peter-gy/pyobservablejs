@@ -22,7 +22,12 @@ from ._variables import deserialize_value, serialize_variables
 
 @dataclasses.dataclass(frozen=True)
 class Cell:
-    """Notebook Kit cell authored from Python source."""
+    """Notebook Kit cell authored from Python source.
+
+    Source strings are dedented and stripped of leading or trailing newlines
+    unless ``raw=True``. ``to_spec`` returns the JSON shape consumed by Notebook
+    Kit and by the bundled anywidget renderer.
+    """
 
     source: str
     mode: Mode = "ojs"
@@ -84,7 +89,12 @@ class _ObservableWidget(anywidget.AnyWidget):
 
 
 class NotebookCell(_ObservableWidget):
-    """Child widget model that tracks one rendered Observable cell."""
+    """Child anywidget model for one rendered Observable cell.
+
+    The parent ``Notebook`` owns the Observable runtime. A ``NotebookCell``
+    exposes the browser-synchronized values and graph metadata for its matching
+    cell.
+    """
 
     role = traitlets.Unicode("cell").tag(sync=True)
     _cell_id = traitlets.Unicode("").tag(sync=True)
@@ -179,7 +189,12 @@ class NotebookCell(_ObservableWidget):
 
 
 class Notebook(_ObservableWidget):
-    """anywidget model for one Observable Notebook Kit runtime."""
+    """anywidget model for an Observable Notebook Kit notebook.
+
+    Python owns cell specs, attachments, and Python-backed OJS variables. The
+    browser renderer creates the Observable runtime, renders outputs, and syncs
+    values plus graph metadata back to this model.
+    """
 
     role = traitlets.Unicode("notebook").tag(sync=True)
     source = traitlets.Unicode("").tag(sync=True)
@@ -226,7 +241,9 @@ class Notebook(_ObservableWidget):
 
         Raises:
             ValueError: ``mode`` or a variable name is invalid.
-            TypeError: A cell or variable value cannot be serialized.
+            TypeError: A cell or variable value is unsupported.
+            FileNotFoundError: An explicit local attachment path does not exist.
+            OSError: An explicit local attachment path cannot be read.
         """
 
         _ensure_author_mode(mode)
@@ -548,9 +565,10 @@ class Notebook(_ObservableWidget):
         """Fetch a public ObservableHQ notebook through the document API.
 
         ``specifier`` may be an ObservableHQ URL, slug, id, or document API URL.
-        Remote uploaded files become URL-backed attachments. ``timeout`` controls
-        the network request. Invalid specifiers or non-JSON responses raise
-        ``ValueError``. HTTP and network failures raise ``OSError``.
+        ObservableHQ API ``js`` cells are imported as OJS cells. Remote uploaded
+        files become URL-backed attachments. ``timeout`` controls the network
+        request. Invalid specifiers or non-JSON responses raise ``ValueError``.
+        HTTP and network failures raise ``OSError``.
         """
 
         source, discovered = fetch_observablehq_notebook(specifier, timeout=timeout)

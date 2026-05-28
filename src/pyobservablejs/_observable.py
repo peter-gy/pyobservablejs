@@ -109,8 +109,8 @@ def _node_to_cell(node: object, index: int) -> dict[str, Any]:
     cell: dict[str, Any] = {
         "id": _node_id(node.get("id"), index),
         "value": "" if value is None else str(value),
-        # ObservableHQ reports hosted Observable JavaScript cells as "js".
-        # Notebook Kit uses "js" for ES module cells, so imports use OJS.
+        # ObservableHQ hosted notebooks label OJS cells as "js". Notebook Kit
+        # reserves "js" for ES modules, so imported cells keep OJS semantics.
         "mode": "ojs" if mode == "js" else mode,
     }
     if node.get("pinned") is True:

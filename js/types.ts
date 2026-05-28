@@ -64,7 +64,7 @@ export type CellVariableSync = {
 
 export type RuntimeVariablesSync = {
 	applyInitialViews(): void;
-	setView(name: string, view: ViewTarget): void;
+	setView(name: string, view: ViewTarget, onVariableRelease?: () => void): void;
 	deleteView(name: string, view: ViewTarget): void;
 };
 

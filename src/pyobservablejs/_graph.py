@@ -90,10 +90,13 @@ def graph_from_raw(raw: Any) -> NotebookGraph | None:
         for item in _sequence(raw, "cells")
         if (cell := cell_info_from_raw(item)) is not None
     )
+    cell_ids = {cell.id for cell in cells}
     edges = tuple(
         edge
         for item in _sequence(raw, "edges")
         if (edge := _edge_from_raw(item)) is not None
+        and edge.source_id in cell_ids
+        and edge.target_id in cell_ids
     )
     return NotebookGraph(cells=cells, edges=edges)
 

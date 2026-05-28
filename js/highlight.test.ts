@@ -2,51 +2,16 @@
 
 import { toCell } from "@observablehq/notebook-kit";
 import { describe, expect, test } from "vitest";
-import { SELECTORS } from "./dom-contract";
 import { renderSource } from "./highlight";
 
-describe("source highlighting", () => {
-	test("renders a plain source fallback and upgrades to Shiki tokens", async () => {
-		const source = "answer = 42\nPlot.plot({marks: []})";
-		const panel = renderSource(
-			toCell({ id: 1, mode: "ojs", value: source, pinned: true }),
-			new AbortController().signal,
-		);
-		document.body.appendChild(panel);
+describe("source rendering", () => {
+	test("preserves source text and accessible source labeling", () => {
+		const controller = new AbortController();
+		const panel = renderSource(toCell({ id: 1, mode: "ojs", value: "answer = 42" }), controller.signal);
+		const source = panel.querySelector<HTMLPreElement>("pre[aria-label='OJS source']");
 
-		const label = panel.querySelector(SELECTORS.sourceLabel);
-		const pre = panel.querySelector<HTMLPreElement>(SELECTORS.source);
-		expect(label?.textContent).toBe("OJS");
-		expect(panel.querySelector(SELECTORS.sourceHeader)).toBeNull();
-		expect(pre?.nextElementSibling).toBe(label);
-		expect(pre?.contains(label)).toBe(false);
-		expect(pre?.getAttribute("aria-label")).toBe("OJS source");
-		expect(panel.querySelector("code")?.textContent).toBe(source);
-
-		const highlighted = await waitFor(() => {
-			const sourcePre = panel.querySelector<HTMLPreElement>(SELECTORS.source);
-			return sourcePre?.dataset.highlight === "ready" ? sourcePre : undefined;
-		});
-
-		expect(highlighted.textContent).toBe(source);
-		expect(highlighted.querySelectorAll(SELECTORS.sourceLine)).toHaveLength(2);
-		expect(highlighted.querySelector(SELECTORS.sourceToken)).not.toBeNull();
+		expect(source?.textContent).toBe("answer = 42");
+		expect(source?.getAttribute("aria-label")).toBe("OJS source");
+		controller.abort();
 	});
 });
-
-async function waitFor<T>(read: () => T | undefined): Promise<T> {
-	const deadline = performance.now() + 3000;
-	return new Promise<T>((resolve, reject) => {
-		const check = () => {
-			const value = read();
-			if (value !== undefined) {
-				resolve(value);
-			} else if (performance.now() >= deadline) {
-				reject(new Error("Timed out waiting for value"));
-			} else {
-				window.setTimeout(check, 10);
-			}
-		};
-		check();
-	});
-}

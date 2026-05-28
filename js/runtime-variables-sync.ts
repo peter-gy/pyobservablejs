@@ -2,7 +2,7 @@ import type { RenderProps } from "@anywidget/types";
 import type { NotebookRuntime } from "@observablehq/notebook-kit/runtime";
 import { setRuntimeVariables } from "./runtime";
 import type { NotebookOptions, RuntimeVariablesSync, ViewTarget, WidgetModel } from "./types";
-import { readViewValue, writeViewValue } from "./view";
+import { readViewValue, writeViewValue as writeRawViewValue } from "./view";
 import { revivePythonValue, sameWireValue, toWireValue } from "./wire";
 
 type RuntimeVariablesSyncOptions = {
@@ -11,7 +11,8 @@ type RuntimeVariablesSyncOptions = {
 	options: NotebookOptions;
 	viewNames: Set<string>;
 	signal: AbortSignal;
-	onReset(): void;
+	onReset(variables: Record<string, unknown>): void;
+	writeViewValue?(view: ViewTarget, value: unknown): boolean;
 };
 
 export function createRuntimeVariablesSync({
@@ -21,8 +22,10 @@ export function createRuntimeVariablesSync({
 	viewNames,
 	signal,
 	onReset,
+	writeViewValue = writeRawViewValue,
 }: RuntimeVariablesSyncOptions): RuntimeVariablesSync {
 	const views = new Map<string, ViewTarget>();
+	const releaseCallbacks = new Map<string, () => void>();
 	let variables = { ...options.variables };
 	let version = 0;
 	let lastPatchSeq = readVariableUpdate(model).seq ?? 0;
@@ -37,11 +40,18 @@ export function createRuntimeVariablesSync({
 			variables = { ...variables, ...values };
 			options.variables = variables;
 			version += 1;
-			applyRuntimeVariables(runtime, values, views, viewNames, signal, () => version);
+			applyRuntimeVariables(runtime, values, views, viewNames, signal, () => version, writeViewValue);
 			return;
 		}
 		if (patch.kind === "replace") {
-			onReset();
+			const values = patch.values ?? {};
+			for (const [name, release] of releaseCallbacks) {
+				if (!Object.prototype.hasOwnProperty.call(values, name)) release();
+			}
+			variables = { ...values };
+			options.variables = variables;
+			version += 1;
+			onReset(variables);
 		}
 	};
 	model.on("change:_variable_update", applyPatch);
@@ -56,16 +66,20 @@ export function createRuntimeVariablesSync({
 	return {
 		applyInitialViews() {
 			version += 1;
-			applyRuntimeVariables(runtime, variables, views, viewNames, signal, () => version);
+			applyRuntimeVariables(runtime, variables, views, viewNames, signal, () => version, writeViewValue);
 		},
-		setView(name, view) {
+		setView(name, view, onVariableRelease) {
 			views.set(name, view);
+			if (onVariableRelease) releaseCallbacks.set(name, onVariableRelease);
 			if (Object.prototype.hasOwnProperty.call(variables, name)) {
-				void writeVariableToView(name, view, variables[name], views, signal, () => version);
+				void writeVariableToView(name, view, variables[name], views, signal, () => version, writeViewValue);
 			}
 		},
 		deleteView(name, view) {
-			if (views.get(name) === view) views.delete(name);
+			if (views.get(name) === view) {
+				views.delete(name);
+				releaseCallbacks.delete(name);
+			}
 		},
 	};
 }
@@ -87,12 +101,13 @@ function applyRuntimeVariables(
 	viewNames: Set<string>,
 	signal: AbortSignal,
 	readVersion: () => number,
+	writeViewValue: (view: ViewTarget, value: unknown) => boolean,
 ): void {
 	const definitions: Record<string, unknown> = {};
 	for (const [name, value] of Object.entries(variables)) {
 		const view = views.get(name);
 		if (view) {
-			void writeVariableToView(name, view, value, views, signal, readVersion);
+			void writeVariableToView(name, view, value, views, signal, readVersion, writeViewValue);
 		} else if (viewNames.has(name)) {
 			continue;
 		} else {
@@ -109,6 +124,7 @@ async function writeVariableToView(
 	views: Map<string, ViewTarget>,
 	signal: AbortSignal,
 	readVersion: () => number,
+	writeViewValue: (view: ViewTarget, value: unknown) => boolean,
 ): Promise<void> {
 	const version = readVersion();
 	const value = await revivePythonValue(wireValue);

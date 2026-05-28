@@ -7,13 +7,8 @@ import { reviveSyncedValue } from "./wire";
 
 type RuntimeModule = NotebookRuntime["main"] & {
 	define(...args: unknown[]): DefineState["variables"][number];
+	redefine(...args: unknown[]): DefineState["variables"][number];
 	import(...args: unknown[]): DefineState["variables"][number];
-	variable(
-		observer?: unknown,
-		options?: unknown,
-	): {
-		define(...args: unknown[]): DefineState["variables"][number];
-	};
 };
 
 type TranspiledDefinition = ReturnType<typeof transpile>;
@@ -29,6 +24,7 @@ export function defineStandaloneDependencyCells(
 	const definitions = new Map<number, TranspiledDefinition>();
 	const defining = new Set<number>();
 	const defined = new Set<number>();
+	const liveWatched = new Set<string>();
 	const liveDefined = new Set<string>();
 	const sourceDefined = new Set<string>();
 	const cleanup = () => {
@@ -44,7 +40,9 @@ export function defineStandaloneDependencyCells(
 
 	try {
 		const targetInputs = targetDefinition.inputs ?? [];
-		for (const input of targetInputs) defineLiveDependency(input);
+		for (const input of targetInputs) {
+			if (!isPythonVariable(input)) defineLiveDependency(input);
+		}
 		for (const input of targetInputs) defineDependenciesForName(input);
 	} catch (error) {
 		signal.removeEventListener("abort", cleanup);
@@ -54,6 +52,7 @@ export function defineStandaloneDependencyCells(
 
 	function defineDependenciesForName(name: string): void {
 		if (hasStandaloneDefinition(name)) return;
+		if (isPythonVariable(name)) return;
 		if (defineLiveDependency(name)) return;
 		for (const index of dependencyCellIndexes(context, name, definitions)) defineDependencyCell(index);
 		if (hasStandaloneDefinition(name)) return;
@@ -94,28 +93,54 @@ export function defineStandaloneDependencyCells(
 	}
 
 	function defineLiveDependency(name: string): boolean {
+		if (isPythonVariable(name)) return false;
 		if (liveDefined.has(name)) return true;
 		const model = liveDependencyModel(context, name);
 		if (!model) return false;
-		const variable = runtime.main.variable(true);
+		const initialValues = readModelVariables(model);
+		const hasCurrentLiveValue =
+			Object.prototype.hasOwnProperty.call(initialValues, name) && canReviveDependencyValue(initialValues[name]);
+		if (!hasCurrentLiveValue && dependencyCellIndexes(context, name, definitions).length > 0) return false;
+		if (!hasCurrentLiveValue && parentRuntimeDefines(name)) return false;
+		if (liveWatched.has(name)) return false;
+		liveWatched.add(name);
 		const defineCurrent = () => {
-			const value = readModelVariables(model)[name];
-			if (!canReviveDependencyValue(value)) return;
-			variable.define(name, [], () => reviveSyncedValue(value));
+			const values = readModelVariables(model);
+			if (!Object.prototype.hasOwnProperty.call(values, name)) return false;
+			const value = values[name];
+			if (!canReviveDependencyValue(value)) return false;
+			defineLiveRuntimeVariable(name, value);
+			liveDefined.add(name);
+			return true;
 		};
-		defineCurrent();
+		if (!defineCurrent()) {
+			// The sibling model may publish this value after the standalone
+			// runtime starts. Define a rejecting placeholder so Observable
+			// records the dependency until `_values` can redefine it.
+			(runtime.main as RuntimeModule).define(name, [], () => Promise.reject(new Error(`${name} is not defined`)));
+			liveDefined.add(name);
+		}
 		model.on("change:_values", defineCurrent);
 		listenerCleanups.push(() => {
 			model.off("change:_values", defineCurrent);
-			variable.delete();
 		});
-		liveDefined.add(name);
 		return true;
+	}
+
+	function defineLiveRuntimeVariable(name: string, value: unknown): void {
+		const main = runtime.main as RuntimeModule;
+		const define = () => reviveSyncedValue(value);
+		try {
+			main.redefine(name, [], define);
+		} catch (error) {
+			if (!isUndefinedRuntimeVariable(error, name)) throw error;
+			main.define(name, [], define);
+		}
 	}
 
 	function defineParentRuntimeDependency(name: string): boolean {
 		if (hasStandaloneDefinition(name)) return true;
-		if (!context.runtime.main.defines(name)) return false;
+		if (!parentRuntimeDefines(name)) return false;
 		// Browser-only dependencies such as functions stay inside Observable
 		// Runtime. The standalone target still evaluates in its own output root.
 		const variable = (runtime.main as RuntimeModule).import(name, context.runtime.main as RuntimeModule);
@@ -130,6 +155,19 @@ export function defineStandaloneDependencyCells(
 		// shadow builtins.
 		return liveDefined.has(name) || sourceDefined.has(name);
 	}
+
+	function isPythonVariable(name: string): boolean {
+		return Object.prototype.hasOwnProperty.call(context.options.variables, name);
+	}
+
+	function parentRuntimeDefines(name: string): boolean {
+		const main = (context.runtime as Partial<NotebookRuntime>).main;
+		return typeof main?.defines === "function" && main.defines(name);
+	}
+}
+
+function isUndefinedRuntimeVariable(error: unknown, name: string): boolean {
+	return error instanceof Error && error.message === `${name} is not defined`;
 }
 
 function defineMissingRuntimeVariables(
@@ -235,12 +273,21 @@ function transpileDependencyCell(
 }
 
 function liveDependencyModel(context: CellRenderContext, name: string): AnyWidgetModel | undefined {
-	const matches = context.cellModels.filter((model): model is AnyWidgetModel => {
+	const valueMatches = context.cellModels.filter((model): model is AnyWidgetModel => {
 		if (!model) return false;
 		const values = readModelVariables(model);
 		return Object.prototype.hasOwnProperty.call(values, name) && canReviveDependencyValue(values[name]);
 	});
-	return matches.length === 1 ? matches[0] : undefined;
+	if (valueMatches.length === 1) return valueMatches[0];
+	if (valueMatches.length > 1) return undefined;
+	const graph = context.notebookModel.get("_graph");
+	if (!isNotebookGraphLike(graph)) return undefined;
+	const graphMatches = graph.cells
+		.filter((cell) => cell.index !== context.cellIndex)
+		.filter((cell) => cell.defines.includes(name) || cell.runtime_outputs.includes(name))
+		.map((cell) => context.cellModels[cell.index])
+		.filter((model): model is AnyWidgetModel => model !== undefined);
+	return graphMatches.length === 1 ? graphMatches[0] : undefined;
 }
 
 function canReviveDependencyValue(value: unknown): boolean {

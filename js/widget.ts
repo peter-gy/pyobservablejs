@@ -11,14 +11,17 @@ import { createRuntimeVariablesSync, readNotebookVariables } from "./runtime-var
 import { defineStandaloneDependencyCells } from "./standalone-dependencies";
 import type {
 	CellExports,
+	CellGraph,
 	CellRenderContext,
 	CellVariableSync,
 	CompositionHost,
+	NotebookGraph,
 	NotebookOptions,
 	ResolvedCell,
 	ResolvedCellWidget,
 	RuntimeVariablesSync,
 	RuntimeObserver,
+	ViewTarget,
 	WidgetModel,
 } from "./types";
 import { isViewTarget, readNestedSelectState, readViewValue, type NestedSelectState, writeViewValue } from "./view";
@@ -35,8 +38,8 @@ import "@observablehq/notebook-kit/index.css";
 import "@observablehq/notebook-kit/theme-air.css";
 import "./widget.css";
 
-// Child widgets render through the parent runtime context. Standalone mounts
-// must rerender when that context changes or aborts.
+// A cell widget can mount before or after the parent notebook resolves it.
+// Shared state keeps standalone mounts bound to the newest parent runtime.
 
 type CellWidgetMount = {
 	el: HTMLElement;
@@ -54,6 +57,7 @@ type ModelViewState = {
 	selects: NestedSelectState;
 	value: unknown;
 };
+type ModelValueOrigin = "default" | "interaction";
 
 const MODEL_CHANGE_EVENTS = [
 	"change:source",
@@ -67,6 +71,10 @@ const cellStates = new WeakMap<RenderProps<WidgetModel>["model"], CellWidgetStat
 const localCellExports = new WeakMap<RenderProps<WidgetModel>["model"], CellExports>();
 const cellStateKeys = new WeakMap<RenderProps<WidgetModel>["model"], string>();
 const modelViewStates = new WeakMap<RenderProps<WidgetModel>["model"], Map<string, ModelViewState>>();
+const externalModelValues = new WeakMap<RenderProps<WidgetModel>["model"], Set<string>>();
+const modelValueOrigins = new WeakMap<RenderProps<WidgetModel>["model"], Map<string, ModelValueOrigin>>();
+const pendingViewInteractions = new WeakMap<RenderProps<WidgetModel>["model"], Set<string>>();
+const programmaticViewWrites = new WeakSet<ViewTarget>();
 const cellStatesById = new Map<string, CellWidgetState>();
 const localCellExportsById = new Map<string, CellExports>();
 let nextFallbackCellStateKey = 0;
@@ -90,7 +98,6 @@ function initialize({
 }
 
 function createCellExports(model: RenderProps<WidgetModel>["model"], state: CellWidgetState): CellExports {
-	// Standalone mounts re-render against the latest parent runtime context.
 	const exports: CellExports = {
 		bindRuntime(context: CellRenderContext) {
 			state.contexts = state.contexts.filter((item) => item !== context);
@@ -121,23 +128,24 @@ function render({ model, el, signal, host }: RenderProps<WidgetModel> & { signal
 
 	let current = createAbortController(signal);
 	let version = 0;
-	const rerender = () => {
+	const rerender = (variables?: Record<string, unknown>) => {
 		current.abort();
 		current = createAbortController(signal);
 		const attempt = current;
 		const renderVersion = ++version;
-		void renderCurrent(model, el, attempt.signal, host, rerender).catch((error: unknown) => {
+		void renderCurrent(model, el, attempt.signal, host, rerender, variables).catch((error: unknown) => {
 			if (attempt.signal.aborted || renderVersion !== version) return;
 			attempt.abort();
 			el.replaceChildren(createTopLevelError(error));
 		});
 	};
+	const rerenderFromModel = () => rerender();
 
-	for (const event of MODEL_CHANGE_EVENTS) model.on(event, rerender);
+	for (const event of MODEL_CHANGE_EVENTS) model.on(event, rerenderFromModel);
 	signal.addEventListener(
 		"abort",
 		() => {
-			for (const event of MODEL_CHANGE_EVENTS) model.off(event, rerender);
+			for (const event of MODEL_CHANGE_EVENTS) model.off(event, rerenderFromModel);
 			current.abort();
 		},
 		{ once: true },
@@ -150,7 +158,8 @@ async function renderCurrent(
 	el: HTMLElement,
 	signal: AbortSignal,
 	host: RenderProps<WidgetModel>["host"] | undefined,
-	onInputReset: () => void,
+	onInputReset: (variables: Record<string, unknown>) => void,
+	variablesOverride?: Record<string, unknown>,
 ): Promise<void> {
 	prepareWidgetShell(el);
 	if (signal.aborted) return;
@@ -173,7 +182,7 @@ async function renderCurrent(
 
 	const root = createNotebookRoot(el, notebook.theme);
 
-	const options = getNotebookOptions(model);
+	const options = getNotebookOptions(model, variablesOverride);
 	const attachmentRegistry = registerAttachments(options.attachments);
 	const runtime = createRuntime(root, el, options, attachmentRegistry);
 	const cleanup = createRuntimeCleanup(runtime, attachmentRegistry);
@@ -184,6 +193,7 @@ async function renderCurrent(
 		viewNames: notebookViewNames(notebook),
 		signal,
 		onReset: onInputReset,
+		writeViewValue: writeProgrammaticViewValue,
 	});
 	signal.addEventListener("abort", cleanup, { once: true });
 
@@ -227,12 +237,24 @@ function createWidgetManagerCompositionHost(
 		| undefined;
 	if (!manager?.get_model) return undefined;
 
+	const resolveModel = manager.get_model.bind(manager);
+	const models = new Map<string, Promise<RenderProps<WidgetModel>["model"]>>();
 	const host: CompositionHost = {
 		async getModel(ref) {
 			const modelId = parseWidgetRef(ref);
-			const childModel = await manager.get_model?.(modelId);
-			if (!childModel) throw new Error(`Unknown widget model ${modelId}`);
-			return childModel;
+			const existing = models.get(modelId);
+			if (existing) return existing;
+			const pending = resolveModel(modelId)
+				.then((childModel) => {
+					if (!childModel) throw new Error(`Unknown widget model ${modelId}`);
+					return childModel;
+				})
+				.catch((error: unknown) => {
+					models.delete(modelId);
+					throw error;
+				});
+			models.set(modelId, pending);
+			return pending;
 		},
 		async getWidget(ref) {
 			const childModel = await host.getModel(ref);
@@ -302,12 +324,15 @@ function getNotebook(model: RenderProps<WidgetModel>["model"]): Notebook {
 	return toNotebook(model.get("spec") ?? {});
 }
 
-function getNotebookOptions(model: RenderProps<WidgetModel>["model"]): NotebookOptions {
+function getNotebookOptions(
+	model: RenderProps<WidgetModel>["model"],
+	variablesOverride?: Record<string, unknown>,
+): NotebookOptions {
 	const wireOptions = model.get("options");
 	return {
 		attachments: model.get("attachments") ?? {},
 		baseUrl: model.get("base_url") || document.baseURI,
-		variables: readNotebookVariables(model),
+		variables: variablesOverride ?? readNotebookVariables(model),
 		showSource: wireOptions?.show_source === true,
 		observableMarkdownCompatibility: wireOptions?.observable_markdown_compatibility === true,
 	};
@@ -371,7 +396,9 @@ async function renderComposedCells(
 		renderTask = renderTask.then(() => child.render({ el: wrapper, signal }));
 	}
 	await renderTask;
-	if (!signal.aborted) variablesSync.applyInitialViews();
+	if (!signal.aborted) {
+		variablesSync.applyInitialViews();
+	}
 }
 
 async function resolveCellWidget(host: CompositionHost, ref: string, signal: AbortSignal): Promise<ResolvedCell> {
@@ -453,7 +480,7 @@ function renderCellWidgetMount(model: RenderProps<WidgetModel>["model"], mount: 
 	const signal = mount.controller.signal;
 	const context = currentCellContext(getOrCreateCellState(model));
 	if (!context) {
-		mount.el.replaceChildren();
+		if (!mount.signal.aborted) mount.el.replaceChildren();
 		return;
 	}
 	try {
@@ -476,8 +503,8 @@ function renderStandaloneCellWidget(
 	signal: AbortSignal,
 ): void {
 	// Standalone cells own a runtime because DOM outputs cannot be reused across
-	// notebook roots. Dependencies come from live sibling values, parent runtime
-	// imports, or source cells.
+	// notebook roots. Dependencies resolve from sibling values, parent runtime
+	// imports, or source-backed OJS cells.
 	renderIsolatedStandaloneCellWidget(model, el, context, signal);
 }
 
@@ -491,6 +518,17 @@ function renderIsolatedStandaloneCellWidget(
 	if (signal.aborted) return;
 	const renderController = createAbortController(signal);
 	const renderSignal = renderController.signal;
+	bindStandaloneDependencyInvalidation(model, context, renderSignal, () => {
+		renderController.abort();
+		if (!signal.aborted) {
+			renderStandaloneCellWidget(
+				model,
+				el,
+				{ ...context, options: { ...context.options, variables: readNotebookVariables(context.notebookModel) } },
+				signal,
+			);
+		}
+	});
 
 	const root = createNotebookRoot(el, context.notebook.theme);
 
@@ -503,19 +541,15 @@ function renderIsolatedStandaloneCellWidget(
 		options: context.options,
 		viewNames: notebookViewNames(context.notebook),
 		signal: renderSignal,
-		onReset() {
+		onReset(variables) {
 			renderController.abort();
 			if (!signal.aborted) {
-				renderStandaloneCellWidget(
-					model,
-					el,
-					{ ...context, options: { ...context.options, variables: readNotebookVariables(context.notebookModel) } },
-					signal,
-				);
+				renderStandaloneCellWidget(model, el, { ...context, options: { ...context.options, variables } }, signal);
 			}
 		},
+		writeViewValue: writeProgrammaticViewValue,
 	});
-	renderSignal.addEventListener("abort", cleanup, { once: true });
+	renderSignal.addEventListener("abort", () => cleanupStandaloneRuntime(el, cleanup), { once: true });
 
 	try {
 		const definition = transpile(context.cell, { resolveLocalImports: true });
@@ -534,6 +568,81 @@ function renderIsolatedStandaloneCellWidget(
 		if (!renderSignal.aborted) cleanup();
 		throw error;
 	}
+}
+
+function bindStandaloneDependencyInvalidation(
+	model: RenderProps<WidgetModel>["model"],
+	context: CellRenderContext,
+	signal: AbortSignal,
+	rerender: () => void,
+): void {
+	const dependencies = standaloneDependencyModels(model, context);
+	if (dependencies.length === 0) return;
+	let queued = false;
+	const schedule = () => {
+		if (queued || signal.aborted) return;
+		queued = true;
+		queueMicrotask(() => {
+			queued = false;
+			if (!signal.aborted) rerender();
+		});
+	};
+	for (const dependency of dependencies) {
+		dependency.on("change:_value_names", schedule);
+		dependency.on("change:_values", schedule);
+	}
+	signal.addEventListener(
+		"abort",
+		() => {
+			for (const dependency of dependencies) {
+				dependency.off("change:_value_names", schedule);
+				dependency.off("change:_values", schedule);
+			}
+		},
+		{ once: true },
+	);
+}
+
+function standaloneDependencyModels(
+	model: RenderProps<WidgetModel>["model"],
+	context: CellRenderContext,
+): Array<RenderProps<WidgetModel>["model"]> {
+	const graph = readNotebookGraph(context.notebookModel);
+	const candidates = graph
+		? transitiveDependencyIndexes(graph, context.cellIndex).map((index) => context.cellModels[index])
+		: context.cellModels;
+	return Array.from(
+		new Set(
+			candidates.filter(
+				(candidate): candidate is RenderProps<WidgetModel>["model"] => candidate !== undefined && candidate !== model,
+			),
+		),
+	);
+}
+
+function transitiveDependencyIndexes(graph: NotebookGraph, cellIndex: number): number[] {
+	const target = graph.cells.find((cell) => cell.index === cellIndex);
+	if (!target) return [];
+	const cellsById = new Map(graph.cells.map((cell) => [cell.id, cell]));
+	const indexes = new Set<number>();
+	const visit = (cell: CellGraph) => {
+		for (const edge of graph.edges) {
+			if (edge.to !== cell.id) continue;
+			const source = cellsById.get(edge.from);
+			if (!source || indexes.has(source.index)) continue;
+			indexes.add(source.index);
+			visit(source);
+		}
+	};
+	visit(target);
+	return Array.from(indexes);
+}
+
+function readNotebookGraph(model: RenderProps<WidgetModel>["model"]): NotebookGraph | null {
+	const graph = model.get("_graph");
+	if (!graph || typeof graph !== "object") return null;
+	const candidate = graph as Partial<NotebookGraph>;
+	return Array.isArray(candidate.cells) && Array.isArray(candidate.edges) ? (graph as NotebookGraph) : null;
 }
 
 function renderComposedCellWidget(el: HTMLElement, context: CellRenderContext, signal: AbortSignal): void {
@@ -650,12 +759,27 @@ function registerView(sync: CellVariableSync, name: string, value: unknown): voi
 	}
 	sync.viewCleanups.get(name)?.();
 	sync.views.set(name, value);
-	sync.variablesSync?.setView(name, value);
-	applyModelVariablesToViews(sync);
+	// View values can come from Python writes, browser interactions, or a child
+	// model replaying saved state. Track ownership so a replacement view only
+	// receives model state while Python or the user still owns that value.
+	sync.variablesSync?.setView(name, value, () => {
+		clearExternalModelValue(sync, name);
+		clearModelValueOrigin(sync, name);
+	});
+	if (hasExternalModelValue(sync, name) || readModelValueOrigin(sync, name) === "interaction") {
+		applyModelVariablesToViews(sync);
+	}
+	const markInteraction = () => {
+		if (!programmaticViewWrites.has(value)) markViewInteraction(sync, name);
+	};
+	value.addEventListener("input", markInteraction);
+	value.addEventListener("change", markInteraction);
 	let cleanup!: () => void;
 	const abort = () => cleanup();
 	cleanup = () => {
 		sync.signal.removeEventListener("abort", abort);
+		value.removeEventListener("input", markInteraction);
+		value.removeEventListener("change", markInteraction);
 		if (sync.views.get(name) === value) sync.views.delete(name);
 		if (sync.viewCleanups.get(name) === cleanup) sync.viewCleanups.delete(name);
 		sync.variablesSync?.deleteView(name, value);
@@ -714,7 +838,26 @@ function createBaseSync(
 		},
 		currentVariables: adapter.readVars,
 	};
-	const apply = () => applyModelVariablesToViews(sync);
+	let writing = false;
+	const apply = () => {
+		if (!writing) recordExternalModelValues(sync);
+		applyModelVariablesToViews(sync);
+	};
+	const originalSetVariable = sync.setVariable.bind(sync);
+	sync.setVariable = (name, value) => {
+		const origin: ModelValueOrigin = consumeViewInteraction(sync, name) ? "interaction" : "default";
+		const before = sync.currentVariables()[name];
+		writing = true;
+		try {
+			originalSetVariable(name, value);
+		} finally {
+			writing = false;
+		}
+		if (!sameWireValue(before, sync.currentVariables()[name])) {
+			clearExternalModelValue(sync, name);
+			recordModelValueOrigin(sync, name, origin);
+		}
+	};
 	model.on(adapter.changeEvent, apply);
 	signal.addEventListener("abort", () => model.off(adapter.changeEvent, apply), { once: true });
 	return sync;
@@ -725,7 +868,16 @@ function applyModelVariablesToViews(sync: CellVariableSync): void {
 		const view = sync.views.get(name);
 		if (!view) continue;
 		if (sameWireValue(toWireValue(readViewValue(view)), wireValue)) continue;
-		writeViewValue(view, reviveSyncedValue(wireValue), readModelViewState(sync, name, wireValue));
+		writeProgrammaticViewValue(view, reviveSyncedValue(wireValue), readModelViewState(sync, name, wireValue));
+	}
+}
+
+function writeProgrammaticViewValue(view: ViewTarget, value: unknown, nestedState?: NestedSelectState): boolean {
+	programmaticViewWrites.add(view);
+	try {
+		return writeViewValue(view, value, nestedState);
+	} finally {
+		programmaticViewWrites.delete(view);
 	}
 }
 
@@ -739,6 +891,56 @@ function recordModelViewState(sync: CellVariableSync, name: string, value: unkno
 	} else {
 		states.delete(name);
 	}
+}
+
+function recordExternalModelValues(sync: CellVariableSync): void {
+	const names = Object.keys(sync.currentVariables());
+	if (names.length === 0) return;
+	const values = externalModelValues.get(sync.model) ?? new Set<string>();
+	for (const name of names) values.add(name);
+	externalModelValues.set(sync.model, values);
+}
+
+function hasExternalModelValue(sync: CellVariableSync, name: string): boolean {
+	return externalModelValues.get(sync.model)?.has(name) === true;
+}
+
+function clearExternalModelValue(sync: CellVariableSync, name: string): void {
+	const values = externalModelValues.get(sync.model);
+	if (!values) return;
+	values.delete(name);
+	if (values.size === 0) externalModelValues.delete(sync.model);
+}
+
+function markViewInteraction(sync: CellVariableSync, name: string): void {
+	const values = pendingViewInteractions.get(sync.model) ?? new Set<string>();
+	values.add(name);
+	pendingViewInteractions.set(sync.model, values);
+}
+
+function consumeViewInteraction(sync: CellVariableSync, name: string): boolean {
+	const values = pendingViewInteractions.get(sync.model);
+	if (!values?.has(name)) return false;
+	values.delete(name);
+	if (values.size === 0) pendingViewInteractions.delete(sync.model);
+	return true;
+}
+
+function recordModelValueOrigin(sync: CellVariableSync, name: string, origin: ModelValueOrigin): void {
+	const values = modelValueOrigins.get(sync.model) ?? new Map<string, ModelValueOrigin>();
+	values.set(name, origin);
+	modelValueOrigins.set(sync.model, values);
+}
+
+function readModelValueOrigin(sync: CellVariableSync, name: string): ModelValueOrigin | undefined {
+	return modelValueOrigins.get(sync.model)?.get(name);
+}
+
+function clearModelValueOrigin(sync: CellVariableSync, name: string): void {
+	const values = modelValueOrigins.get(sync.model);
+	if (!values) return;
+	values.delete(name);
+	if (values.size === 0) modelValueOrigins.delete(sync.model);
 }
 
 function readModelViewState(sync: CellVariableSync, name: string, value: unknown): NestedSelectState | undefined {
@@ -829,6 +1031,14 @@ function createAbortController(parent: AbortSignal): AbortController {
 		});
 	}
 	return controller;
+}
+
+function cleanupStandaloneRuntime(container: HTMLElement, cleanup: () => void): void {
+	// Observable Runtime disposal clears inspector output. Standalone child widgets
+	// should freeze their last rendered value when the parent mount aborts.
+	const children = Array.from(container.childNodes);
+	cleanup();
+	if (container.childNodes.length === 0) container.replaceChildren(...children);
 }
 
 function delay(ms: number, signal: AbortSignal): Promise<void> {

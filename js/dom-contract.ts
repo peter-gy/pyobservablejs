@@ -14,12 +14,14 @@ export const DATASET_KEYS = {
 	composed: "pyobservablejsComposed",
 	cellRef: "pyobservablejsCellRef",
 	standaloneCell: "pyobservablejsStandaloneCell",
+	sourceHighlight: "pyobservablejsSourceHighlight",
 } as const;
 
 export const DATA_ATTRIBUTES = {
 	composed: "data-pyobservablejs-composed",
 	cellRef: "data-pyobservablejs-cell-ref",
 	standaloneCell: "data-pyobservablejs-standalone-cell",
+	sourceHighlight: "data-pyobservablejs-source-highlight",
 } as const;
 
 export const SELECTORS = {
@@ -29,7 +31,6 @@ export const SELECTORS = {
 	sourcePanel: `.${CLASS_NAMES.sourcePanel}`,
 	sourceLabel: `.${CLASS_NAMES.sourceLabel}`,
 	source: `.${CLASS_NAMES.source}`,
-	sourceHeader: ".pyobservablejs-source-header",
 	sourceLine: `.${CLASS_NAMES.sourceLine}`,
 	sourceToken: `.${CLASS_NAMES.sourceToken}`,
 } as const;

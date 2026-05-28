@@ -40,15 +40,16 @@ describe("widget markdown compatibility", () => {
 			host: createHost(childModels, createCellExportsMap(childModels), renderChildrenThroughWidget(childModels)),
 		} as unknown as RenderProps<WidgetModel>);
 
-		const strong = await waitFor(() => {
+		await waitFor(() => {
 			const error = el.querySelector(SELECTORS.error)?.textContent;
 			if (error) throw new Error(error);
-			const candidate = el.querySelector("strong");
-			return candidate?.textContent === "1. Import the library" ? candidate : undefined;
+			return outputWithStrongAndParagraph(
+				el,
+				"1. Import the library",
+				"Version 119.1 was the latest when this notebook was written.",
+			);
 		});
 
-		expect(strong.textContent).toBe("1. Import the library");
-		expect(el.textContent).toContain("Version 119.1 was the latest when this notebook was written.");
 		controller.abort();
 	});
 
@@ -82,23 +83,22 @@ describe("widget markdown compatibility", () => {
 		await waitFor(() => {
 			const error = el.querySelector(SELECTORS.error)?.textContent;
 			if (error) throw new Error(error);
-			const candidate = el.querySelector("strong");
-			return /^(initial|updated) 1$/.test(candidate?.textContent ?? "") ? candidate : undefined;
+			return onlyStrongText(el, "initial 1");
 		});
 
 		model.set("_variable_update", { seq: 1, kind: "set", values: { gain: 2 } });
 
-		const strong = await waitFor(() => {
+		await waitFor(() => {
 			const error = el.querySelector(SELECTORS.error)?.textContent;
 			if (error) throw new Error(error);
-			return Array.from(el.querySelectorAll("strong")).find((candidate) => candidate.textContent === "updated 2");
+			return onlyStrongText(el, "updated 2");
 		});
+		expect(Array.from(el.querySelectorAll("strong"), (item) => item.textContent)).toEqual(["updated 2"]);
 
-		expect(strong.textContent).toBe("updated 2");
 		controller.abort();
 	});
 
-	test("does not rewrite notebook-defined md functions in ObservableHQ imports", async () => {
+	test("uses notebook-defined md bindings for source-backed OJS cells", async () => {
 		const source =
 			"<notebook>\n" +
 			'  <script id="1" type="application/vnd.observable.javascript">md = (template) => `CUSTOM:${template[0]}`</script>\n' +
@@ -126,13 +126,12 @@ describe("widget markdown compatibility", () => {
 			host: createHost(childModels, createCellExportsMap(childModels), renderChildrenThroughWidget(childModels)),
 		} as unknown as RenderProps<WidgetModel>);
 
-		const text = await waitFor(() => {
+		await waitFor(() => {
 			const error = el.querySelector(SELECTORS.error)?.textContent;
 			if (error) throw new Error(error);
-			return el.textContent?.includes("CUSTOM:** custom**") ? el.textContent : undefined;
+			return onlyComposedInspectorString(el, "CUSTOM:** custom**");
 		});
 
-		expect(text).toContain("CUSTOM:** custom**");
 		controller.abort();
 	});
 
@@ -163,13 +162,12 @@ describe("widget markdown compatibility", () => {
 			host: createHost(childModels, createCellExportsMap(childModels), renderChildrenThroughWidget(childModels)),
 		} as unknown as RenderProps<WidgetModel>);
 
-		const text = await waitFor(() => {
+		await waitFor(() => {
 			const error = el.querySelector(SELECTORS.error)?.textContent;
 			if (error) throw new Error(error);
-			return el.textContent?.includes("** 1. Import the library**") ? el.textContent : undefined;
+			return onlyComposedInspectorString(el, "** 1. Import the library**");
 		});
 
-		expect(text).toContain("** 1. Import the library**");
 		controller.abort();
 	});
 
@@ -205,15 +203,16 @@ describe("widget markdown compatibility", () => {
 			host: createHost(new Map()),
 		} as unknown as RenderProps<WidgetModel>);
 
-		const strong = await waitFor(() => {
+		await waitFor(() => {
 			const error = standaloneEl.querySelector(SELECTORS.error)?.textContent;
 			if (error) throw new Error(error);
-			const candidate = standaloneEl.querySelector("strong");
-			return candidate?.textContent === "1. Import the library" ? candidate : undefined;
+			return outputWithStrongAndParagraph(
+				standaloneEl,
+				"1. Import the library",
+				"Version 119.1 was the latest when this notebook was written.",
+			);
 		});
 
-		expect(strong.textContent).toBe("1. Import the library");
-		expect(standaloneEl.textContent).toContain("Version 119.1 was the latest when this notebook was written.");
 		controller.abort();
 	});
 
@@ -253,15 +252,10 @@ describe("widget markdown compatibility", () => {
 		const code = await waitFor(() => {
 			const error = el.querySelector(SELECTORS.error)?.textContent;
 			if (error) throw new Error(error);
-			const strong = el.querySelector("strong");
-			const candidate = el.querySelector("code");
-			return strong?.textContent === "Heading" && candidate?.textContent?.includes("** example**")
-				? candidate
-				: undefined;
+			return codeWithHeading(el, "Heading", (text) => text.trimEnd() === "```md\n** example**\n```");
 		});
 
-		expect(code.textContent).toContain("```md");
-		expect(code.textContent).toContain("** example**");
+		expect(code.textContent?.trimEnd()).toBe("```md\n** example**\n```");
 		controller.abort();
 	});
 
@@ -299,11 +293,7 @@ describe("widget markdown compatibility", () => {
 		const code = await waitFor(() => {
 			const error = el.querySelector(SELECTORS.error)?.textContent;
 			if (error) throw new Error(error);
-			const strong = el.querySelector("strong");
-			const candidate = el.querySelector("code");
-			return strong?.textContent === "Heading" && candidate?.textContent?.trimEnd() === "** example**"
-				? candidate
-				: undefined;
+			return codeWithHeading(el, "Heading", (text) => text.trimEnd() === "** example**");
 		});
 
 		expect(code.textContent?.trimEnd()).toBe("** example**");
@@ -345,14 +335,10 @@ describe("widget markdown compatibility", () => {
 		const code = await waitFor(() => {
 			const error = el.querySelector(SELECTORS.error)?.textContent;
 			if (error) throw new Error(error);
-			const strong = el.querySelector("strong");
-			const candidate = el.querySelector("code");
-			return strong?.textContent === "Heading" && candidate?.textContent?.includes("** example**")
-				? candidate
-				: undefined;
+			return codeWithHeading(el, "Heading", (text) => nonblankLines(text).join("\n") === "** example**");
 		});
 
-		expect(code.textContent).toContain("** example**");
+		expect(nonblankLines(code.textContent ?? "")).toEqual(["** example**"]);
 		controller.abort();
 	});
 
@@ -390,14 +376,10 @@ describe("widget markdown compatibility", () => {
 		const code = await waitFor(() => {
 			const error = el.querySelector(SELECTORS.error)?.textContent;
 			if (error) throw new Error(error);
-			const strong = el.querySelector("strong");
-			const candidate = el.querySelector("code");
-			return strong?.textContent === "Heading" && candidate?.textContent?.includes("** example**")
-				? candidate
-				: undefined;
+			return codeWithHeading(el, "Heading", (text) => text.trimEnd() === "** example**");
 		});
 
-		expect(code.textContent).toContain("** example**");
+		expect(code.textContent?.trimEnd()).toBe("** example**");
 		controller.abort();
 	});
 
@@ -430,13 +412,12 @@ describe("widget markdown compatibility", () => {
 			host: createHost(childModels, createCellExportsMap(childModels), renderChildrenThroughWidget(childModels)),
 		} as unknown as RenderProps<WidgetModel>);
 
-		const text = await waitFor(() => {
+		await waitFor(() => {
 			const error = el.querySelector(SELECTORS.error)?.textContent;
 			if (error) throw new Error(error);
-			return el.textContent?.includes("** 1. Import the library**") ? el.textContent : undefined;
+			return onlyComposedInspectorString(el, "** 1. Import the library**");
 		});
 
-		expect(text).toContain("** 1. Import the library**");
 		controller.abort();
 	});
 
@@ -468,14 +449,99 @@ describe("widget markdown compatibility", () => {
 		const code = await waitFor(() => {
 			const error = el.querySelector(SELECTORS.error)?.textContent;
 			if (error) throw new Error(error);
-			const strong = el.querySelector("strong");
-			const candidate = el.querySelector("code");
-			return strong?.textContent === "Heading" && candidate?.textContent?.trimEnd() === "** example**"
-				? candidate
-				: undefined;
+			return codeWithHeading(el, "Heading", (text) => text.trimEnd() === "** example**");
 		});
 
 		expect(code.textContent?.trimEnd()).toBe("** example**");
 		controller.abort();
 	});
 });
+
+function onlyStrongText(el: HTMLElement, text: string): HTMLElement | undefined {
+	return onlyOutputMatch(el, `strong element with ${text}`, (cell) => {
+		const matches = Array.from(cell.querySelectorAll<HTMLElement>("strong")).filter(
+			(item) => item.textContent === text,
+		);
+		if (matches.length === 0) return undefined;
+		if (matches.length > 1) throw new Error(`Expected one strong element with ${text}, found ${matches.length}`);
+		return matches[0];
+	});
+}
+
+function outputWithStrongAndParagraph(
+	el: HTMLElement,
+	strongText: string,
+	paragraphText: string,
+): HTMLElement | undefined {
+	return onlyOutputMatch(el, `output with ${strongText} and ${paragraphText}`, (cell) => {
+		const strong = Array.from(cell.querySelectorAll<HTMLElement>("strong")).filter(
+			(item) => item.textContent === strongText,
+		);
+		const paragraphs = Array.from(cell.querySelectorAll<HTMLElement>("p")).filter(
+			(item) => item.textContent === paragraphText,
+		);
+		if (strong.length === 0 || paragraphs.length === 0) return undefined;
+		if (strong.length > 1) throw new Error(`Expected one strong element with ${strongText}, found ${strong.length}`);
+		if (paragraphs.length > 1)
+			throw new Error(`Expected one paragraph with ${paragraphText}, found ${paragraphs.length}`);
+		return cell;
+	});
+}
+
+function onlyComposedInspectorString(el: HTMLElement, value: string): HTMLElement | undefined {
+	return onlyComposedText(el, value) ?? onlyComposedText(el, `"${value}"`);
+}
+
+function onlyComposedText(el: HTMLElement, value: string): HTMLElement | undefined {
+	const matches = Array.from(el.querySelectorAll<HTMLElement>(SELECTORS.composedCell)).filter((cell) => {
+		const text = cell.textContent?.trim() ?? "";
+		return text === value;
+	});
+	if (matches.length === 0) return undefined;
+	if (matches.length > 1) throw new Error(`Expected one composed cell with ${value}, found ${matches.length}`);
+	return matches[0]!;
+}
+
+function codeWithHeading(
+	el: HTMLElement,
+	heading: string,
+	matchesCode: (text: string) => boolean,
+): HTMLElement | undefined {
+	return onlyOutputMatch(el, `code block under ${heading}`, (cell) => {
+		const headings = Array.from(cell.querySelectorAll<HTMLElement>("strong")).filter(
+			(item) => item.textContent === heading,
+		);
+		if (headings.length === 0) return undefined;
+		const matches = Array.from(cell.querySelectorAll<HTMLElement>("pre code")).filter((code) =>
+			matchesCode(code.textContent ?? ""),
+		);
+		if (matches.length === 0) return undefined;
+		if (headings.length > 1) throw new Error(`Expected one heading ${heading}, found ${headings.length}`);
+		if (matches.length > 1) throw new Error(`Expected one code block under ${heading}, found ${matches.length}`);
+		return matches[0];
+	});
+}
+
+function nonblankLines(text: string): string[] {
+	return text
+		.split(/\r\n|\n|\r/)
+		.map((line) => line.trimEnd())
+		.filter((line) => line.trim() !== "");
+}
+
+function onlyOutputMatch(
+	el: HTMLElement,
+	label: string,
+	read: (cell: HTMLElement) => HTMLElement | undefined,
+): HTMLElement | undefined {
+	const matches = outputCells(el)
+		.map((cell) => read(cell))
+		.filter((item): item is HTMLElement => item !== undefined);
+	if (matches.length === 0) return undefined;
+	if (matches.length > 1) throw new Error(`Expected one ${label}, found ${matches.length}`);
+	return matches[0]!;
+}
+
+function outputCells(el: HTMLElement): HTMLElement[] {
+	return Array.from(el.querySelectorAll<HTMLElement>(`${SELECTORS.composedCell}, ${SELECTORS.standaloneCell}`));
+}

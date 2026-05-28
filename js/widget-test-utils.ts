@@ -3,9 +3,7 @@ import type { CellExports, WidgetModel } from "./types";
 import widget from "./widget";
 
 export type Model = RenderProps<WidgetModel>["model"];
-export type TestModel = Model & {
-	listenerCount(name: string): number;
-};
+export type TestModel = Model;
 export type ChildRender = (options: { el: HTMLElement; signal?: AbortSignal }) => Promise<void> | void;
 
 export const objectValuedSelectSource = `
@@ -73,9 +71,6 @@ export function createModel(
 			}
 			listeners.get(name)?.delete(callback);
 		},
-		listenerCount(name: string) {
-			return listeners.get(name)?.size ?? 0;
-		},
 		widget_manager: widgetManager,
 	} as unknown as TestModel;
 }
@@ -111,25 +106,6 @@ export function renderChildrenThroughWidget(childModels: Map<string, Model>): Ma
 	return childRenders;
 }
 
-export function countingChildRenders(
-	childModels: Map<string, Model>,
-	counts: Map<string, number>,
-): Map<string, ChildRender> {
-	const childRenders = new Map<string, ChildRender>();
-	for (const [ref, childModel] of childModels) {
-		childRenders.set(ref, ({ el, signal }) => {
-			counts.set(ref, (counts.get(ref) ?? 0) + 1);
-			widget.render({
-				model: childModel,
-				el,
-				signal: signal ?? new AbortController().signal,
-				host: createHost(new Map()),
-			} as unknown as RenderProps<WidgetModel>);
-		});
-	}
-	return childRenders;
-}
-
 export function createCellExportsMap(childModels: Map<string, Model>): Map<string, CellExports> {
 	return new Map(Array.from(childModels, ([ref, childModel]) => [ref, createCellExports(childModel)]));
 }
@@ -142,31 +118,23 @@ export function createCellExports(model: Model): CellExports {
 	} as unknown as Parameters<typeof widget.initialize>[0]) as CellExports;
 }
 
-export function trackingCellExports(name: string, events: string[]): CellExports {
-	return {
-		bindRuntime() {
-			events.push(`bind:${name}`);
-		},
-		unbindRuntime() {
-			events.push(`unbind:${name}`);
-		},
-		prepareComposedRender() {
-			events.push(`prepare:${name}`);
-		},
-	};
-}
-
 export function variableValue(model: Model, name: string): unknown | undefined {
 	const variables = model.get("_values");
 	if (variables === null || typeof variables !== "object" || Array.isArray(variables)) return undefined;
 	return (variables as Record<string, unknown>)[name];
 }
 
-export async function waitFor<T>(read: () => T | undefined): Promise<T> {
-	const deadline = performance.now() + 1000;
+export async function waitFor<T>(read: () => T | undefined, timeoutMs = 1000): Promise<T> {
+	const deadline = performance.now() + timeoutMs;
 	return new Promise<T>((resolve, reject) => {
 		const check = () => {
-			const value = read();
+			let value: T | undefined;
+			try {
+				value = read();
+			} catch (error) {
+				reject(error);
+				return;
+			}
 			if (value !== undefined) {
 				resolve(value);
 			} else if (performance.now() >= deadline) {

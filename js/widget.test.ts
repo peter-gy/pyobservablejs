@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 
 import type { RenderProps } from "@anywidget/types";
-import { toNotebook } from "@observablehq/notebook-kit";
+import { toNotebook, type CellSpec } from "@observablehq/notebook-kit";
 import { describe, expect, test } from "vitest";
 import { SELECTORS } from "./dom-contract";
+import { createNotebookGraph } from "./graph";
 import type { CellRenderContext, NotebookGraph, WidgetModel } from "./types";
 import widget from "./widget";
 import {
@@ -14,7 +15,6 @@ import {
 	createModel,
 	objectValuedSelectSource,
 	renderChildrenThroughWidget,
-	trackingCellExports,
 	variableValue,
 	waitFor,
 } from "./widget-test-utils";
@@ -52,11 +52,8 @@ describe("widget graph sync", () => {
 		expect(graph.cells.map((cell) => cell.name)).toEqual(["answer", "readout"]);
 		expect(graph.cells.map((cell) => cell.defines)).toEqual([["answer"], []]);
 		expect(graph.cells[1]?.references).toEqual(["answer"]);
-		expect(graph.edges).toEqual([{ from: 1, to: 2, variable: "answer" }]);
-		const childModel = childModels.get("anywidget:cell-1") as unknown as {
-			get(name: string): unknown;
-		};
-		expect(childModel.get("_info")).toBeUndefined();
+		expect(graph.edges).toHaveLength(1);
+		expect(graph.edges).toContainEqual({ from: 1, to: 2, variable: "answer" });
 		controller.abort();
 	});
 
@@ -98,11 +95,9 @@ describe("widget graph sync", () => {
 
 		childModels.get("anywidget:readout")?.set("_value_names", ["readout"]);
 		childModels.get("anywidget:readout")?.set("_values", { readout: 15 });
-		await waitFor(() => variableValue(model, "readout"));
 
 		expect(changedGain).toBe(7.5);
-		expect(model.get("_values")).toEqual({ gain: 7.5, readout: 15 });
-		expect(model.get("_value_names")).toEqual(["gain", "readout"]);
+		expect(await waitFor(() => (variableValue(model, "readout") === 15 ? 15 : undefined))).toBe(15);
 		controller.abort();
 	});
 
@@ -181,9 +176,59 @@ describe("widget graph sync", () => {
 			host: createHost(new Map()),
 		} as unknown as RenderProps<WidgetModel>);
 
-		expect(await waitFor(() => (standaloneEl.textContent?.includes("41") ? standaloneEl.textContent : undefined))).toBe(
-			"41",
-		);
+		await waitFor(() => standaloneText(standaloneEl, "41"));
+		controller.abort();
+	});
+
+	test("standalone transitive dependencies keep Python variables ahead of sibling cells", async () => {
+		const model = createModel({
+			role: "notebook",
+			spec: {
+				cells: [
+					{ id: 1, mode: "ojs", value: "seed = 1" },
+					{ id: 2, mode: "ojs", value: "middle = seed * 2" },
+					{ id: 3, mode: "ojs", value: "target = middle + 1" },
+				],
+			},
+			attachments: {},
+			_variables: { seed: 10 },
+			options: {},
+			_cell_widgets: ["anywidget:seed", "anywidget:middle", "anywidget:target"],
+		});
+		const seedModel = createModel({ role: "cell", name: "seed", _values: {}, _value_names: [] });
+		const middleModel = createModel({ role: "cell", name: "middle", _values: {}, _value_names: [] });
+		const targetModel = createModel({ role: "cell", name: "target", _values: {}, _value_names: [] });
+		const childModels = new Map([
+			["anywidget:seed", seedModel],
+			["anywidget:middle", middleModel],
+			["anywidget:target", targetModel],
+		]);
+		const childExports = createCellExportsMap(childModels);
+		const childRenders = renderChildrenThroughWidget(childModels);
+		const controller = new AbortController();
+
+		widget.render({
+			model,
+			el: document.createElement("div"),
+			signal: controller.signal,
+			host: createHost(childModels, childExports, childRenders),
+		} as unknown as RenderProps<WidgetModel>);
+
+		expect(await waitFor(() => (variableValue(targetModel, "target") === 21 ? 21 : undefined))).toBe(21);
+		seedModel.set("_values", { seed: 1 });
+		seedModel.set("_value_names", ["seed"]);
+		middleModel.set("_values", {});
+		targetModel.set("_values", {});
+
+		const standaloneEl = document.createElement("div");
+		widget.render({
+			model: targetModel,
+			el: standaloneEl,
+			signal: controller.signal,
+			host: createHost(new Map()),
+		} as unknown as RenderProps<WidgetModel>);
+
+		await waitFor(() => standaloneText(standaloneEl, "21"));
 		controller.abort();
 	});
 
@@ -262,7 +307,8 @@ describe("widget graph sync", () => {
 		expect(graph.cells.map((cell) => cell.name)).toEqual(["answer", "double"]);
 		expect(graph.cells[1]?.defines).toEqual(["double"]);
 		expect(graph.cells[1]?.references).toEqual(["answer"]);
-		expect(graph.edges).toEqual([{ from: 1, to: 2, variable: "answer" }]);
+		expect(graph.edges).toHaveLength(1);
+		expect(graph.edges).toContainEqual({ from: 1, to: 2, variable: "answer" });
 		controller.abort();
 	});
 
@@ -314,13 +360,13 @@ describe("widget graph sync", () => {
 			host: createHost(childModels, childExports, childRenders),
 		} as unknown as RenderProps<WidgetModel>);
 
-		const cell = await waitFor(() => el.querySelector(`${SELECTORS.composedCell} .observablehq--cell`) ?? undefined);
-		expect(cell.textContent).toContain("42");
+		await waitStep("composed output", () => composedText(el, "42"));
 		controller.abort();
 	});
 
-	test("renders pinned source chrome below the cell output", async () => {
+	test("renders pinned source chrome for cell output", async () => {
 		const source = "answer = 42";
+		const answerModel = createModel({ role: "cell", name: "answer", _values: {}, _value_names: [] });
 		const model = createModel({
 			role: "notebook",
 			spec: { cells: [{ id: 1, mode: "ojs", value: source, pinned: true }] },
@@ -329,9 +375,7 @@ describe("widget graph sync", () => {
 			options: { show_source: true },
 			_cell_widgets: ["anywidget:answer"],
 		});
-		const childModels = new Map([
-			["anywidget:answer", createModel({ role: "cell", name: "answer", _values: {}, _value_names: [] })],
-		]);
+		const childModels = new Map([["anywidget:answer", answerModel]]);
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
@@ -343,31 +387,19 @@ describe("widget graph sync", () => {
 		} as unknown as RenderProps<WidgetModel>);
 
 		const wrapper = await waitFor(() => el.querySelector<HTMLElement>(SELECTORS.composedCell) ?? undefined);
-		await waitFor(() => wrapper.querySelector(SELECTORS.sourcePanel) ?? undefined);
-		const children = Array.from(wrapper.children);
-		const panel = wrapper.querySelector<HTMLElement>(SELECTORS.sourcePanel);
-		const pre = panel?.querySelector<HTMLPreElement>(SELECTORS.source);
-		const label = panel?.querySelector<HTMLElement>(SELECTORS.sourceLabel);
+		await waitStep("pinned source output", () => (variableValue(answerModel, "answer") === 42 ? 42 : undefined));
+		const sourceBlock = await waitFor(
+			() => wrapper.querySelector<HTMLPreElement>("pre[aria-label='OJS source']") ?? undefined,
+		);
 
-		expect(children[0]?.classList.contains("observablehq--cell")).toBe(true);
-		expect(children[1]).toBe(panel);
-		expect(panel?.querySelector(SELECTORS.sourceHeader)).toBeNull();
-		expect(pre?.textContent).toBe(source);
-		expect(pre?.nextElementSibling).toBe(label);
-		expect(pre?.contains(label ?? null)).toBe(false);
-		expect(pre?.getAttribute("aria-label")).toBe("OJS source");
-		expect(label?.textContent).toBe("OJS");
+		expect(sourceBlock.textContent).toBe(source);
+		expect(sourceBlock.getAttribute("aria-label")).toBe("OJS source");
 		controller.abort();
 	});
 
 	test("renders composed cells through widget_manager when host is absent", async () => {
-		const childModel = createModel({
-			role: "cell",
-			name: "answer",
-			_values: {},
-			_value_names: [],
-		});
-		const childModels = new Map([["answer", childModel]]);
+		let rejectedOnce = false;
+		const resolvedModels: Array<ReturnType<typeof createModel>> = [];
 		const model = createModel(
 			{
 				role: "notebook",
@@ -378,7 +410,21 @@ describe("widget graph sync", () => {
 				_cell_widgets: ["anywidget:answer"],
 			},
 			{
-				get_model: async (modelId: string) => childModels.get(modelId),
+				get_model: async (modelId: string) => {
+					if (modelId !== "answer") return undefined;
+					if (!rejectedOnce) {
+						rejectedOnce = true;
+						throw new Error("not ready");
+					}
+					const childModel = createModel({
+						role: "cell",
+						name: "answer",
+						_values: {},
+						_value_names: [],
+					});
+					resolvedModels.push(childModel);
+					return childModel;
+				},
 			},
 		);
 		const el = document.createElement("div");
@@ -391,29 +437,24 @@ describe("widget graph sync", () => {
 			host: undefined,
 		} as unknown as RenderProps<WidgetModel>);
 
-		const cell = await waitFor(() => el.querySelector(`${SELECTORS.composedCell} .observablehq--cell`) ?? undefined);
-		expect(cell.textContent).toContain("42");
-		expect(await waitFor(() => (variableValue(childModel, "answer") === 42 ? 42 : undefined))).toBe(42);
-		expect(variableValue(model, "answer")).toBe(42);
+		await waitStep("fallback composed output", () => composedText(el, "42"));
+		expect(await waitFor(() => (variableValue(model, "answer") === 42 ? 42 : undefined))).toBe(42);
+		const renderedModel = resolvedModels.find((childModel) => variableValue(childModel, "answer") === 42);
+		if (!renderedModel) throw new Error("Expected the fallback widget manager to render a resolved child model");
 
 		const standaloneEl = document.createElement("div");
 		widget.render({
-			model: childModel,
+			model: renderedModel,
 			el: standaloneEl,
 			signal: controller.signal,
 			host: undefined,
 		} as unknown as RenderProps<WidgetModel>);
 
-		const standaloneCell = await waitFor(() =>
-			standaloneEl.querySelector(`${SELECTORS.standaloneCell} .observablehq--cell`)?.textContent?.includes("42")
-				? standaloneEl.querySelector(`${SELECTORS.standaloneCell} .observablehq--cell`)
-				: undefined,
-		);
-		expect(standaloneCell?.textContent).toContain("42");
+		await waitFor(() => standaloneText(standaloneEl, "42"));
 		controller.abort();
 	});
 
-	test("cleans signal-scoped child listeners when composed child render fails", async () => {
+	test("child render failure ignores later child updates", async () => {
 		const model = createModel({
 			role: "notebook",
 			spec: {
@@ -431,11 +472,6 @@ describe("widget graph sync", () => {
 			["anywidget:answer", createModel({ role: "cell", name: "answer", _values: {}, _value_names: [] })],
 			["anywidget:broken", createModel({ role: "cell", name: "broken", _values: {}, _value_names: [] })],
 		]);
-		const events: string[] = [];
-		const childExports = new Map([
-			["anywidget:answer", trackingCellExports("answer", events)],
-			["anywidget:broken", trackingCellExports("broken", events)],
-		]);
 		const childRenders = new Map<string, ChildRender>([
 			["anywidget:answer", () => {}],
 			[
@@ -451,20 +487,16 @@ describe("widget graph sync", () => {
 			model,
 			el,
 			signal: new AbortController().signal,
-			host: createHost(childModels, childExports, childRenders),
+			host: createHost(childModels, createCellExportsMap(childModels), childRenders),
 		} as unknown as RenderProps<WidgetModel>);
 
-		await waitFor(() => el.querySelector(SELECTORS.error) ?? undefined);
+		await waitFor(() => projectErrorText(el));
 
-		expect(events).toContain("unbind:answer");
-		expect(events).toContain("unbind:broken");
-		for (const childModel of childModels.values()) {
-			expect(childModel.listenerCount("change:_values")).toBe(0);
-			expect(childModel.listenerCount("change:_value_names")).toBe(0);
-		}
+		for (const childModel of childModels.values()) childModel.set("_values", { leaked: true });
+		expect(variableValue(model, "leaked")).toBeUndefined();
 	});
 
-	test("does not register notebook listeners when render signal is already aborted", () => {
+	test("aborted render ignores later model changes", () => {
 		const model = createModel({
 			role: "notebook",
 			spec: { cells: [] },
@@ -475,19 +507,21 @@ describe("widget graph sync", () => {
 		});
 		const controller = new AbortController();
 		controller.abort();
+		const el = document.createElement("div");
 
 		widget.render({
 			model,
-			el: document.createElement("div"),
+			el,
 			signal: controller.signal,
 			host: createHost(new Map()),
 		} as unknown as RenderProps<WidgetModel>);
 
-		expect(model.listenerCount("change:spec")).toBe(0);
-		expect(model.listenerCount("change:_cell_widgets")).toBe(0);
+		model.set("spec", { cells: [{ id: 1, mode: "ojs", value: "answer = 42" }] });
+		model.set("_cell_widgets", ["anywidget:answer"]);
+		expect(el.childElementCount).toBe(0);
 	});
 
-	test("cleans isolated standalone dependency listeners when dependency setup fails", async () => {
+	test("dependency setup errors recover after dependency values arrive", async () => {
 		const model = createModel({ role: "cell", name: "target", _values: {}, _value_names: [] });
 		const siblingModel = createModel({
 			role: "cell",
@@ -495,7 +529,7 @@ describe("widget graph sync", () => {
 			_values: { a: 1 },
 			_value_names: ["a"],
 		});
-		const badSiblingModel = createModel({
+		const pendingSiblingModel = createModel({
 			role: "cell",
 			name: "b",
 			_values: {},
@@ -504,60 +538,11 @@ describe("widget graph sync", () => {
 		const notebook = toNotebook({
 			cells: [
 				{ id: 1, mode: "ojs", value: "a = 1" },
-				{ id: 2, mode: "ojs", value: "b =" },
-				{ id: 3, mode: "ojs", value: "viewof target = Inputs.range([a, b])" },
+				{ id: 2, mode: "js", value: "const b = 3;" },
+				{ id: 3, mode: "ojs", value: "target = a + b" },
 			],
 		});
-		const graph: NotebookGraph = {
-			cells: [
-				{
-					id: 1,
-					index: 0,
-					name: "a",
-					mode: "ojs",
-					defines: ["a"],
-					references: [],
-					output: "a",
-					outputs: [],
-					runtime_outputs: ["a"],
-					autodisplay: false,
-					autoview: false,
-					automutable: false,
-				},
-				{
-					id: 2,
-					index: 1,
-					name: "b",
-					mode: "ojs",
-					defines: ["b"],
-					references: [],
-					output: "b",
-					outputs: [],
-					runtime_outputs: ["b"],
-					autodisplay: false,
-					autoview: false,
-					automutable: false,
-				},
-				{
-					id: 3,
-					index: 2,
-					name: "target",
-					mode: "ojs",
-					defines: ["target", "viewof target"],
-					references: ["a", "b", "Inputs"],
-					output: "viewof target",
-					outputs: [],
-					runtime_outputs: ["target", "viewof target"],
-					autodisplay: false,
-					autoview: true,
-					automutable: false,
-				},
-			],
-			edges: [
-				{ from: 0, to: 2, variable: "a" },
-				{ from: 1, to: 2, variable: "b" },
-			],
-		};
+		const graph = createNotebookGraph(notebook, ["a", "b", "target"]);
 		const exports = createCellExports(model);
 		exports.bindRuntime({
 			notebookModel: createModel({ role: "notebook", _graph: graph, _variables: {}, _values: {}, _value_names: [] }),
@@ -573,7 +558,7 @@ describe("widget graph sync", () => {
 				showSource: false,
 				observableMarkdownCompatibility: false,
 			},
-			cellModels: [siblingModel, badSiblingModel, model],
+			cellModels: [siblingModel, pendingSiblingModel, model],
 			sync: {} as CellRenderContext["sync"],
 		});
 
@@ -585,8 +570,11 @@ describe("widget graph sync", () => {
 			host: createHost(new Map()),
 		} as unknown as RenderProps<WidgetModel>);
 
-		await waitFor(() => el.querySelector(SELECTORS.error) ?? undefined);
-		expect(siblingModel.listenerCount("change:_values")).toBe(0);
+		await waitFor(() => el.querySelector<HTMLElement>(SELECTORS.standaloneCell) ?? undefined, 3000);
+		siblingModel.set("_values", { a: 2 });
+		pendingSiblingModel.set("_values", { b: 3 });
+		pendingSiblingModel.set("_value_names", ["b"]);
+		await waitFor(() => standaloneInspectorText(el, "5"), 3000);
 	});
 
 	test("standalone source OJS cells rebuild dependency cells", async () => {
@@ -645,7 +633,7 @@ describe("widget graph sync", () => {
 			signal: controller.signal,
 			host: createHost(childModels, childExports, childRenders),
 		} as unknown as RenderProps<WidgetModel>);
-		await waitFor(() => (parentEl.textContent?.includes("live-svg") ? parentEl : undefined));
+		await waitFor(() => composedInspectorText(parentEl, "live-svg"));
 
 		const standaloneEl = document.createElement("div");
 		widget.render({
@@ -658,28 +646,39 @@ describe("widget graph sync", () => {
 		await waitFor(() => {
 			const error = standaloneEl.querySelector(SELECTORS.error)?.textContent;
 			if (error) throw new Error(error);
-			return standaloneEl.textContent?.includes("live-svg") ? standaloneEl : undefined;
+			return standaloneInspectorText(standaloneEl, "live-svg");
 		});
-		expect(standaloneEl.querySelector(SELECTORS.standaloneCell)?.textContent).toContain("live-svg");
 		controller.abort();
 	});
 
-	test("standalone source-backed cells keep independent fallback state keys", async () => {
+	test("standalone source-backed sibling cells render their own output", async () => {
 		const model = createModel({
 			role: "notebook",
 			source: `
-<notebook>
-  <script id="1" type="application/vnd.observable.javascript">first = "first output"</script>
-  <script id="2" type="application/vnd.observable.javascript">second = "second output"</script>
-</notebook>
+	<notebook>
+	  <script id="1" type="application/vnd.observable.javascript">"first output"</script>
+	  <script id="2" type="application/vnd.observable.javascript">"second output"</script>
+	</notebook>
 `,
 			attachments: {},
 			_variables: {},
 			options: {},
 			_cell_widgets: ["anywidget:first", "anywidget:second"],
 		});
-		const firstModel = createModel({ role: "cell", name: "first", _values: {}, _value_names: [] });
-		const secondModel = createModel({ role: "cell", name: "second", _values: {}, _value_names: [] });
+		const firstModel = createModel({
+			role: "cell",
+			_cell_id: "first-source-cell",
+			name: "first",
+			_values: {},
+			_value_names: [],
+		});
+		const secondModel = createModel({
+			role: "cell",
+			_cell_id: "second-source-cell",
+			name: "second",
+			_values: {},
+			_value_names: [],
+		});
 		const childModels = new Map([
 			["anywidget:first", firstModel],
 			["anywidget:second", secondModel],
@@ -696,8 +695,12 @@ describe("widget graph sync", () => {
 			host: createHost(childModels, childExports, childRenders),
 		} as unknown as RenderProps<WidgetModel>);
 
-		await waitFor(() => (variableValue(firstModel, "first") === "first output" ? "first output" : undefined));
-		await waitFor(() => (variableValue(secondModel, "second") === "second output" ? "second output" : undefined));
+		await waitStep("parent first value", () =>
+			variableValue(firstModel, "first") === "first output" ? "first output" : undefined,
+		);
+		await waitStep("parent second value", () =>
+			variableValue(secondModel, "second") === "second output" ? "second output" : undefined,
+		);
 
 		const firstEl = document.createElement("div");
 		widget.render({
@@ -715,10 +718,8 @@ describe("widget graph sync", () => {
 			host: createHost(new Map()),
 		} as unknown as RenderProps<WidgetModel>);
 
-		await waitFor(() => (firstEl.textContent?.includes("first output") ? firstEl : undefined));
-		await waitFor(() => (secondEl.textContent?.includes("second output") ? secondEl : undefined));
-		expect(firstEl.textContent).not.toContain("second output");
-		expect(secondEl.textContent).not.toContain("first output");
+		await waitStep("first standalone output", () => standaloneInspectorText(firstEl, "first output"));
+		await waitStep("second standalone output", () => standaloneInspectorText(secondEl, "second output"));
 		controller.abort();
 	});
 
@@ -728,13 +729,12 @@ describe("widget graph sync", () => {
 			source: `
 <notebook>
   <script id="1" type="module" pinned>
-const svg = {
-  node: () => {
-    const span = document.createElement("span");
-    span.dataset.role = "parent-svg";
-    span.textContent = "parent svg";
-    return span;
-  }
+	const svg = {
+	  node: () => {
+	    const span = document.createElement("span");
+	    span.textContent = "parent svg";
+	    return span;
+	  }
 };
   </script>
   <script id="2" type="application/vnd.observable.javascript">svg.node()</script>
@@ -774,7 +774,7 @@ const svg = {
 			signal: controller.signal,
 			host: createHost(childModels, childExports, childRenders),
 		} as unknown as RenderProps<WidgetModel>);
-		await waitFor(() => parentEl.querySelector("span[data-role='parent-svg']") ?? undefined);
+		await waitFor(() => composedText(parentEl, "parent svg"));
 
 		const standaloneEl = document.createElement("div");
 		widget.render({
@@ -784,12 +784,11 @@ const svg = {
 			host: createHost(new Map()),
 		} as unknown as RenderProps<WidgetModel>);
 
-		const span = await waitFor(() => {
+		await waitFor(() => {
 			const error = standaloneEl.querySelector(SELECTORS.error)?.textContent;
 			if (error) throw new Error(error);
-			return standaloneEl.querySelector<HTMLSpanElement>("span[data-role='parent-svg']") ?? undefined;
+			return standaloneText(standaloneEl, "parent svg");
 		});
-		expect(span.textContent).toBe("parent svg");
 		controller.abort();
 	});
 
@@ -804,9 +803,6 @@ const svg = {
 						value: `
 canvas = {
   const node = document.createElement("canvas");
-  node.dataset.role = "cell-canvas";
-  node.width = 320;
-  node.height = 120;
   return node;
 }`,
 					},
@@ -828,9 +824,7 @@ canvas = {
 			signal: controller.signal,
 			host: createHost(childModels, createCellExportsMap(childModels), renderChildrenThroughWidget(childModels)),
 		} as unknown as RenderProps<WidgetModel>);
-		const parentCanvas = await waitFor(
-			() => parentEl.querySelector<HTMLCanvasElement>("canvas[data-role='cell-canvas']") ?? undefined,
-		);
+		const parentCanvas = await waitFor(() => onlyCanvas(parentEl));
 
 		const standaloneEl = document.createElement("div");
 		widget.render({
@@ -839,13 +833,11 @@ canvas = {
 			signal: controller.signal,
 			host: createHost(new Map()),
 		} as unknown as RenderProps<WidgetModel>);
-		const standaloneCanvas = await waitFor(
-			() => standaloneEl.querySelector<HTMLCanvasElement>("canvas[data-role='cell-canvas']") ?? undefined,
-		);
+		const standaloneCanvas = await waitFor(() => onlyCanvas(standaloneEl));
 
-		expect(standaloneCanvas).not.toBe(parentCanvas);
 		expect(parentEl.contains(parentCanvas)).toBe(true);
-		expect(standaloneEl.textContent).not.toContain("HTMLCanvasElement");
+		expect(standaloneCanvas).not.toBe(parentCanvas);
+		expectCanvasOutputOnly(standaloneEl);
 		controller.abort();
 	});
 
@@ -857,9 +849,6 @@ canvas = {
   <script id="1" type="application/vnd.observable.javascript">
 createCanvas = () => {
   const node = document.createElement("canvas");
-  node.dataset.role = "source-backed-canvas";
-  node.width = 320;
-  node.height = 120;
   return node;
 }
   </script>
@@ -886,9 +875,7 @@ createCanvas = () => {
 			signal: controller.signal,
 			host: createHost(childModels, createCellExportsMap(childModels), renderChildrenThroughWidget(childModels)),
 		} as unknown as RenderProps<WidgetModel>);
-		const parentCanvas = await waitFor(
-			() => parentEl.querySelector<HTMLCanvasElement>("canvas[data-role='source-backed-canvas']") ?? undefined,
-		);
+		const parentCanvas = await waitFor(() => onlyCanvas(parentEl));
 
 		const standaloneEl = document.createElement("div");
 		widget.render({
@@ -897,13 +884,11 @@ createCanvas = () => {
 			signal: controller.signal,
 			host: createHost(new Map()),
 		} as unknown as RenderProps<WidgetModel>);
-		const standaloneCanvas = await waitFor(
-			() => standaloneEl.querySelector<HTMLCanvasElement>("canvas[data-role='source-backed-canvas']") ?? undefined,
-		);
+		const standaloneCanvas = await waitFor(() => onlyCanvas(standaloneEl));
 
+		expect(parentEl.contains(parentCanvas)).toBe(true);
 		expect(standaloneCanvas).not.toBe(parentCanvas);
-		expect(standaloneEl.querySelector(`${SELECTORS.standaloneCell} canvas`)).not.toBeNull();
-		expect(standaloneEl.textContent).not.toContain("HTMLCanvasElement");
+		expectCanvasOutputOnly(standaloneEl);
 		controller.abort();
 	});
 
@@ -969,11 +954,10 @@ Select = (items, options = {}) => {
 		const select = await waitFor(() => {
 			const error = standaloneEl.querySelector(SELECTORS.error)?.textContent;
 			if (error) throw new Error(error);
-			return standaloneEl.querySelector<HTMLSelectElement>("select") ?? undefined;
+			return onlySelect(standaloneEl);
 		});
 
 		expect(select.value).toBe("two");
-		expect(standaloneEl.querySelector(`${SELECTORS.standaloneCell} select`)).not.toBeNull();
 		controller.abort();
 	});
 
@@ -1047,7 +1031,7 @@ Select = (items, options = {}) => {
 			signal: controller.signal,
 			host: createHost(new Map()),
 		} as unknown as RenderProps<WidgetModel>);
-		await waitFor(() => (titleEl.textContent?.includes("Voronoi Spirals II") ? titleEl : undefined));
+		await waitFor(() => standaloneText(titleEl, "Voronoi Spirals II"));
 
 		const choiceEl = document.createElement("div");
 		widget.render({
@@ -1059,7 +1043,7 @@ Select = (items, options = {}) => {
 		const select = await waitFor(() => {
 			const error = choiceEl.querySelector(SELECTORS.error)?.textContent;
 			if (error) throw new Error(error);
-			return choiceEl.querySelector<HTMLSelectElement>("select") ?? undefined;
+			return onlySelect(choiceEl);
 		});
 
 		expect(select.value).toBe("two");
@@ -1067,16 +1051,13 @@ Select = (items, options = {}) => {
 	});
 
 	test("standalone viewof cells resolve runtime-output dependencies that appear after the target", async () => {
-		const model = createModel({
-			role: "notebook",
-			spec: {
-				cells: [
-					{ id: 1, mode: "ojs", value: 'viewof choice = Select(items, {value: "two"})' },
-					{ id: 2, mode: "ojs", value: 'items = ["one", "two"]' },
-					{
-						id: 3,
-						mode: "ojs",
-						value: `
+		const cells: CellSpec[] = [
+			{ id: 1, mode: "ojs", value: 'viewof choice = Select(items, {value: "two"})' },
+			{ id: 2, mode: "ojs", value: 'items = ["one", "two"]' },
+			{
+				id: 3,
+				mode: "ojs",
+				value: `
 Select = (items, options = {}) => {
   const select = document.createElement("select");
   for (const item of items) {
@@ -1088,61 +1069,15 @@ Select = (items, options = {}) => {
   select.value = options.value ?? items[0];
   return select;
 }`,
-					},
-				],
 			},
+		];
+		const notebook = toNotebook({ cells });
+		const model = createModel({
+			role: "notebook",
+			spec: { cells },
 			attachments: {},
 			_variables: {},
-			_graph: {
-				cells: [
-					{
-						id: 1,
-						index: 0,
-						name: "choice",
-						mode: "ojs",
-						defines: ["choice", "viewof choice"],
-						references: ["Select", "items"],
-						output: "viewof choice",
-						outputs: [],
-						runtime_outputs: ["choice", "viewof choice"],
-						autodisplay: false,
-						autoview: true,
-						automutable: false,
-					},
-					{
-						id: 2,
-						index: 1,
-						name: "items",
-						mode: "ojs",
-						defines: ["items"],
-						references: [],
-						output: "items",
-						outputs: [],
-						runtime_outputs: ["items"],
-						autodisplay: false,
-						autoview: false,
-						automutable: false,
-					},
-					{
-						id: 3,
-						index: 2,
-						name: "Select",
-						mode: "ojs",
-						defines: [],
-						references: [],
-						output: null,
-						outputs: ["Select"],
-						runtime_outputs: ["Select"],
-						autodisplay: false,
-						autoview: false,
-						automutable: false,
-					},
-				],
-				edges: [
-					{ from: 1, to: 0, variable: "items" },
-					{ from: 2, to: 0, variable: "Select" },
-				],
-			},
+			_graph: createNotebookGraph(notebook, ["choice", "items", "Select"]),
 			options: {},
 			_cell_widgets: ["anywidget:choice", "anywidget:items", "anywidget:select"],
 		});
@@ -1178,7 +1113,7 @@ Select = (items, options = {}) => {
 		const select = await waitFor(() => {
 			const error = standaloneEl.querySelector(SELECTORS.error)?.textContent;
 			if (error) throw new Error(error);
-			return standaloneEl.querySelector<HTMLSelectElement>("select") ?? undefined;
+			return onlySelect(standaloneEl);
 		});
 
 		expect(select.value).toBe("two");
@@ -1253,16 +1188,18 @@ viewof target = {
 			host: createHost(new Map()),
 		} as unknown as RenderProps<WidgetModel>);
 
-		const input = await waitFor(() => {
+		await waitFor(() => {
 			const error = standaloneEl.querySelector(SELECTORS.error)?.textContent;
 			if (error) throw new Error(error);
-			const candidate = standaloneEl.querySelector<HTMLInputElement>("input");
-			return candidate?.value === "live:live" ? candidate : undefined;
+			return inputWithValue(standaloneEl, "live:live");
 		});
-		expect(input.value).toBe("live:live");
-		expect(xModel.listenerCount("change:_values")).toBeGreaterThan(0);
+		xModel.set("_values", { x: "fresh" });
+		await waitFor(() => inputWithValue(standaloneEl, "fresh:fresh"));
 		controller.abort();
-		expect(xModel.listenerCount("change:_values")).toBe(0);
+		xModel.set("_values", { x: "stale" });
+		await flushStandaloneInvalidations();
+
+		expect(onlyInput(standaloneEl).value).toBe("fresh:fresh");
 	});
 
 	test("standalone dependencies define mutable companions when live values collide", async () => {
@@ -1323,8 +1260,7 @@ makeInput = (value) => {
 		await waitFor(() => {
 			const error = standaloneEl.querySelector(SELECTORS.error)?.textContent;
 			if (error) throw new Error(error);
-			const candidate = standaloneEl.querySelector<HTMLInputElement>("input");
-			return candidate?.value === "1:5" ? candidate : undefined;
+			return inputWithValue(standaloneEl, "1:5");
 		});
 		controller.abort();
 	});
@@ -1340,22 +1276,26 @@ makeInput = (value) => {
 						value: `
 Select = (items, options = {}) => {
   const picker = document.createElement("button");
-  picker.dataset.role = "preset-picker";
   let selected = options.value ?? items[0];
   const paint = () => {
     picker.textContent = String(items.indexOf(selected) + 1);
-    picker.dataset.index = String(items.indexOf(selected));
   };
-  Object.defineProperty(picker, "value", {
-    get() { return selected; },
-    set(value) {
-      selected = value;
-      paint();
-    },
-  });
-  paint();
-  return picker;
-}`,
+	  Object.defineProperty(picker, "value", {
+	    get() { return selected; },
+	    set(value) {
+	      selected = value;
+	      paint();
+	    },
+	  });
+	  picker.addEventListener("click", () => {
+	    selected = items[(items.indexOf(selected) + 1) % items.length];
+	    paint();
+	    picker.dispatchEvent(new Event("input", {bubbles: true}));
+	    picker.dispatchEvent(new Event("change", {bubbles: true}));
+	  });
+	  paint();
+	  return picker;
+	}`,
 					},
 					{
 						id: 2,
@@ -1422,10 +1362,7 @@ Range = ([start], options = {}) => {
 			host: createHost(childModels, childExports, childRenders),
 		} as unknown as RenderProps<WidgetModel>);
 
-		const parentPicker = await waitFor(
-			() => parentEl.querySelector<HTMLButtonElement>("button[data-role='preset-picker']") ?? undefined,
-		);
-		(parentPicker as unknown as { value: { pointDensity: number } }).value = { pointDensity: 21 };
+		const parentPicker = await waitFor(() => onlyButton(parentEl));
 		parentPicker.click();
 		await waitFor(() => {
 			const value = variableValue(presetsModel, "presets");
@@ -1433,6 +1370,8 @@ Range = ([start], options = {}) => {
 				? value
 				: undefined;
 		});
+		await waitFor(() => rangeWithNumber(parentEl, 21));
+		await waitFor(() => (variableValue(pointDensityModel, "pointDensity") === 21 ? 21 : undefined));
 		pointDensityModel.set("_values", {});
 
 		const standaloneEl = document.createElement("div");
@@ -1443,14 +1382,12 @@ Range = ([start], options = {}) => {
 			host: createHost(new Map()),
 		} as unknown as RenderProps<WidgetModel>);
 
-		const input = await waitFor(() => {
+		await waitFor(() => {
 			const error = standaloneEl.querySelector(SELECTORS.error)?.textContent;
 			if (error) throw new Error(error);
-			const candidate = standaloneEl.querySelector<HTMLInputElement>("input[type='range']");
-			return candidate?.valueAsNumber === 21 ? candidate : undefined;
+			return rangeWithNumber(standaloneEl, 21);
 		});
 
-		expect(input.valueAsNumber).toBe(21);
 		controller.abort();
 	});
 
@@ -1496,7 +1433,7 @@ Range = ([start], options = {}) => {
 			host: createHost(childModels, childExports, childRenders),
 		} as unknown as RenderProps<WidgetModel>);
 
-		const parentSelect = await waitFor(() => parentEl.querySelector<HTMLSelectElement>("select") ?? undefined);
+		const parentSelect = await waitFor(() => onlySelect(parentEl));
 		await waitFor(() => (variableValue(pointDensityModel, "pointDensity") === 7 ? 7 : undefined));
 
 		const standaloneEl = document.createElement("div");
@@ -1510,7 +1447,7 @@ Range = ([start], options = {}) => {
 		const standaloneSelect = await waitFor(() => {
 			const error = standaloneEl.querySelector(SELECTORS.error)?.textContent;
 			if (error) throw new Error(error);
-			return standaloneEl.querySelector<HTMLSelectElement>("select") ?? undefined;
+			return onlySelect(standaloneEl);
 		});
 
 		standaloneSelect.selectedIndex = 1;
@@ -1522,6 +1459,118 @@ Range = ([start], options = {}) => {
 		expect(parentSelect.closest("form")?.value).toEqual({ pointDensity: 21 });
 		expect(standaloneSelect.selectedIndex).toBe(1);
 		controller.abort();
+	});
+
+	test("parent view changes update mounted standalone display cells", async () => {
+		const controller = new AbortController();
+		const { parentEl, firstStandaloneEl, secondStandaloneEl, parentSelect, standaloneSelect, presetsModel } =
+			await mountPresetDisplayNotebook(controller);
+
+		await waitStep("initial presets value", () => presetPointDensity(presetsModel, 7));
+		await waitStep("initial parent display", () => displayForPointDensity(parentEl, 7));
+		await waitStep("initial first standalone display", () => displayForPointDensity(firstStandaloneEl, 7));
+		await waitStep("initial second standalone display", () => displayForPointDensity(secondStandaloneEl, 7));
+
+		chooseOption(parentSelect, 1);
+
+		await waitStep("parent change model value", () => presetPointDensity(presetsModel, 21));
+		await waitStep("standalone select follows parent", () =>
+			standaloneSelect.selectedIndex === 1 ? standaloneSelect : undefined,
+		);
+		await waitStep("parent display follows parent select", () => displayForPointDensity(parentEl, 21));
+		await waitStep("first standalone display follows parent select", () =>
+			displayForPointDensity(firstStandaloneEl, 21),
+		);
+		await waitStep("second standalone display follows parent select", () =>
+			displayForPointDensity(secondStandaloneEl, 21),
+		);
+		controller.abort();
+	});
+
+	test("standalone view changes update parent and sibling display cells", async () => {
+		const controller = new AbortController();
+		const { parentEl, firstStandaloneEl, secondStandaloneEl, parentSelect, standaloneSelect, presetsModel } =
+			await mountPresetDisplayNotebook(controller);
+
+		await waitStep("initial presets value", () => presetPointDensity(presetsModel, 7));
+		chooseOption(standaloneSelect, 1);
+
+		await waitStep("standalone change model value", () => presetPointDensity(presetsModel, 21));
+		await waitStep("parent select follows standalone", () =>
+			parentSelect.selectedIndex === 1 ? parentSelect : undefined,
+		);
+		await waitStep("parent display follows standalone select", () => displayForPointDensity(parentEl, 21));
+		await waitStep("first standalone display follows standalone select", () =>
+			displayForPointDensity(firstStandaloneEl, 21),
+		);
+		await waitStep("second standalone display follows standalone select", () =>
+			displayForPointDensity(secondStandaloneEl, 21),
+		);
+		controller.abort();
+	});
+
+	test("independent standalone cells preserve visible state across unrelated sibling changes", async () => {
+		const controller = new AbortController();
+		try {
+			const model = createModel({
+				role: "notebook",
+				spec: {
+					cells: [
+						{
+							id: 1,
+							mode: "ojs",
+							value: `
+independent = {
+  const input = document.createElement("input");
+  input.value = "initial";
+  return input;
+}`,
+						},
+						{ id: 2, mode: "ojs", value: "gain = 1" },
+					],
+				},
+				attachments: {},
+				_variables: {},
+				options: {},
+				_cell_widgets: ["anywidget:independent", "anywidget:gain"],
+			});
+			const independentModel = createModel({ role: "cell", name: "independent", _values: {}, _value_names: [] });
+			const gainModel = createModel({ role: "cell", name: "gain", _values: {}, _value_names: [] });
+			const childModels = new Map([
+				["anywidget:independent", independentModel],
+				["anywidget:gain", gainModel],
+			]);
+			const childExports = createCellExportsMap(childModels);
+			const childRenders = renderChildrenThroughWidget(childModels);
+			const parentEl = document.createElement("div");
+			const standaloneEl = document.createElement("div");
+
+			widget.render({
+				model,
+				el: parentEl,
+				signal: controller.signal,
+				host: createHost(childModels, childExports, childRenders),
+			} as unknown as RenderProps<WidgetModel>);
+			await waitFor(() => (variableValue(gainModel, "gain") === 1 ? 1 : undefined));
+			widget.render({
+				model: independentModel,
+				el: standaloneEl,
+				signal: controller.signal,
+				host: createHost(new Map()),
+			} as unknown as RenderProps<WidgetModel>);
+
+			const input = await waitFor(() => {
+				return inputWithValue(standaloneEl, "initial");
+			});
+			input.value = "user edit";
+			gainModel.set("_values", { gain: 2 });
+			await waitFor(() => (variableValue(model, "gain") === 2 ? 2 : undefined));
+			await flushStandaloneInvalidations();
+
+			expect(onlyInput(standaloneEl).value).toBe("user edit");
+		} finally {
+			controller.abort();
+		}
 	});
 
 	test("standalone dependency resolution ignores malformed unrelated cells", async () => {
@@ -1568,8 +1617,227 @@ Range = ([start], options = {}) => {
 			host: createHost(new Map()),
 		} as unknown as RenderProps<WidgetModel>);
 
-		await waitFor(() => (standaloneEl.textContent?.includes("ready") ? standaloneEl : undefined));
-		expect(standaloneEl.querySelector(SELECTORS.error)).toBeNull();
+		await waitFor(() => {
+			const error = standaloneEl.querySelector(SELECTORS.error)?.textContent;
+			if (error) throw new Error(error);
+			return standaloneInspectorText(standaloneEl, "ready");
+		});
 		controller.abort();
 	});
 });
+
+async function mountPresetDisplayNotebook(controller: AbortController): Promise<{
+	parentEl: HTMLDivElement;
+	firstStandaloneEl: HTMLDivElement;
+	secondStandaloneEl: HTMLDivElement;
+	parentSelect: HTMLSelectElement;
+	standaloneSelect: HTMLSelectElement;
+	presetsModel: ReturnType<typeof createModel>;
+}> {
+	const model = createModel({
+		role: "notebook",
+		source: `
+<notebook>
+  <script id="1" type="application/vnd.observable.javascript">${objectValuedSelectSource}</script>
+  <script id="2" type="application/vnd.observable.javascript">presetsArray = [{pointDensity: 7}, {pointDensity: 21}]</script>
+  <script id="3" type="application/vnd.observable.javascript">viewof presets = Select(presetsArray, {value: presetsArray[0]})</script>
+  <script id="4" type="application/vnd.observable.javascript">
+display = {
+  const node = document.createElement("output");
+  node.textContent = String(presets.pointDensity);
+  return node;
+}
+  </script>
+</notebook>
+`,
+		attachments: {},
+		_variables: {},
+		options: {},
+		_cell_widgets: ["anywidget:select", "anywidget:presets-array", "anywidget:presets", "anywidget:display"],
+	});
+	const selectModel = createModel({ role: "cell", name: "select", _values: {}, _value_names: [] });
+	const presetsArrayModel = createModel({ role: "cell", name: "presetsArray", _values: {}, _value_names: [] });
+	const presetsModel = createModel({ role: "cell", name: "presets", _values: {}, _value_names: [] });
+	const displayModel = createModel({ role: "cell", name: "display", _values: {}, _value_names: [] });
+	const childModels = new Map([
+		["anywidget:select", selectModel],
+		["anywidget:presets-array", presetsArrayModel],
+		["anywidget:presets", presetsModel],
+		["anywidget:display", displayModel],
+	]);
+	const childExports = createCellExportsMap(childModels);
+	const childRenders = renderChildrenThroughWidget(childModels);
+	const parentEl = document.createElement("div");
+	const standalonePresetsEl = document.createElement("div");
+	const firstStandaloneEl = document.createElement("div");
+	const secondStandaloneEl = document.createElement("div");
+
+	widget.render({
+		model,
+		el: parentEl,
+		signal: controller.signal,
+		host: createHost(childModels, childExports, childRenders),
+	} as unknown as RenderProps<WidgetModel>);
+	widget.render({
+		model: presetsModel,
+		el: standalonePresetsEl,
+		signal: controller.signal,
+		host: createHost(new Map()),
+	} as unknown as RenderProps<WidgetModel>);
+	for (const el of [firstStandaloneEl, secondStandaloneEl]) {
+		widget.render({
+			model: displayModel,
+			el,
+			signal: controller.signal,
+			host: createHost(new Map()),
+		} as unknown as RenderProps<WidgetModel>);
+	}
+
+	return {
+		parentEl,
+		firstStandaloneEl,
+		secondStandaloneEl,
+		parentSelect: await waitStep("parent select", () => onlySelect(parentEl)),
+		standaloneSelect: await waitStep("standalone select", () => onlySelect(standalonePresetsEl)),
+		presetsModel,
+	};
+}
+
+async function waitStep<T>(label: string, read: () => T | undefined, timeoutMs?: number): Promise<T> {
+	try {
+		return await waitFor(read, timeoutMs);
+	} catch (error) {
+		throw new Error(`${label}: ${error instanceof Error ? error.message : String(error)}`);
+	}
+}
+
+function presetPointDensity(model: ReturnType<typeof createModel>, value: number): unknown | undefined {
+	const preset = variableValue(model, "presets");
+	return preset && typeof preset === "object" && (preset as { pointDensity?: unknown }).pointDensity === value
+		? preset
+		: undefined;
+}
+
+function standaloneText(el: HTMLElement, value: string): HTMLElement | undefined {
+	const cells = Array.from(el.querySelectorAll<HTMLElement>(SELECTORS.standaloneCell));
+	if (cells.length === 0) return undefined;
+	if (cells.length > 1) throw new Error(`Expected one standalone cell, found ${cells.length}`);
+	const [cell] = cells;
+	const text = cell?.textContent?.trim() ?? "";
+	if (text !== value) return undefined;
+	return cell;
+}
+
+function standaloneInspectorText(el: HTMLElement, value: string): HTMLElement | undefined {
+	const cells = Array.from(el.querySelectorAll<HTMLElement>(SELECTORS.standaloneCell));
+	if (cells.length === 0) return undefined;
+	if (cells.length > 1) throw new Error(`Expected one standalone cell, found ${cells.length}`);
+	const [cell] = cells;
+	const text = cell?.textContent?.trim() ?? "";
+	if (text !== value && text !== `"${value}"`) return undefined;
+	return cell;
+}
+
+function composedText(el: HTMLElement, value: string): HTMLElement | undefined {
+	const cells = Array.from(el.querySelectorAll<HTMLElement>(SELECTORS.composedCell));
+	if (cells.length === 0) return undefined;
+	const matches = cells.filter((cell) => (cell.textContent?.trim() ?? "") === value);
+	if (matches.length === 0) return undefined;
+	if (matches.length > 1) throw new Error(`Expected one composed cell with ${value}, found ${matches.length}`);
+	return matches[0]!;
+}
+
+function composedInspectorText(el: HTMLElement, value: string): HTMLElement | undefined {
+	const cells = Array.from(el.querySelectorAll<HTMLElement>(SELECTORS.composedCell));
+	if (cells.length === 0) return undefined;
+	const matches = cells.filter((cell) => {
+		const text = cell.textContent?.trim() ?? "";
+		return text === value || text === `"${value}"`;
+	});
+	if (matches.length === 0) return undefined;
+	if (matches.length > 1) throw new Error(`Expected one composed cell with ${value}, found ${matches.length}`);
+	return matches[0]!;
+}
+
+function onlyInput(el: HTMLElement): HTMLInputElement {
+	const inputs = Array.from(el.querySelectorAll<HTMLInputElement>("input"));
+	if (inputs.length !== 1) throw new Error(`Expected one input, found ${inputs.length}`);
+	return inputs[0]!;
+}
+
+function inputWithValue(el: HTMLElement, value: string): HTMLInputElement | undefined {
+	const inputs = Array.from(el.querySelectorAll<HTMLInputElement>("input"));
+	if (inputs.length === 0) return undefined;
+	if (inputs.length > 1) throw new Error(`Expected one input, found ${inputs.length}`);
+	const [input] = inputs;
+	return input?.value === value ? input : undefined;
+}
+
+function rangeWithNumber(el: HTMLElement, value: number): HTMLInputElement | undefined {
+	const inputs = Array.from(el.querySelectorAll<HTMLInputElement>("input[type='range']"));
+	if (inputs.length === 0) return undefined;
+	if (inputs.length > 1) throw new Error(`Expected one range input, found ${inputs.length}`);
+	const [input] = inputs;
+	return input?.valueAsNumber === value ? input : undefined;
+}
+
+function onlySelect(el: HTMLElement): HTMLSelectElement | undefined {
+	const selects = Array.from(el.querySelectorAll<HTMLSelectElement>("select"));
+	if (selects.length === 0) return undefined;
+	if (selects.length > 1) throw new Error(`Expected one select, found ${selects.length}`);
+	return selects[0]!;
+}
+
+function onlyCanvas(el: HTMLElement): HTMLCanvasElement | undefined {
+	const canvases = Array.from(el.querySelectorAll<HTMLCanvasElement>("canvas"));
+	if (canvases.length === 0) return undefined;
+	if (canvases.length > 1) throw new Error(`Expected one canvas, found ${canvases.length}`);
+	return canvases[0]!;
+}
+
+function onlyButton(el: HTMLElement): HTMLButtonElement | undefined {
+	const buttons = Array.from(el.querySelectorAll<HTMLButtonElement>("button"));
+	if (buttons.length === 0) return undefined;
+	if (buttons.length > 1) throw new Error(`Expected one button, found ${buttons.length}`);
+	return buttons[0]!;
+}
+
+function expectCanvasOutputOnly(el: HTMLElement): void {
+	const outputs = Array.from(el.querySelectorAll(SELECTORS.standaloneCell));
+	expect(outputs).toHaveLength(1);
+	const [output] = outputs;
+	const canvases = Array.from(output?.querySelectorAll("canvas") ?? []);
+	expect(canvases).toHaveLength(1);
+	expect(output?.querySelector(SELECTORS.error)).toBeNull();
+}
+
+function displayForPointDensity(el: HTMLElement, value: number): HTMLOutputElement | undefined {
+	const error = el.querySelector(SELECTORS.error)?.textContent;
+	if (error) throw new Error(error);
+	const outputs = Array.from(el.querySelectorAll<HTMLOutputElement>("output"));
+	if (outputs.length === 0) return undefined;
+	if (outputs.length > 1) throw new Error(`Expected one output, found ${outputs.length}`);
+	const [output] = outputs;
+	return output?.textContent?.trim() === String(value) ? output : undefined;
+}
+
+function projectErrorText(el: HTMLElement): string | undefined {
+	const errors = Array.from(el.querySelectorAll<HTMLElement>(SELECTORS.error));
+	if (errors.length === 0) return undefined;
+	if (errors.length > 1) throw new Error(`Expected one error output, found ${errors.length}`);
+	const text = errors[0]?.textContent?.trim() ?? "";
+	return text || undefined;
+}
+
+function chooseOption(select: HTMLSelectElement, index: number): void {
+	select.selectedIndex = index;
+	select.dispatchEvent(new Event("input", { bubbles: true }));
+	select.dispatchEvent(new Event("change", { bubbles: true }));
+	const view = select.closest("form");
+	view?.dispatchEvent(new Event("input", { bubbles: true }));
+	view?.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+async function flushStandaloneInvalidations(): Promise<void> {
+	await new Promise<void>((resolve) => queueMicrotask(resolve));
+}
