@@ -1,4 +1,10 @@
 import type { ViewTarget } from "./types";
+import { sameWireValue, toWireValue } from "./wire";
+
+export type NestedSelectState = Array<{
+	selectedIndex: number;
+	value: string;
+}>;
 
 export function isViewTarget(value: unknown): value is ViewTarget {
 	return value instanceof EventTarget && "value" in value;
@@ -16,7 +22,17 @@ export function readViewValue(view: ViewTarget): unknown {
 	return view.value;
 }
 
-export function writeViewValue(view: ViewTarget, value: unknown): void {
+export function readNestedSelectState(view: ViewTarget): NestedSelectState | undefined {
+	const selects = nestedSelects(view);
+	if (selects.length === 0) return undefined;
+	return selects.map((select) => ({
+		selectedIndex: select.selectedIndex,
+		value: select.value,
+	}));
+}
+
+export function writeViewValue(view: ViewTarget, value: unknown, nestedState?: NestedSelectState): boolean {
+	const expected = expectedWireValue(view, value);
 	if (view instanceof HTMLInputElement) {
 		if (view.type === "checkbox") {
 			view.checked = Boolean(value);
@@ -34,7 +50,73 @@ export function writeViewValue(view: ViewTarget, value: unknown): void {
 		for (const option of view.options) option.selected = selected.has(option.value);
 	} else {
 		view.value = value;
+		restoreNestedSelectValue(view, value, nestedState);
 	}
+	if (!sameWireValue(toWireValue(readViewValue(view)), expected)) return false;
 	view.dispatchEvent(new Event("input", { bubbles: true }));
 	view.dispatchEvent(new Event("change", { bubbles: true }));
+	return true;
+}
+
+function restoreNestedSelectValue(view: ViewTarget, value: unknown, nestedState?: NestedSelectState): void {
+	if (!(view instanceof Element)) return;
+	const expected = toWireValue(value);
+	if (sameWireValue(toWireValue(readViewValue(view)), expected)) return;
+	if (nestedState && applyNestedSelectState(view, nestedState, expected)) return;
+	const selects = nestedSelects(view);
+	const fallback = selects.map((select) => [select, select.selectedIndex] as const);
+	for (const select of selects) {
+		for (let index = 0; index < select.options.length; index++) {
+			// Object-valued selects store choices by identity. Dispatching the
+			// nested select lets Observable Inputs restore its own option object
+			// before the outer view event fires.
+			select.selectedIndex = index;
+			dispatchSelectEvents(select);
+			if (sameWireValue(toWireValue(readViewValue(view)), expected)) return;
+		}
+	}
+	for (const [select, selectedIndex] of fallback) {
+		select.selectedIndex = selectedIndex;
+		dispatchSelectEvents(select);
+	}
+}
+
+function nestedSelects(view: ViewTarget): HTMLSelectElement[] {
+	if (!(view instanceof Element)) return [];
+	const selects = Array.from(view.querySelectorAll("select"));
+	if (view instanceof HTMLSelectElement) selects.unshift(view);
+	return selects;
+}
+
+function applyNestedSelectState(view: ViewTarget, state: NestedSelectState, expected: unknown): boolean {
+	const selects = nestedSelects(view);
+	let applied = false;
+	for (let index = 0; index < state.length; index++) {
+		const select = selects[index];
+		const selected = state[index];
+		if (!select || !selected) continue;
+		const selectedIndex =
+			select.options[selected.selectedIndex]?.value === selected.value
+				? selected.selectedIndex
+				: Array.from(select.options).findIndex((option) => option.value === selected.value);
+		if (selectedIndex < 0) continue;
+		select.selectedIndex = selectedIndex;
+		dispatchSelectEvents(select);
+		applied = true;
+	}
+	return applied && sameWireValue(toWireValue(readViewValue(view)), expected);
+}
+
+function dispatchSelectEvents(select: HTMLSelectElement): void {
+	select.dispatchEvent(new Event("input", { bubbles: true }));
+	select.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+function expectedWireValue(view: ViewTarget, value: unknown): unknown {
+	if (view instanceof HTMLInputElement) {
+		if (view.type === "checkbox") return toWireValue(Boolean(value));
+		if (view.type === "date" && value instanceof Date) return toWireValue(value.toISOString().slice(0, 10));
+		if (view.type === "datetime-local" && value instanceof Date) return toWireValue(value.toISOString().slice(0, 16));
+	}
+	return toWireValue(value);
 }

@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-import importlib.metadata
+from importlib.metadata import PackageNotFoundError as _PackageNotFoundError
+from importlib.metadata import version as _version
 
 from ._notebook import Notebook, html, js, md, ojs
 
 try:
-    __version__ = importlib.metadata.version("pyobservablejs")
-except importlib.metadata.PackageNotFoundError:
+    __version__ = _version("pyobservablejs")
+except _PackageNotFoundError:
     __version__ = "unknown"
 
 __all__ = [

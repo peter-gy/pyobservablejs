@@ -240,6 +240,7 @@ class Notebook(_ObservableWidget):
             attachments=normalize_files(attachments, base_path=base_path),
             variables=variables,
             show_pinned_source=show_pinned_source,
+            observable_markdown_compatibility=False,
             cell_widgets=_cell_widgets_for_specs(cell_specs),
         )
 
@@ -252,6 +253,7 @@ class Notebook(_ObservableWidget):
         attachments: Mapping[str, Any],
         variables: Mapping[str, Any] | None,
         show_pinned_source: bool,
+        observable_markdown_compatibility: bool,
         cell_widgets: Sequence[NotebookCell],
     ) -> "Notebook":
         notebook = cls.__new__(cls)
@@ -261,6 +263,7 @@ class Notebook(_ObservableWidget):
             attachments=attachments,
             variables=variables,
             show_pinned_source=show_pinned_source,
+            observable_markdown_compatibility=observable_markdown_compatibility,
             cell_widgets=cell_widgets,
         )
         return notebook
@@ -273,6 +276,7 @@ class Notebook(_ObservableWidget):
         attachments: Mapping[str, Any],
         variables: Mapping[str, Any] | None,
         show_pinned_source: bool,
+        observable_markdown_compatibility: bool,
         cell_widgets: Sequence[NotebookCell],
     ) -> None:
         self._variable_values = _copy_variables(variables)
@@ -282,7 +286,10 @@ class Notebook(_ObservableWidget):
             spec=dict(spec),
             attachments=dict(attachments),
             _variables=serialize_variables(self._variable_values),
-            options={"show_source": show_pinned_source},
+            options={
+                "show_source": show_pinned_source,
+                "observable_markdown_compatibility": observable_markdown_compatibility,
+            },
             _cell_widgets=list(cell_widgets),
         )
         for index, cell_widget in enumerate(self._cell_widgets):
@@ -486,6 +493,28 @@ class Notebook(_ObservableWidget):
         notebook.
         """
 
+        return cls._from_html_source(
+            source,
+            attachments=attachments,
+            base_path=base_path,
+            portable=portable,
+            variables=variables,
+            show_pinned_source=show_pinned_source,
+            observable_markdown_compatibility=False,
+        )
+
+    @classmethod
+    def _from_html_source(
+        cls,
+        source: str,
+        *,
+        attachments: Mapping[str, FileInput] | None,
+        base_path: str | pathlib.Path | None,
+        portable: bool,
+        variables: Mapping[str, Any] | None,
+        show_pinned_source: bool,
+        observable_markdown_compatibility: bool,
+    ) -> "Notebook":
         if not isinstance(source, str):
             raise TypeError("source must be a Notebook Kit HTML string")
         source, discovered = prepare_source(
@@ -502,6 +531,7 @@ class Notebook(_ObservableWidget):
             source=source,
             spec={},
             attachments={**discovered, **normalized},
+            observable_markdown_compatibility=observable_markdown_compatibility,
             cell_widgets=_cell_widgets_for_cells(parsed),
         )
 
@@ -525,12 +555,14 @@ class Notebook(_ObservableWidget):
 
         source, discovered = fetch_observablehq_notebook(specifier, timeout=timeout)
         normalized = normalize_files(attachments, base_path=None)
-        return cls.from_html(
+        return cls._from_html_source(
             source,
+            base_path=None,
             portable=False,
             variables=variables,
             attachments={**discovered, **normalized},
             show_pinned_source=show_pinned_source,
+            observable_markdown_compatibility=True,
         )
 
     def to_notebook_html(self) -> str:

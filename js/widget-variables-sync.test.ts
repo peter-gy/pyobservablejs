@@ -217,6 +217,79 @@ viewof gain = {
 		controller.abort();
 	});
 
+	test("updates object-valued viewof variables through nested selects", async () => {
+		const model = createModel({
+			role: "notebook",
+			spec: {
+				cells: [
+					{
+						id: 1,
+						mode: "ojs",
+						value: `
+Select = (items, options = {}) => {
+  const form = document.createElement("form");
+  const select = document.createElement("select");
+  let selected = options.value ?? items[0];
+  for (const [index, item] of items.entries()) {
+    const option = document.createElement("option");
+    option.value = String(index);
+    option.textContent = String(item.pointDensity);
+    select.appendChild(option);
+  }
+  select.value = String(items.indexOf(selected));
+  const update = () => {
+    selected = items[select.selectedIndex] ?? null;
+  };
+  select.addEventListener("input", update);
+  select.addEventListener("change", update);
+  Object.defineProperty(form, "value", {
+    get() { return selected; },
+    set(value) {
+      selected = items.includes(value) ? value : null;
+      select.selectedIndex = items.indexOf(value);
+    },
+  });
+  form.appendChild(select);
+  return form;
+}`,
+					},
+					{ id: 2, mode: "ojs", value: "presetsArray = [{pointDensity: 7}, {pointDensity: 21}]" },
+					{ id: 3, mode: "ojs", value: "viewof presets = Select(presetsArray, {value: presetsArray[0]})" },
+					{ id: 4, mode: "ojs", value: "pointDensity = presets ? presets.pointDensity : -1" },
+				],
+			},
+			attachments: {},
+			_variables: {},
+			options: {},
+			_cell_widgets: ["anywidget:select", "anywidget:presets-array", "anywidget:presets", "anywidget:point-density"],
+		});
+		const childModels = new Map([
+			["anywidget:select", createModel({ role: "cell", name: "select", _values: {}, _value_names: [] })],
+			["anywidget:presets-array", createModel({ role: "cell", name: "presetsArray", _values: {}, _value_names: [] })],
+			["anywidget:presets", createModel({ role: "cell", name: "presets", _values: {}, _value_names: [] })],
+			["anywidget:point-density", createModel({ role: "cell", name: "pointDensity", _values: {}, _value_names: [] })],
+		]);
+		const el = document.createElement("div");
+		const controller = new AbortController();
+
+		widget.render({
+			model,
+			el,
+			signal: controller.signal,
+			host: createHost(childModels, createCellExportsMap(childModels), countingChildRenders(childModels, new Map())),
+		} as unknown as RenderProps<WidgetModel>);
+
+		const select = await waitFor(() => el.querySelector<HTMLSelectElement>("select") ?? undefined);
+		expect(await waitFor(() => (variableValue(model, "pointDensity") === 7 ? 7 : undefined))).toBe(7);
+
+		setVariables(model, 1, "set", { presets: { pointDensity: 21 } });
+
+		await waitFor(() => (variableValue(model, "pointDensity") === 21 ? 21 : undefined));
+		expect(select.selectedIndex).toBe(1);
+		expect(select.closest("form")?.value).toEqual({ pointDensity: 21 });
+		controller.abort();
+	});
+
 	test("replaces the tracked viewof target when a cell returns a new control", async () => {
 		const model = createModel({
 			role: "notebook",
@@ -327,7 +400,13 @@ viewof gain = {
 			cell: notebook.cells[1],
 			cellIndex: 1,
 			notebook,
-			options: { attachments: {}, baseUrl: document.baseURI, variables: { seed: 5, gain: 2 }, showSource: false },
+			options: {
+				attachments: {},
+				baseUrl: document.baseURI,
+				variables: { seed: 5, gain: 2 },
+				showSource: false,
+				observableMarkdownCompatibility: false,
+			},
 			cellModels: [seedModel, gainModel],
 			sync: {} as CellRenderContext["sync"],
 		});

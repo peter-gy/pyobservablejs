@@ -123,7 +123,17 @@ notebook.cells
 ```
 
 Tuple of `NotebookCell` widgets in notebook order. Each Notebook Kit cell has one
-child widget.
+child widget. After the parent notebook has rendered, display a child widget to
+render that cell in a standalone output root.
+
+```python
+notebook.cells[1]
+```
+
+Before the parent render, the child widget has no runtime context. The
+standalone output has its own browser runtime. DOM outputs render as DOM in that
+output root, while `NotebookCell.values` still contains only synchronized
+JSON-compatible values.
 
 ### `Notebook.cell`
 
@@ -247,6 +257,10 @@ Load a public ObservableHQ notebook through the document API.
 - Performs network I/O against `api.observablehq.com`.
 - Only public notebooks can be fetched.
 - ObservableHQ API `js` nodes are converted to Notebook Kit `ojs` cells.
+- Hosted markdown tags such as ``md`** 1. Title**` `` use ObservableHQ
+  compatibility during render. This compatibility is scoped to
+  `from_observablehq`. `from_html` and Python-authored cells keep Notebook Kit's
+  normal markdown contract.
 - Uploaded files become URL-backed `FileAttachment` entries.
 - Explicit `attachments` override discovered remote attachments with the same
   name. They may be local paths, URL strings, or metadata mappings. Local paths

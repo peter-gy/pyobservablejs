@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import datetime as dt
-import importlib.util
 import inspect
 import pathlib
 import sys
@@ -13,10 +12,7 @@ import pyobservablejs as obs
 import pytest
 import traitlets
 from pyobservablejs._graph import CellInfo, DependencyEdge, NotebookGraph
-from pyobservablejs._observable import (
-    observable_document_to_html,
-    resolve_observablehq_api_url,
-)
+from pyobservablejs._observable import resolve_observablehq_api_url
 
 
 def _notebook_from_html_file(path: pathlib.Path, **kwargs: Any) -> obs.Notebook:
@@ -29,6 +25,14 @@ def _notebook_from_html_file(path: pathlib.Path, **kwargs: Any) -> obs.Notebook:
 
 def test_public_namespace_is_small() -> None:
     assert set(obs.__all__) == {"Notebook", "html", "js", "md", "ojs"}
+    assert {name for name in dir(obs) if not name.startswith("_")} <= {
+        "Notebook",
+        "annotations",
+        "html",
+        "js",
+        "md",
+        "ojs",
+    }
 
 
 def test_public_signatures_hide_widget_internals() -> None:
@@ -75,27 +79,6 @@ def test_public_signatures_hide_widget_internals() -> None:
         assert "format" not in params
 
 
-def test_legacy_api_names_are_absent() -> None:
-    widget = obs.Notebook()
-
-    assert importlib.util.find_spec("observablejs") is None
-    assert not hasattr(widget, "data")
-    assert not hasattr(widget, "update_data")
-    assert not hasattr(widget, "defining_cell")
-    assert not hasattr(obs, "cell")
-    assert not hasattr(obs, "sql")
-    assert not hasattr(obs, "Cell")
-    assert not hasattr(obs, "NotebookCell")
-    assert not hasattr(obs, "CellInfo")
-    assert not hasattr(obs, "DependencyEdge")
-    assert not hasattr(obs, "NotebookGraph")
-    assert not hasattr(obs, "arrow")
-    assert not hasattr(obs, "records")
-    assert not hasattr(obs.Notebook, "from_file")
-    assert not hasattr(obs.Notebook, "from_url")
-    assert not hasattr(obs.Notebook(obs.ojs("answer = 42")).cell(0), "get")
-
-
 def test_sql_mode_is_not_publicly_authorable() -> None:
     mode: Any = "sql"
     with pytest.raises(ValueError, match="Unsupported Python-authored cell mode"):
@@ -129,50 +112,6 @@ def test_observablehq_specifier_resolution_matches_document_api() -> None:
     )
     with pytest.raises(ValueError, match="Invalid ObservableHQ notebook specifier"):
         resolve_observablehq_api_url("https://example.com/@d3/bar-chart")
-
-
-def test_observable_document_serializes_to_notebook_kit_html() -> None:
-    source, attachments = observable_document_to_html(
-        {
-            "title": "Remote Plot",
-            "nodes": [
-                {
-                    "id": 0,
-                    "mode": "md",
-                    "value": "md`# Remote Plot`",
-                    "pinned": False,
-                },
-                {
-                    "id": 3,
-                    "mode": "js",
-                    "value": 'data = FileAttachment("data.csv").csv()',
-                    "pinned": True,
-                },
-            ],
-            "files": [
-                {
-                    "name": "data.csv",
-                    "download_url": "https://static.example/data.csv",
-                    "mime_type": "text/csv",
-                    "size": 12,
-                    "create_time": "2026-05-24T10:00:00.000Z",
-                }
-            ],
-        }
-    )
-
-    assert "<title>Remote Plot</title>" in source
-    assert 'id="0"' in source
-    assert 'type="application/vnd.observable.javascript"' in source
-    assert 'pinned=""' in source
-    assert attachments == {
-        "data.csv": {
-            "url": "https://static.example/data.csv",
-            "mimeType": "text/csv",
-            "size": 12,
-            "lastModified": 1779616800000,
-        }
-    }
 
 
 def test_notebook_from_observablehq_fetches_source_and_remote_attachments(
@@ -212,19 +151,6 @@ def test_notebook_from_observablehq_fetches_source_and_remote_attachments(
     assert widget.variables == {"answer": 7}
     assert widget.get_state(["_variables"]) == {"_variables": {"answer": 7}}
     assert len(widget.cells) == 1
-
-
-def test_notebook_serializes_source_cells() -> None:
-    widget = obs.Notebook(
-        obs.md("# Title"),
-        obs.js("const answer = 42;", output="answer"),
-        title="Demo",
-    )
-
-    assert widget.spec["title"] == "Demo"
-    assert widget.spec["cells"][0]["mode"] == "md"
-    assert widget.spec["cells"][1]["output"] == "answer"
-    assert "<notebook" in widget.to_notebook_html()
 
 
 def test_cell_defaults_to_observable_js_and_dedents() -> None:

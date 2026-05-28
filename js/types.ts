@@ -30,6 +30,7 @@ export type WidgetModel = {
 	_value_names?: string[];
 	options?: {
 		show_source?: boolean;
+		observable_markdown_compatibility?: boolean;
 	};
 	_cell_widgets?: string[];
 };
@@ -39,6 +40,7 @@ export type NotebookOptions = {
 	baseUrl: string;
 	variables: Record<string, unknown>;
 	showSource: boolean;
+	observableMarkdownCompatibility: boolean;
 };
 
 export type AttachmentRegistry = {

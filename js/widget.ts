@@ -1,11 +1,14 @@
 import type { InitializeProps, RenderProps } from "@anywidget/types";
 import { deserialize, toNotebook, transpile, type Cell, type Notebook } from "@observablehq/notebook-kit";
-import { observe, type DefineState, type NotebookRuntime } from "@observablehq/notebook-kit/runtime";
+import { observe, type NotebookRuntime } from "@observablehq/notebook-kit/runtime";
 import { registerAttachments } from "./attachments";
 import { createNotebookGraph, exposedVariableNames, unprefix } from "./graph";
 import { renderSource } from "./highlight";
+import { readModelVariableNames, readModelVariables } from "./model-values";
 import { createRuntime, createRuntimeCleanup } from "./runtime";
+import { createRuntimeDefinition } from "./runtime-definition";
 import { createRuntimeVariablesSync, readNotebookVariables } from "./runtime-variables-sync";
+import { defineStandaloneDependencyCells } from "./standalone-dependencies";
 import type {
 	CellExports,
 	CellRenderContext,
@@ -18,7 +21,7 @@ import type {
 	RuntimeObserver,
 	WidgetModel,
 } from "./types";
-import { isViewTarget, readViewValue, writeViewValue } from "./view";
+import { isViewTarget, readNestedSelectState, readViewValue, type NestedSelectState, writeViewValue } from "./view";
 import {
 	appendCellWrapper,
 	createCellOutput,
@@ -47,6 +50,11 @@ type CellWidgetState = {
 	composedRenders: WeakMap<HTMLElement, CellRenderContext>;
 };
 
+type ModelViewState = {
+	selects: NestedSelectState;
+	value: unknown;
+};
+
 const MODEL_CHANGE_EVENTS = [
 	"change:source",
 	"change:spec",
@@ -58,6 +66,7 @@ const MODEL_CHANGE_EVENTS = [
 const cellStates = new WeakMap<RenderProps<WidgetModel>["model"], CellWidgetState>();
 const localCellExports = new WeakMap<RenderProps<WidgetModel>["model"], CellExports>();
 const cellStateKeys = new WeakMap<RenderProps<WidgetModel>["model"], string>();
+const modelViewStates = new WeakMap<RenderProps<WidgetModel>["model"], Map<string, ModelViewState>>();
 const cellStatesById = new Map<string, CellWidgetState>();
 const localCellExportsById = new Map<string, CellExports>();
 let nextFallbackCellStateKey = 0;
@@ -294,11 +303,13 @@ function getNotebook(model: RenderProps<WidgetModel>["model"]): Notebook {
 }
 
 function getNotebookOptions(model: RenderProps<WidgetModel>["model"]): NotebookOptions {
+	const wireOptions = model.get("options");
 	return {
 		attachments: model.get("attachments") ?? {},
 		baseUrl: model.get("base_url") || document.baseURI,
 		variables: readNotebookVariables(model),
-		showSource: model.get("options")?.show_source === true,
+		showSource: wireOptions?.show_source === true,
+		observableMarkdownCompatibility: wireOptions?.observable_markdown_compatibility === true,
 	};
 }
 
@@ -464,54 +475,10 @@ function renderStandaloneCellWidget(
 	context: CellRenderContext,
 	signal: AbortSignal,
 ): void {
-	const definition = transpile(context.cell, { resolveLocalImports: true });
-	if (definition.autoview === true) {
-		renderIsolatedStandaloneCellWidget(model, el, context, signal);
-		return;
-	}
-	renderLiveStandaloneCellWidget(model, el, context, definition, signal);
-}
-
-function renderLiveStandaloneCellWidget(
-	model: RenderProps<WidgetModel>["model"],
-	el: HTMLElement,
-	context: CellRenderContext,
-	definition: ReturnType<typeof transpile>,
-	signal: AbortSignal,
-): void {
-	prepareWidgetShell(el);
-	if (signal.aborted) return;
-
-	const root = createNotebookRoot(el, context.notebook.theme);
-
-	const wrapper = appendCellWrapper(root, { standalone: true });
-	const output = createCellOutput(wrapper, context.cell);
-
-	syncCellVariableNames(model, exposedVariableNames(definition));
-	const state: Parameters<NotebookRuntime["define"]>[0] = {
-		root: output,
-		expanded: [],
-		variables: [],
-	};
-	signal.addEventListener(
-		"abort",
-		() => {
-			for (const variable of state.variables) variable.delete();
-			output.replaceChildren();
-		},
-		{ once: true },
-	);
-	try {
-		context.runtime.define(state, createStandaloneDisplayDefinition(context.cell, definition), observe);
-		if (context.showSource && context.cell.pinned) {
-			wrapper.appendChild(renderSource(context.cell, signal));
-		}
-	} catch (error) {
-		if (!signal.aborted) {
-			for (const variable of state.variables) variable.delete();
-		}
-		throw error;
-	}
+	// Standalone cells own a runtime because DOM outputs cannot be reused across
+	// notebook roots. Dependencies come from live sibling values, parent runtime
+	// imports, or source cells.
+	renderIsolatedStandaloneCellWidget(model, el, context, signal);
 }
 
 function renderIsolatedStandaloneCellWidget(
@@ -575,244 +542,6 @@ function renderComposedCellWidget(el: HTMLElement, context: CellRenderContext, s
 	renderCell(el, context.runtime, context.cell, context.showSource, context.sync, signal);
 }
 
-function defineStandaloneDependencyCells(
-	runtime: NotebookRuntime,
-	context: CellRenderContext,
-	targetDefinition: ReturnType<typeof transpile>,
-	signal: AbortSignal,
-): void {
-	// Isolated `viewof` renders need the real dependency graph, not JSON trait
-	// snapshots. Function-valued imports and helpers cannot cross the anywidget
-	// wire format and must be evaluated from notebook source inside this runtime.
-	const states: DefineState[] = [];
-	const listenerCleanups: Array<() => void> = [];
-	const definitions = new Map<number, ReturnType<typeof transpile>>();
-	const defining = new Set<number>();
-	const defined = new Set<number>();
-	const liveDefined = new Set<string>();
-	const cleanup = () => {
-		for (const listenerCleanup of listenerCleanups.reverse()) listenerCleanup();
-		listenerCleanups.length = 0;
-		for (const state of states.reverse()) {
-			for (const variable of state.variables) variable.delete();
-			state.root.replaceChildren();
-		}
-		states.length = 0;
-	};
-	signal.addEventListener("abort", cleanup, { once: true });
-
-	try {
-		const targetInputs = targetDefinition.inputs ?? [];
-		for (const input of targetInputs) defineLiveDependency(input);
-		for (const input of targetInputs) defineDependenciesForName(input);
-	} catch (error) {
-		signal.removeEventListener("abort", cleanup);
-		cleanup();
-		throw error;
-	}
-
-	function defineDependenciesForName(name: string): void {
-		if (runtime.main.defines(name)) return;
-		if (defineLiveDependency(name)) return;
-		for (const index of dependencyCellIndexes(context, name, definitions)) defineDependencyCell(index);
-	}
-
-	function defineDependencyCell(index: number): void {
-		if (index === context.cellIndex || defined.has(index) || defining.has(index)) return;
-		defining.add(index);
-		const definition = transpileDependencyCell(context, definitions, index);
-		const inputs = definition.inputs ?? [];
-		for (const input of inputs) defineLiveDependency(input);
-		for (const input of inputs) defineDependenciesForName(input);
-		defining.delete(index);
-		defined.add(index);
-
-		const state: DefineState = {
-			root: document.createElement("div"),
-			expanded: [],
-			variables: [],
-		};
-		states.push(state);
-		const cell = context.notebook.cells[index];
-		const runtimeDefinition = createRuntimeDefinition(cell, definition);
-		if (runtimeVariableNames(definition).some((name) => runtime.main.defines(name))) {
-			defineMissingRuntimeVariables(runtime, state, runtimeDefinition);
-		} else {
-			runtime.define(state, runtimeDefinition, observe);
-		}
-	}
-
-	function defineLiveDependency(name: string): boolean {
-		if (liveDefined.has(name)) return true;
-		const model = liveDependencyModel(context, name);
-		if (!model) return false;
-		const variable = runtime.main.variable(true);
-		const defineCurrent = () => {
-			const value = readModelVariables(model)[name];
-			if (!canReviveDependencyValue(value)) return;
-			variable.define(name, [], () => reviveSyncedValue(value));
-		};
-		defineCurrent();
-		model.on("change:_values", defineCurrent);
-		listenerCleanups.push(() => {
-			model.off("change:_values", defineCurrent);
-			variable.delete();
-		});
-		liveDefined.add(name);
-		return true;
-	}
-}
-
-function defineMissingRuntimeVariables(
-	runtime: NotebookRuntime,
-	state: DefineState,
-	definition: Parameters<NotebookRuntime["define"]>[1],
-): void {
-	const main = runtime.main as RuntimeModule;
-	const sourceRuntime = createRuntimeModule(runtime);
-	const sourceMain = sourceRuntime.main as RuntimeModule;
-	const sourceImports: DefineState["variables"] = [];
-	for (const input of definition.inputs ?? []) {
-		if (!sourceRuntime.main.defines(input) && runtime.main.defines(input)) {
-			sourceImports.push(sourceMain.import(input, runtime.main));
-		}
-	}
-	sourceRuntime.define(state, definition, observe);
-	state.variables.push(...sourceImports);
-	for (const name of runtimeDefinitionNames(definition)) {
-		if (!runtime.main.defines(name)) {
-			state.variables.push(main.import(name, sourceRuntime.main));
-		}
-	}
-}
-
-function createRuntimeModule(runtime: NotebookRuntime): NotebookRuntime {
-	const sourceRuntime = Object.create(Object.getPrototypeOf(runtime)) as NotebookRuntime;
-	Object.defineProperties(sourceRuntime, {
-		runtime: { value: runtime.runtime },
-		main: { value: runtime.runtime.module() },
-	});
-	return sourceRuntime;
-}
-
-function runtimeDefinitionNames(definition: Parameters<NotebookRuntime["define"]>[1]): string[] {
-	const names = new Set<string>();
-	if (definition.output) {
-		names.add(definition.output);
-		if (definition.autoview) names.add(unprefix(definition.output, "viewof$"));
-		if (definition.automutable) {
-			const name = unprefix(definition.output, "mutable ");
-			names.add(name);
-			names.add(`mutable$${name}`);
-		}
-	} else {
-		for (const name of definition.outputs ?? []) names.add(name);
-	}
-	return Array.from(names);
-}
-
-type RuntimeModule = NotebookRuntime["main"] & {
-	define(...args: unknown[]): DefineState["variables"][number];
-	import(...args: unknown[]): DefineState["variables"][number];
-	variable(
-		observer?: unknown,
-		options?: unknown,
-	): {
-		define(...args: unknown[]): DefineState["variables"][number];
-	};
-};
-
-function dependencyCellIndexes(
-	context: CellRenderContext,
-	name: string,
-	definitions: Map<number, ReturnType<typeof transpile>>,
-): number[] {
-	const graph = context.notebookModel.get("_graph");
-	if (isNotebookGraphLike(graph)) {
-		return graph.cells
-			.filter((cell) => cell.index !== context.cellIndex)
-			.filter((cell) => cell.defines.includes(name) || cell.runtime_outputs.includes(name))
-			.map((cell) => cell.index);
-	}
-	const indexes: number[] = [];
-	for (let index = 0; index < context.notebook.cells.length; index++) {
-		if (index === context.cellIndex) continue;
-		let definition: ReturnType<typeof transpile>;
-		try {
-			definition = transpileDependencyCell(context, definitions, index);
-		} catch {
-			continue;
-		}
-		if (runtimeVariableNames(definition).includes(name)) indexes.push(index);
-	}
-	return indexes;
-}
-
-function transpileDependencyCell(
-	context: CellRenderContext,
-	definitions: Map<number, ReturnType<typeof transpile>>,
-	index: number,
-): ReturnType<typeof transpile> {
-	const existing = definitions.get(index);
-	if (existing) return existing;
-	const cell = context.notebook.cells[index];
-	if (!cell) throw new Error(`Missing notebook cell at index ${index}`);
-	const definition = transpile(cell, { resolveLocalImports: true });
-	definitions.set(index, definition);
-	return definition;
-}
-
-function liveDependencyModel(context: CellRenderContext, name: string): RenderProps<WidgetModel>["model"] | undefined {
-	const matches = context.cellModels.filter((model): model is RenderProps<WidgetModel>["model"] => {
-		if (!model) return false;
-		const values = readModelVariables(model);
-		return Object.prototype.hasOwnProperty.call(values, name) && canReviveDependencyValue(values[name]);
-	});
-	return matches.length === 1 ? matches[0] : undefined;
-}
-
-function canReviveDependencyValue(value: unknown): boolean {
-	if (Array.isArray(value)) return value.every(canReviveDependencyValue);
-	if (value === null || typeof value !== "object") return true;
-	const record = value as Record<string, unknown>;
-	const type = record.__pyobservablejs_type__;
-	if (typeof type === "string") {
-		if (
-			["function", "element", "error", "regexp", "reference", "file", "blob", "arraybuffer", "typedarray"].includes(
-				type,
-			)
-		) {
-			return false;
-		}
-		if (type === "map" || type === "set") {
-			return Array.isArray(record.value) && record.value.every(canReviveDependencyValue);
-		}
-		if (type === "object") return canReviveDependencyValue(record.value);
-		return ["undefined", "number", "bigint", "datetime"].includes(type);
-	}
-	return Object.values(record).every(canReviveDependencyValue);
-}
-
-function isNotebookGraphLike(value: unknown): value is NonNullable<WidgetModel["_graph"]> {
-	return (
-		value !== null &&
-		typeof value === "object" &&
-		Array.isArray((value as { cells?: unknown }).cells) &&
-		Array.isArray((value as { edges?: unknown }).edges)
-	);
-}
-
-function runtimeVariableNames(definition: ReturnType<typeof transpile>): string[] {
-	const names = new Set(exposedVariableNames(definition));
-	if (definition.output) {
-		names.add(definition.output);
-		if (definition.automutable) names.add(`mutable$${unprefix(definition.output, "mutable ")}`);
-	} else {
-		for (const name of definition.outputs ?? []) names.add(name);
-	}
-	return Array.from(names);
-}
-
 function renderCell(
 	wrapper: HTMLElement,
 	runtime: NotebookRuntime,
@@ -855,43 +584,6 @@ function defineCell(runtime: NotebookRuntime, root: HTMLDivElement, cell: Cell, 
 	} catch (error) {
 		root.appendChild(createTopLevelError(error));
 	}
-}
-
-function createRuntimeDefinition(
-	cell: Cell,
-	definition: ReturnType<typeof transpile>,
-): Parameters<NotebookRuntime["define"]>[1] {
-	return {
-		id: cell.id,
-		body: new Function(`return (${definition.body});`)(),
-		inputs: definition.inputs,
-		outputs: definition.outputs,
-		output: definition.output,
-		autodisplay: definition.autodisplay,
-		autoview: definition.autoview,
-		automutable: definition.automutable,
-	};
-}
-
-function createStandaloneDisplayDefinition(
-	cell: Cell,
-	definition: ReturnType<typeof transpile>,
-): Parameters<NotebookRuntime["define"]>[1] {
-	const exposed = exposedVariableNames(definition);
-	if (exposed.length === 1) {
-		return {
-			id: cell.id,
-			body: (value: unknown) => value,
-			inputs: exposed,
-			autodisplay: true,
-		};
-	}
-	return {
-		id: cell.id,
-		body: new Function(`return (${definition.body});`)(),
-		inputs: definition.inputs,
-		autodisplay: definition.autodisplay,
-	};
 }
 
 function renderCellError(wrapper: HTMLElement, error: unknown): void {
@@ -994,12 +686,6 @@ function createCellModelSync(
 	return sync;
 }
 
-function syncCellVariableNames(model: RenderProps<WidgetModel>["model"], names: string[]): void {
-	if (sameWireValue(model.get("_value_names"), names)) return;
-	model.set("_value_names", names);
-	model.save_changes();
-}
-
 function createBaseSync(
 	model: RenderProps<WidgetModel>["model"],
 	signal: AbortSignal,
@@ -1023,6 +709,7 @@ function createBaseSync(
 		setVariable(name, value) {
 			const variables = adapter.readVars();
 			if (sameWireValue(variables[name], value)) return;
+			recordModelViewState(sync, name, value);
 			adapter.writeVars({ ...variables, [name]: value });
 		},
 		currentVariables: adapter.readVars,
@@ -1038,8 +725,25 @@ function applyModelVariablesToViews(sync: CellVariableSync): void {
 		const view = sync.views.get(name);
 		if (!view) continue;
 		if (sameWireValue(toWireValue(readViewValue(view)), wireValue)) continue;
-		writeViewValue(view, reviveSyncedValue(wireValue));
+		writeViewValue(view, reviveSyncedValue(wireValue), readModelViewState(sync, name, wireValue));
 	}
+}
+
+function recordModelViewState(sync: CellVariableSync, name: string, value: unknown): void {
+	const view = sync.views.get(name);
+	const selects = view ? readNestedSelectState(view) : undefined;
+	const states = modelViewStates.get(sync.model) ?? new Map<string, ModelViewState>();
+	if (selects && selects.length > 0) {
+		states.set(name, { selects, value });
+		modelViewStates.set(sync.model, states);
+	} else {
+		states.delete(name);
+	}
+}
+
+function readModelViewState(sync: CellVariableSync, name: string, value: unknown): NestedSelectState | undefined {
+	const state = modelViewStates.get(sync.model)?.get(name);
+	return state && sameWireValue(state.value, value) ? state.selects : undefined;
 }
 
 function syncNotebookGraph(
@@ -1106,17 +810,6 @@ function syncNotebookValues(
 		changed = true;
 	}
 	if (changed) model.save_changes();
-}
-
-function readModelVariableNames(model: RenderProps<WidgetModel>["model"]): string[] {
-	const value = model.get("_value_names");
-	return Array.isArray(value) ? value.filter((name): name is string => typeof name === "string") : [];
-}
-
-function readModelVariables(model: RenderProps<WidgetModel>["model"]): Record<string, unknown> {
-	const value = model.get("_values");
-	if (value === null || typeof value !== "object" || Array.isArray(value)) return {};
-	return value;
 }
 
 function getCellRefs(value: unknown): string[] {

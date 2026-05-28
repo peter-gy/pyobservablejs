@@ -92,9 +92,12 @@ Rendering follows a fixed order:
 8. Aggregate child values onto the notebook model for `notebook.values`.
 
 The full notebook is one Observable reactive graph. A standalone
-`notebook.cell("name")` display for an ordinary cell renders against the bound
-parent runtime. `viewof` cells use an isolated render path with a separate DOM
-target and a synchronized current value on the cell model.
+`notebook.cell("name")` display creates a runtime for that child output root and
+rebuilds the target cell with source-backed OJS dependencies. When sibling cells
+have revivable synced values, the child runtime uses those values. Browser-only
+values already defined in the parent runtime can be imported without crossing
+trait JSON. This gives DOM outputs their own `canvas`, `svg`, `figure`, or
+control nodes while keeping Python-visible values on the child model.
 
 ## Graph Metadata
 
@@ -157,8 +160,9 @@ TypeScript-owned OJS evaluation and transpilation.
 `js/widget.ts`
 : Coordinates anywidget lifecycle, child widget composition, Notebook Kit runtime
 binding, standalone cell display, `viewof` synchronization, and abort cleanup.
-The core invariant is one parent runtime per displayed notebook, with child
-models acting as names into that runtime.
+The core invariant is one parent runtime per full notebook display, with child
+models acting as names into that runtime. Standalone child displays create their
+own output-root runtime.
 
 `src/pyobservablejs/_files.py`
 : Rewrites source-backed notebooks through static source analysis. It finds

@@ -5,9 +5,11 @@ description: How anywidget composition makes Observable cell widgets possible.
 
 # Widget Composition
 
-A `Notebook` owns one Notebook Kit runtime and passes `NotebookCell` references
-through anywidget composition. The parent notebook resolves each child widget,
-binds it to the runtime, and keeps the child model visible to Python.
+A full `Notebook` display owns the parent Notebook Kit runtime and passes
+`NotebookCell` references through anywidget composition. The parent notebook
+resolves each child widget, binds it to the parent runtime, and keeps the child
+model visible to Python. When a child is displayed on its own after parent
+render, it creates a separate runtime for that output root.
 
 The composition contract uses three browser-facing primitives:
 
@@ -37,12 +39,14 @@ notebook
 notebook.cell("gain")
 ```
 
-The full notebook display and ordinary `notebook.cell("name")` displays address
-the same Observable runtime. Widget composition gives each cell a real anywidget
-child model. The parent notebook owns runtime binding, DOM placement, and
-cleanup. Ordinary standalone cells reuse live dependencies from the full
-notebook. `viewof` standalone cells use an isolated DOM target and keep the
-current value synchronized through the child model.
+The full notebook display owns the parent Observable runtime. Widget composition
+gives each cell a real anywidget child model. The parent notebook owns runtime
+binding, DOM placement, and cleanup. A standalone child widget renders in its
+own Notebook Kit runtime so DOM outputs such as `canvas`, `svg`, and `figure`
+nodes can be created for that output root. The standalone runtime reads
+dependencies from live sibling values, source-backed OJS cells, or browser-only
+values already defined in the parent runtime. Synchronized values stay on the
+child model.
 
 ## Python Shape
 
@@ -103,17 +107,20 @@ the parent notebook.
 
 ## Concrete Features Enabled
 
-**One runtime, many Python names.** The parent creates one Notebook Kit runtime
-for the notebook. Child models hold references to cells inside that runtime.
+**Full notebook runtime.** The parent creates one Notebook Kit runtime for the
+full notebook display. Child models hold references to cells inside that
+runtime.
 
 **Full notebook display.** The parent renders each child widget into a cell
 container in notebook order. Child cells are anywidget models. The notebook
 renderer controls their DOM placement.
 
-**Standalone cell display.** A child displayed separately renders against the
-latest parent runtime context. Ordinary display cells reuse live JavaScript
-values from the notebook graph. `viewof` cells use an isolated render path with
-its own DOM target and a current value synced through the cell model.
+**Standalone cell display.** A child displayed separately renders against a
+runtime created for that child output root. Source-backed OJS dependency cells
+are defined in that runtime. Live sibling values are used when the parent
+notebook has already synchronized revivable values. Browser-only values already
+defined in the parent runtime can be imported without crossing trait JSON.
+`viewof` controls keep their current value synchronized through the cell model.
 
 **Python-visible values.** Each child model syncs the variables exposed by its
 cell. The parent listens to child `_value_names` and `_values`, then
@@ -162,6 +169,6 @@ contract for this package: a parent owns a Notebook Kit runtime, resolves child
 widgets inside its render function, passes a runtime context to those children,
 and cascades cleanup through one browser lifecycle.
 
-The parent notebook is the runtime owner. The child widgets are Python names
-into that runtime. Use host layouts to arrange existing widgets. Use anywidget
+The parent notebook is the graph owner. Child widgets are Python names for cells
+in that graph. Use host layouts to arrange existing widgets. Use anywidget
 composition when a parent must resolve child models and pass runtime context.

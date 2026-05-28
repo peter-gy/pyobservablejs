@@ -1,5 +1,6 @@
 import { NotebookRuntime, library } from "@observablehq/notebook-kit/runtime";
 import { createFileAttachment } from "./attachments";
+import { normalizeMarkdownRenderer } from "./observable-markdown";
 import type { AttachmentRegistry, NotebookOptions } from "./types";
 import { createVariableBuiltins } from "./wire";
 
@@ -17,10 +18,15 @@ export function createRuntime(
 	const builtins = {
 		...library,
 		FileAttachment: () => createFileAttachment(options.baseUrl, attachmentRegistry),
+		md: options.observableMarkdownCompatibility ? createCompatibleMarkdownBuiltin(library.md) : library.md,
 		width: width as RuntimeBuiltins["width"],
 		...createVariableBuiltins(options.variables),
 	} as RuntimeBuiltinsWithVars;
 	return new NotebookRuntime(builtins);
+}
+
+function createCompatibleMarkdownBuiltin(loadMarkdown: typeof library.md): typeof library.md {
+	return async () => normalizeMarkdownRenderer(await loadMarkdown());
 }
 
 type RedefinableModule = NotebookRuntime["main"] & {
