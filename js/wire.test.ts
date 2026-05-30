@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { describe, expect, test } from "vitest";
-import { createVariableBuiltins, reviveSyncedValue, toWireValue } from "./wire";
+import { createVariableBuiltins, reviveSyncedValue, toWireValue } from "./runtime/wire";
 
 describe("wire values", () => {
 	test("round trips synced numbers, dates, maps, and sets", () => {

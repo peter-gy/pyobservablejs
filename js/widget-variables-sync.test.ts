@@ -3,8 +3,8 @@
 import type { RenderProps } from "@anywidget/types";
 import { toNotebook } from "@observablehq/notebook-kit";
 import { describe, expect, test } from "vitest";
-import { SELECTORS } from "./dom-contract";
-import type { CellRenderContext, WidgetModel } from "./types";
+import { SELECTORS } from "./widget/dom-contract";
+import type { CellRenderContext, WidgetModel } from "./widget/types";
 import widget from "./widget";
 import {
 	createCellExports,

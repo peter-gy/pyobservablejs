@@ -1,6 +1,6 @@
 import { NotebookRuntime, library } from "@observablehq/notebook-kit/runtime";
 import { createFileAttachment } from "./attachments";
-import { normalizeMarkdownRenderer } from "./observable-markdown";
+import { normalizeMarkdownRenderer } from "./markdown";
 import type { AttachmentRegistry, NotebookOptions } from "./types";
 import { createVariableBuiltins } from "./wire";
 

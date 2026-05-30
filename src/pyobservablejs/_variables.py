@@ -2,8 +2,8 @@
 
 Python sends variables through anywidget as JSON-compatible trait state. Plain values
 stay normal JSON. Values that need a browser-side type use
-``__pyobservablejs_type__`` tags that ``js/wire.ts`` revives before the OJS runtime
-evaluates cells.
+``__pyobservablejs_type__`` tags that ``js/runtime/wire.ts`` revives before the OJS
+runtime evaluates cells.
 """
 
 from __future__ import annotations

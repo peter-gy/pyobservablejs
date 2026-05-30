@@ -71,14 +71,13 @@ so the browser can resolve the matching child models.
 
 ## Browser Runtime
 
-| File                | Role                                                                             |
-| ------------------- | -------------------------------------------------------------------------------- |
-| `js/widget.ts`      | anywidget lifecycle, Notebook Kit runtime binding, cell composition, value sync. |
-| `js/runtime.ts`     | Runtime builtins, `FileAttachment`, `width`, and Python-owned OJS variables.     |
-| `js/wire.ts`        | Browser-side value serialization and Python variable revival.                    |
-| `js/graph.ts`       | Notebook Kit `transpile` metadata to notebook graph JSON.                        |
-| `js/attachments.ts` | Scoped `FileAttachment` registry cleanup.                                        |
-| `js/highlight.ts`   | Shiki-backed rendering for pinned source cells.                                  |
+| File or folder       | Role                                                                                |
+| -------------------- | ----------------------------------------------------------------------------------- |
+| `js/widget/index.ts` | anywidget entrypoint. It dispatches notebook and cell renders by model role.        |
+| `js/widget/`         | Widget lifecycle, composition, DOM shell, child state, and trait synchronization.   |
+| `js/runtime/`        | Observable Runtime builtins, wire values, `viewof` targets, and definition helpers. |
+| `js/observable/`     | Notebook Kit `transpile` metadata and graph JSON.                                   |
+| `js/model/`          | Typed anywidget trait access helpers.                                               |
 
 Rendering follows a fixed order:
 
@@ -157,12 +156,18 @@ Python-authored cells, source-backed constructors, child anywidget composition,
 trait initialization, browser-synced values, and graph state with
 TypeScript-owned OJS evaluation and transpilation.
 
-`js/widget.ts`
-: Coordinates anywidget lifecycle, child widget composition, Notebook Kit runtime
-binding, standalone cell display, `viewof` synchronization, and abort cleanup.
-The core invariant is one parent runtime per full notebook display, with child
-models acting as names into that runtime. Standalone child displays create their
-own output-root runtime.
+`js/widget/`
+: Owns anywidget lifecycle, child widget composition, notebook rendering, and
+model trait writes. `notebook-renderer.ts` creates the parent runtime,
+`composed-cells.ts` binds child widgets into it, and `standalone-cell.ts`
+creates the isolated output-root runtime used by direct `nb.cells[index]`
+access.
+
+`js/runtime/`
+: Owns Observable Runtime mechanics that do not need widget DOM ownership.
+Runtime builtins, `viewof` target mutation, wire value revival, runtime
+definitions, and module import helpers live here. Model-aware variable patches
+and standalone dependency selection stay under `js/widget/`.
 
 `src/pyobservablejs/_files.py`
 : Rewrites source-backed notebooks through static source analysis. It finds
@@ -170,12 +175,12 @@ own output-root runtime.
 script cells. Comments, strings, template literals, regex literals, and
 non-JavaScript script types are excluded from those matches.
 
-`src/pyobservablejs/_variables.py` and `js/wire.ts`
+`src/pyobservablejs/_variables.py` and `js/runtime/wire.ts`
 : Define the cross-language wire format. Tagged `__pyobservablejs_type__` values
 carry dates, bytes, non-finite numbers, DOM summaries, typed arrays, and
 errors across the trait boundary.
 
-`js/highlight.ts`
+`js/widget/highlight.ts`
 : Uses Shiki for pinned source panels with a selected language and theme set.
 Highlighting is asynchronous and guarded by the render abort signal so stale
 work exits before writing into a disposed cell.

@@ -13,3 +13,9 @@ export function readModelVariables(model: AnyWidgetModel): Record<string, unknow
 	if (value === null || typeof value !== "object" || Array.isArray(value)) return {};
 	return value;
 }
+
+export function readNotebookVariables(model: AnyWidgetModel): Record<string, unknown> {
+	const value = model.get("_variables");
+	if (value === null || typeof value !== "object" || Array.isArray(value)) return {};
+	return value;
+}

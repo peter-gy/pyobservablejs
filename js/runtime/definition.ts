@@ -1,6 +1,6 @@
 import { transpile, type Cell } from "@observablehq/notebook-kit";
 import type { NotebookRuntime } from "@observablehq/notebook-kit/runtime";
-import { exposedVariableNames, unprefix } from "./graph";
+import { exposedVariableNames, unprefix } from "../observable/graph";
 
 type RuntimeDefinition = Parameters<NotebookRuntime["define"]>[1];
 type RuntimeBody = RuntimeDefinition["body"];

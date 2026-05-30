@@ -2,7 +2,7 @@
 
 import { toNotebook } from "@observablehq/notebook-kit";
 import { describe, expect, test } from "vitest";
-import { createNotebookGraph } from "./graph";
+import { createNotebookGraph } from "./observable/graph";
 
 describe("notebook graph metadata", () => {
 	test("uses Notebook Kit transpile metadata for references, outputs, and edges", () => {

@@ -1,5 +1,5 @@
 import type { RenderProps } from "@anywidget/types";
-import type { CellExports, WidgetModel } from "./types";
+import type { CellExports, WidgetModel } from "./widget/types";
 import widget from "./widget";
 
 export type Model = RenderProps<WidgetModel>["model"];

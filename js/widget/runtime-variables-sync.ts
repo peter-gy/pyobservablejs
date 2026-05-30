@@ -1,9 +1,11 @@
 import type { RenderProps } from "@anywidget/types";
 import type { NotebookRuntime } from "@observablehq/notebook-kit/runtime";
-import { setRuntimeVariables } from "./runtime";
-import type { NotebookOptions, RuntimeVariablesSync, ViewTarget, WidgetModel } from "./types";
-import { readViewValue, writeViewValue as writeRawViewValue } from "./view";
-import { revivePythonValue, sameWireValue, toWireValue } from "./wire";
+import { readNotebookVariables } from "../model/values";
+import type { WidgetModel } from "../model/types";
+import { setRuntimeVariables } from "../runtime";
+import type { NotebookOptions, RuntimeVariablesSync, ViewTarget } from "../runtime/types";
+import { readViewValue, writeViewValue as writeRawViewValue } from "../runtime/view";
+import { revivePythonValue, sameWireValue, toWireValue } from "../runtime/wire";
 
 type RuntimeVariablesSyncOptions = {
 	model: RenderProps<WidgetModel>["model"];
@@ -84,10 +86,7 @@ export function createRuntimeVariablesSync({
 	};
 }
 
-export function readNotebookVariables(model: RenderProps<WidgetModel>["model"]): Record<string, unknown> {
-	const value = model.get("_variables");
-	return value === null || typeof value !== "object" || Array.isArray(value) ? {} : value;
-}
+export { readNotebookVariables };
 
 function readVariableUpdate(model: RenderProps<WidgetModel>["model"]): NonNullable<WidgetModel["_variable_update"]> {
 	const value = model.get("_variable_update");

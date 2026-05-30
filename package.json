@@ -1,7 +1,7 @@
 {
 	"scripts": {
 		"dev": "pnpm run build -- --sourcemap=inline --watch",
-		"build": "esbuild js/widget.ts --minify --format=esm --bundle --outdir=src/pyobservablejs/static",
+		"build": "esbuild js/widget/index.ts --entry-names=widget --asset-names=widget --minify --format=esm --bundle --outdir=src/pyobservablejs/static",
 		"format": "oxfmt -c oxfmtrc.jsonc \"**/*.{ts,tsx,js,jsx,mjs,cjs,json,jsonc,md,mdx,yml,yaml,toml,ipynb}\"",
 		"format:check": "oxfmt --check -c oxfmtrc.jsonc \"**/*.{ts,tsx,js,jsx,mjs,cjs,json,jsonc,md,mdx,yml,yaml,toml,ipynb}\"",
 		"lint": "oxlint -c oxlintrc.json --deny-warnings --report-unused-disable-directives js",
