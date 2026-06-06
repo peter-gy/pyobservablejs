@@ -105,40 +105,12 @@ def _(notebook, notebook_view):
 
 
 @app.cell
-def _(mo, notebook):
-    mo.vstack(
-        [
-            mo.vstack(
-                [
-                    mo.md(f"**Cell {index}: `{cell.name}`**"),
-                    mo.ui.anywidget(cell),
-                ]
-            )
-            for index, cell in enumerate(notebook.cells)
-        ]
+def _(json, mo, notebook, notebook_view):
+    notebook_view.value
+    values = notebook.values
+    mo.md(
+        f"notebook.values['gain'] = `{json.dumps(values.get('gain'), sort_keys=True)}`"
     )
-    return
-
-
-@app.cell
-def _(mo, notebook):
-    gain_cell = mo.ui.anywidget(notebook.cell("gain"))
-    gain_cell
-    return (gain_cell,)
-
-
-@app.cell
-def _(mo, notebook):
-    gain_readout_cell = mo.ui.anywidget(notebook.cell("gain_readout"))
-    gain_readout_cell
-    return
-
-
-@app.cell
-def _(gain_cell, json, mo, notebook):
-    gain_cell.value
-    values = notebook.cell("gain").values
-    mo.md(f"notebook.cell('gain').values = `{json.dumps(values, sort_keys=True)}`")
     return
 
 

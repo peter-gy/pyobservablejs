@@ -60,7 +60,7 @@ notebook.value("value")  # 14
 
 ## Read an Input
 
-Name a `viewof` cell to display it separately and read its current browser value.
+Name a `viewof` cell and display the parent notebook.
 
 ```python
 notebook = obs.Notebook(
@@ -68,13 +68,14 @@ notebook = obs.Notebook(
     obs.ojs("double = gain * 2", name="double"),
 )
 
-notebook.cell("gain")
+notebook
 ```
 
-After that cell has rendered in the browser, read the synchronized values from a
-later Python cell:
+After the notebook has rendered in the browser, use the `NotebookCell` handle or
+the parent notebook to read synchronized values from a later Python cell:
 
 ```python
+notebook.cell("gain").value  # 5
 notebook.value("gain")  # 5
 notebook.value("double")  # 10
 ```
@@ -83,7 +84,8 @@ notebook.value("double")  # 10
 
 Use `from_html` for existing Notebook Kit output. It accepts an HTML string, so
 the loading step stays under your control. Local attachments and relative imports
-are embedded by default when `base_path` is set.
+are embedded by default when `base_path` is set. Local JavaScript imports are
+embedded recursively.
 
 ```python
 from pathlib import Path
@@ -96,8 +98,8 @@ notebook = obs.Notebook.from_html(
 notebook
 ```
 
-Use `portable=False` when the rendered widget should keep the original local
-paths.
+Use `portable=False` when the rendered widget should keep the original source
+references. Those paths resolve relative to the frontend page URL.
 
 ## Load a Public ObservableHQ Notebook
 

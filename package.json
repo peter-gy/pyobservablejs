@@ -1,7 +1,7 @@
 {
 	"scripts": {
 		"dev": "pnpm run build -- --sourcemap=inline --watch",
-		"build": "esbuild js/widget/index.ts --entry-names=widget --asset-names=widget --minify --format=esm --bundle --outdir=src/pyobservablejs/static",
+		"build": "node js/build.mjs",
 		"format": "oxfmt -c oxfmtrc.jsonc \"**/*.{ts,tsx,js,jsx,mjs,cjs,json,jsonc,md,mdx,yml,yaml,toml,ipynb}\"",
 		"format:check": "oxfmt --check -c oxfmtrc.jsonc \"**/*.{ts,tsx,js,jsx,mjs,cjs,json,jsonc,md,mdx,yml,yaml,toml,ipynb}\"",
 		"lint": "oxlint -c oxlintrc.json --deny-warnings --report-unused-disable-directives js",
@@ -21,16 +21,16 @@
 		"esbuild": "^0.28.0",
 		"jsdom": "29.1.1",
 		"oxfmt": "^0.51.0",
-		"oxlint": "^1.66.0",
-		"typescript": "^6.0.2",
+		"oxlint": "^1.68.0",
+		"typescript": "^6.0.3",
 		"vitest": "4.1.7"
 	},
 	"devEngines": {
 		"runtime": {
 			"name": "node",
-			"version": "^24.0.0",
+			"version": "^24.16.0",
 			"onFail": "download"
 		}
 	},
-	"packageManager": "pnpm@11.3.0+sha512.2c403d6594527287672b1f7056343a1f7c3634036a67ffabfcc2b3d7595d843768f8787148d1b57cf7956c90606bbd192857c363af19e96d2d0ec9ec5741d215"
+	"packageManager": "pnpm@11.5.2+sha512.71c631e382066efc25625d5cf029075de07b61b37f6e27350fbd84b1bda5864c8c1967adc280776b45c30a715c0359a3be08fef42d5bb09e2b99029979692916"
 }

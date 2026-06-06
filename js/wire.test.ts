@@ -34,4 +34,26 @@ describe("wire values", () => {
 		expect(builtins.raw()).toEqual(new Uint8Array([97, 98, 99]));
 		expect(Number.isNaN(builtins.invalid() as number)).toBe(true);
 	});
+
+	test("revives Python bigints without losing integer precision", () => {
+		const builtins = createVariableBuiltins({
+			huge: { __pyobservablejs_type__: "bigint", value: "9007199254740993" },
+		});
+
+		expect(builtins.huge()).toBe(9007199254740993n);
+	});
+
+	test("escapes user objects that contain the reserved wire tag key", () => {
+		const value = {
+			__pyobservablejs_type__: "datetime",
+			value: "not a date",
+			other: 1,
+		};
+		const builtins = createVariableBuiltins({
+			row: { __pyobservablejs_type__: "object", value },
+		});
+
+		expect(reviveSyncedValue(toWireValue(value))).toEqual(value);
+		expect(builtins.row()).toEqual(value);
+	});
 });

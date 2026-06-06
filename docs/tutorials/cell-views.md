@@ -1,16 +1,14 @@
 ---
-title: Cell Views
-description: Display one Observable cell as a child widget.
+title: Cell Values
+description: Read one Observable cell through its NotebookCell handle.
 ---
 
-# Cell Views
+# Cell Values
 
-Every `Notebook` owns a `NotebookCell` widget for each Observable cell. Display
-the parent notebook first so the browser creates the runtime context, then
-display a named child cell where you want a separate output.
+Name a cell when Python needs to read its synchronized value or graph metadata.
+Display the parent `Notebook` to render Observable outputs.
 
 ```python
-import marimo as mo
 import pyobservablejs as obs
 
 notebook = obs.Notebook(
@@ -18,22 +16,28 @@ notebook = obs.Notebook(
     obs.ojs("double = gain * 2", name="double"),
 )
 
-mo.ui.anywidget(notebook)
-```
-
-Display one cell:
-
-```python
-mo.ui.anywidget(notebook.cell("gain"))
+notebook
 ```
 
 Read synchronized values from a later Python cell:
 
 ```python
-notebook.value("gain")
+gain = notebook.cell("gain")
+
+gain.value
 notebook.value("double")
 ```
 
-The child output has its own browser root. DOM values such as controls, SVG, and
-canvas nodes stay in the browser. JSON-compatible values cross back through
-trait state and appear in `NotebookCell.values` and `Notebook.values`.
+The `NotebookCell` handle exposes values and graph metadata for its matching
+cell:
+
+```python
+gain.values
+gain.info
+gain.defines
+gain.references
+```
+
+`NotebookCell.values` contains JSON-compatible values synchronized through
+anywidget traits. DOM nodes such as controls, SVG, canvas, and figures stay in
+the browser output owned by the parent notebook.

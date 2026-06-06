@@ -24,10 +24,14 @@ _JS_TRIVIA_RE = rf"(?:\s|{_JS_LINE_COMMENT_RE}|{_JS_BLOCK_COMMENT_RE})*"
 _JS_IMPORT_CLAUSE_RE = (
     rf"(?:[^;\"'`/]|/(?![/*])|{_JS_LINE_COMMENT_RE}|{_JS_BLOCK_COMMENT_RE})*?"
 )
-_FILE_ATTACHMENT_RE = re.compile(
-    rf"\bFileAttachment{_JS_TRIVIA_RE}\({_JS_TRIVIA_RE}"
-    r"([\"'])(?P<path>(?:\\.|(?!\1).)*?)\1"
-    rf"{_JS_TRIVIA_RE}\)",
+_JS_IDENTIFIER_RE = r"[A-Za-z_$][0-9A-Za-z_$]*"
+_FILE_ATTACHMENT_ARGUMENT_RE = (
+    r"(?:(?P<quote>[\"'])(?P<quoted>(?:\\.|(?! (?P=quote)).)*?)(?P=quote)"
+    r"|`(?P<template>(?:\\.|(?!`|\$\{).)*?)`)"
+).replace(" ", "")
+_STDLIB_IMPORT_RE = re.compile(
+    rf"\bimport{_JS_TRIVIA_RE}\{{(?P<imports>.*?)\}}{_JS_TRIVIA_RE}"
+    rf"from{_JS_TRIVIA_RE}(?P<quote>[\"'])observablehq:stdlib(?P=quote)",
     re.S,
 )
 _NON_JAVASCRIPT_SCRIPT_TYPES = {
@@ -145,15 +149,17 @@ def _collect_attachments(
     for script in _iter_notebook_script_blocks(source):
         if not _is_javascript_script(script.attrs):
             continue
-        # Regexes find the Observable FileAttachment call shape. The code mask
-        # excludes comments, strings, templates, and regex literals.
         code_mask = _javascript_code_mask(script.body)
-        for match in _FILE_ATTACHMENT_RE.finditer(script.body):
+        names = {
+            "FileAttachment",
+            *_stdlib_file_attachment_aliases(script.body, code_mask),
+        }
+        for match in _file_attachment_call_re(names).finditer(script.body):
             if not code_mask[match.start()]:
                 continue
-            if not _has_standalone_token_start(script.body, match.start(), code_mask):
+            if not _has_bare_token_start(script.body, match.start(), code_mask):
                 continue
-            name = match.group("path")
+            name = match.group("quoted") or match.group("template") or ""
             if _is_url(name) or name in attachments:
                 continue
             path = (base_path / name).resolve()
@@ -277,18 +283,22 @@ class _ScriptAttrParser(HTMLParser):
         self.attrs = {name.lower(): value or "" for name, value in attrs}
 
 
-def _rewrite_import_specifiers(source: str, base_path: pathlib.Path) -> str:
+def _rewrite_import_specifiers(
+    source: str,
+    base_path: pathlib.Path,
+    seen: frozenset[pathlib.Path] = frozenset(),
+) -> str:
     """Inline relative JavaScript imports that can run inside a portable widget."""
 
     def replace(
         match: re.Match[str],
         code_mask: list[bool],
         *,
-        require_standalone: bool = True,
+        require_bare: bool = True,
     ) -> str:
         if not code_mask[match.start()]:
             return match.group(0)
-        if require_standalone and not _has_standalone_token_start(
+        if require_bare and not _has_bare_token_start(
             source,
             match.start(),
             code_mask,
@@ -298,12 +308,46 @@ def _rewrite_import_specifiers(source: str, base_path: pathlib.Path) -> str:
         resolved = (base_path / path).resolve()
         if not resolved.is_file():
             return match.group(0)
-        return f"{match.group('prefix')}{match.group('quote')}{_data_url(resolved)}{match.group('quote')}"
+        return f"{match.group('prefix')}{match.group('quote')}{_module_data_url(resolved, seen)}{match.group('quote')}"
 
     code_mask = _javascript_code_mask(source)
     source = _STATIC_IMPORT_RE.sub(lambda match: replace(match, code_mask), source)
     code_mask = _javascript_code_mask(source)
     return _DYNAMIC_IMPORT_RE.sub(lambda match: replace(match, code_mask), source)
+
+
+def _file_attachment_call_re(names: set[str]) -> re.Pattern[str]:
+    alternatives = "|".join(
+        re.escape(name) for name in sorted(names, key=len, reverse=True)
+    )
+    return re.compile(
+        rf"(?P<callee>{alternatives})(?![0-9A-Za-z_$]){_JS_TRIVIA_RE}"
+        rf"\({_JS_TRIVIA_RE}{_FILE_ATTACHMENT_ARGUMENT_RE}{_JS_TRIVIA_RE}\)",
+        re.S,
+    )
+
+
+def _stdlib_file_attachment_aliases(source: str, code_mask: list[bool]) -> set[str]:
+    aliases: set[str] = set()
+    for match in _STDLIB_IMPORT_RE.finditer(source):
+        if not code_mask[match.start()]:
+            continue
+        for item in match.group("imports").split(","):
+            parts = item.strip().split()
+            if not parts or parts[0] != "FileAttachment":
+                continue
+            if len(parts) == 1:
+                aliases.add("FileAttachment")
+            elif (
+                len(parts) == 3
+                and parts[1] == "as"
+                and re.fullmatch(
+                    _JS_IDENTIFIER_RE,
+                    parts[2],
+                )
+            ):
+                aliases.add(parts[2])
+    return aliases
 
 
 def _javascript_code_mask(source: str) -> list[bool]:
@@ -412,7 +456,7 @@ def _starts_regex_literal(source: str, start: int, mask: list[bool]) -> bool:
         return True
     if _is_js_identifier_part(source[index]):
         keyword, keyword_start = _identifier_ending_at(source, index)
-        return keyword in _REGEX_PREFIX_KEYWORDS and _is_standalone_keyword_start(
+        return keyword in _REGEX_PREFIX_KEYWORDS and _is_bare_keyword_start(
             source, keyword_start, mask
         )
     if source[index] == ")":
@@ -469,12 +513,12 @@ def _keyword_before(source: str, index: int, mask: list[bool]) -> str:
     keyword, keyword_start = _identifier_ending_at(source, keyword_end)
     if keyword == "await" and _keyword_before(source, keyword_start, mask) == "for":
         return "for"
-    if not _is_standalone_keyword_start(source, keyword_start, mask):
+    if not _is_bare_keyword_start(source, keyword_start, mask):
         return ""
     return keyword
 
 
-def _is_standalone_keyword_start(
+def _is_bare_keyword_start(
     source: str,
     keyword_start: int,
     mask: list[bool],
@@ -486,7 +530,7 @@ def _is_standalone_keyword_start(
     )
 
 
-def _has_standalone_token_start(
+def _has_bare_token_start(
     source: str,
     token_start: int,
     mask: list[bool],
@@ -535,8 +579,21 @@ def _file_info(name: str, path: pathlib.Path) -> dict[str, Any]:
 
 
 def _data_url(path: pathlib.Path) -> str:
-    data = base64.b64encode(path.read_bytes()).decode("ascii")
-    return f"data:{_guess_mime_type(path.name)};base64,{data}"
+    return _data_url_bytes(path.name, path.read_bytes())
+
+
+def _module_data_url(path: pathlib.Path, seen: frozenset[pathlib.Path]) -> str:
+    path = path.resolve()
+    if path in seen:
+        raise ValueError(f"Circular local JavaScript import: {path}")
+    source = path.read_text(encoding="utf-8")
+    source = _rewrite_import_specifiers(source, path.parent, seen | frozenset((path,)))
+    return _data_url_bytes(path.name, source.encode("utf-8"))
+
+
+def _data_url_bytes(name: str, data: bytes) -> str:
+    encoded = base64.b64encode(data).decode("ascii")
+    return f"data:{_guess_mime_type(name)};base64,{encoded}"
 
 
 def _guess_mime_type(name: str) -> str:

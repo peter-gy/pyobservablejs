@@ -90,13 +90,10 @@ Rendering follows a fixed order:
 7. Mirror exposed OJS variables into child `_values` traits.
 8. Aggregate child values onto the notebook model for `notebook.values`.
 
-The full notebook is one Observable reactive graph. A standalone
-`notebook.cell("name")` display creates a runtime for that child output root and
-rebuilds the target cell with source-backed OJS dependencies. When sibling cells
-have revivable synced values, the child runtime uses those values. Browser-only
-values already defined in the parent runtime can be imported without crossing
-trait JSON. This gives DOM outputs their own `canvas`, `svg`, `figure`, or
-control nodes while keeping Python-visible values on the child model.
+The full notebook is one Observable reactive graph. `NotebookCell` widgets are
+Python handles for synchronized values and graph metadata. Display the parent
+`Notebook` to render DOM outputs such as `canvas`, `svg`, `figure`, or control
+nodes.
 
 ## Graph Metadata
 
@@ -158,16 +155,14 @@ TypeScript-owned OJS evaluation and transpilation.
 
 `js/widget/`
 : Owns anywidget lifecycle, child widget composition, notebook rendering, and
-model trait writes. `notebook-renderer.ts` creates the parent runtime,
-`composed-cells.ts` binds child widgets into it, and `standalone-cell.ts`
-creates the isolated output-root runtime used by direct `nb.cells[index]`
-access.
+model trait writes. `notebook-renderer.ts` creates the parent runtime, and
+`composed-cells.ts` resolves child widgets through the anywidget host.
 
 `js/runtime/`
 : Owns Observable Runtime mechanics that do not need widget DOM ownership.
 Runtime builtins, `viewof` target mutation, wire value revival, runtime
-definitions, and module import helpers live here. Model-aware variable patches
-and standalone dependency selection stay under `js/widget/`.
+definitions, and attachment lookup live here. Model-aware variable patches stay
+under `js/widget/`.
 
 `src/pyobservablejs/_files.py`
 : Rewrites source-backed notebooks through static source analysis. It finds
@@ -192,6 +187,10 @@ Source-backed notebooks can be made self-contained:
 - `FileAttachment("data.csv")` becomes an attachment entry with a data URL.
 - Static imports such as `import "./helper.js"` are rewritten to data URLs.
 - Dynamic imports such as `import("./helper.js")` are rewritten the same way.
+- Local imports inside embedded helper modules are embedded recursively.
+
+With `portable=False`, source references stay unchanged. The browser resolves
+those references relative to the frontend page URL.
 
 Public ObservableHQ notebooks are fetched through the document API. Python
 serializes API nodes to Notebook Kit HTML and keeps uploaded files as remote

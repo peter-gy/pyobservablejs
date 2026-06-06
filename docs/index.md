@@ -37,7 +37,8 @@ obs.Notebook(
   variables.
 - `notebook.update_variables(...)` mutates those Python-backed values in the live
   runtime.
-- Cells with `name=` provide Python names for separate display and value reads.
+- Cells with `name=` provide Python handles for value reads and graph metadata
+  after displaying the parent `Notebook`.
 - Notebook Kit HTML strings and public ObservableHQ notebooks use the same
   rendering path as Python-authored notebooks.
 - The widget renders in Jupyter, marimo, and compatible anywidget frontends.

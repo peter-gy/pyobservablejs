@@ -110,18 +110,43 @@ def test_observable_document_js_nodes_become_ojs_cells(
     assert scripts[1]["text"].strip() == 'THREE = require("three@0.119.1")'
 
 
-def test_observablehq_notebooks_enable_markdown_compatibility(
+def test_observable_document_preserves_notebook_kit_cell_modes(
     observablehq_response: ObservableHQResponseInstaller,
+    script_tags: ScriptTags,
 ) -> None:
     notebook = _notebook_from_observable_document(
         observablehq_response,
         {
-            "title": "Hosted",
-            "nodes": [],
+            "title": "Modes",
+            "nodes": [
+                {"id": 1, "mode": "tex", "value": "x^2"},
+                {"id": 2, "mode": "dot", "value": "digraph { a -> b }"},
+                {"id": 3, "mode": "ts", "value": "const answer: number = 42;"},
+                {"id": 4, "mode": "node", "value": "return 42;"},
+                {"id": 5, "mode": "python", "value": "answer = 42"},
+                {"id": 6, "mode": "r", "value": "answer <- 42"},
+            ],
         },
     )
 
-    assert notebook.options["observable_markdown_compatibility"] is True
+    scripts = script_tags(notebook.to_notebook_html())
+
+    assert [item["attrs"]["type"] for item in scripts] == [
+        "application/x-tex",
+        "text/vnd.graphviz",
+        "text/x-typescript",
+        "application/vnd.node.javascript",
+        "text/x-python",
+        "text/x-r",
+    ]
+    assert [item["text"].strip() for item in scripts] == [
+        "x^2",
+        "digraph { a -> b }",
+        "const answer: number = 42;",
+        "return 42;",
+        "answer = 42",
+        "answer <- 42",
+    ]
 
 
 def test_notebook_serializes_source_cells(
@@ -149,7 +174,7 @@ def test_notebook_serializes_source_cells(
     assert scripts[2]["text"].strip() == "<p>Done</p>"
 
 
-def test_source_backed_notebooks_keep_notebook_kit_markdown_mode(
+def test_source_backed_notebooks_preserve_ojs_markdown_source(
     script_tags: ScriptTags,
 ) -> None:
     source = """<notebook>
@@ -160,8 +185,6 @@ def test_source_backed_notebooks_keep_notebook_kit_markdown_mode(
     from_html = obs.Notebook.from_html(source)
     authored = obs.Notebook(obs.ojs("md`** Heading**`"))
 
-    assert from_html.options["observable_markdown_compatibility"] is False
-    assert authored.options["observable_markdown_compatibility"] is False
     for notebook in (from_html, authored):
         [script] = script_tags(notebook.to_notebook_html())
         assert script["attrs"]["type"] == "application/vnd.observable.javascript"

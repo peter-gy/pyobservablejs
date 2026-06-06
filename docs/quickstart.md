@@ -92,10 +92,9 @@ Patch the live runtime with `update_variables`:
 notebook.update_variables(events=events[-2:])
 ```
 
-## Display One Cell
+## Read One Cell
 
-Name cells that Python needs to display or read separately from the full
-notebook.
+Name cells that Python needs to read after the notebook renders.
 
 ```python
 notebook = obs.Notebook(
@@ -103,18 +102,20 @@ notebook = obs.Notebook(
     obs.ojs("double = gain * 2", name="double"),
 )
 
-notebook.cell("gain")
+notebook
 ```
 
-After the notebook or cell widget has rendered in the browser, read the synced
-value from a later Python cell:
+`notebook.cell("gain")` returns the `NotebookCell` handle for the named cell.
+After the parent notebook has rendered in the browser, read synchronized values
+from a later Python cell:
 
 ```python
+notebook.cell("gain").value
 notebook.value("double")
 ```
 
-Notebook frontends display the returned `NotebookCell` through their normal
-anywidget path. See [](./tutorials/cell-views.md) for a marimo workflow.
+Use `NotebookCell` handles for values and graph metadata. Display the parent
+`Notebook` to render Observable outputs.
 
 ## Load Notebook Kit HTML
 
@@ -133,8 +134,9 @@ notebook = obs.Notebook.from_html(
 ```
 
 By default, local `FileAttachment(...)` references and relative JavaScript
-imports are embedded so the widget can travel with the notebook output. Use
-`portable=False` when you want to keep source references as they are.
+imports are embedded when `base_path` is set. Local JavaScript imports are
+embedded recursively. With `portable=False`, source references stay unchanged and
+resolve relative to the frontend page URL.
 
 ## Load a Public ObservableHQ Notebook
 

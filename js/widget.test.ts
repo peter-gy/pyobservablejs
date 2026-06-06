@@ -3,17 +3,11 @@
 import type { RenderProps } from "@anywidget/types";
 import { describe, expect, test } from "vitest";
 import type { NotebookGraph } from "./observable/types";
+import { SELECTORS } from "./widget/dom-contract";
 import type { WidgetModel } from "./widget/types";
 import widget from "./widget";
-import {
-	createCellExportsMap,
-	createHost,
-	createModel,
-	renderChildrenThroughWidget,
-	variableValue,
-	waitFor,
-} from "./widget-test-utils";
-import { standaloneText } from "./widget-dom-test-utils";
+import { composedText } from "./widget-dom-test-utils";
+import { createHost, createModel, hasSavedTrait, variableValue, waitFor } from "./widget-test-utils";
 
 describe("widget graph and notebook values", () => {
 	test("writes the Notebook Kit graph to the notebook model after child models resolve", async () => {
@@ -31,20 +25,38 @@ describe("widget graph and notebook values", () => {
 			_cell_widgets: ["anywidget:cell-1", "anywidget:cell-2"],
 		});
 		const childModels = new Map([
-			["anywidget:cell-1", createModel({ role: "cell", name: "answer", _values: {}, _value_names: [] })],
-			["anywidget:cell-2", createModel({ role: "cell", name: "readout", _values: {}, _value_names: [] })],
+			[
+				"anywidget:cell-1",
+				createModel({
+					role: "cell",
+					name: "answer",
+					_values: {},
+					_value_names: [],
+				}),
+			],
+			[
+				"anywidget:cell-2",
+				createModel({
+					role: "cell",
+					name: "readout",
+					_values: {},
+					_value_names: [],
+				}),
+			],
 		]);
 		const controller = new AbortController();
+		const el = document.createElement("div");
 
 		widget.render({
 			model,
-			el: document.createElement("div"),
+			el,
 			signal: controller.signal,
 			host: createHost(childModels),
 		} as unknown as RenderProps<WidgetModel>);
 
 		const graph = await waitFor(() => model.get("_graph") as NotebookGraph | undefined);
 
+		expect(hasSavedTrait(model, "_graph")).toBe(true);
 		expect(graph.cells.map((cell) => cell.name)).toEqual(["answer", "readout"]);
 		expect(graph.cells.map((cell) => cell.defines)).toEqual([["answer"], []]);
 		expect(graph.cells[1]?.references).toEqual(["answer"]);
@@ -58,7 +70,11 @@ describe("widget graph and notebook values", () => {
 			role: "notebook",
 			spec: {
 				cells: [
-					{ id: 1, mode: "ojs", value: "viewof gain = Inputs.range([0, 11], {value: 5})" },
+					{
+						id: 1,
+						mode: "ojs",
+						value: "viewof gain = Inputs.range([0, 11], {value: 5})",
+					},
 					{ id: 2, mode: "ojs", value: "gain * 2" },
 				],
 			},
@@ -68,14 +84,31 @@ describe("widget graph and notebook values", () => {
 			_cell_widgets: ["anywidget:gain", "anywidget:readout"],
 		});
 		const childModels = new Map([
-			["anywidget:gain", createModel({ role: "cell", name: "gain", _values: {}, _value_names: [] })],
-			["anywidget:readout", createModel({ role: "cell", name: "readout", _values: {}, _value_names: [] })],
+			[
+				"anywidget:gain",
+				createModel({
+					role: "cell",
+					name: "gain",
+					_values: {},
+					_value_names: [],
+				}),
+			],
+			[
+				"anywidget:readout",
+				createModel({
+					role: "cell",
+					name: "readout",
+					_values: {},
+					_value_names: [],
+				}),
+			],
 		]);
 		const controller = new AbortController();
+		const el = document.createElement("div");
 
 		widget.render({
 			model,
-			el: document.createElement("div"),
+			el,
 			signal: controller.signal,
 			host: createHost(childModels),
 		} as unknown as RenderProps<WidgetModel>);
@@ -111,22 +144,89 @@ describe("widget graph and notebook values", () => {
 			options: {},
 			_cell_widgets: ["anywidget:answer", "anywidget:readout"],
 		});
-		const readoutModel = createModel({ role: "cell", name: "readout", _values: {}, _value_names: [] });
+		const readoutModel = createModel({
+			role: "cell",
+			name: "readout",
+			_values: {},
+			_value_names: [],
+		});
 		const childModels = new Map([
-			["anywidget:answer", createModel({ role: "cell", name: "answer", _values: {}, _value_names: [] })],
+			[
+				"anywidget:answer",
+				createModel({
+					role: "cell",
+					name: "answer",
+					_values: {},
+					_value_names: [],
+				}),
+			],
 			["anywidget:readout", readoutModel],
 		]);
+		const controller = new AbortController();
+		const el = document.createElement("div");
+
+		widget.render({
+			model,
+			el,
+			signal: controller.signal,
+			host: createHost(childModels),
+		} as unknown as RenderProps<WidgetModel>);
+
+		expect(await waitFor(() => (variableValue(readoutModel, "readout") === 43 ? 43 : undefined))).toBe(43);
+		expect(await waitFor(() => (variableValue(model, "readout") === 43 ? 43 : undefined))).toBe(43);
+		expect(hasSavedTrait(readoutModel, "_value_names")).toBe(true);
+		expect(hasSavedTrait(readoutModel, "_values")).toBe(true);
+		expect(hasSavedTrait(model, "_value_names")).toBe(true);
+		expect(hasSavedTrait(model, "_values")).toBe(true);
+		controller.abort();
+	});
+
+	test("syncs named display cell errors under the cell name", async () => {
+		const model = createModel({
+			role: "notebook",
+			spec: {
+				cells: [{ id: 1, mode: "ojs", value: "missing + 1" }],
+			},
+			attachments: {},
+			_variables: {},
+			options: {},
+			_cell_widgets: ["anywidget:readout"],
+		});
+		const readoutModel = createModel({
+			role: "cell",
+			name: "readout",
+			_values: {},
+			_value_names: [],
+		});
+		const childModels = new Map([["anywidget:readout", readoutModel]]);
 		const controller = new AbortController();
 
 		widget.render({
 			model,
 			el: document.createElement("div"),
 			signal: controller.signal,
-			host: createHost(childModels, createCellExportsMap(childModels), renderChildrenThroughWidget(childModels)),
+			host: createHost(childModels),
 		} as unknown as RenderProps<WidgetModel>);
 
-		expect(await waitFor(() => (variableValue(readoutModel, "readout") === 43 ? 43 : undefined))).toBe(43);
-		expect(await waitFor(() => (variableValue(model, "readout") === 43 ? 43 : undefined))).toBe(43);
+		const error = await waitFor(() => variableValue(readoutModel, "readout") as Record<string, unknown> | undefined);
+		expect(
+			await waitFor(() =>
+				Array.isArray(readoutModel.get("_value_names")) ? (readoutModel.get("_value_names") as string[]) : undefined,
+			),
+		).toEqual(["readout"]);
+		expect(
+			await waitFor(() =>
+				Array.isArray(model.get("_value_names")) ? (model.get("_value_names") as string[]) : undefined,
+			),
+		).toEqual(["readout"]);
+		expect(hasSavedTrait(readoutModel, "_value_names")).toBe(true);
+		expect(hasSavedTrait(readoutModel, "_values")).toBe(true);
+		expect(hasSavedTrait(model, "_value_names")).toBe(true);
+		expect(hasSavedTrait(model, "_values")).toBe(true);
+		expect(error.__pyobservablejs_type__).toBe("error");
+		expect(error.name).toBe("RuntimeError");
+		expect(String(error.message)).toContain("missing is not defined");
+		expect(await waitFor(() => variableValue(model, "readout") as Record<string, unknown> | undefined)).toEqual(error);
 		controller.abort();
 	});
 
@@ -145,86 +245,99 @@ describe("widget graph and notebook values", () => {
 			_cell_widgets: ["anywidget:answer", "anywidget:doubled"],
 		});
 		const childModels = new Map([
-			["anywidget:answer", createModel({ role: "cell", name: "answer", _values: {}, _value_names: [] })],
-			["anywidget:doubled", createModel({ role: "cell", name: "doubled", _values: {}, _value_names: [] })],
+			[
+				"anywidget:answer",
+				createModel({
+					role: "cell",
+					name: "answer",
+					_values: {},
+					_value_names: [],
+				}),
+			],
+			[
+				"anywidget:doubled",
+				createModel({
+					role: "cell",
+					name: "doubled",
+					_values: {},
+					_value_names: [],
+				}),
+			],
 		]);
-		const childExports = createCellExportsMap(childModels);
-		const childRenders = renderChildrenThroughWidget(childModels);
 		const controller = new AbortController();
+		const el = document.createElement("div");
 
 		widget.render({
 			model,
-			el: document.createElement("div"),
+			el,
 			signal: controller.signal,
-			host: createHost(childModels, childExports, childRenders),
+			host: createHost(childModels),
 		} as unknown as RenderProps<WidgetModel>);
 
+		await waitFor(() => composedText(el, "41"));
+		await waitFor(() => composedText(el, "82"));
 		expect(
 			await waitFor(() => (variableValue(childModels.get("anywidget:answer")!, "answer") === 41 ? 41 : undefined)),
 		).toBe(41);
 		expect(await waitFor(() => (variableValue(model, "doubled") === 82 ? 82 : undefined))).toBe(82);
-
-		const standaloneEl = document.createElement("div");
-		widget.render({
-			model: childModels.get("anywidget:answer")!,
-			el: standaloneEl,
-			signal: controller.signal,
-			host: createHost(new Map()),
-		} as unknown as RenderProps<WidgetModel>);
-
-		await waitFor(() => standaloneText(standaloneEl, "41"));
 		controller.abort();
 	});
 
-	test("standalone transitive dependencies keep Python variables ahead of sibling cells", async () => {
+	test("uses initial Python variable overrides when source definitions would fail", async () => {
 		const model = createModel({
 			role: "notebook",
 			spec: {
 				cells: [
-					{ id: 1, mode: "ojs", value: "seed = 1" },
-					{ id: 2, mode: "ojs", value: "middle = seed * 2" },
-					{ id: 3, mode: "ojs", value: "target = middle + 1" },
+					{
+						id: 1,
+						mode: "ojs",
+						value: 'answer = { throw new Error("source answer evaluated"); }',
+					},
+					{ id: 2, mode: "ojs", value: "doubled = answer * 2" },
 				],
 			},
 			attachments: {},
-			_variables: { seed: 10 },
+			_variables: { answer: 41 },
 			options: {},
-			_cell_widgets: ["anywidget:seed", "anywidget:middle", "anywidget:target"],
+			_cell_widgets: ["anywidget:answer", "anywidget:doubled"],
 		});
-		const seedModel = createModel({ role: "cell", name: "seed", _values: {}, _value_names: [] });
-		const middleModel = createModel({ role: "cell", name: "middle", _values: {}, _value_names: [] });
-		const targetModel = createModel({ role: "cell", name: "target", _values: {}, _value_names: [] });
 		const childModels = new Map([
-			["anywidget:seed", seedModel],
-			["anywidget:middle", middleModel],
-			["anywidget:target", targetModel],
+			[
+				"anywidget:answer",
+				createModel({
+					role: "cell",
+					name: "answer",
+					_values: {},
+					_value_names: [],
+				}),
+			],
+			[
+				"anywidget:doubled",
+				createModel({
+					role: "cell",
+					name: "doubled",
+					_values: {},
+					_value_names: [],
+				}),
+			],
 		]);
-		const childExports = createCellExportsMap(childModels);
-		const childRenders = renderChildrenThroughWidget(childModels);
 		const controller = new AbortController();
+		const el = document.createElement("div");
 
 		widget.render({
 			model,
-			el: document.createElement("div"),
+			el,
 			signal: controller.signal,
-			host: createHost(childModels, childExports, childRenders),
+			host: createHost(childModels),
 		} as unknown as RenderProps<WidgetModel>);
 
-		expect(await waitFor(() => (variableValue(targetModel, "target") === 21 ? 21 : undefined))).toBe(21);
-		seedModel.set("_values", { seed: 1 });
-		seedModel.set("_value_names", ["seed"]);
-		middleModel.set("_values", {});
-		targetModel.set("_values", {});
-
-		const standaloneEl = document.createElement("div");
-		widget.render({
-			model: targetModel,
-			el: standaloneEl,
-			signal: controller.signal,
-			host: createHost(new Map()),
-		} as unknown as RenderProps<WidgetModel>);
-
-		await waitFor(() => standaloneText(standaloneEl, "21"));
+		await waitFor(() => composedText(el, "41"));
+		await waitFor(() => composedText(el, "82"));
+		expect(
+			await waitFor(() => (variableValue(childModels.get("anywidget:answer")!, "answer") === 41 ? 41 : undefined)),
+		).toBe(41);
+		expect(await waitFor(() => (variableValue(model, "doubled") === 82 ? 82 : undefined))).toBe(82);
+		expect(el.querySelector(SELECTORS.error)?.textContent).toBeUndefined();
 		controller.abort();
 	});
 
@@ -239,16 +352,43 @@ describe("widget graph and notebook values", () => {
 </notebook>
 `,
 			attachments: {
-				"points.csv": { url: "https://static.example/points.csv", mimeType: "text/csv" },
+				"points.csv": {
+					url: "https://static.example/points.csv",
+					mimeType: "text/csv",
+				},
 			},
 			_variables: { rows: [{ x: 10 }, { x: 20 }], unused: 1 },
 			options: {},
 			_cell_widgets: ["anywidget:rows", "anywidget:count", "anywidget:attachment"],
 		});
 		const childModels = new Map([
-			["anywidget:rows", createModel({ role: "cell", name: "rows", _values: {}, _value_names: [] })],
-			["anywidget:count", createModel({ role: "cell", name: "count", _values: {}, _value_names: [] })],
-			["anywidget:attachment", createModel({ role: "cell", name: "attachmentUrl", _values: {}, _value_names: [] })],
+			[
+				"anywidget:rows",
+				createModel({
+					role: "cell",
+					name: "rows",
+					_values: {},
+					_value_names: [],
+				}),
+			],
+			[
+				"anywidget:count",
+				createModel({
+					role: "cell",
+					name: "count",
+					_values: {},
+					_value_names: [],
+				}),
+			],
+			[
+				"anywidget:attachment",
+				createModel({
+					role: "cell",
+					name: "attachmentUrl",
+					_values: {},
+					_value_names: [],
+				}),
+			],
 		]);
 		const controller = new AbortController();
 
@@ -256,7 +396,7 @@ describe("widget graph and notebook values", () => {
 			model,
 			el: document.createElement("div"),
 			signal: controller.signal,
-			host: createHost(childModels, createCellExportsMap(childModels), renderChildrenThroughWidget(childModels)),
+			host: createHost(childModels),
 		} as unknown as RenderProps<WidgetModel>);
 
 		expect(await waitFor(() => (variableValue(model, "count") === 2 ? 2 : undefined))).toBe(2);
@@ -285,8 +425,24 @@ describe("widget graph and notebook values", () => {
 			_cell_widgets: ["anywidget:source-1", "anywidget:source-2"],
 		});
 		const childModels = new Map([
-			["anywidget:source-1", createModel({ role: "cell", name: "answer", _values: {}, _value_names: [] })],
-			["anywidget:source-2", createModel({ role: "cell", name: "double", _values: {}, _value_names: [] })],
+			[
+				"anywidget:source-1",
+				createModel({
+					role: "cell",
+					name: "answer",
+					_values: {},
+					_value_names: [],
+				}),
+			],
+			[
+				"anywidget:source-2",
+				createModel({
+					role: "cell",
+					name: "double",
+					_values: {},
+					_value_names: [],
+				}),
+			],
 		]);
 		const controller = new AbortController();
 

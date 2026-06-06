@@ -1,86 +1,42 @@
 import type { RenderProps } from "@anywidget/types";
-import { delay } from "./abort";
-import { ensureLocalCellExports } from "./cell-registry";
-import type { CellExports, CompositionHost, ResolvedCell, ResolvedCellWidget, WidgetModel } from "./types";
+import type { CompositionHost, WidgetModel } from "./types";
 
-export type RenderChildWidget = (props: RenderProps<WidgetModel> & { signal?: AbortSignal }) => void;
-
-/**
- * Adapt the anywidget composition host to the smaller interface used by the
- * notebook renderer.
- */
-export function createCompositionHost(host: RenderProps<WidgetModel>["host"]): CompositionHost {
-	return {
-		getModel(ref) {
-			return host.getModel<WidgetModel>(ref);
-		},
-		async getWidget(ref) {
-			return host.getWidget<CellExports>(ref);
-		},
-	};
-}
+const MODEL_LOOKUP_TIMEOUT_MS = 1_000;
+const MODEL_LOOKUP_RETRY_MS = 25;
 
 /**
- * Build a composition host from the widget manager when the frontend host does
- * not pass `RenderProps.host`.
+ * Resolve child widget models through anywidget's native host surface, with
+ * `widget_manager` as the same model lookup path used by anywidget's host.
  */
-export function createWidgetManagerCompositionHost(
+export function createCompositionHost(
+	host: RenderProps<WidgetModel>["host"] | undefined,
 	model: RenderProps<WidgetModel>["model"],
-	signal: AbortSignal,
-	renderChildWidget: RenderChildWidget,
-): CompositionHost | undefined {
-	const manager = model.widget_manager as
-		| { get_model?: (modelId: string) => Promise<RenderProps<WidgetModel>["model"]> }
-		| undefined;
-	if (!manager?.get_model) return undefined;
-
-	const resolveModel = manager.get_model.bind(manager);
-	const models = new Map<string, Promise<RenderProps<WidgetModel>["model"]>>();
-	const host: CompositionHost = {
-		async getModel(ref) {
-			const modelId = parseWidgetRef(ref);
-			const existing = models.get(modelId);
-			if (existing) return existing;
-			const pending = resolveModel(modelId)
-				.then((childModel) => {
-					if (!childModel) throw new Error(`Unknown widget model ${modelId}`);
-					return childModel;
-				})
-				.catch((error: unknown) => {
-					models.delete(modelId);
-					throw error;
-				});
-			models.set(modelId, pending);
-			return pending;
-		},
-		async getWidget(ref) {
-			const childModel = await host.getModel(ref);
-			return {
-				exports: ensureLocalCellExports(childModel),
-				async render({ el, signal: childSignal }) {
-					renderChildWidget({
-						model: childModel,
-						el,
-						signal: childSignal ?? signal,
-						host,
-					} as RenderProps<WidgetModel>);
-				},
-			};
+): CompositionHost {
+	return {
+		getModel(ref, signal) {
+			parseWidgetRef(ref);
+			if (host?.getModel) {
+				return getModelWithRetry(() => host.getModel<WidgetModel>(ref), signal);
+			}
+			return getModelFromWidgetManager(model, ref, signal);
 		},
 	};
-	return host;
 }
 
 /**
- * Resolve a child widget and retry while the host is still creating the binding.
+ * Resolve a child model through native anywidget composition.
  */
-export async function resolveCellWidget(
+export async function resolveCellModel(
 	host: CompositionHost,
 	ref: string,
 	signal: AbortSignal,
-): Promise<ResolvedCell> {
+): Promise<RenderProps<WidgetModel>["model"]> {
 	parseWidgetRef(ref);
-	return resolveCellWidgetAttempt(host, ref, signal, performance.now() + 5000);
+	if (signal.aborted) throw new Error(`Unable to resolve cell widget ${ref}`);
+	const childModel = await host.getModel(ref, signal);
+	if (signal.aborted) throw new Error(`Unable to resolve cell widget ${ref}`);
+	if (!childModel) throw new Error(`Unknown widget model ${ref}`);
+	return childModel;
 }
 
 export function parseWidgetRef(ref: string): string {
@@ -92,44 +48,60 @@ export function parseWidgetRef(ref: string): string {
 	return modelId;
 }
 
-async function resolveCellWidgetAttempt(
-	host: CompositionHost,
+async function getModelFromWidgetManager(
+	model: RenderProps<WidgetModel>["model"],
 	ref: string,
-	signal: AbortSignal,
-	deadline: number,
-	lastError?: unknown,
-): Promise<ResolvedCell> {
-	if (signal.aborted || performance.now() >= deadline) {
-		throw lastError ?? new Error(`Unable to resolve cell widget ${ref}`);
+	signal: AbortSignal | undefined,
+): Promise<RenderProps<WidgetModel>["model"] | undefined> {
+	const modelId = parseWidgetRef(ref);
+	const manager = model.widget_manager;
+	if (!manager || typeof manager.get_model !== "function") {
+		throw new Error("This anywidget host cannot resolve child widget models");
 	}
-	let child: ResolvedCellWidget;
-	let childModel: RenderProps<WidgetModel>["model"];
-	try {
-		[child, childModel] = await Promise.all([host.getWidget(ref), host.getModel(ref)]);
-	} catch (error) {
-		if (!isRetryableResolutionError(error)) throw error;
-		await delay(75, signal);
-		return resolveCellWidgetAttempt(host, ref, signal, deadline, error);
-	}
-	if (!isCellExports(child.exports)) {
-		throw new Error(`Cell widget ${ref} does not expose pyobservablejs cell exports`);
-	}
-	return [child, childModel];
+	return getModelWithRetry(() => manager.get_model(modelId), signal);
 }
 
-function isRetryableResolutionError(error: unknown): boolean {
-	if (!(error instanceof Error)) return false;
-	return /not ready|not found|no binding found|unknown widget model|model .*missing|widget .*missing|no model/i.test(
-		error.message,
-	);
+async function getModelWithRetry(
+	getModel: () =>
+		| Promise<RenderProps<WidgetModel>["model"] | undefined>
+		| RenderProps<WidgetModel>["model"]
+		| undefined,
+	signal: AbortSignal | undefined,
+): Promise<RenderProps<WidgetModel>["model"] | undefined> {
+	const deadline = Date.now() + MODEL_LOOKUP_TIMEOUT_MS;
+	let lastError: unknown;
+	const lookup = async (): Promise<RenderProps<WidgetModel>["model"] | undefined> => {
+		if (signal?.aborted) return undefined;
+		try {
+			const childModel = await getModel();
+			if (childModel) return childModel;
+		} catch (error) {
+			// Child models can be registered just after the parent render starts.
+			lastError = error;
+		}
+		if (Date.now() >= deadline) {
+			if (lastError !== undefined) throw lastError;
+			return undefined;
+		}
+		await waitForModelRetry(signal);
+		return lookup();
+	};
+	return lookup();
 }
 
-function isCellExports(value: unknown): value is CellExports {
-	if (value === null || typeof value !== "object") return false;
-	const candidate = value as Record<string, unknown>;
-	return (
-		typeof candidate.bindRuntime === "function" &&
-		typeof candidate.unbindRuntime === "function" &&
-		typeof candidate.prepareComposedRender === "function"
-	);
+function waitForModelRetry(signal: AbortSignal | undefined): Promise<void> {
+	return new Promise((resolve) => {
+		if (signal?.aborted) {
+			resolve();
+			return;
+		}
+		let timeout: ReturnType<typeof setTimeout>;
+		const done = () => {
+			clearTimeout(timeout);
+			signal?.removeEventListener("abort", done);
+			resolve();
+		};
+		timeout = setTimeout(done, MODEL_LOOKUP_RETRY_MS);
+		signal?.addEventListener("abort", done, { once: true });
+	});
 }

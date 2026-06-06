@@ -38,7 +38,6 @@ export function readNotebookOptions(
 		baseUrl: model.get("base_url") || document.baseURI,
 		variables: variablesOverride ?? readNotebookVariables(model),
 		showSource: wireOptions?.show_source === true,
-		observableMarkdownCompatibility: wireOptions?.observable_markdown_compatibility === true,
 	};
 }
 

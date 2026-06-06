@@ -71,7 +71,9 @@ export function toWireValue(value: unknown, context: WireContext = { seen: new W
 		if (value instanceof Set) {
 			return { [TYPE_KEY]: "set", value: Array.from(value, (item) => toWireValue(item, context)) };
 		}
-		return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, toWireValue(item, context)]));
+		const entries = Object.fromEntries(Object.entries(value).map(([key, item]) => [key, toWireValue(item, context)]));
+		if (TYPE_KEY in entries) return { [TYPE_KEY]: "object", value: entries };
+		return entries;
 	}
 	return { [TYPE_KEY]: typeof value, value: String(value) };
 }
@@ -85,7 +87,7 @@ export function reviveSyncedValue(value: unknown): unknown {
 	if (type === "number") return reviveNumber(String(value.value));
 	if (type === "bigint") return BigInt(String(value.value));
 	if (type === "datetime") return new Date(String(value.value));
-	if (type === "object") return reviveSyncedValue(value.value);
+	if (type === "object") return revivePlainObject(value.value);
 	if (type === "map" && Array.isArray(value.value)) {
 		return new Map(value.value.map((entry) => (Array.isArray(entry) ? entry.map(reviveSyncedValue) : entry)));
 	}
@@ -120,7 +122,8 @@ export function revivePythonValue(value: unknown): unknown {
 	if (type === "datetime") return new Date(String(value.value));
 	if (type === "bytes") return base64ToBytes(String(value.value));
 	if (type === "number") return reviveNumber(String(value.value));
-	if (type === "object") return revivePythonValue(value.value);
+	if (type === "bigint") return BigInt(String(value.value));
+	if (type === "object") return revivePlainPythonObject(value.value);
 
 	const entries = Object.entries(value).map(([key, entry]) => [key, revivePythonValue(entry)] as const);
 	return resolveMaybePromises(
@@ -132,6 +135,20 @@ export function revivePythonValue(value: unknown): unknown {
 function resolveMaybePromises<T>(values: unknown[], finish: (values: unknown[]) => T): T | Promise<T> {
 	if (values.some(isPromiseLike)) return Promise.all(values).then(finish);
 	return finish(values);
+}
+
+function revivePlainObject(value: unknown): unknown {
+	if (!isRecord(value)) return reviveSyncedValue(value);
+	return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, reviveSyncedValue(item)]));
+}
+
+function revivePlainPythonObject(value: unknown): unknown {
+	if (!isRecord(value)) return revivePythonValue(value);
+	const entries = Object.entries(value).map(([key, entry]) => [key, revivePythonValue(entry)] as const);
+	return resolveMaybePromises(
+		entries.map(([, entry]) => entry),
+		(items) => Object.fromEntries(entries.map(([key], index) => [key, items[index]])),
+	);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

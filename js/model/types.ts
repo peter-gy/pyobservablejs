@@ -6,7 +6,6 @@ import type { AttachmentInfo } from "../runtime/types";
 
 export type WidgetModel = {
 	role?: "notebook" | "cell";
-	_cell_id?: string;
 	name?: string;
 	source?: string;
 	spec?: Record<string, unknown>;
@@ -23,7 +22,6 @@ export type WidgetModel = {
 	_value_names?: string[];
 	options?: {
 		show_source?: boolean;
-		observable_markdown_compatibility?: boolean;
 	};
 	_cell_widgets?: string[];
 };

@@ -4,7 +4,7 @@ import { createRuntime, createRuntimeCleanup } from "../runtime/index";
 import { createAbortController } from "./abort";
 import { writeProgrammaticViewValue } from "./cell-value-sync";
 import { notebookViewNames } from "./cell-renderer";
-import { createCompositionHost, createWidgetManagerCompositionHost, type RenderChildWidget } from "./composition-host";
+import { createCompositionHost } from "./composition-host";
 import { renderComposedCells } from "./composed-cells";
 import { createNotebookRoot, createTopLevelError, prepareWidgetShell } from "./dom";
 import {
@@ -22,19 +22,12 @@ type RenderNotebookWidgetOptions = {
 	el: HTMLElement;
 	signal: AbortSignal;
 	host?: RenderProps<WidgetModel>["host"];
-	renderChildWidget: RenderChildWidget;
 };
 
 /**
  * Render the parent notebook widget and restart the runtime when model traits change.
  */
-export function renderNotebookWidget({
-	model,
-	el,
-	signal,
-	host,
-	renderChildWidget,
-}: RenderNotebookWidgetOptions): void {
+export function renderNotebookWidget({ model, el, signal, host }: RenderNotebookWidgetOptions): void {
 	let current = createAbortController(signal);
 	let version = 0;
 	const rerender = (variables?: Record<string, unknown>) => {
@@ -42,13 +35,11 @@ export function renderNotebookWidget({
 		current = createAbortController(signal);
 		const attempt = current;
 		const renderVersion = ++version;
-		void renderCurrentNotebook(model, el, attempt.signal, host, renderChildWidget, rerender, variables).catch(
-			(error: unknown) => {
-				if (attempt.signal.aborted || renderVersion !== version) return;
-				attempt.abort();
-				el.replaceChildren(createTopLevelError(error));
-			},
-		);
+		void renderCurrentNotebook(model, el, attempt.signal, host, rerender, variables).catch((error: unknown) => {
+			if (attempt.signal.aborted || renderVersion !== version) return;
+			attempt.abort();
+			el.replaceChildren(createTopLevelError(error));
+		});
 	};
 	const rerenderFromModel = () => rerender();
 
@@ -72,7 +63,6 @@ async function renderCurrentNotebook(
 	el: HTMLElement,
 	signal: AbortSignal,
 	host: RenderProps<WidgetModel>["host"] | undefined,
-	renderChildWidget: RenderChildWidget,
 	onInputReset: (variables: Record<string, unknown>) => void,
 	variablesOverride?: Record<string, unknown>,
 ): Promise<void> {
@@ -81,11 +71,7 @@ async function renderCurrentNotebook(
 
 	const notebook = readNotebookFromModel(model);
 	const cellRefs = readCellRefs(model.get("_cell_widgets"));
-	const compositionHost = host
-		? createCompositionHost(host)
-		: createWidgetManagerCompositionHost(model, signal, renderChildWidget);
 	if (cellRefs.length > 0) {
-		if (!compositionHost) throw new Error("This anywidget host does not expose composition APIs for cell widgets");
 		if (cellRefs.length !== notebook.cells.length) {
 			throw new Error(`Expected ${notebook.cells.length} cell widgets, received ${cellRefs.length}`);
 		}
@@ -114,7 +100,7 @@ async function renderCurrentNotebook(
 	signal.addEventListener("abort", cleanup, { once: true });
 
 	try {
-		if (cellRefs.length > 0 && compositionHost) {
+		if (cellRefs.length > 0) {
 			await renderComposedCells(
 				model,
 				root,
@@ -124,7 +110,7 @@ async function renderCurrentNotebook(
 				options,
 				variablesSync,
 				signal,
-				compositionHost,
+				createCompositionHost(host, model),
 			);
 		}
 	} catch (error) {

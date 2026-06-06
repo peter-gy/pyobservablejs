@@ -17,6 +17,7 @@ from collections.abc import Iterable, Mapping
 from typing import Any
 
 TYPE_KEY = "__pyobservablejs_type__"
+_MAX_SAFE_JS_INTEGER = 9_007_199_254_740_991
 
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z_$][0-9A-Za-z_$]*$")
 
@@ -41,8 +42,12 @@ def serialize_variables(values: Mapping[str, Any] | None) -> dict[str, Any]:
 def serialize_value(value: Any) -> Any:
     """Convert one Python value into the JSON-compatible wire format."""
 
-    if value is None or isinstance(value, bool | int | str):
+    if value is None or isinstance(value, bool | str):
         return value
+    if isinstance(value, int):
+        if abs(value) <= _MAX_SAFE_JS_INTEGER:
+            return value
+        return {TYPE_KEY: "bigint", "value": str(value)}
     if isinstance(value, float):
         if math.isfinite(value):
             return value
@@ -142,7 +147,10 @@ def deserialize_value(value: Any) -> Any:
     if tag == "reference":
         return f"[Circular reference {value.get('value')}]"
     if tag == "object":
-        return deserialize_value(value.get("value"))
+        raw = value.get("value")
+        if isinstance(raw, Mapping):
+            return {key: deserialize_value(item) for key, item in raw.items()}
+        return deserialize_value(raw)
     if tag == "map" and isinstance(value.get("value"), list):
         return [
             tuple(deserialize_value(item) for item in entry)

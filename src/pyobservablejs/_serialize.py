@@ -16,20 +16,32 @@ AuthorMode = Literal[
 
 Mode = Literal[
     "js",
+    "ts",
     "ojs",
     "md",
     "html",
+    "tex",
+    "dot",
     "sql",
+    "node",
+    "python",
+    "r",
 ]
 
 AUTHOR_MODES: frozenset[str] = frozenset(("js", "ojs", "md", "html"))
 
 SCRIPT_TYPES = {
     "js": "module",
+    "ts": "text/x-typescript",
     "ojs": "application/vnd.observable.javascript",
     "md": "text/markdown",
     "html": "text/html",
+    "tex": "application/x-tex",
+    "dot": "text/vnd.graphviz",
     "sql": "application/sql",
+    "node": "application/vnd.node.javascript",
+    "python": "text/x-python",
+    "r": "text/x-r",
 }
 
 

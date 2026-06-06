@@ -1,21 +1,11 @@
 // @vitest-environment jsdom
 
 import type { RenderProps } from "@anywidget/types";
-import { toNotebook } from "@observablehq/notebook-kit";
 import { describe, expect, test } from "vitest";
 import { SELECTORS } from "./widget/dom-contract";
-import type { CellRenderContext, WidgetModel } from "./widget/types";
+import type { WidgetModel } from "./widget/types";
 import widget from "./widget";
-import {
-	createCellExports,
-	createCellExportsMap,
-	createHost,
-	createModel,
-	objectValuedSelectSource,
-	renderChildrenThroughWidget,
-	variableValue,
-	waitFor,
-} from "./widget-test-utils";
+import { createHost, createModel, objectValuedSelectSource, variableValue, waitFor } from "./widget-test-utils";
 
 describe("widget runtime variable sync", () => {
 	test("updates existing Python variables through the runtime", async () => {
@@ -43,7 +33,7 @@ describe("widget runtime variable sync", () => {
 			model,
 			el,
 			signal: controller.signal,
-			host: createHost(childModels, createCellExportsMap(childModels), renderChildrenThroughWidget(childModels)),
+			host: createHost(childModels),
 		} as unknown as RenderProps<WidgetModel>);
 
 		expect(await waitFor(() => (variableValue(model, "doubled") === 4 ? 4 : undefined))).toBe(4);
@@ -52,6 +42,77 @@ describe("widget runtime variable sync", () => {
 
 		expect(await waitFor(() => (variableValue(model, "doubled") === 10 ? 10 : undefined))).toBe(10);
 		expect(variableValue(model, "base_echo")).toBe(5);
+		controller.abort();
+	});
+
+	test("keeps Python-owned hidden cells hidden", async () => {
+		const model = createModel({
+			role: "notebook",
+			spec: {
+				cells: [{ id: 1, mode: "ojs", value: "answer = 1", hidden: true }],
+			},
+			attachments: {},
+			_variables: { answer: 41 },
+			options: {},
+			_cell_widgets: ["anywidget:answer"],
+		});
+		const childModels = new Map([
+			["anywidget:answer", createModel({ role: "cell", name: "answer", _values: {}, _value_names: [] })],
+		]);
+		const el = document.createElement("div");
+		const controller = new AbortController();
+
+		widget.render({
+			model,
+			el,
+			signal: controller.signal,
+			host: createHost(childModels),
+		} as unknown as RenderProps<WidgetModel>);
+
+		expect(await waitFor(() => (variableValue(model, "answer") === 41 ? 41 : undefined))).toBe(41);
+		expect(el.querySelector<HTMLElement>(SELECTORS.composedCell)?.textContent?.trim()).toBe("");
+		controller.abort();
+	});
+
+	test("uses Python-owned outputs from mixed JS declarations", async () => {
+		const model = createModel({
+			role: "notebook",
+			spec: {
+				cells: [
+					{
+						id: 1,
+						mode: "js",
+						value: 'const answer = 1; const label = "source label";',
+					},
+				],
+			},
+			attachments: {},
+			_variables: { answer: 41 },
+			options: {},
+			_cell_widgets: ["anywidget:mixed"],
+		});
+		const childModel = createModel({ role: "cell", name: "mixed", _values: {}, _value_names: [] });
+		const el = document.createElement("div");
+		const controller = new AbortController();
+
+		widget.render({
+			model,
+			el,
+			signal: controller.signal,
+			host: createHost(new Map([["anywidget:mixed", childModel]])),
+		} as unknown as RenderProps<WidgetModel>);
+
+		expect(await waitFor(() => (variableValue(childModel, "answer") === 41 ? 41 : undefined))).toBe(41);
+		expect(
+			await waitFor(() => (variableValue(childModel, "label") === "source label" ? "source label" : undefined)),
+		).toBe("source label");
+		expect(variableValue(model, "answer")).toBe(41);
+		expect(variableValue(model, "label")).toBe("source label");
+
+		setVariables(model, 1, "set", { answer: 43 });
+
+		expect(await waitFor(() => (variableValue(childModel, "answer") === 43 ? 43 : undefined))).toBe(43);
+		expect(variableValue(childModel, "label")).toBe("source label");
 		controller.abort();
 	});
 
@@ -80,7 +141,7 @@ describe("widget runtime variable sync", () => {
 			model,
 			el,
 			signal: controller.signal,
-			host: createHost(childModels, createCellExportsMap(childModels), renderChildrenThroughWidget(childModels)),
+			host: createHost(childModels),
 		} as unknown as RenderProps<WidgetModel>);
 		setVariables(model, 1, "set", { base: 6 });
 
@@ -114,7 +175,7 @@ describe("widget runtime variable sync", () => {
 			model,
 			el,
 			signal: controller.signal,
-			host: createHost(childModels, createCellExportsMap(childModels), renderChildrenThroughWidget(childModels)),
+			host: createHost(childModels),
 		} as unknown as RenderProps<WidgetModel>);
 
 		expect(await waitFor(() => (variableValue(model, "doubled") === 10 ? 10 : undefined))).toBe(10);
@@ -162,7 +223,7 @@ viewof gain = {
 			model,
 			el,
 			signal: controller.signal,
-			host: createHost(childModels, createCellExportsMap(childModels), renderChildrenThroughWidget(childModels)),
+			host: createHost(childModels),
 		} as unknown as RenderProps<WidgetModel>);
 
 		await waitFor(() => {
@@ -212,7 +273,7 @@ viewof gain = {
 			model,
 			el,
 			signal: controller.signal,
-			host: createHost(childModels, createCellExportsMap(childModels), renderChildrenThroughWidget(childModels)),
+			host: createHost(childModels),
 		} as unknown as RenderProps<WidgetModel>);
 
 		const select = await waitFor(() => onlySelect(el));
@@ -265,7 +326,7 @@ viewof gain = {
 			model,
 			el,
 			signal: controller.signal,
-			host: createHost(childModels, createCellExportsMap(childModels), renderChildrenThroughWidget(childModels)),
+			host: createHost(childModels),
 		} as unknown as RenderProps<WidgetModel>);
 
 		await waitFor(() => rangeWithValue(el, 5));
@@ -321,7 +382,7 @@ viewof gain = {
 			model,
 			el,
 			signal: controller.signal,
-			host: createHost(childModels, createCellExportsMap(childModels), renderChildrenThroughWidget(childModels)),
+			host: createHost(childModels),
 		} as unknown as RenderProps<WidgetModel>);
 
 		const firstInput = await waitFor(() => rangeWithValue(el, 1));
@@ -379,7 +440,7 @@ viewof gain = {
 			model,
 			el,
 			signal: controller.signal,
-			host: createHost(childModels, createCellExportsMap(childModels), renderChildrenThroughWidget(childModels)),
+			host: createHost(childModels),
 		} as unknown as RenderProps<WidgetModel>);
 
 		await waitFor(() => rangeWithValue(el, 1));
@@ -432,7 +493,7 @@ viewof gain = {
 			model,
 			el,
 			signal: controller.signal,
-			host: createHost(childModels, createCellExportsMap(childModels), renderChildrenThroughWidget(childModels)),
+			host: createHost(childModels),
 		} as unknown as RenderProps<WidgetModel>);
 
 		const firstInput = await waitFor(() => rangeWithValue(el, 5));
@@ -451,91 +512,7 @@ viewof gain = {
 		expect(await waitFor(() => (variableValue(model, "doubled") === 6 ? 6 : undefined))).toBe(6);
 		controller.abort();
 	});
-
-	test("stops standalone variable updates after abort", async () => {
-		const notebookModel = createModel({
-			role: "notebook",
-			_variables: { seed: 5, gain: 2 },
-			_values: {},
-			_value_names: [],
-		});
-		const seedModel = createModel({
-			role: "cell",
-			name: "seed",
-			_values: { seed: 1 },
-			_value_names: ["seed"],
-		});
-		const gainModel = createModel({
-			role: "cell",
-			name: "gain",
-			_values: {},
-			_value_names: [],
-		});
-		const notebook = toNotebook({
-			cells: [
-				{ id: 1, mode: "ojs", value: "seed = 1" },
-				{
-					id: 2,
-					mode: "ojs",
-					value: `
-viewof gain = {
-  const input = document.createElement("input");
-  input.type = "range";
-  input.min = "0";
-  input.max = "10";
-  input.value = String(seed);
-  return input;
-}`,
-				},
-			],
-		});
-		createCellExports(gainModel).bindRuntime({
-			notebookModel,
-			runtime: {} as CellRenderContext["runtime"],
-			showSource: false,
-			cell: notebook.cells[1],
-			cellIndex: 1,
-			notebook,
-			options: {
-				attachments: {},
-				baseUrl: document.baseURI,
-				variables: { seed: 5, gain: 2 },
-				showSource: false,
-				observableMarkdownCompatibility: false,
-			},
-			cellModels: [seedModel, gainModel],
-			sync: {} as CellRenderContext["sync"],
-		});
-		const el = document.createElement("div");
-		const controller = new AbortController();
-
-		widget.render({
-			model: gainModel,
-			el,
-			signal: controller.signal,
-			host: createHost(new Map()),
-		} as unknown as RenderProps<WidgetModel>);
-
-		await waitFor(() => rangeWithValue(el, 2));
-
-		setVariables(notebookModel, 1, "replace", { gain: 3 });
-		await waitFor(() => rangeWithValue(el, 3));
-
-		setVariables(notebookModel, 2, "set", { gain: 4 });
-		const acceptedRange = await waitFor(() => rangeWithValue(el, 4));
-		controller.abort();
-		setVariables(notebookModel, 3, "set", { gain: 9 });
-
-		await flushRuntimeUpdates();
-		expect(acceptedRange.valueAsNumber).toBe(4);
-		expect(rangeWithValue(el, 9)).toBeUndefined();
-	});
 });
-
-async function flushRuntimeUpdates(): Promise<void> {
-	await Promise.resolve();
-	await Promise.resolve();
-}
 
 function rangeWithValue(el: HTMLElement, value: number): HTMLInputElement | undefined {
 	const inputs = Array.from(el.querySelectorAll<HTMLInputElement>("input[type='range']"));

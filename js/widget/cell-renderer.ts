@@ -16,18 +16,29 @@ type RenderCellOptions = {
 	sync?: CellVariableSync;
 	signal: AbortSignal;
 	cellName?: string;
+	pythonVariableNames?: Set<string>;
 };
+type RuntimeDefinition = Parameters<NotebookRuntime["define"]>[1];
 
 /**
  * Render one Notebook Kit cell into a widget-owned wrapper.
  */
-export function renderCell({ wrapper, runtime, cell, showSource, sync, signal, cellName }: RenderCellOptions): void {
+export function renderCell({
+	wrapper,
+	runtime,
+	cell,
+	showSource,
+	sync,
+	signal,
+	cellName,
+	pythonVariableNames,
+}: RenderCellOptions): void {
 	wrapper.replaceChildren();
 	const output = createCellOutput(wrapper, cell);
-	defineCell(runtime, output, cell, sync, cellName);
+	defineCell(runtime, output, cell, sync, cellName, pythonVariableNames);
 
 	if (showSource && cell.pinned) {
-		wrapper.appendChild(renderSource(cell, signal));
+		appendSource(wrapper, cell, signal);
 	}
 }
 
@@ -40,24 +51,31 @@ export function defineCell(
 	cell: Cell,
 	sync?: CellVariableSync,
 	cellName?: string,
+	pythonVariableNames: Set<string> = new Set(),
 ): void {
 	try {
 		const definition = transpile(cell, { resolveLocalImports: true });
 		const exposed = exposedVariableNames(definition);
 		const displayName = exposed.length === 0 && cellName ? cellName : null;
+		const pythonNames = pythonOwnedNames(definition, exposed, pythonVariableNames);
 		sync?.setVariableNames(displayName ? [displayName] : exposed);
+		if (sync && pythonNames.length === exposed.length && pythonNames.length > 0) {
+			renderPythonVariableCell(runtime, root, cell, definition, pythonNames);
+			defineSyncObservers(runtime, sync, exposed);
+			applyModelVariablesToViews(sync);
+			return;
+		}
+		const sourceDefinition = sourceRuntimeDefinition(definition, pythonNames);
 		runtime.define(
 			{
 				root,
 				expanded: [],
 				variables: [],
 			},
-			createRuntimeDefinition(cell, definition),
-			sync ? createCellObserver(sync, definition, displayName) : observe,
+			createRuntimeDefinition(cell, sourceDefinition),
+			sync ? createCellObserver(sync, sourceDefinition, displayName) : observe,
 		);
-		for (const name of exposed) {
-			if (sync) runtime.main.variable(createSyncObserver(sync, name)).define([name], (value: unknown) => value);
-		}
+		if (sync) defineSyncObservers(runtime, sync, exposed);
 		if (sync) applyModelVariablesToViews(sync);
 	} catch (error) {
 		root.appendChild(createTopLevelError(error));
@@ -66,6 +84,43 @@ export function defineCell(
 
 export function renderCellError(wrapper: HTMLElement, error: unknown): void {
 	wrapper.replaceChildren(createTopLevelError(error));
+}
+
+function appendSource(wrapper: HTMLElement, cell: Cell, signal: AbortSignal): void {
+	try {
+		if (!signal.aborted) wrapper.appendChild(renderSource(cell, signal));
+	} catch (error) {
+		if (!signal.aborted) wrapper.appendChild(createTopLevelError(error));
+	}
+}
+
+function renderPythonVariableCell(
+	runtime: NotebookRuntime,
+	root: HTMLDivElement,
+	cell: Cell,
+	sourceDefinition: ReturnType<typeof transpile>,
+	names: string[],
+): void {
+	const definition: RuntimeDefinition = {
+		id: cell.id,
+		body: (...values: unknown[]) =>
+			names.length === 1 ? values[0] : Object.fromEntries(names.map((name, index) => [name, values[index]])),
+		inputs: names,
+		outputs: [],
+		output: undefined,
+		autodisplay: sourceDefinition.autodisplay,
+		autoview: false,
+		automutable: false,
+	};
+	runtime.define(
+		{
+			root,
+			expanded: [],
+			variables: [],
+		},
+		definition,
+		observe,
+	);
 }
 
 /**
@@ -98,6 +153,11 @@ function createCellObserver(
 			if (displayName) sync.setVariable(displayName, toWireValue(value));
 			fulfilled(value);
 		};
+		const rejected = observer.rejected.bind(observer);
+		observer.rejected = (error: unknown) => {
+			if (displayName) sync.setVariable(displayName, toWireValue(error));
+			rejected(error);
+		};
 		return observer;
 	};
 }
@@ -111,6 +171,33 @@ function createSyncObserver(sync: CellVariableSync, name: string): RuntimeObserv
 		rejected(error: unknown) {
 			sync.setVariable(name, toWireValue(error));
 		},
+	};
+}
+
+function defineSyncObservers(runtime: NotebookRuntime, sync: CellVariableSync, names: string[]): void {
+	for (const name of names) {
+		runtime.main.variable(createSyncObserver(sync, name)).define([name], (value: unknown) => value);
+	}
+}
+
+function pythonOwnedNames(
+	definition: ReturnType<typeof transpile>,
+	exposed: string[],
+	pythonVariableNames: Set<string>,
+): string[] {
+	if (definition.autoview || definition.automutable) return [];
+	return exposed.filter((name) => pythonVariableNames.has(name));
+}
+
+function sourceRuntimeDefinition(
+	definition: ReturnType<typeof transpile>,
+	pythonNames: readonly string[],
+): ReturnType<typeof transpile> {
+	if (!definition.outputs || pythonNames.length === 0) return definition;
+	const pythonNameSet = new Set(pythonNames);
+	return {
+		...definition,
+		outputs: definition.outputs.filter((name) => !pythonNameSet.has(name)),
 	};
 }
 

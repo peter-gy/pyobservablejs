@@ -1,30 +1,59 @@
 // @vitest-environment jsdom
 
 import type { RenderProps } from "@anywidget/types";
-import { describe, expect, test } from "vitest";
+import { describe, test } from "vitest";
 import { SELECTORS } from "./widget/dom-contract";
 import type { WidgetModel } from "./widget/types";
 import widget from "./widget";
-import {
-	createCellExportsMap,
-	createHost,
-	createModel,
-	renderChildrenThroughWidget,
-	waitFor,
-} from "./widget-test-utils";
+import { createHost, createModel, waitFor } from "./widget-test-utils";
 
-describe("widget markdown compatibility", () => {
-	test("renders hosted Observable markdown strong delimiters with interior whitespace", async () => {
+describe("widget markdown rendering", () => {
+	test("renders Python-authored Notebook Kit markdown cells", async () => {
+		const model = createModel({
+			role: "notebook",
+			spec: {
+				cells: [{ id: 1, mode: "md", value: "# Python rows drive an Observable Plot bar chart" }],
+			},
+			attachments: {},
+			_variables: {},
+			options: {},
+			_cell_widgets: ["anywidget:title"],
+		});
+		const childModels = new Map([
+			["anywidget:title", createModel({ role: "cell", name: "title", _values: {}, _value_names: [] })],
+		]);
+		const el = document.createElement("div");
+		const controller = new AbortController();
+
+		widget.render({
+			model,
+			el,
+			signal: controller.signal,
+			host: createHost(childModels),
+		} as unknown as RenderProps<WidgetModel>);
+
+		await waitFor(() => {
+			const error = el.querySelector(SELECTORS.error)?.textContent;
+			if (error) throw new Error(error);
+			return Array.from(el.querySelectorAll("h1")).find(
+				(item) => item.textContent === "Python rows drive an Observable Plot bar chart",
+			);
+		});
+
+		controller.abort();
+	});
+
+	test("renders source-backed OJS markdown through the Notebook Kit md builtin", async () => {
 		const source =
 			"<notebook>\n" +
-			'  <script id="1" type="application/vnd.observable.javascript">md`** 1. Import the library**\n\nVersion 119.1 was the latest when this notebook was written.`</script>\n' +
+			'  <script id="1" type="application/vnd.observable.javascript">md`**1. Import the library**`</script>\n' +
 			"</notebook>";
 		const model = createModel({
 			role: "notebook",
 			source,
 			attachments: {},
 			_variables: {},
-			options: { observable_markdown_compatibility: true },
+			options: {},
 			_cell_widgets: ["anywidget:markdown"],
 		});
 		const childModels = new Map([
@@ -37,38 +66,36 @@ describe("widget markdown compatibility", () => {
 			model,
 			el,
 			signal: controller.signal,
-			host: createHost(childModels, createCellExportsMap(childModels), renderChildrenThroughWidget(childModels)),
+			host: createHost(childModels),
 		} as unknown as RenderProps<WidgetModel>);
 
 		await waitFor(() => {
 			const error = el.querySelector(SELECTORS.error)?.textContent;
 			if (error) throw new Error(error);
-			return outputWithStrongAndParagraph(
-				el,
-				"1. Import the library",
-				"Version 119.1 was the latest when this notebook was written.",
-			);
+			return onlyStrongText(el, "1. Import the library");
 		});
 
 		controller.abort();
 	});
 
-	test("preserves the Observable previous value receiver when wrapping markdown", async () => {
+	test("keeps spaced strong delimiters literal under Notebook Kit markdown", async () => {
 		const source =
 			"<notebook>\n" +
-			'  <script id="1" type="application/vnd.observable.javascript">md`** ${this ? "updated" : "initial"} ${gain}**`</script>\n' +
+			'  <script id="1" type="application/vnd.observable.javascript">md`** 1. Import the library**`</script>\n' +
 			"</notebook>";
 		const model = createModel({
 			role: "notebook",
 			source,
 			attachments: {},
-			_variables: { gain: 1 },
-			_variable_update: {},
-			options: { observable_markdown_compatibility: true },
-			_cell_widgets: ["anywidget:readout"],
+			_variables: {},
+			options: {},
+			_cell_widgets: ["anywidget:source-ojs-markdown"],
 		});
 		const childModels = new Map([
-			["anywidget:readout", createModel({ role: "cell", name: "readout", _values: {}, _value_names: [] })],
+			[
+				"anywidget:source-ojs-markdown",
+				createModel({ role: "cell", name: "sourceOjsMarkdown", _values: {}, _value_names: [] }),
+			],
 		]);
 		const el = document.createElement("div");
 		const controller = new AbortController();
@@ -77,23 +104,14 @@ describe("widget markdown compatibility", () => {
 			model,
 			el,
 			signal: controller.signal,
-			host: createHost(childModels, createCellExportsMap(childModels), renderChildrenThroughWidget(childModels)),
+			host: createHost(childModels),
 		} as unknown as RenderProps<WidgetModel>);
 
 		await waitFor(() => {
 			const error = el.querySelector(SELECTORS.error)?.textContent;
 			if (error) throw new Error(error);
-			return onlyStrongText(el, "initial 1");
+			return onlyComposedInspectorString(el, "** 1. Import the library**");
 		});
-
-		model.set("_variable_update", { seq: 1, kind: "set", values: { gain: 2 } });
-
-		await waitFor(() => {
-			const error = el.querySelector(SELECTORS.error)?.textContent;
-			if (error) throw new Error(error);
-			return onlyStrongText(el, "updated 2");
-		});
-		expect(Array.from(el.querySelectorAll("strong"), (item) => item.textContent)).toEqual(["updated 2"]);
 
 		controller.abort();
 	});
@@ -109,7 +127,7 @@ describe("widget markdown compatibility", () => {
 			source,
 			attachments: {},
 			_variables: {},
-			options: { observable_markdown_compatibility: true },
+			options: {},
 			_cell_widgets: ["anywidget:custom-md", "anywidget:custom-md-call"],
 		});
 		const childModels = new Map([
@@ -123,7 +141,7 @@ describe("widget markdown compatibility", () => {
 			model,
 			el,
 			signal: controller.signal,
-			host: createHost(childModels, createCellExportsMap(childModels), renderChildrenThroughWidget(childModels)),
+			host: createHost(childModels),
 		} as unknown as RenderProps<WidgetModel>);
 
 		await waitFor(() => {
@@ -159,90 +177,7 @@ describe("widget markdown compatibility", () => {
 			model,
 			el,
 			signal: controller.signal,
-			host: createHost(childModels, createCellExportsMap(childModels), renderChildrenThroughWidget(childModels)),
-		} as unknown as RenderProps<WidgetModel>);
-
-		await waitFor(() => {
-			const error = el.querySelector(SELECTORS.error)?.textContent;
-			if (error) throw new Error(error);
-			return onlyComposedInspectorString(el, "** 1. Import the library**");
-		});
-
-		controller.abort();
-	});
-
-	test("renders hosted Observable markdown in standalone child cells", async () => {
-		const source =
-			"<notebook>\n" +
-			'  <script id="1" type="application/vnd.observable.javascript">md`** 1. Import the library**\n\nVersion 119.1 was the latest when this notebook was written.`</script>\n' +
-			"</notebook>";
-		const model = createModel({
-			role: "notebook",
-			source,
-			attachments: {},
-			_variables: {},
-			options: { observable_markdown_compatibility: true },
-			_cell_widgets: ["anywidget:markdown"],
-		});
-		const markdownModel = createModel({ role: "cell", name: "markdown", _values: {}, _value_names: [] });
-		const childModels = new Map([["anywidget:markdown", markdownModel]]);
-		const controller = new AbortController();
-
-		widget.render({
-			model,
-			el: document.createElement("div"),
-			signal: controller.signal,
-			host: createHost(childModels, createCellExportsMap(childModels), renderChildrenThroughWidget(childModels)),
-		} as unknown as RenderProps<WidgetModel>);
-
-		const standaloneEl = document.createElement("div");
-		widget.render({
-			model: markdownModel,
-			el: standaloneEl,
-			signal: controller.signal,
-			host: createHost(new Map()),
-		} as unknown as RenderProps<WidgetModel>);
-
-		await waitFor(() => {
-			const error = standaloneEl.querySelector(SELECTORS.error)?.textContent;
-			if (error) throw new Error(error);
-			return outputWithStrongAndParagraph(
-				standaloneEl,
-				"1. Import the library",
-				"Version 119.1 was the latest when this notebook was written.",
-			);
-		});
-
-		controller.abort();
-	});
-
-	test("keeps source-backed OJS markdown delimiters literal without ObservableHQ compatibility", async () => {
-		const source =
-			"<notebook>\n" +
-			'  <script id="1" type="application/vnd.observable.javascript">md`** 1. Import the library**`</script>\n' +
-			"</notebook>";
-		const model = createModel({
-			role: "notebook",
-			source,
-			attachments: {},
-			_variables: {},
-			options: {},
-			_cell_widgets: ["anywidget:source-ojs-markdown"],
-		});
-		const childModels = new Map([
-			[
-				"anywidget:source-ojs-markdown",
-				createModel({ role: "cell", name: "sourceOjsMarkdown", _values: {}, _value_names: [] }),
-			],
-		]);
-		const el = document.createElement("div");
-		const controller = new AbortController();
-
-		widget.render({
-			model,
-			el,
-			signal: controller.signal,
-			host: createHost(childModels, createCellExportsMap(childModels), renderChildrenThroughWidget(childModels)),
+			host: createHost(childModels),
 		} as unknown as RenderProps<WidgetModel>);
 
 		await waitFor(() => {
@@ -263,26 +198,6 @@ function onlyStrongText(el: HTMLElement, text: string): HTMLElement | undefined 
 		if (matches.length === 0) return undefined;
 		if (matches.length > 1) throw new Error(`Expected one strong element with ${text}, found ${matches.length}`);
 		return matches[0];
-	});
-}
-
-function outputWithStrongAndParagraph(
-	el: HTMLElement,
-	strongText: string,
-	paragraphText: string,
-): HTMLElement | undefined {
-	return onlyOutputMatch(el, `output with ${strongText} and ${paragraphText}`, (cell) => {
-		const strong = Array.from(cell.querySelectorAll<HTMLElement>("strong")).filter(
-			(item) => item.textContent === strongText,
-		);
-		const paragraphs = Array.from(cell.querySelectorAll<HTMLElement>("p")).filter(
-			(item) => item.textContent === paragraphText,
-		);
-		if (strong.length === 0 || paragraphs.length === 0) return undefined;
-		if (strong.length > 1) throw new Error(`Expected one strong element with ${strongText}, found ${strong.length}`);
-		if (paragraphs.length > 1)
-			throw new Error(`Expected one paragraph with ${paragraphText}, found ${paragraphs.length}`);
-		return cell;
 	});
 }
 
@@ -314,5 +229,5 @@ function onlyOutputMatch(
 }
 
 function outputCells(el: HTMLElement): HTMLElement[] {
-	return Array.from(el.querySelectorAll<HTMLElement>(`${SELECTORS.composedCell}, ${SELECTORS.standaloneCell}`));
+	return Array.from(el.querySelectorAll<HTMLElement>(SELECTORS.composedCell));
 }

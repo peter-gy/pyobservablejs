@@ -11,7 +11,7 @@ import { sameWireValue } from "../runtime/wire";
 export function syncNotebookGraph(
 	model: RenderProps<WidgetModel>["model"],
 	notebook: Notebook,
-	cellModels: Array<RenderProps<WidgetModel>["model"]> = [],
+	cellModels: Array<RenderProps<WidgetModel>["model"] | undefined> = [],
 ): void {
 	const names = cellModels.map((cellModel) => cellModel?.get("name") ?? "");
 	const graph = createNotebookGraph(notebook, names);

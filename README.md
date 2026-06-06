@@ -77,13 +77,14 @@ notebook = obs.Notebook(
     obs.ojs("double = gain * 2", name="double"),
 )
 
-notebook.cell("gain")
+notebook
 ```
 
-After the notebook or cell widget has rendered in the browser, read the synced
-value from a later Python cell:
+After the parent notebook has rendered in the browser, read the synced value
+from a later Python cell:
 
 ```python
+notebook.cell("gain").value
 notebook.value("double")
 ```
 
@@ -101,8 +102,10 @@ notebook = obs.Notebook.from_html(
 )
 ```
 
-Local `FileAttachment(...)` references and relative JavaScript imports are
-embedded by default so the widget can move between notebook frontends.
+With `base_path` set, local `FileAttachment(...)` references and relative
+JavaScript imports discovered in Notebook Kit script cells are embedded by
+default. Local JavaScript imports are embedded recursively, so imported helper
+modules can reference other local modules.
 
 Load a public ObservableHQ notebook by URL, slug, or id:
 

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pyobservablejs"
-version = "0.0.0"
+version = "0.0.0rc1"
 description = "Observable JavaScript notebooks as reusable Python widgets"
 readme = "README.md"
 license = "MIT"
@@ -43,12 +43,13 @@ dev = [
 
 [tool.hatch.build]
 only-packages = true
-artifacts = ["src/pyobservablejs/static/*"]
+artifacts = ["src/pyobservablejs/static/**"]
 
 [tool.hatch.build.targets.sdist.force-include]
 "js" = "js"
 "package.json" = "package.json"
 "pnpm-lock.yaml" = "pnpm-lock.yaml"
+"pnpm-workspace.yaml" = "pnpm-workspace.yaml"
 
 [tool.hatch.build.hooks.jupyter-builder]
 build-function = "hatch_jupyter_builder.npm_builder"

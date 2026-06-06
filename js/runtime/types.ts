@@ -10,7 +10,6 @@ export type NotebookOptions = {
 	baseUrl: string;
 	variables: Record<string, unknown>;
 	showSource: boolean;
-	observableMarkdownCompatibility: boolean;
 };
 
 export type AttachmentRegistry = {

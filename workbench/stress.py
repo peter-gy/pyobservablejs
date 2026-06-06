@@ -14,24 +14,20 @@ def _():
 
 @app.cell
 def _(mo, obs):
-    nb = mo.ui.anywidget(
-        obs.Notebook.from_observablehq(
-            "https://observablehq.com/@observablehq/voronoi-spirals-ii"
-        )
+    notebook = obs.Notebook.from_observablehq(
+        "https://observablehq.com/@observablehq/voronoi-spirals-ii"
     )
-    nb
-    return (nb,)
+    notebook_view = mo.ui.anywidget(notebook)
+    notebook_view
+    return notebook, notebook_view
 
 
 @app.cell
-def _(nb):
-    nb.cells[1]
-    return
-
-
-@app.cell
-def _(nb):
-    nb.cells[2]
+def _(mo, notebook, notebook_view):
+    notebook_view.value
+    mo.md(
+        f"{len(notebook.cells)} cells available through `notebook.cells` after parent render."
+    )
     return
 
 

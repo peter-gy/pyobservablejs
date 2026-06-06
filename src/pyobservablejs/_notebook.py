@@ -5,7 +5,6 @@ from __future__ import annotations
 import dataclasses
 import pathlib
 import textwrap
-import uuid
 from collections.abc import Iterable, Mapping, Sequence
 from html.parser import HTMLParser
 from typing import Any, cast
@@ -84,26 +83,25 @@ def _widgets_from_json(value: object, _widget: object) -> object:
 class _ObservableWidget(anywidget.AnyWidget):
     """Shared anywidget base for the bundled frontend assets."""
 
-    _esm = pathlib.Path(__file__).parent / "static" / "widget.js"
-    _css = pathlib.Path(__file__).parent / "static" / "widget.css"
+    _static_dir = pathlib.Path(__file__).parent / "static"
+    _esm = _static_dir / "widget.js"
+    _css = _static_dir / "widget.css"
 
 
 class NotebookCell(_ObservableWidget):
-    """Child anywidget model for one rendered Observable cell.
+    """Child anywidget model for one Observable cell.
 
-    The parent ``Notebook`` owns the Observable runtime. A ``NotebookCell``
-    exposes the browser-synchronized values and graph metadata for its matching
-    cell.
+    The parent ``Notebook`` owns rendering and Observable runtime state.
+    ``NotebookCell`` exposes browser-synchronized values and graph metadata for
+    its matching cell.
     """
 
     role = traitlets.Unicode("cell").tag(sync=True)
-    _cell_id = traitlets.Unicode("").tag(sync=True)
     name = traitlets.Unicode("").tag(sync=True)
     _value_names = traitlets.List(traitlets.Unicode(), default_value=[]).tag(sync=True)
     _values = traitlets.Dict(default_value={}).tag(sync=True)
 
     def __init__(self, **kwargs: Any) -> None:
-        kwargs.setdefault("_cell_id", uuid.uuid4().hex)
         self._notebook: Notebook | None = None
         self._notebook_index: int | None = None
         super().__init__(**kwargs)
@@ -257,7 +255,6 @@ class Notebook(_ObservableWidget):
             attachments=normalize_files(attachments, base_path=base_path),
             variables=variables,
             show_pinned_source=show_pinned_source,
-            observable_markdown_compatibility=False,
             cell_widgets=_cell_widgets_for_specs(cell_specs),
         )
 
@@ -270,7 +267,6 @@ class Notebook(_ObservableWidget):
         attachments: Mapping[str, Any],
         variables: Mapping[str, Any] | None,
         show_pinned_source: bool,
-        observable_markdown_compatibility: bool,
         cell_widgets: Sequence[NotebookCell],
     ) -> "Notebook":
         notebook = cls.__new__(cls)
@@ -280,7 +276,6 @@ class Notebook(_ObservableWidget):
             attachments=attachments,
             variables=variables,
             show_pinned_source=show_pinned_source,
-            observable_markdown_compatibility=observable_markdown_compatibility,
             cell_widgets=cell_widgets,
         )
         return notebook
@@ -293,7 +288,6 @@ class Notebook(_ObservableWidget):
         attachments: Mapping[str, Any],
         variables: Mapping[str, Any] | None,
         show_pinned_source: bool,
-        observable_markdown_compatibility: bool,
         cell_widgets: Sequence[NotebookCell],
     ) -> None:
         self._variable_values = _copy_variables(variables)
@@ -303,10 +297,7 @@ class Notebook(_ObservableWidget):
             spec=dict(spec),
             attachments=dict(attachments),
             _variables=serialize_variables(self._variable_values),
-            options={
-                "show_source": show_pinned_source,
-                "observable_markdown_compatibility": observable_markdown_compatibility,
-            },
+            options={"show_source": show_pinned_source},
             _cell_widgets=list(cell_widgets),
         )
         for index, cell_widget in enumerate(self._cell_widgets):
@@ -504,10 +495,11 @@ class Notebook(_ObservableWidget):
         """Create a source-backed notebook from a Notebook Kit HTML string.
 
         With ``portable=True`` and ``base_path`` set, local file attachments are
-        embedded and relative JavaScript imports are rewritten to data URLs.
-        Explicit ``attachments`` override discovered attachments with the same
-        name. ``variables`` sets Python-owned OJS variables for the rendered
-        notebook.
+        embedded and relative JavaScript imports are recursively rewritten to
+        data URLs. With ``portable=False``, source references stay unchanged and
+        resolve relative to the frontend page URL. Explicit ``attachments``
+        override discovered attachments with the same name. ``variables`` sets
+        Python-owned OJS variables for the rendered notebook.
         """
 
         return cls._from_html_source(
@@ -517,7 +509,6 @@ class Notebook(_ObservableWidget):
             portable=portable,
             variables=variables,
             show_pinned_source=show_pinned_source,
-            observable_markdown_compatibility=False,
         )
 
     @classmethod
@@ -530,7 +521,6 @@ class Notebook(_ObservableWidget):
         portable: bool,
         variables: Mapping[str, Any] | None,
         show_pinned_source: bool,
-        observable_markdown_compatibility: bool,
     ) -> "Notebook":
         if not isinstance(source, str):
             raise TypeError("source must be a Notebook Kit HTML string")
@@ -548,7 +538,6 @@ class Notebook(_ObservableWidget):
             source=source,
             spec={},
             attachments={**discovered, **normalized},
-            observable_markdown_compatibility=observable_markdown_compatibility,
             cell_widgets=_cell_widgets_for_cells(parsed),
         )
 
@@ -580,7 +569,6 @@ class Notebook(_ObservableWidget):
             variables=variables,
             attachments={**discovered, **normalized},
             show_pinned_source=show_pinned_source,
-            observable_markdown_compatibility=True,
         )
 
     def to_notebook_html(self) -> str:

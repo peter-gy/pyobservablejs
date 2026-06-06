@@ -139,16 +139,8 @@ def _(example_options, gallery_notebook, mo, selected_example, source_label):
 
 @app.cell
 def _(gallery_notebook, mo):
-    mo.vstack(
-        [
-            mo.vstack(
-                [
-                    mo.md(f"**Cell {index}**"),
-                    mo.ui.anywidget(cell),
-                ]
-            )
-            for index, cell in enumerate(gallery_notebook.cells)
-        ]
+    mo.md(
+        f"{len(gallery_notebook.cells)} cells available through `gallery_notebook.cells`."
     )
     return
 

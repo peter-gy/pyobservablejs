@@ -53,26 +53,12 @@ def _(initial_frequencies, letters_base, mo):
     return frequency_floor, frequency_sliders, python_gain
 
 
-@app.cell
-def _(mo, notebook):
-    gain_cell_view = mo.ui.anywidget(notebook.cell("gain"))
-    mo.vstack(
-        [
-            mo.md("**Gain cell widget**"),
-            gain_cell_view,
-        ]
-    )
-    return (gain_cell_view,)
-
-
 @app.cell(hide_code=True)
-def _(gain_cell_view, json, mo, notebook, notebook_view):
-    gain_cell_view.value
+def _(json, mo, notebook, notebook_view):
     notebook_view.value
-    gain_values = notebook.cell("gain").values
     all_values = notebook.values
     mo.md(f"""
-    **Python sees OJS gain:** `{json.dumps(gain_values, sort_keys=True)}`
+    **Python sees OJS gain:** `{json.dumps(all_values.get("gain"), sort_keys=True)}`
 
     **Notebook values:** `{json.dumps(all_values, sort_keys=True, default=str)}`
     """)

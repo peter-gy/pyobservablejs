@@ -6,11 +6,13 @@ type RuntimeDefinition = Parameters<NotebookRuntime["define"]>[1];
 type RuntimeBody = RuntimeDefinition["body"];
 type TranspiledDefinition = ReturnType<typeof transpile>;
 
+const TEMPLATE_MODES = new Set<Cell["mode"]>(["dot", "html", "md", "sql", "tex"]);
+
 export function createRuntimeDefinition(cell: Cell, definition: TranspiledDefinition): RuntimeDefinition {
 	const body = new Function(`"use strict"; return (${definition.body});`)() as RuntimeBody;
 	return {
 		id: cell.id,
-		body,
+		body: TEMPLATE_MODES.has(cell.mode) ? awaitTemplateInputs(body) : body,
 		inputs: definition.inputs,
 		outputs: definition.outputs,
 		output: definition.output,
@@ -18,6 +20,12 @@ export function createRuntimeDefinition(cell: Cell, definition: TranspiledDefini
 		autoview: definition.autoview,
 		automutable: definition.automutable,
 	};
+}
+
+function awaitTemplateInputs(body: RuntimeBody): RuntimeBody {
+	return async function (this: unknown, ...values: unknown[]) {
+		return body.call(this, ...(await Promise.all(values)));
+	} as RuntimeBody;
 }
 
 export function runtimeDefinitionNames(definition: RuntimeDefinition): string[] {

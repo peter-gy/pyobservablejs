@@ -18,18 +18,12 @@ export function createNotebookRoot(parent: HTMLElement, theme: Notebook["theme"]
 	return root;
 }
 
-export function appendCellWrapper(
-	root: HTMLElement,
-	options: { composedCellRef?: string; standalone?: boolean } = {},
-): HTMLElement {
+export function appendCellWrapper(root: HTMLElement, options: { composedCellRef?: string } = {}): HTMLElement {
 	const wrapper = document.createElement("div");
 	wrapper.className = CLASS_NAMES.cell;
 	if (options.composedCellRef !== undefined) {
 		wrapper.dataset[DATASET_KEYS.composed] = "true";
 		wrapper.dataset[DATASET_KEYS.cellRef] = options.composedCellRef;
-	}
-	if (options.standalone) {
-		wrapper.dataset[DATASET_KEYS.standaloneCell] = "true";
 	}
 	root.appendChild(wrapper);
 	return wrapper;

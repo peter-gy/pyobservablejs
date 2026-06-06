@@ -1,6 +1,5 @@
 import { NotebookRuntime, library } from "@observablehq/notebook-kit/runtime";
 import { createFileAttachment } from "./attachments";
-import { normalizeMarkdownRenderer } from "./markdown";
 import type { AttachmentRegistry, NotebookOptions } from "./types";
 import { createVariableBuiltins } from "./wire";
 
@@ -14,19 +13,83 @@ export function createRuntime(
 	attachmentRegistry: AttachmentRegistry,
 ): NotebookRuntime {
 	// Python variables enter OJS as Observable builtins before Notebook Kit defines cells.
-	const width = () => Math.max(320, Math.floor(root.getBoundingClientRect().width || el.clientWidth || 928));
+	const width = () => observeWidth(root, el);
 	const builtins = {
 		...library,
 		FileAttachment: () => createFileAttachment(options.baseUrl, attachmentRegistry),
-		md: options.observableMarkdownCompatibility ? createCompatibleMarkdownBuiltin(library.md) : library.md,
 		width: width as RuntimeBuiltins["width"],
 		...createVariableBuiltins(options.variables),
 	} as RuntimeBuiltinsWithVars;
 	return new NotebookRuntime(builtins);
 }
 
-function createCompatibleMarkdownBuiltin(loadMarkdown: typeof library.md): typeof library.md {
-	return async () => normalizeMarkdownRenderer(await loadMarkdown());
+function observeWidth(root: HTMLElement, fallback: HTMLElement): AsyncGenerator<number, void, unknown> {
+	return observe((notify) => {
+		let width: number | undefined;
+		const update = (value = currentWidth(root, fallback)) => {
+			const next = Math.max(320, Math.floor(value || 928));
+			if (next !== width) notify((width = next));
+		};
+		update();
+		if (typeof ResizeObserver === "undefined") return undefined;
+		const observer = new ResizeObserver(([entry]) => update(entry?.contentRect.width));
+		observer.observe(root);
+		return () => observer.disconnect();
+	});
+}
+
+function observe<T>(
+	initialize: (notify: (value: T) => T) => (() => void) | undefined,
+): AsyncGenerator<T, void, unknown> {
+	let resolve: ((value: T) => void) | undefined;
+	let reject: ((error: unknown) => void) | undefined;
+	let value: T;
+	let stale = false;
+	const dispose = initialize((next) => {
+		value = next;
+		if (resolve) {
+			resolve(next);
+			resolve = undefined;
+			reject = undefined;
+		} else {
+			stale = true;
+		}
+		return next;
+	});
+	return {
+		async next() {
+			return {
+				done: false,
+				value: await (stale
+					? ((stale = false), value)
+					: new Promise<T>((res, rej) => {
+							resolve = res;
+							reject = rej;
+						})),
+			};
+		},
+		async return() {
+			reject?.(new Error("Generator returned"));
+			resolve = undefined;
+			reject = undefined;
+			dispose?.();
+			return { done: true, value: undefined };
+		},
+		async throw(error) {
+			reject?.(error);
+			resolve = undefined;
+			reject = undefined;
+			dispose?.();
+			return { done: true, value: undefined };
+		},
+		[Symbol.asyncIterator]() {
+			return this;
+		},
+	};
+}
+
+function currentWidth(root: HTMLElement, fallback: HTMLElement): number {
+	return root.getBoundingClientRect().width || fallback.clientWidth || 928;
 }
 
 type RedefinableModule = NotebookRuntime["main"] & {

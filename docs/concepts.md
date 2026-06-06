@@ -95,16 +95,16 @@ Every notebook cell has a matching child widget. Named cells provide stable
 Python names:
 
 ```python
-notebook.cell("gain")
-notebook.cell("gain").value
+gain = notebook.cell("gain")
+gain.value
 notebook.values
 ```
 
 `notebook.values` is synchronized on the notebook widget itself. When a `viewof`
 input changes in the browser, the matching child cell trait updates first and the
-notebook trait receives the aggregate values immediately after.
-
-Separate cell displays stay connected through the shared browser-side cell model.
+notebook trait receives the aggregate values immediately after. `NotebookCell`
+handles expose the same synchronized values and graph metadata for their
+matching cells.
 
 ## Notebook Graph
 

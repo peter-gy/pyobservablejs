@@ -6,11 +6,20 @@ export function createFileAttachment(baseUrl: string, registry: AttachmentRegist
 	const attachment = ((name: string, base?: string) => {
 		const key = String(name);
 		if (base !== undefined) return FileAttachment(key, base);
-		const registered = registry.names.has(key) ? key : registry.names.has(decodeURI(key)) ? decodeURI(key) : null;
+		const decoded = safeDecodeURI(key);
+		const registered = registry.names.has(key) ? key : decoded && registry.names.has(decoded) ? decoded : null;
 		return FileAttachment(registered ?? key, registered ? registry.baseUrl : baseUrl || document.baseURI);
 	}) as typeof FileAttachment;
 	attachment.prototype = FileAttachment.prototype;
 	return attachment;
+}
+
+function safeDecodeURI(value: string): string | null {
+	try {
+		return decodeURI(value);
+	} catch {
+		return null;
+	}
 }
 
 export function registerAttachments(attachments: Record<string, AttachmentInfo>): AttachmentRegistry {

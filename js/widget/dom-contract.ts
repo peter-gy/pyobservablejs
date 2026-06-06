@@ -13,20 +13,17 @@ export const CLASS_NAMES = {
 export const DATASET_KEYS = {
 	composed: "pyobservablejsComposed",
 	cellRef: "pyobservablejsCellRef",
-	standaloneCell: "pyobservablejsStandaloneCell",
 	sourceHighlight: "pyobservablejsSourceHighlight",
 } as const;
 
 export const DATA_ATTRIBUTES = {
 	composed: "data-pyobservablejs-composed",
 	cellRef: "data-pyobservablejs-cell-ref",
-	standaloneCell: "data-pyobservablejs-standalone-cell",
 	sourceHighlight: "data-pyobservablejs-source-highlight",
 } as const;
 
 export const SELECTORS = {
 	composedCell: `[${DATA_ATTRIBUTES.composed}='true']`,
-	standaloneCell: `[${DATA_ATTRIBUTES.standaloneCell}='true']`,
 	error: `.${CLASS_NAMES.error}`,
 	sourcePanel: `.${CLASS_NAMES.sourcePanel}`,
 	sourceLabel: `.${CLASS_NAMES.sourceLabel}`,

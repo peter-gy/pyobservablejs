@@ -1,10 +1,13 @@
 import type { RenderProps } from "@anywidget/types";
-import type { CellExports, WidgetModel } from "./widget/types";
-import widget from "./widget";
+import type { WidgetModel } from "./widget/types";
 
 export type Model = RenderProps<WidgetModel>["model"];
-export type TestModel = Model;
-export type ChildRender = (options: { el: HTMLElement; signal?: AbortSignal }) => Promise<void> | void;
+export type TestModel = Model & {
+	savedTraits: Set<string>;
+};
+export type TestWidgetManager = {
+	get_model(modelId: string): Promise<Model | undefined> | Model | undefined;
+};
 
 export const objectValuedSelectSource = `
 Select = (items, options = {}) => {
@@ -34,27 +37,25 @@ Select = (items, options = {}) => {
   return form;
 }`;
 
-const noopCellExports: CellExports = {
-	bindRuntime() {},
-	unbindRuntime() {},
-	prepareComposedRender() {},
-};
-
-export function createModel(
-	initial: Partial<WidgetModel>,
-	widgetManager?: { get_model(modelId: string): Promise<Model | undefined> | Model | undefined },
-): TestModel {
+export function createModel(initial: Partial<WidgetModel>, widgetManager?: TestWidgetManager): TestModel {
 	const state = new Map<string, unknown>(Object.entries(initial));
+	const dirtyTraits = new Set<string>();
+	const savedTraits = new Set<string>();
 	const listeners = new Map<string, Set<() => void>>();
 	return {
+		savedTraits,
 		get(name: string) {
 			return state.get(name);
 		},
 		set(name: string, value: unknown) {
 			state.set(name, value);
+			dirtyTraits.add(name);
 			for (const listener of listeners.get(`change:${name}`) ?? []) listener();
 		},
-		save_changes() {},
+		save_changes() {
+			for (const name of dirtyTraits) savedTraits.add(name);
+			dirtyTraits.clear();
+		},
 		on(name: string, callback: () => void) {
 			const callbacks = listeners.get(name) ?? new Set();
 			callbacks.add(callback);
@@ -71,51 +72,21 @@ export function createModel(
 			}
 			listeners.get(name)?.delete(callback);
 		},
-		widget_manager: widgetManager,
+		...(widgetManager ? { widget_manager: widgetManager } : {}),
 	} as unknown as TestModel;
 }
 
-export function createHost(
-	childModels: Map<string, Model>,
-	childExports: Map<string, CellExports> = new Map(),
-	childRenders: Map<string, ChildRender> = new Map(),
-): RenderProps<WidgetModel>["host"] {
+export function hasSavedTrait(model: Model, name: string): boolean {
+	return (model as TestModel).savedTraits.has(name);
+}
+
+export function createHost(childModels: Map<string, Model>): RenderProps<WidgetModel>["host"] {
 	return {
 		getModel: async (ref: string) => childModels.get(ref),
-		getWidget: async (ref: string) => ({
-			exports: childExports.get(ref) ?? noopCellExports,
-			render: async (options: { el: HTMLElement; signal?: AbortSignal }) => {
-				await childRenders.get(ref)?.(options);
-			},
-		}),
+		getWidget: async () => {
+			throw new Error("Test host resolves child models only");
+		},
 	} as unknown as RenderProps<WidgetModel>["host"];
-}
-
-export function renderChildrenThroughWidget(childModels: Map<string, Model>): Map<string, ChildRender> {
-	const childRenders = new Map<string, ChildRender>();
-	for (const [ref, childModel] of childModels) {
-		childRenders.set(ref, ({ el, signal }) => {
-			widget.render({
-				model: childModel,
-				el,
-				signal: signal ?? new AbortController().signal,
-				host: createHost(new Map()),
-			} as unknown as RenderProps<WidgetModel>);
-		});
-	}
-	return childRenders;
-}
-
-export function createCellExportsMap(childModels: Map<string, Model>): Map<string, CellExports> {
-	return new Map(Array.from(childModels, ([ref, childModel]) => [ref, createCellExports(childModel)]));
-}
-
-export function createCellExports(model: Model): CellExports {
-	return widget.initialize({
-		model,
-		signal: new AbortController().signal,
-		experimental: {},
-	} as unknown as Parameters<typeof widget.initialize>[0]) as CellExports;
 }
 
 export function variableValue(model: Model, name: string): unknown | undefined {

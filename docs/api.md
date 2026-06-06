@@ -128,17 +128,15 @@ notebook.cells
 ```
 
 Tuple of `NotebookCell` widgets in notebook order. Each Notebook Kit cell has one
-child widget. After the parent notebook has rendered, display a child widget to
-render that cell in a standalone output root.
+child widget. Display the parent `Notebook` to render Observable outputs. Use
+child widgets as Python handles for synchronized values and graph metadata.
 
 ```python
-notebook.cells[1]
+notebook.cells[1].values
 ```
 
-Before the parent render, the child widget has no runtime context. The
-standalone output has its own browser runtime. DOM outputs render as DOM in that
-output root, while `NotebookCell.values` still contains only synchronized
-JSON-compatible values.
+Before the parent render, a child widget has no browser-synchronized values or
+graph metadata. Direct display of a `NotebookCell` is unsupported.
 
 ### `Notebook.cell`
 
@@ -230,7 +228,8 @@ string before calling this method.
   relative imports, and explicit relative `attachments`.
 - `portable`: defaults to `True`. When `portable=True` and `base_path` is set,
   local file attachments are embedded and relative JavaScript imports are
-  rewritten to data URLs.
+  recursively rewritten to data URLs. With `portable=False`, source references
+  stay unchanged and resolve relative to the frontend page URL.
 - `attachments`: explicit attachment mapping. These entries override discovered
   attachments with the same name. Local paths resolve against `base_path` or the
   current working directory and are read before browser render. URL strings and
@@ -261,11 +260,11 @@ Load a public ObservableHQ notebook through the document API.
   urllib default.
 - Performs network I/O against `api.observablehq.com`.
 - Only public notebooks can be fetched.
-- ObservableHQ API `js` nodes are converted to Notebook Kit `ojs` cells.
-- Hosted markdown tags such as ``md`** 1. Title**` `` use ObservableHQ
-  compatibility during render. This compatibility is scoped to
-  `from_observablehq`. `from_html` and Python-authored cells keep Notebook Kit's
-  normal markdown contract.
+- ObservableHQ API `js` nodes are converted to Notebook Kit `ojs` cells. Those
+  cells render with Notebook Kit's runtime builtins, including `md`.
+- Markdown parsing follows Notebook Kit's `md` builtin. For example,
+  ``md`**Title**` `` renders bold text, while spaced strong delimiters such as
+  ``md`** Title**` `` remain literal.
 - Uploaded files become URL-backed `FileAttachment` entries.
 - Explicit `attachments` override discovered remote attachments with the same
   name. They may be local paths, URL strings, or metadata mappings. Local paths
@@ -379,18 +378,17 @@ leading/trailing newlines unless `raw=True`.
 
 Use `obs.md(...)` for Notebook Kit Markdown cells. Public ObservableHQ notebooks
 fetched with `from_observablehq` may contain hosted OJS cells such as
-``md`# Title` ``. Those cells render through the ObservableHQ compatibility path
-for imported notebooks.
+``md`# Title` ``. Those cells render with Notebook Kit's `md` builtin.
 
 Use `obs.js(...)` when you need an ES module cell:
 
 ```python
 obs.Notebook(
-    obs.js(
-        "const answer = 42",
-        output="answer",
-    ),
-    obs.ojs("answer"),
+    obs.js("""
+    const el = document.createElement("p");
+    el.textContent = "Loaded from an ES module";
+    display(el);
+    """),
 )
 ```
 
@@ -411,6 +409,9 @@ Supported values include:
 - NumPy scalar and array values through `item()` or `tolist()`
 - pandas and Polars series as lists
 - pandas and Polars dataframes as row dictionaries
+
+Integers outside JavaScript's safe integer range cross to the browser as
+`BigInt` values and return to Python as `int`.
 
 Mappings containing `__pyobservablejs_type__` are escaped as ordinary objects so
 user data cannot be mistaken for the internal wire tags.

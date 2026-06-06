@@ -50,6 +50,10 @@ def _assert_javascript_import_payloads(
     assert actual_imports == [
         _expected_import_payload(expected) for expected in expected_imports
     ]
+    _assert_no_relative_javascript_import_specifiers(source)
+
+
+def _assert_no_relative_javascript_import_specifiers(source: str) -> None:
     assert [
         specifier
         for specifier in javascript_import_specifiers(source)
@@ -625,6 +629,27 @@ def test_python_variables_serialize_to_frontend_state() -> None:
     assert wire["span"] == [0, 1, 2]
 
 
+def test_python_ints_serialize_as_bigints_after_js_safe_integer_boundary() -> None:
+    widget = obs.Notebook(
+        variables={
+            "safe": 2**53 - 1,
+            "huge": 2**53,
+            "negative": -(2**53),
+        }
+    )
+
+    wire = widget.get_state(["_variables"])["_variables"]
+    assert wire["safe"] == 9007199254740991
+    assert wire["huge"] == {
+        "__pyobservablejs_type__": "bigint",
+        "value": "9007199254740992",
+    }
+    assert wire["negative"] == {
+        "__pyobservablejs_type__": "bigint",
+        "value": "-9007199254740992",
+    }
+
+
 def test_replace_variables_updates_public_variables() -> None:
     widget = obs.Notebook()
 
@@ -709,6 +734,50 @@ def test_browser_values_are_python_facing_with_wire_escape_hatch(
     assert widget.wire_values["raw"] == {
         "__pyobservablejs_type__": "arraybuffer",
         "value": "YWJj",
+    }
+
+
+def test_browser_bigint_values_decode_to_python_int(
+    browser_value_sync: BrowserValueSync,
+) -> None:
+    widget = obs.Notebook()
+
+    browser_value_sync(
+        widget,
+        {
+            "huge": {
+                "__pyobservablejs_type__": "bigint",
+                "value": "9007199254740993",
+            }
+        },
+    )
+
+    assert widget.values["huge"] == 9007199254740993
+
+
+def test_browser_values_with_wire_type_key_decode_as_user_objects(
+    browser_value_sync: BrowserValueSync,
+) -> None:
+    widget = obs.Notebook()
+
+    browser_value_sync(
+        widget,
+        {
+            "row": {
+                "__pyobservablejs_type__": "object",
+                "value": {
+                    "__pyobservablejs_type__": "datetime",
+                    "value": "not a date",
+                    "other": 1,
+                },
+            }
+        },
+    )
+
+    assert widget.values["row"] == {
+        "__pyobservablejs_type__": "datetime",
+        "value": "not a date",
+        "other": 1,
     }
 
 
@@ -813,6 +882,54 @@ def test_from_html_embeds_file_attachments_and_local_imports(
         """
     )
     assert len(widget.cells) == 1
+
+
+def test_from_html_recursively_embeds_local_imports(
+    tmp_path: pathlib.Path,
+    script_tags: ScriptTags,
+) -> None:
+    (tmp_path / "nested.js").write_text("export const nested = 41;\n", encoding="utf-8")
+    (tmp_path / "helper.js").write_text(
+        'import {nested} from "./nested.js";\nexport const value = nested + 1;\n',
+        encoding="utf-8",
+    )
+    notebook = tmp_path / "example.html"
+    notebook.write_text(
+        """<!doctype html>
+<notebook>
+  <script id="1" type="module">
+    import {value} from "./helper.js";
+    display(value);
+  </script>
+</notebook>
+""",
+        encoding="utf-8",
+    )
+
+    widget = _notebook_from_html_file(notebook)
+
+    module_text = _script_by_id(script_tags(widget.to_notebook_html()), "1")["text"]
+    [(kind, mime_type, payload, imported, exported)] = _decoded_data_imports(
+        javascript_imports(module_text)
+    )
+    helper_text = payload.decode("utf-8")
+    _assert_no_relative_javascript_import_specifiers(module_text)
+    assert (kind, mime_type, imported, exported) == (
+        "import",
+        "text/javascript",
+        ("value",),
+        (),
+    )
+    assert _normalized_source_with_embedded_imports(helper_text) == _normalized_source(
+        """
+        import {nested} from "<embedded>";
+        export const value = nested + 1;
+        """
+    )
+    _assert_javascript_import_payloads(
+        helper_text,
+        [("import", b"export const nested = 41;\n", ("nested",), ())],
+    )
 
 
 def test_from_html_requires_html_string(tmp_path: pathlib.Path) -> None:
@@ -1052,7 +1169,47 @@ def test_from_html_allows_comments_between_file_attachment_tokens(
     assert decode_data_url(widget.attachments["line.csv"]["url"])[1] == b"x,y\n3,4\n"
 
 
-def test_from_html_embeds_only_standalone_file_attachment_calls(
+def test_from_html_embeds_static_template_and_stdlib_alias_file_attachments(
+    tmp_path: pathlib.Path,
+    script_tags: ScriptTags,
+) -> None:
+    (tmp_path / "templated.csv").write_text("x\n1\n", encoding="utf-8")
+    (tmp_path / "aliased.csv").write_text("x\n2\n", encoding="utf-8")
+    (tmp_path / "dynamic.csv").write_text("x\n3\n", encoding="utf-8")
+    notebook = tmp_path / "example.html"
+    notebook.write_text(
+        """<!doctype html>
+<notebook>
+  <script id="1" type="module">
+    import {FileAttachment as localFile} from "observablehq:stdlib";
+    const name = "dynamic";
+    const a = FileAttachment(`templated.csv`).csv();
+    const b = localFile("aliased.csv").csv();
+    const c = FileAttachment(`${name}.csv`).csv();
+  </script>
+</notebook>
+""",
+        encoding="utf-8",
+    )
+
+    widget = _notebook_from_html_file(notebook)
+    module_text = _script_by_id(script_tags(widget.to_notebook_html()), "1")["text"]
+
+    assert set(widget.attachments) == {"templated.csv", "aliased.csv"}
+    assert _normalized_source(module_text) == _normalized_source(
+        """
+        import {FileAttachment as localFile} from "observablehq:stdlib";
+        const name = "dynamic";
+        const a = FileAttachment(`templated.csv`).csv();
+        const b = localFile("aliased.csv").csv();
+        const c = FileAttachment(`${name}.csv`).csv();
+        """
+    )
+    assert decode_data_url(widget.attachments["templated.csv"]["url"])[1] == b"x\n1\n"
+    assert decode_data_url(widget.attachments["aliased.csv"]["url"])[1] == b"x\n2\n"
+
+
+def test_from_html_embeds_only_bare_file_attachment_calls(
     tmp_path: pathlib.Path,
     script_tags: ScriptTags,
 ) -> None:
