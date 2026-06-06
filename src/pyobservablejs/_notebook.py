@@ -86,6 +86,40 @@ class _ObservableWidget(anywidget.AnyWidget):
     _static_dir = pathlib.Path(__file__).parent / "static"
     _esm = _static_dir / "widget.js"
     _css = _static_dir / "widget.css"
+    _esm_chunk_request = traitlets.Dict(default_value={}).tag(sync=True)
+    _esm_chunk_response = traitlets.Dict(default_value={}).tag(sync=True)
+
+    @traitlets.observe("_esm_chunk_request")
+    def _respond_to_esm_chunk_request(self, change: dict[str, Any]) -> None:
+        request = change["new"]
+        seq = request.get("seq") if isinstance(request, dict) else None
+        chunk_path = request.get("path") if isinstance(request, dict) else None
+        response: dict[str, Any] = {"seq": seq, "path": chunk_path}
+        try:
+            response["source"] = self._read_esm_chunk(chunk_path)
+        except Exception as error:
+            response["error"] = f"{type(error).__name__}: {error}"
+        self.set_trait("_esm_chunk_response", response)
+
+    def _read_esm_chunk(self, chunk_path: object) -> str:
+        if not isinstance(chunk_path, str):
+            raise TypeError("chunk path must be a string")
+        path = pathlib.PurePosixPath(chunk_path)
+        if (
+            path.is_absolute()
+            or len(path.parts) < 2
+            or path.parts[0] != "chunks"
+            or ".." in path.parts
+            or path.suffix != ".js"
+        ):
+            raise ValueError(f"unsupported widget chunk path: {chunk_path}")
+        root = self._static_dir.resolve()
+        resolved = (root / pathlib.Path(*path.parts)).resolve()
+        try:
+            resolved.relative_to(root)
+        except ValueError as error:
+            raise ValueError(f"unsupported widget chunk path: {chunk_path}") from error
+        return resolved.read_text(encoding="utf-8")
 
 
 class NotebookCell(_ObservableWidget):

@@ -1,12 +1,4 @@
 import type { Cell } from "@observablehq/notebook-kit";
-import html from "@shikijs/langs/html";
-import javascript from "@shikijs/langs/javascript";
-import markdown from "@shikijs/langs/markdown";
-import sql from "@shikijs/langs/sql";
-import typescript from "@shikijs/langs/typescript";
-import githubLightDefault from "@shikijs/themes/github-light-default";
-import { createHighlighterCore } from "@shikijs/core";
-import { createJavaScriptRegexEngine } from "@shikijs/engine-javascript";
 import type { HighlighterCore, ThemedToken } from "@shikijs/types";
 import { CLASS_NAMES, CSS_VARIABLES, DATASET_KEYS } from "./dom-contract";
 
@@ -115,16 +107,39 @@ function getHighlightedSource(source: string, language: HighlightLanguage): Prom
 
 function getHighlighter(): Promise<HighlighterCore> {
 	if (!highlighterPromise) {
-		highlighterPromise = createHighlighterCore({
-			engine: createJavaScriptRegexEngine(),
-			langs: [html, javascript, markdown, sql, typescript],
-			themes: [githubLightDefault],
-		}).catch((error) => {
+		highlighterPromise = createHighlighter().catch((error) => {
 			highlighterPromise = undefined;
 			throw error;
 		});
 	}
 	return highlighterPromise;
+}
+
+async function createHighlighter(): Promise<HighlighterCore> {
+	const [
+		{ createHighlighterCore },
+		{ createJavaScriptRegexEngine },
+		{ default: html },
+		{ default: javascript },
+		{ default: markdown },
+		{ default: sql },
+		{ default: typescript },
+		{ default: githubLightDefault },
+	] = await Promise.all([
+		import("@shikijs/core"),
+		import("@shikijs/engine-javascript"),
+		import("@shikijs/langs/html"),
+		import("@shikijs/langs/javascript"),
+		import("@shikijs/langs/markdown"),
+		import("@shikijs/langs/sql"),
+		import("@shikijs/langs/typescript"),
+		import("@shikijs/themes/github-light-default"),
+	]);
+	return createHighlighterCore({
+		engine: createJavaScriptRegexEngine(),
+		langs: [html, javascript, markdown, sql, typescript],
+		themes: [githubLightDefault],
+	});
 }
 
 function renderTokenLines(code: HTMLElement, lines: ThemedToken[][]): void {

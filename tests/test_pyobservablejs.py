@@ -161,6 +161,72 @@ def test_public_api_signatures_keep_keyword_only_options() -> None:
         ]
 
 
+def test_widget_model_serves_generated_esm_chunks(tmp_path: pathlib.Path) -> None:
+    chunk = tmp_path / "chunks" / "app-ABCD.js"
+    chunk.parent.mkdir()
+    chunk.write_text("export default {render() {}};", encoding="utf-8")
+
+    class ChunkNotebook(obs.Notebook):
+        _static_dir = tmp_path
+
+    notebook = ChunkNotebook()
+
+    notebook.set_trait(
+        "_esm_chunk_request",
+        {"seq": 7, "path": "chunks/app-ABCD.js"},
+    )
+
+    assert getattr(notebook, "_esm_chunk_response") == {
+        "seq": 7,
+        "path": "chunks/app-ABCD.js",
+        "source": "export default {render() {}};",
+    }
+
+
+@pytest.mark.parametrize(
+    "chunk_path",
+    [
+        "widget.js",
+        "../widget.js",
+        "chunks/../widget.js",
+        "/chunks/app.js",
+        "chunks/app.css",
+    ],
+)
+def test_widget_model_rejects_chunk_paths_outside_static_chunks(
+    tmp_path: pathlib.Path,
+    chunk_path: str,
+) -> None:
+    class ChunkNotebook(obs.Notebook):
+        _static_dir = tmp_path
+
+    notebook = ChunkNotebook()
+
+    notebook.set_trait("_esm_chunk_request", {"seq": 3, "path": chunk_path})
+
+    response = getattr(notebook, "_esm_chunk_response")
+    assert response["seq"] == 3
+    assert response["path"] == chunk_path
+    assert response["error"].startswith("ValueError: unsupported widget chunk path:")
+
+
+def test_widget_model_reports_missing_esm_chunks(tmp_path: pathlib.Path) -> None:
+    class ChunkNotebook(obs.Notebook):
+        _static_dir = tmp_path
+
+    notebook = ChunkNotebook()
+
+    notebook.set_trait(
+        "_esm_chunk_request",
+        {"seq": 4, "path": "chunks/missing.js"},
+    )
+
+    response = getattr(notebook, "_esm_chunk_response")
+    assert response["seq"] == 4
+    assert response["path"] == "chunks/missing.js"
+    assert response["error"].startswith("FileNotFoundError:")
+
+
 def test_cell_options_serialize_to_notebook_html(
     script_tags: ScriptTags,
     document_title: DocumentTitle,

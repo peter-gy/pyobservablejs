@@ -4,7 +4,7 @@ import type { RenderProps } from "@anywidget/types";
 import { describe, test } from "vitest";
 import { SELECTORS } from "./widget/dom-contract";
 import type { WidgetModel } from "./widget/types";
-import widget from "./widget";
+import widget from "./widget/app";
 import { createHost, createModel, waitFor } from "./widget-test-utils";
 
 describe("widget markdown rendering", () => {

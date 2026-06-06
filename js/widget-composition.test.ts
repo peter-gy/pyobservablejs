@@ -5,7 +5,7 @@ import { describe, expect, test } from "vitest";
 import type { NotebookGraph } from "./observable/types";
 import { SELECTORS } from "./widget/dom-contract";
 import type { WidgetModel } from "./widget/types";
-import widget from "./widget";
+import widget from "./widget/app";
 import { createHost, createModel, variableValue, waitFor } from "./widget-test-utils";
 import { composedText, projectErrorText, waitStep } from "./widget-dom-test-utils";
 

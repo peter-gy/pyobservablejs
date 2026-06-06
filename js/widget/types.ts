@@ -3,7 +3,7 @@ import type { NotebookRuntime } from "@observablehq/notebook-kit/runtime";
 import type { WidgetModel } from "../model/types";
 import type { RuntimeVariablesSync, ViewTarget } from "../runtime/types";
 
-export type { WidgetModel } from "../model/types";
+export type { WidgetAnyModel, WidgetModel } from "../model/types";
 export type { NotebookGraph } from "../observable/types";
 export type { NotebookOptions, RuntimeVariablesSync, ViewTarget } from "../runtime/types";
 

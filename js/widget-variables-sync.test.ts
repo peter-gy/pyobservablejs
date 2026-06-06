@@ -4,7 +4,7 @@ import type { RenderProps } from "@anywidget/types";
 import { describe, expect, test } from "vitest";
 import { SELECTORS } from "./widget/dom-contract";
 import type { WidgetModel } from "./widget/types";
-import widget from "./widget";
+import widget from "./widget/app";
 import { createHost, createModel, objectValuedSelectSource, variableValue, waitFor } from "./widget-test-utils";
 
 describe("widget runtime variable sync", () => {

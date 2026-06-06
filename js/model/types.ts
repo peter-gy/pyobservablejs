@@ -17,6 +17,16 @@ export type WidgetModel = {
 		kind?: "set" | "replace";
 		values?: Record<string, unknown>;
 	};
+	_esm_chunk_request?: {
+		seq?: number;
+		path?: string;
+	};
+	_esm_chunk_response?: {
+		seq?: number;
+		path?: string;
+		source?: string;
+		error?: string;
+	};
 	_graph?: NotebookGraph;
 	_values?: Record<string, unknown>;
 	_value_names?: string[];

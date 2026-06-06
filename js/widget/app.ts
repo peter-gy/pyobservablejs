@@ -1,8 +1,6 @@
 import type { InitializeProps, RenderProps } from "@anywidget/types";
-import { loadWidgetApp } from "./chunk-loader";
+import { renderNotebookWidget } from "./notebook-renderer";
 import type { WidgetModel } from "./types";
-
-declare const __PYOBSERVABLEJS_APP_CHUNK__: string | undefined;
 
 const WIDGET_CLASS_NAME = "pyobservablejs";
 const ERROR_CLASS_NAME = "pyobservablejs-error";
@@ -19,17 +17,18 @@ function render(props: RenderProps<WidgetModel> & { signal?: AbortSignal }): voi
 		renderCellWidget(props.el, signal);
 		return;
 	}
-	void renderNotebook(props, signal);
+	renderNotebook(props, signal);
 }
 
-async function renderNotebook(props: RenderProps<WidgetModel>, signal: AbortSignal): Promise<void> {
+function renderNotebook(props: RenderProps<WidgetModel>, signal: AbortSignal): void {
 	try {
 		if (signal.aborted) return;
-		const chunkPath = typeof __PYOBSERVABLEJS_APP_CHUNK__ === "string" ? __PYOBSERVABLEJS_APP_CHUNK__ : "";
-		if (!chunkPath) throw new Error("Widget app chunk is not configured");
-		const app = await loadWidgetApp(props.model, chunkPath, signal);
-		if (signal.aborted) return;
-		app.render(props);
+		renderNotebookWidget({
+			model: props.model,
+			el: props.el,
+			signal,
+			host: props.host,
+		});
 	} catch (error) {
 		if (!signal.aborted) props.el.replaceChildren(createTopLevelError(error));
 	}
