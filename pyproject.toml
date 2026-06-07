@@ -46,6 +46,7 @@ cache-keys = [
 	{ file = "package.json" },
 	{ file = "pnpm-lock.yaml" },
 	{ file = "pnpm-workspace.yaml" },
+	{ file = "vite.config.ts" },
 	{ file = "src/pyobservablejs/**/*.py" },
 	{ file = "js/**/*.ts" },
 	{ file = "js/**/*.mjs" },
@@ -62,10 +63,11 @@ artifacts = ["src/pyobservablejs/static/**"]
 "package.json" = "package.json"
 "pnpm-lock.yaml" = "pnpm-lock.yaml"
 "pnpm-workspace.yaml" = "pnpm-workspace.yaml"
+"vite.config.ts" = "vite.config.ts"
 
 [tool.hatch.build.hooks.jupyter-builder]
 build-function = "hatch_jupyter_builder.npm_builder"
-ensured-targets = ["src/pyobservablejs/static/widget.js", "src/pyobservablejs/static/widget.css"]
+ensured-targets = ["src/pyobservablejs/static/index.js", "src/pyobservablejs/static/widget.css"]
 dependencies = ["hatch-jupyter-builder>=0.5.0"]
 
 [tool.hatch.build.hooks.jupyter-builder.build-kwargs]

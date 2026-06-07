@@ -1,7 +1,7 @@
 {
 	"scripts": {
-		"dev": "pnpm run build -- --sourcemap=inline --watch",
-		"build": "node js/build.mjs",
+		"dev": "pnpm run build -- --watch --sourcemap inline",
+		"build": "vite build --config vite.config.ts",
 		"format": "oxfmt -c oxfmtrc.jsonc \"**/*.{ts,tsx,js,jsx,mjs,cjs,json,jsonc,md,mdx,yml,yaml,toml,ipynb}\"",
 		"format:check": "oxfmt --check -c oxfmtrc.jsonc \"**/*.{ts,tsx,js,jsx,mjs,cjs,json,jsonc,md,mdx,yml,yaml,toml,ipynb}\"",
 		"lint": "oxlint -c oxlintrc.json --deny-warnings --report-unused-disable-directives js",
@@ -18,11 +18,11 @@
 	},
 	"devDependencies": {
 		"@anywidget/types": "^0.4.0",
-		"esbuild": "^0.28.0",
 		"jsdom": "29.1.1",
 		"oxfmt": "^0.51.0",
 		"oxlint": "^1.68.0",
 		"typescript": "^6.0.3",
+		"vite": "^8.0.16",
 		"vitest": "4.1.7"
 	},
 	"devEngines": {

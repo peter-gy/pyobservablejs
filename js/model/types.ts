@@ -17,11 +17,11 @@ export type WidgetModel = {
 		kind?: "set" | "replace";
 		values?: Record<string, unknown>;
 	};
-	_esm_chunk_request?: {
+	_esm_module_request?: {
 		seq?: number;
 		path?: string;
 	};
-	_esm_chunk_response?: {
+	_esm_module_response?: {
 		seq?: number;
 		path?: string;
 		source?: string;

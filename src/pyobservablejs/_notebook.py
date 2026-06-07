@@ -11,6 +11,7 @@ from typing import Any, cast
 
 import anywidget
 import traitlets
+from anywidget.experimental import command as anywidget_command
 
 from ._files import FileInput, normalize_files, prepare_source
 from ._graph import CellInfo, NotebookGraph, graph_from_raw
@@ -84,27 +85,44 @@ class _ObservableWidget(anywidget.AnyWidget):
     """Shared anywidget base for the bundled frontend assets."""
 
     _static_dir = pathlib.Path(__file__).parent / "static"
-    _esm = _static_dir / "widget.js"
+    _esm = _static_dir / "index.js"
     _css = _static_dir / "widget.css"
-    _esm_chunk_request = traitlets.Dict(default_value={}).tag(sync=True)
-    _esm_chunk_response = traitlets.Dict(default_value={}).tag(sync=True)
+    _esm_module_request = traitlets.Dict(default_value={}).tag(sync=True)
+    _esm_module_response = traitlets.Dict(default_value={}).tag(sync=True)
 
-    @traitlets.observe("_esm_chunk_request")
-    def _respond_to_esm_chunk_request(self, change: dict[str, Any]) -> None:
-        request = change["new"]
-        seq = request.get("seq") if isinstance(request, dict) else None
-        chunk_path = request.get("path") if isinstance(request, dict) else None
-        response: dict[str, Any] = {"seq": seq, "path": chunk_path}
+    @traitlets.observe("_esm_module_request")
+    def _respond_to_esm_module_request(self, change: dict[str, Any]) -> None:
+        request = (
+            cast(Mapping[str, object], change["new"])
+            if isinstance(change["new"], Mapping)
+            else {}
+        )
+        seq = request.get("seq")
+        request_path = request.get("path")
+        response: dict[str, Any] = {"seq": seq, "path": request_path}
         try:
-            response["source"] = self._read_esm_chunk(chunk_path)
+            response["source"] = self._read_static_module(request_path)
         except Exception as error:
             response["error"] = f"{type(error).__name__}: {error}"
-        self.set_trait("_esm_chunk_response", response)
+        self.set_trait("_esm_module_response", response)
 
-    def _read_esm_chunk(self, chunk_path: object) -> str:
-        if not isinstance(chunk_path, str):
-            raise TypeError("chunk path must be a string")
-        path = pathlib.PurePosixPath(chunk_path)
+    @anywidget_command
+    def read_esm_module(
+        self, msg: object, _buffers: list[bytes]
+    ) -> tuple[dict[str, Any], list[bytes]]:
+        request = cast(Mapping[str, object], msg) if isinstance(msg, Mapping) else {}
+        request_path = request.get("path")
+        response: dict[str, Any] = {"path": request_path}
+        try:
+            response["source"] = self._read_static_module(request_path)
+        except Exception as error:
+            response["error"] = f"{type(error).__name__}: {error}"
+        return response, []
+
+    def _read_static_module(self, module_path: object) -> str:
+        if not isinstance(module_path, str):
+            raise TypeError("module path must be a string")
+        path = pathlib.PurePosixPath(module_path)
         if (
             path.is_absolute()
             or len(path.parts) < 2
@@ -112,13 +130,15 @@ class _ObservableWidget(anywidget.AnyWidget):
             or ".." in path.parts
             or path.suffix != ".js"
         ):
-            raise ValueError(f"unsupported widget chunk path: {chunk_path}")
+            raise ValueError(f"unsupported widget module path: {module_path}")
         root = self._static_dir.resolve()
         resolved = (root / pathlib.Path(*path.parts)).resolve()
         try:
             resolved.relative_to(root)
         except ValueError as error:
-            raise ValueError(f"unsupported widget chunk path: {chunk_path}") from error
+            raise ValueError(
+                f"unsupported widget module path: {module_path}"
+            ) from error
         return resolved.read_text(encoding="utf-8")
 
 

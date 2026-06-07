@@ -5,6 +5,7 @@ import { describe, expect, test } from "vitest";
 import type { NotebookGraph } from "./observable/types";
 import { SELECTORS } from "./widget/dom-contract";
 import type { WidgetModel } from "./widget/types";
+import widgetEntry from "./widget";
 import widget from "./widget/app";
 import { createHost, createModel, variableValue, waitFor } from "./widget-test-utils";
 import { composedText, projectErrorText, waitStep } from "./widget-dom-test-utils";
@@ -19,7 +20,7 @@ describe("widget composition lifecycle", () => {
 		});
 		const el = document.createElement("div");
 
-		widget.render({
+		widgetEntry.render({
 			model,
 			el,
 			signal: new AbortController().signal,
