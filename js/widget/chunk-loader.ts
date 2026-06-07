@@ -20,6 +20,7 @@ type LoaderState = {
 	id: string;
 	nextSeq: number;
 	modules: Map<string, Promise<unknown>>;
+	requestQueue: Promise<void>;
 	urls: Map<string, Promise<string>>;
 };
 
@@ -113,6 +114,26 @@ async function requestChunkSource(
 	signal: AbortSignal,
 	timeoutMs: number,
 ): Promise<string> {
+	const previous = state.requestQueue;
+	let releaseQueue: () => void = () => {};
+	state.requestQueue = new Promise((resolve) => {
+		releaseQueue = resolve;
+	});
+	await previous;
+	try {
+		return await requestChunkSourceNow(model, state, path, signal, timeoutMs);
+	} finally {
+		releaseQueue();
+	}
+}
+
+async function requestChunkSourceNow(
+	model: WidgetAnyModel,
+	state: LoaderState,
+	path: string,
+	signal: AbortSignal,
+	timeoutMs: number,
+): Promise<string> {
 	if (signal.aborted) throw new DOMException("Chunk request aborted", "AbortError");
 	const seq = state.nextSeq++;
 	return new Promise((resolve, reject) => {
@@ -162,6 +183,7 @@ function loaderState(model: WidgetAnyModel): LoaderState {
 		id: Math.random().toString(36).slice(2),
 		nextSeq: 1,
 		modules: new Map<string, Promise<unknown>>(),
+		requestQueue: Promise.resolve(),
 		urls: new Map<string, Promise<string>>(),
 	};
 	loaderStates.set(model, state);

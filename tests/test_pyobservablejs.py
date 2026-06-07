@@ -2,12 +2,18 @@ from __future__ import annotations
 
 import datetime as dt
 import inspect
+import json
 import pathlib
 import sys
 import textwrap
 import types
 from collections.abc import Sequence
 from typing import Any
+
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    tomllib = None
 
 import pyobservablejs as obs
 import pytest
@@ -95,6 +101,59 @@ def _line_indent(source: str, text: str) -> int:
     matches = [line for line in source.splitlines() if line.strip() == text]
     assert len(matches) == 1
     return len(matches[0]) - len(matches[0].lstrip(" "))
+
+
+def test_example_notebook_declares_juv_dependency_and_has_no_outputs() -> None:
+    notebook = json.loads(
+        (pathlib.Path(__file__).parents[1] / "example.ipynb").read_text(
+            encoding="utf-8"
+        )
+    )
+    sources = ["".join(cell["source"]) for cell in notebook["cells"]]
+    assert sources[0] == (
+        "# /// script\n"
+        '# requires-python = ">=3.10,<3.15"\n'
+        "# dependencies = [\n"
+        '#     "pyobservablejs",\n'
+        "# ]\n"
+        "#\n"
+        "# [tool.uv.sources]\n"
+        '# pyobservablejs = { path = "." }\n'
+        "# ///"
+    )
+    assert notebook["cells"][0]["metadata"] == {"jupyter": {"source_hidden": True}}
+    assert "ANYWIDGET_HMR" not in "\n".join(sources)
+    for cell in notebook["cells"]:
+        if cell["cell_type"] == "code":
+            assert cell["execution_count"] is None
+            assert cell["outputs"] == []
+
+
+def test_uv_cache_keys_cover_widget_build_inputs() -> None:
+    if tomllib is None:
+        pytest.skip("tomllib is unavailable")
+
+    pyproject = tomllib.loads(
+        (pathlib.Path(__file__).parents[1] / "pyproject.toml").read_text(
+            encoding="utf-8"
+        )
+    )
+    file_keys = {
+        entry["file"]
+        for entry in pyproject["tool"]["uv"]["cache-keys"]
+        if "file" in entry
+    }
+
+    assert {
+        "pyproject.toml",
+        "package.json",
+        "pnpm-lock.yaml",
+        "pnpm-workspace.yaml",
+        "src/pyobservablejs/**/*.py",
+        "js/**/*.ts",
+        "js/**/*.mjs",
+        "js/**/*.css",
+    } <= file_keys
 
 
 def test_public_namespace_is_small() -> None:

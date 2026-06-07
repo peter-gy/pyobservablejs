@@ -40,6 +40,18 @@ dev = [
 	"jupyter-book>=2.1.5",
 ]
 
+[tool.uv]
+cache-keys = [
+	{ file = "pyproject.toml" },
+	{ file = "package.json" },
+	{ file = "pnpm-lock.yaml" },
+	{ file = "pnpm-workspace.yaml" },
+	{ file = "src/pyobservablejs/**/*.py" },
+	{ file = "js/**/*.ts" },
+	{ file = "js/**/*.mjs" },
+	{ file = "js/**/*.css" },
+]
+
 
 [tool.hatch.build]
 only-packages = true
