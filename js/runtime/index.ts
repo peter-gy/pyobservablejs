@@ -1,7 +1,40 @@
-import { NotebookRuntime, library } from "@observablehq/notebook-kit/runtime";
-import { createFileAttachment } from "./attachments";
-import type { AttachmentRegistry, NotebookOptions } from "./types";
-import { createVariableBuiltins } from "./wire";
+import { transpile, type Cell } from "@observablehq/notebook-kit";
+import { FileAttachment, NotebookRuntime, library, registerFile } from "@observablehq/notebook-kit/runtime";
+import { exposedVariableNames, unprefix } from "../notebook/graph";
+import { createVariableBuiltins } from "./values";
+
+export type AttachmentInfo = {
+	url: string;
+	mimeType?: string;
+	lastModified?: number;
+	size?: number;
+};
+
+export type NotebookOptions = {
+	attachments: Record<string, AttachmentInfo>;
+	baseUrl: string;
+	variables: Record<string, unknown>;
+	showSource: boolean;
+};
+
+export type AttachmentRegistry = {
+	baseUrl: string;
+	names: Set<string>;
+	cleanup(): void;
+};
+
+export type { NestedSelectState, RuntimeVariablesSync, ViewTarget } from "./values";
+export {
+	createVariableBuiltins,
+	isViewTarget,
+	readNestedSelectState,
+	readViewValue,
+	revivePythonValue,
+	reviveSyncedValue,
+	sameWireValue,
+	toWireValue,
+	writeViewValue,
+} from "./values";
 
 type RuntimeBuiltins = NonNullable<ConstructorParameters<typeof NotebookRuntime>[0]>;
 type RuntimeBuiltinsWithVars = RuntimeBuiltins & Record<string, () => unknown>;
@@ -132,4 +165,109 @@ export function createRuntimeCleanup(runtime: NotebookRuntime, attachmentRegistr
 		runtime.runtime.dispose();
 		attachmentRegistry.cleanup();
 	};
+}
+
+export function createFileAttachment(baseUrl: string, registry: AttachmentRegistry): typeof FileAttachment {
+	// A synthetic base URL scopes registered attachments to this widget instance.
+	const attachment = ((name: string, base?: string) => {
+		const key = String(name);
+		if (base !== undefined) return FileAttachment(key, base);
+		const decoded = safeDecodeURI(key);
+		const registered = registry.names.has(key) ? key : decoded && registry.names.has(decoded) ? decoded : null;
+		return FileAttachment(registered ?? key, registered ? registry.baseUrl : baseUrl || document.baseURI);
+	}) as typeof FileAttachment;
+	attachment.prototype = FileAttachment.prototype;
+	return attachment;
+}
+
+function safeDecodeURI(value: string): string | null {
+	try {
+		return decodeURI(value);
+	} catch {
+		return null;
+	}
+}
+
+export function registerAttachments(attachments: Record<string, AttachmentInfo>): AttachmentRegistry {
+	// registerFile mutates Notebook Kit's global registry. Cleanup removes this base.
+	const base = createAttachmentRegistryBase();
+	const registered: string[] = [];
+	for (const [name, info] of Object.entries(attachments)) {
+		registerFile(
+			name,
+			{
+				path: info.url,
+				mimeType: info.mimeType,
+				lastModified: info.lastModified,
+				size: info.size,
+			},
+			base,
+		);
+		registered.push(name);
+	}
+	return {
+		baseUrl: base,
+		names: new Set(registered),
+		cleanup() {
+			for (const name of registered) registerFile(name, null, base);
+		},
+	};
+}
+
+function createAttachmentRegistryBase(): string {
+	const id = typeof crypto.randomUUID === "function" ? crypto.randomUUID() : Math.random().toString(36).slice(2);
+	return new URL(`.pyobservablejs/${id}/`, document.baseURI).href;
+}
+
+type RuntimeDefinition = Parameters<NotebookRuntime["define"]>[1];
+type RuntimeBody = RuntimeDefinition["body"];
+type TranspiledDefinition = ReturnType<typeof transpile>;
+
+const TEMPLATE_MODES = new Set<Cell["mode"]>(["dot", "html", "md", "sql", "tex"]);
+
+export function createRuntimeDefinition(cell: Cell, definition: TranspiledDefinition): RuntimeDefinition {
+	const body = new Function(`"use strict"; return (${definition.body});`)() as RuntimeBody;
+	return {
+		id: cell.id,
+		body: TEMPLATE_MODES.has(cell.mode) ? awaitTemplateInputs(body) : body,
+		inputs: definition.inputs,
+		outputs: definition.outputs,
+		output: definition.output,
+		autodisplay: definition.autodisplay,
+		autoview: definition.autoview,
+		automutable: definition.automutable,
+	};
+}
+
+function awaitTemplateInputs(body: RuntimeBody): RuntimeBody {
+	return async function (this: unknown, ...values: unknown[]) {
+		return body.call(this, ...(await Promise.all(values)));
+	} as RuntimeBody;
+}
+
+export function runtimeDefinitionNames(definition: RuntimeDefinition): string[] {
+	const names = new Set<string>();
+	if (definition.output) {
+		names.add(definition.output);
+		if (definition.autoview) names.add(unprefix(definition.output, "viewof$"));
+		if (definition.automutable) {
+			const name = unprefix(definition.output, "mutable ");
+			names.add(name);
+			names.add(`mutable$${name}`);
+		}
+	} else {
+		for (const name of definition.outputs ?? []) names.add(name);
+	}
+	return Array.from(names);
+}
+
+export function runtimeVariableNames(definition: TranspiledDefinition): string[] {
+	const names = new Set(exposedVariableNames(definition));
+	if (definition.output) {
+		names.add(definition.output);
+		if (definition.automutable) names.add(`mutable$${unprefix(definition.output, "mutable ")}`);
+	} else {
+		for (const name of definition.outputs ?? []) names.add(name);
+	}
+	return Array.from(names);
 }

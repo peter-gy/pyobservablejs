@@ -74,10 +74,11 @@ so the browser can resolve the matching child models.
 | File or folder       | Role                                                                                |
 | -------------------- | ----------------------------------------------------------------------------------- |
 | `js/widget/index.ts` | anywidget entrypoint. It dispatches notebook and cell renders by model role.        |
-| `js/widget/`         | Widget lifecycle, composition, DOM shell, child state, and trait synchronization.   |
+| `js/widget/`         | Widget lifecycle, DOM rendering, composition, model traits, and sync orchestration. |
+| `js/widget/model.ts` | Typed anywidget trait access helpers and notebook model readers.                    |
+| `js/widget/sync.ts`  | Browser-to-Python value, graph, runtime variable, and view-state sync.              |
 | `js/runtime/`        | Observable Runtime builtins, wire values, `viewof` targets, and definition helpers. |
-| `js/observable/`     | Notebook Kit `transpile` metadata and graph JSON.                                   |
-| `js/model/`          | Typed anywidget trait access helpers.                                               |
+| `js/notebook/`       | Notebook Kit `transpile` metadata and graph JSON.                                   |
 
 Rendering follows a fixed order:
 
@@ -155,8 +156,9 @@ TypeScript-owned OJS evaluation and transpilation.
 
 `js/widget/`
 : Owns anywidget lifecycle, child widget composition, notebook rendering, and
-model trait writes. `notebook-renderer.ts` creates the parent runtime, and
-`composed-cells.ts` resolves child widgets through the anywidget host.
+model trait writes. `app.ts` creates the parent runtime, `composition.ts`
+resolves child widgets through the anywidget host, and `sync.ts` writes graph
+and value traits.
 
 `js/runtime/`
 : Owns Observable Runtime mechanics that do not need widget DOM ownership.
@@ -170,12 +172,12 @@ under `js/widget/`.
 script cells. Comments, strings, template literals, regex literals, and
 non-JavaScript script types are excluded from those matches.
 
-`src/pyobservablejs/_variables.py` and `js/runtime/wire.ts`
+`src/pyobservablejs/_variables.py` and `js/runtime/values.ts`
 : Define the cross-language wire format. Tagged `__pyobservablejs_type__` values
 carry dates, bytes, non-finite numbers, DOM summaries, typed arrays, and
 errors across the trait boundary.
 
-`js/widget/highlight.ts`
+`js/widget/dom.ts`
 : Uses Shiki for pinned source panels with a selected language and theme set.
 Highlighting is asynchronous and guarded by the render abort signal so stale
 work exits before writing into a disposed cell.

@@ -20,6 +20,36 @@ Build the bundled widget assets:
 pnpm build
 ```
 
+Start the Vite dev server for frontend work:
+
+```sh
+pnpm dev
+```
+
+In another shell, point the Python widget at that server:
+
+```sh
+PYOBSERVABLEJS_VITE_DEV_SERVER=http://127.0.0.1:5173 uv run jupyter lab
+```
+
+Use the local URL printed by Vite if it starts on another port.
+When `PYOBSERVABLEJS_VITE_DEV_SERVER` is set, `_esm` loads
+`js/widget/dev.ts?anywidget` from Vite and Vite injects the widget CSS.
+`pnpm build` still writes the production assets under `src/pyobservablejs/static`.
+Frontends that only trust local anywidget files should use the production build
+path.
+
+The chunked anywidget machinery is split from the Observable renderer:
+
+- `src/pyobservablejs/_chunked_anywidget.py` serves built JavaScript chunks
+  through anywidget traitlets and commands.
+- `js/anywidget/chunked-module-loader.ts` loads those chunks in the browser.
+- `js/anywidget/vite-config.ts` defines the reusable Vite library build.
+- `js/notebook/` owns Notebook Kit graph metadata.
+- `js/runtime/` owns Observable Runtime wiring and value serialization.
+- `js/widget/` owns anywidget entries, DOM rendering, child composition, model
+  traits, and browser-to-Python sync.
+
 ## Workbench
 
 Use the workbench notebooks for manual exploration:

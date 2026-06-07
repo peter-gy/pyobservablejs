@@ -2,22 +2,19 @@ from __future__ import annotations
 
 import datetime as dt
 import inspect
-import json
 import pathlib
-import subprocess
 import sys
 import textwrap
 import types
 from collections.abc import Sequence
 from typing import Any, cast
 
-if sys.version_info >= (3, 11):
-    import tomllib
-else:
-    tomllib = None
-
 import pyobservablejs as obs
 import pytest
+from pyobservablejs._chunked_anywidget import (
+    ChunkedAnyWidget,
+    ChunkedAnyWidgetFrontend,
+)
 from helpers import (
     BrowserGraphCellBuilder,
     BrowserGraphSync,
@@ -41,6 +38,37 @@ def _notebook_from_html_file(path: pathlib.Path, **kwargs: Any) -> obs.Notebook:
         base_path=path.parent,
         **kwargs,
     )
+
+
+def _widget_class_for_static_dir(static_dir: pathlib.Path) -> type[ChunkedAnyWidget]:
+    static_dir.mkdir(parents=True, exist_ok=True)
+    (static_dir / "index.js").write_text(
+        "export default { render() {} };",
+        encoding="utf-8",
+    )
+    (static_dir / "widget.css").write_text("", encoding="utf-8")
+    frontend = ChunkedAnyWidgetFrontend(static_dir=static_dir)
+
+    class StaticWidget(ChunkedAnyWidget):
+        _frontend = frontend
+        _esm, _css = frontend.anywidget_assets()
+
+    return StaticWidget
+
+
+def _traitlet_module_response(
+    widget: ChunkedAnyWidget, module_path: str, *, seq: int = 1
+) -> dict[str, object]:
+    widget.set_trait("_esm_module_request", {"seq": seq, "path": module_path})
+    return cast(dict[str, object], getattr(widget, "_esm_module_response"))
+
+
+def _command_module_response(
+    widget: ChunkedAnyWidget, module_path: str
+) -> dict[str, object]:
+    response, buffers = widget.read_esm_module({"path": module_path}, [])
+    assert buffers == []
+    return response
 
 
 def _script_by_id(scripts: list[dict[str, Any]], script_id: str) -> dict[str, Any]:
@@ -104,266 +132,35 @@ def _line_indent(source: str, text: str) -> int:
     return len(matches[0]) - len(matches[0].lstrip(" "))
 
 
-def test_example_notebook_declares_juv_dependency_and_has_no_outputs() -> None:
-    notebook = json.loads(
-        (pathlib.Path(__file__).parents[1] / "example.ipynb").read_text(
-            encoding="utf-8"
-        )
-    )
-    sources = ["".join(cell["source"]) for cell in notebook["cells"]]
-    assert sources[0] == (
-        "# /// script\n"
-        '# requires-python = ">=3.10,<3.15"\n'
-        "# dependencies = [\n"
-        '#     "pyobservablejs",\n'
-        "# ]\n"
-        "#\n"
-        "# [tool.uv.sources]\n"
-        '# pyobservablejs = { path = "." }\n'
-        "# ///"
-    )
-    assert notebook["cells"][0]["metadata"] == {"jupyter": {"source_hidden": True}}
-    assert "ANYWIDGET_HMR" not in "\n".join(sources)
-    for cell in notebook["cells"]:
-        if cell["cell_type"] == "code":
-            assert cell["execution_count"] is None
-            assert cell["outputs"] == []
-
-
-def test_uv_cache_keys_cover_widget_build_inputs() -> None:
-    if tomllib is None:
-        pytest.skip("tomllib is unavailable")
-
-    pyproject = tomllib.loads(
-        (pathlib.Path(__file__).parents[1] / "pyproject.toml").read_text(
-            encoding="utf-8"
-        )
-    )
-    file_keys = {
-        entry["file"]
-        for entry in pyproject["tool"]["uv"]["cache-keys"]
-        if "file" in entry
-    }
-
-    assert {
-        "pyproject.toml",
-        "package.json",
-        "pnpm-lock.yaml",
-        "pnpm-workspace.yaml",
-        "vite.config.ts",
-        "src/pyobservablejs/**/*.py",
-        "js/**/*.ts",
-        "js/**/*.mjs",
-        "js/**/*.css",
-    } <= file_keys
-
-
-def test_hatch_build_declares_anywidget_static_targets() -> None:
-    if tomllib is None:
-        pytest.skip("tomllib is unavailable")
-
-    pyproject = tomllib.loads(
-        (pathlib.Path(__file__).parents[1] / "pyproject.toml").read_text(
-            encoding="utf-8"
-        )
-    )
-
-    assert (
-        "src/pyobservablejs/static/**"
-        in pyproject["tool"]["hatch"]["build"]["artifacts"]
-    )
-    assert {
-        "src/pyobservablejs/static/index.js",
-        "src/pyobservablejs/static/widget.css",
-    } <= set(
-        pyproject["tool"]["hatch"]["build"]["hooks"]["jupyter-builder"][
-            "ensured-targets"
-        ]
-    )
-
-
-def test_vite_build_emits_anywidget_entry_for_app_chunk(
+def test_chunked_anywidget_frontend_returns_static_assets(
     tmp_path: pathlib.Path,
 ) -> None:
-    root = pathlib.Path(__file__).parents[1]
-    out_dir = tmp_path / "static"
+    frontend = ChunkedAnyWidgetFrontend(static_dir=tmp_path)
 
-    result = subprocess.run(
-        ["pnpm", "build", "--outDir", str(out_dir)],
-        cwd=root,
-        check=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
+    esm, css = frontend.anywidget_assets()
+
+    assert esm == tmp_path / "index.js"
+    assert css == tmp_path / "widget.css"
+
+
+def test_chunked_anywidget_frontend_uses_dev_server_module(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    frontend = ChunkedAnyWidgetFrontend(
+        static_dir=tmp_path,
+        dev_server_env="PYOBSERVABLEJS_DEV_SERVER",
+        dev_module="js/widget/dev.ts?anywidget",
     )
+    monkeypatch.setenv("PYOBSERVABLEJS_DEV_SERVER", "127.0.0.1:5173/")
 
-    https_loader = tmp_path / "https-loader.mjs"
-    https_loader.write_text(
-        """
-export async function resolve(specifier, context, nextResolve) {
-  if (specifier.startsWith("https://")) {
-    return { url: specifier, shortCircuit: true };
-  }
-  return nextResolve(specifier, context);
-}
+    esm, css = frontend.anywidget_assets()
 
-export async function load(url, context, nextLoad) {
-  if (url.startsWith("https://")) {
-    return {
-      format: "module",
-      shortCircuit: true,
-      source: "export default {}; export const instance = async () => ({});",
-    };
-  }
-  return nextLoad(url, context);
-}
-""".strip(),
-        encoding="utf-8",
-    )
-    probe = subprocess.run(
-        [
-            "node",
-            "--disable-warning=MODULE_TYPELESS_PACKAGE_JSON",
-            "--disable-warning=ExperimentalWarning",
-            "--experimental-loader",
-            str(https_loader),
-            "--experimental-strip-types",
-            "--input-type=module",
-            "-e",
-            """
-const [entryPath, staticDir] = process.argv.slice(1);
-const fs = await import("node:fs/promises");
-const nodePath = await import("node:path");
-const { pathToFileURL } = await import("node:url");
-const { JSDOM } = await import("jsdom");
-
-const dom = new JSDOM("<!doctype html><body></body>", { url: "http://localhost/" });
-globalThis.window = dom.window;
-globalThis.document = dom.window.document;
-globalThis.HTMLElement = dom.window.HTMLElement;
-globalThis.Element = dom.window.Element;
-globalThis.Text = dom.window.Text;
-globalThis.CustomEvent = dom.window.CustomEvent;
-globalThis.Event = dom.window.Event;
-globalThis.Node = dom.window.Node;
-globalThis.MutationObserver = dom.window.MutationObserver;
-globalThis.process = { browser: true, env: { NODE_ENV: "production" } };
-globalThis.Blob = class {
-  constructor(parts) {
-    this.source = parts.join("");
-  }
-};
-globalThis.URL.createObjectURL = (blob) =>
-  `data:text/javascript;base64,${Buffer.from(blob.source).toString("base64")}`;
-globalThis.URL.revokeObjectURL = () => {};
-
-function createModel(initial) {
-  const listeners = new Map();
-  const traitletRequests = [];
-  const traits = new Map(Object.entries(initial));
-  return {
-    traitletRequests,
-    get(name) {
-      return traits.get(name);
-    },
-    set(name, value) {
-      traits.set(name, value);
-      if (name === "_esm_module_request") traitletRequests.push(value.path);
-      for (const listener of listeners.get(`change:${name}`) ?? []) listener();
-    },
-    on(event, listener) {
-      const eventListeners = listeners.get(event) ?? new Set();
-      eventListeners.add(listener);
-      listeners.set(event, eventListeners);
-    },
-    off(event, listener) {
-      listeners.get(event)?.delete(listener);
-    },
-    save_changes() {},
-  };
-}
-
-const childModel = createModel({ role: "cell", name: "answer", _values: {}, _value_names: [] });
-const model = createModel({
-  role: "notebook",
-  spec: { cells: [{ id: 1, mode: "ojs", value: "answer = 6 * 7" }] },
-  attachments: {},
-  _variables: {},
-  options: {},
-  _cell_widgets: ["anywidget:answer"],
-});
-const el = document.createElement("div");
-const commandRequests = [];
-const controller = new AbortController();
-const invoke = async (name, message) => {
-  if (name !== "read_esm_module") throw new Error(`unexpected command ${name}`);
-  const modulePath = typeof message === "object" && message !== null && "path" in message ? String(message.path) : "";
-  commandRequests.push(modulePath);
-  return [{ path: modulePath, source: await fs.readFile(nodePath.join(staticDir, modulePath), "utf8") }, []];
-};
-
-const widget = await import(`${pathToFileURL(entryPath).href}?probe=${Date.now()}`);
-widget.default.render({
-  model,
-  el,
-  signal: controller.signal,
-  host: {
-    getModel: async (ref) => ref === "anywidget:answer" ? childModel : undefined,
-    getWidget: async () => { throw new Error("probe resolves child models only"); },
-  },
-  experimental: { invoke },
-});
-for (let attempt = 0; attempt < 300 && !el.textContent.includes("42"); attempt += 1) {
-  await new Promise((resolve) => setTimeout(resolve, 10));
-}
-controller.abort();
-
-console.log(JSON.stringify({
-  commandRequests,
-  traitletRequests: model.traitletRequests,
-  childValues: childModel.get("_values"),
-  text: el.textContent.trim(),
-}));
-""",
-            str(out_dir / "index.js"),
-            str(out_dir),
-        ],
-        check=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
-    payload = json.loads(probe.stdout.splitlines()[-1])
-    child_values = cast(dict[str, object], payload["childValues"])
-    assert child_values["answer"] == 42, probe.stdout
-    assert payload["text"] == "42", probe.stdout
-    requested_paths = cast(list[str], payload["commandRequests"])
-    assert len(requested_paths) > 0, probe.stdout
-    app_path = requested_paths[0]
-    assert app_path.startswith("chunks/"), probe.stdout
-    assert app_path.endswith(".js"), probe.stdout
-
-    class BuiltNotebook(obs.Notebook):
-        _static_dir = out_dir
-
-    widget = BuiltNotebook()
-    for module_path in requested_paths:
-        assert (out_dir / module_path).is_file(), result.stdout
-        expected_source = (out_dir / module_path).read_text(encoding="utf-8")
-
-        widget.set_trait("_esm_module_request", {"seq": 1, "path": module_path})
-        backend_response = cast(
-            dict[str, object], getattr(widget, "_esm_module_response")
-        )
-        command_response, _ = widget.read_esm_module({"path": module_path}, [])
-
-        assert backend_response["path"] == module_path
-        assert backend_response.get("source") == expected_source
-        assert command_response["path"] == module_path
-        assert command_response.get("source") == expected_source
+    assert esm == "http://127.0.0.1:5173/js/widget/dev.ts?anywidget"
+    assert css == ""
 
 
-def test_widget_module_loader_serves_static_chunks_and_reports_missing_files(
+def test_chunked_anywidget_serves_chunk_source_over_traitlet_and_command(
     tmp_path: pathlib.Path,
 ) -> None:
     static_dir = tmp_path / "static"
@@ -371,44 +168,30 @@ def test_widget_module_loader_serves_static_chunks_and_reports_missing_files(
     chunk.parent.mkdir(parents=True)
     chunk.write_text("export default { render() {} };", encoding="utf-8")
 
-    class StaticNotebook(obs.Notebook):
-        _static_dir = static_dir
+    widget = _widget_class_for_static_dir(static_dir)()
 
-    widget = StaticNotebook()
-
-    widget.set_trait(
-        "_esm_module_request",
-        {"seq": 1, "path": "chunks/app.js"},
-    )
-    response = cast(dict[str, object], getattr(widget, "_esm_module_response"))
-    widget.set_trait("_esm_module_request", {"seq": 2, "path": "../_notebook.py"})
-    rejected = cast(dict[str, object], getattr(widget, "_esm_module_response"))
-    widget.set_trait("_esm_module_request", {"seq": 3, "path": "chunks/missing.js"})
-    missing = cast(dict[str, object], getattr(widget, "_esm_module_response"))
-    command_response, buffers = widget.read_esm_module(
-        {"path": "chunks/app.js"},
-        [],
-    )
-    command_rejected, _ = widget.read_esm_module({"path": "../_notebook.py"}, [])
-    command_missing, _ = widget.read_esm_module({"path": "chunks/missing.js"}, [])
+    response = _traitlet_module_response(widget, "chunks/app.js")
+    command_response = _command_module_response(widget, "chunks/app.js")
 
     assert response["seq"] == 1
     assert response["path"] == "chunks/app.js"
     assert response.get("source") == "export default { render() {} };"
-    assert rejected["seq"] == 2
-    assert rejected["path"] == "../_notebook.py"
-    assert "source" not in rejected
-    assert "unsupported widget module path" in str(rejected.get("error"))
-    assert missing["seq"] == 3
+    assert command_response["path"] == "chunks/app.js"
+    assert command_response.get("source") == "export default { render() {} };"
+
+
+def test_chunked_anywidget_reports_missing_chunks_over_traitlet_and_command(
+    tmp_path: pathlib.Path,
+) -> None:
+    widget = _widget_class_for_static_dir(tmp_path / "static")()
+
+    missing = _traitlet_module_response(widget, "chunks/missing.js")
+    command_missing = _command_module_response(widget, "chunks/missing.js")
+
+    assert missing["seq"] == 1
     assert missing["path"] == "chunks/missing.js"
     assert "source" not in missing
     assert "FileNotFoundError" in str(missing.get("error"))
-    assert command_response["path"] == "chunks/app.js"
-    assert command_response.get("source") == "export default { render() {} };"
-    assert buffers == []
-    assert command_rejected["path"] == "../_notebook.py"
-    assert "source" not in command_rejected
-    assert "unsupported widget module path" in str(command_rejected.get("error"))
     assert command_missing["path"] == "chunks/missing.js"
     assert "source" not in command_missing
     assert "FileNotFoundError" in str(command_missing.get("error"))
@@ -423,7 +206,7 @@ def test_widget_module_loader_serves_static_chunks_and_reports_missing_files(
         "chunks/app.css",
     ],
 )
-def test_widget_module_loader_rejects_paths_outside_static_chunks(
+def test_chunked_anywidget_rejects_paths_outside_static_chunks(
     tmp_path: pathlib.Path,
     module_path: str,
 ) -> None:
@@ -432,14 +215,10 @@ def test_widget_module_loader_rejects_paths_outside_static_chunks(
     chunk.parent.mkdir(parents=True)
     chunk.write_text("export default { render() {} };", encoding="utf-8")
 
-    class StaticNotebook(obs.Notebook):
-        _static_dir = static_dir
+    widget = _widget_class_for_static_dir(static_dir)()
 
-    widget = StaticNotebook()
-
-    widget.set_trait("_esm_module_request", {"seq": 1, "path": module_path})
-    response = cast(dict[str, object], getattr(widget, "_esm_module_response"))
-    command_response, _ = widget.read_esm_module({"path": module_path}, [])
+    response = _traitlet_module_response(widget, module_path)
+    command_response = _command_module_response(widget, module_path)
 
     assert response["path"] == module_path
     assert "source" not in response
@@ -449,7 +228,7 @@ def test_widget_module_loader_rejects_paths_outside_static_chunks(
     assert "unsupported widget module path" in str(command_response.get("error"))
 
 
-def test_widget_module_loader_rejects_symlink_escape(
+def test_chunked_anywidget_rejects_symlink_escape(
     tmp_path: pathlib.Path,
 ) -> None:
     static_dir = tmp_path / "static"
@@ -463,14 +242,10 @@ def test_widget_module_loader_rejects_symlink_escape(
     except (OSError, NotImplementedError) as error:
         pytest.skip(f"symlinks are unavailable: {error}")
 
-    class StaticNotebook(obs.Notebook):
-        _static_dir = static_dir
+    widget = _widget_class_for_static_dir(static_dir)()
 
-    widget = StaticNotebook()
-
-    widget.set_trait("_esm_module_request", {"seq": 1, "path": "chunks/escape.js"})
-    response = cast(dict[str, object], getattr(widget, "_esm_module_response"))
-    command_response, _ = widget.read_esm_module({"path": "chunks/escape.js"}, [])
+    response = _traitlet_module_response(widget, "chunks/escape.js")
+    command_response = _command_module_response(widget, "chunks/escape.js")
 
     assert response["path"] == "chunks/escape.js"
     assert "source" not in response

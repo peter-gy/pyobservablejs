@@ -30,6 +30,9 @@ importers:
       '@anywidget/types':
         specifier: ^0.4.0
         version: 0.4.0
+      '@anywidget/vite':
+        specifier: 0.3.0
+        version: 0.3.0(vite@8.0.16(esbuild@0.28.0))
       jsdom:
         specifier: 29.1.1
         version: 29.1.1
@@ -56,6 +59,11 @@ packages:
 
   '@anywidget/types@0.4.0':
     resolution: {integrity: sha512-Qno/7V0lKHCMq3DJuSKKHMwilFKPSe8wFftL5xWmgaMCc938mNTtv+i19UrvDfpj9cQTnlPqyXy8t3JOgQ8laA==}
+
+  '@anywidget/vite@0.3.0':
+    resolution: {integrity: sha512-eqDaeiwjkZRoEhAhfGewpEzDT+i77zaMOBZgxa9nHshYiTwwM+Tmg/esroDhAK/+O/4DKyCLxPJI35+zmzb9Qw==}
+    peerDependencies:
+      vite: ^4.0.0 || ^5.0.0 || ^6.0.0 || ^7.0.0
 
   '@asamuzakjp/css-color@3.2.0':
     resolution: {integrity: sha512-K1A6z8tS3XsmCMM86xoWdn7Fkdn9m6RSVtocUrJYIwZnFVkng/PvkEoWtOWmP+Scc6saYWHWZYbndEEXxl24jw==}
@@ -1621,6 +1629,10 @@ packages:
 snapshots:
 
   '@anywidget/types@0.4.0': {}
+
+  '@anywidget/vite@0.3.0(vite@8.0.16(esbuild@0.28.0))':
+    dependencies:
+      vite: 8.0.16(esbuild@0.28.0)
 
   '@asamuzakjp/css-color@3.2.0':
     dependencies:

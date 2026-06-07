@@ -11,8 +11,8 @@ from typing import Any, cast
 
 import anywidget
 import traitlets
-from anywidget.experimental import command as anywidget_command
 
+from ._chunked_anywidget import ChunkedAnyWidget, ChunkedAnyWidgetFrontend
 from ._files import FileInput, normalize_files, prepare_source
 from ._graph import CellInfo, NotebookGraph, graph_from_raw
 from ._observable import fetch_observablehq_notebook
@@ -69,6 +69,14 @@ CellInput = str | Cell
 
 _WIDGET_TRAIT = anywidget.WidgetTrait()
 _WIDGET_TO_JSON = _WIDGET_TRAIT.metadata["to_json"]
+_OBSERVABLE_WIDGET_STATIC_DIR = pathlib.Path(__file__).parent / "static"
+_OBSERVABLE_WIDGET_DEV_SERVER_ENV = "PYOBSERVABLEJS_VITE_DEV_SERVER"
+_OBSERVABLE_WIDGET_DEV_MODULE = "js/widget/dev.ts?anywidget"
+_OBSERVABLE_WIDGET_FRONTEND = ChunkedAnyWidgetFrontend(
+    static_dir=_OBSERVABLE_WIDGET_STATIC_DIR,
+    dev_server_env=_OBSERVABLE_WIDGET_DEV_SERVER_ENV,
+    dev_module=_OBSERVABLE_WIDGET_DEV_MODULE,
+)
 
 
 def _widgets_to_json(value: object, widget: object) -> object:
@@ -81,65 +89,11 @@ def _widgets_from_json(value: object, _widget: object) -> object:
     return value
 
 
-class _ObservableWidget(anywidget.AnyWidget):
+class _ObservableWidget(ChunkedAnyWidget):
     """Shared anywidget base for the bundled frontend assets."""
 
-    _static_dir = pathlib.Path(__file__).parent / "static"
-    _esm = _static_dir / "index.js"
-    _css = _static_dir / "widget.css"
-    _esm_module_request = traitlets.Dict(default_value={}).tag(sync=True)
-    _esm_module_response = traitlets.Dict(default_value={}).tag(sync=True)
-
-    @traitlets.observe("_esm_module_request")
-    def _respond_to_esm_module_request(self, change: dict[str, Any]) -> None:
-        request = (
-            cast(Mapping[str, object], change["new"])
-            if isinstance(change["new"], Mapping)
-            else {}
-        )
-        seq = request.get("seq")
-        request_path = request.get("path")
-        response: dict[str, Any] = {"seq": seq, "path": request_path}
-        try:
-            response["source"] = self._read_static_module(request_path)
-        except Exception as error:
-            response["error"] = f"{type(error).__name__}: {error}"
-        self.set_trait("_esm_module_response", response)
-
-    @anywidget_command
-    def read_esm_module(
-        self, msg: object, _buffers: list[bytes]
-    ) -> tuple[dict[str, Any], list[bytes]]:
-        request = cast(Mapping[str, object], msg) if isinstance(msg, Mapping) else {}
-        request_path = request.get("path")
-        response: dict[str, Any] = {"path": request_path}
-        try:
-            response["source"] = self._read_static_module(request_path)
-        except Exception as error:
-            response["error"] = f"{type(error).__name__}: {error}"
-        return response, []
-
-    def _read_static_module(self, module_path: object) -> str:
-        if not isinstance(module_path, str):
-            raise TypeError("module path must be a string")
-        path = pathlib.PurePosixPath(module_path)
-        if (
-            path.is_absolute()
-            or len(path.parts) < 2
-            or path.parts[0] != "chunks"
-            or ".." in path.parts
-            or path.suffix != ".js"
-        ):
-            raise ValueError(f"unsupported widget module path: {module_path}")
-        root = self._static_dir.resolve()
-        resolved = (root / pathlib.Path(*path.parts)).resolve()
-        try:
-            resolved.relative_to(root)
-        except ValueError as error:
-            raise ValueError(
-                f"unsupported widget module path: {module_path}"
-            ) from error
-        return resolved.read_text(encoding="utf-8")
+    _frontend = _OBSERVABLE_WIDGET_FRONTEND
+    _esm, _css = _OBSERVABLE_WIDGET_FRONTEND.anywidget_assets()
 
 
 class NotebookCell(_ObservableWidget):
