@@ -139,8 +139,8 @@ Pass `variables={...}` to override variables in a loaded notebook with Python va
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for local setup, workbench notebooks,
-and the check commands used before sending changes for review.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for local setup, docs preview, and the
+check commands used before sending changes for review.
 
 ## Acknowledgements
 

@@ -50,29 +50,6 @@ The chunked anywidget machinery is split from the Observable renderer:
 - `js/widget/` owns anywidget entries, DOM rendering, child composition, model
   traits, and browser-to-Python sync.
 
-## Workbench
-
-Use the workbench notebooks for manual exploration:
-
-```sh
-uv run marimo edit workbench/python_vars.py
-uv run marimo edit workbench/gallery_examples.py
-uv run marimo edit workbench/construction_methods.py
-uv run marimo edit workbench/observable_urls.py
-```
-
-`workbench/gallery_examples.py` loads the repo-local Notebook Kit HTML examples
-under `workbench/notebook_kit_gallery`.
-
-The notebooks cover separate runtime paths:
-
-- `python_vars.py`: Python `variables` values, cell widgets, and value sync.
-- `gallery_examples.py`: local Notebook Kit HTML examples.
-- `construction_methods.py`: Python cells, HTML strings, HTML files, and public
-  ObservableHQ notebooks.
-- `observable_urls.py`: public ObservableHQ Plot loading, URL-backed
-  attachments, and a fixed Python variable override example.
-
 ## Documentation
 
 Build the docs site:
@@ -119,18 +96,16 @@ frontends and verify them with `$agent-browser`.
 
 ```sh
 uv run jupyter lab --no-browser --port 27273 --ServerApp.token='' --ServerApp.password=''
-uv run marimo run --no-sandbox --headless --no-token --port 27271 workbench/python_vars.py
-uv run marimo run --no-sandbox --headless --no-token --port 27272 workbench/gallery_examples.py
+(cd docs && uv run jupyter book start --port 27331)
 ```
 
 Verify:
 
 - `example.ipynb` can restart and run all in JupyterLab, then renders the
   Observable title plus Plot output.
-- `workbench/python_vars.py` renders without browser errors, and interactive OJS
-  values propagate back to Python-visible `notebook.values`.
-- `workbench/gallery_examples.py` renders the default gallery example and can
-  switch to another example without console or page errors.
+- docs pages with `{marimo}` blocks render their pyobservablejs widgets.
+- `tutorials/python-variables` updates the Observable Plot when the Python
+  slider changes without remounting the widget output.
 
 Use `agent-browser console`, `agent-browser errors`, DOM or shadow-DOM
 inspection, and screenshots where they expose the failure. Stop local servers and

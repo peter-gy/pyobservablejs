@@ -41,18 +41,16 @@ For notebook/runtime changes, the default deep check is:
 
 ```sh
 uv run jupyter lab --no-browser --port 27273 --ServerApp.token='' --ServerApp.password=''
-uv run marimo run --no-sandbox --headless --no-token --port 27271 workbench/python_vars.py
-uv run marimo run --no-sandbox --headless --no-token --port 27272 workbench/gallery_examples.py
+(cd docs && uv run jupyter book start --port 27331)
 ```
 
 Then verify with `agent-browser` that:
 
 - `example.ipynb` can restart/run-all in JupyterLab and renders the Observable
   title plus Plot output.
-- `workbench/python_vars.py` renders without browser errors, and interactive OJS
-  values propagate back to Python-visible `notebook.values`.
-- `workbench/gallery_examples.py` renders the default gallery example and can
-  switch to another example without console or page errors.
+- the docs pages with `{marimo}` blocks render their pyobservablejs widgets.
+- `tutorials/python-variables` updates the Observable Plot when the Python
+  slider changes without remounting the widget output.
 
 Use `agent-browser console`, `agent-browser errors`, DOM/shadow-DOM inspection,
 and screenshots where useful. Stop local servers and browser sessions before

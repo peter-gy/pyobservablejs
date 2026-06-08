@@ -15,20 +15,6 @@ Build the widget bundle:
 pnpm build
 ```
 
-## Workbench
-
-Run the marimo workbench notebooks from the project environment:
-
-```sh
-uv run marimo edit workbench/python_vars.py
-uv run marimo edit workbench/gallery_examples.py
-uv run marimo edit workbench/construction_methods.py
-uv run marimo edit workbench/observable_urls.py
-```
-
-`workbench/gallery_examples.py` loads the repo-local Notebook Kit HTML examples
-under `workbench/notebook_kit_gallery`.
-
 ## Docs
 
 Build the Jupyter Book docs:
