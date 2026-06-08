@@ -12,23 +12,35 @@ The browser runs Notebook Kit and returns values through widget traits.
 ```python
 import pyobservablejs as obs
 
-rows = [
-    {"letter": "A", "frequency": 0.0812},
-    {"letter": "B", "frequency": 0.0149},
-    {"letter": "C", "frequency": 0.0271},
+weekly_metrics = [
+    {"week": "Jan 1", "signups": 128, "activations": 93},
+    {"week": "Jan 8", "signups": 164, "activations": 117},
+    {"week": "Jan 15", "signups": 151, "activations": 132},
+    {"week": "Jan 22", "signups": 186, "activations": 145},
 ]
 
 obs.Notebook(
-    obs.md("# Letter frequencies"),
+    obs.md("# Onboarding metrics"),
+    obs.ojs(
+        'viewof metric = Inputs.radio(["signups", "activations"], '
+        '{value: "signups", label: "metric"})',
+        name="metric",
+    ),
     obs.ojs("""
     Plot.plot({
+      height: 220,
       y: {grid: true},
-      marks: [Plot.barY(rows, {x: "letter", y: "frequency"})]
+      marks: [
+        Plot.lineY(weeklyMetrics, {x: "week", y: metric, marker: true})
+      ]
     })
     """),
-    variables={"rows": rows},
+    variables={"weeklyMetrics": weekly_metrics},
 )
 ```
+
+The quickstart renders this pattern as live documentation. Change the Observable
+input and Notebook Kit recomputes the dependent Plot cell in the browser.
 
 ## Core Model
 
@@ -51,7 +63,7 @@ Use `obs.Notebook.from_html(...)` when you already have Notebook Kit HTML. Use
 ## Read Next
 
 - [](./quickstart.md): create a notebook, pass Python values, and display cells.
-- [](./examples.md): copy small examples for common notebook tasks.
+- [](./examples.md): try compact rendered examples for common notebook tasks.
 - [](./tutorials/index.md): use `pyobservablejs` in notebook frontends such as marimo.
 - [](./concepts.md): learn the Observable, Notebook Kit, and widget vocabulary.
 - [](./api.md): reference the public Python API.

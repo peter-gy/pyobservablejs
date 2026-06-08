@@ -37,11 +37,14 @@ describe("widget runtime variable sync", () => {
 		} as unknown as RenderProps<WidgetModel>);
 
 		expect(await waitFor(() => (variableValue(model, "doubled") === 4 ? 4 : undefined))).toBe(4);
+		const doubledCell = await waitFor(() => el.querySelector<HTMLElement>("#cell-2") ?? undefined);
 
 		setVariables(model, 1, "set", { base: 5 });
 
 		expect(await waitFor(() => (variableValue(model, "doubled") === 10 ? 10 : undefined))).toBe(10);
 		expect(variableValue(model, "base_echo")).toBe(5);
+		expect(el.querySelector("#cell-2")).toBe(doubledCell);
+		expect(el.contains(doubledCell)).toBe(true);
 		controller.abort();
 	});
 

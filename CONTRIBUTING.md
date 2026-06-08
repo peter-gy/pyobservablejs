@@ -26,13 +26,8 @@ uv run marimo edit workbench/construction_methods.py
 uv run marimo edit workbench/observable_urls.py
 ```
 
-`workbench/gallery_examples.py` can load the Observable Notebook Kit example
-gallery. Set `NOTEBOOK_KIT_GALLERY_ROOT` to the `docs/ex` directory from a local
-`observablehq/notebook-kit` checkout:
-
-```sh
-NOTEBOOK_KIT_GALLERY_ROOT=/Users/petergy/Projects/opensource/observablehq/notebook-kit/docs/ex uv run marimo edit workbench/gallery_examples.py
-```
+`workbench/gallery_examples.py` loads the repo-local Notebook Kit HTML examples
+under `workbench/notebook_kit_gallery`.
 
 ## Docs
 

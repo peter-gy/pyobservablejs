@@ -1,0 +1,20 @@
+<!doctype html>
+<notebook theme="air">
+  <title>Letter frequencies</title>
+  <script id="1" name="chart" type="application/vnd.observable.javascript" pinned>
+Plot.plot({
+  height: 260,
+  marginLeft: 48,
+  y: {grid: true, label: "frequency"},
+  marks: [
+    Plot.barY([
+      {letter: "A", frequency: 0.0812},
+      {letter: "B", frequency: 0.0149},
+      {letter: "C", frequency: 0.0271},
+      {letter: "D", frequency: 0.0432},
+      {letter: "E", frequency: 0.1202}
+    ], {x: "letter", y: "frequency", tip: true})
+  ]
+})
+  </script>
+</notebook>

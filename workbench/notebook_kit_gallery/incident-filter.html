@@ -1,0 +1,41 @@
+<!doctype html>
+<notebook theme="glacier">
+  <title>Incident filter</title>
+  <script id="1" name="minimumSeverity" type="application/vnd.observable.javascript" pinned>
+viewof minimumSeverity = Inputs.range([1, 4], {
+  value: 2,
+  step: 1,
+  label: "minimum severity"
+})
+  </script>
+  <script id="2" name="incidents" hidden type="application/vnd.observable.javascript">
+incidents = [
+  {area: "auth", open: 8, severity: 2},
+  {area: "billing", open: 5, severity: 3},
+  {area: "search", open: 11, severity: 4},
+  {area: "exports", open: 4, severity: 1},
+  {area: "notebooks", open: 7, severity: 3}
+]
+  </script>
+  <script id="3" name="visibleIncidents" hidden type="application/vnd.observable.javascript">
+visibleIncidents = incidents.filter((d) => d.severity >= minimumSeverity)
+  </script>
+  <script id="4" name="chart" type="application/vnd.observable.javascript" pinned>
+Plot.plot({
+  height: 260,
+  marginLeft: 72,
+  x: {grid: true, label: "open incidents"},
+  y: {label: null},
+  color: {legend: true},
+  marks: [
+    Plot.barX(visibleIncidents, {
+      x: "open",
+      y: "area",
+      fill: "severity",
+      tip: true
+    }),
+    Plot.ruleX([0])
+  ]
+})
+  </script>
+</notebook>

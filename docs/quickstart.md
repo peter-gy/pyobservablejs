@@ -1,6 +1,6 @@
 ---
 title: Quickstart
-description: Install pyobservablejs and create a small notebook from Python.
+description: Install pyobservablejs and render a Notebook Kit notebook from Python.
 ---
 
 # Quickstart
@@ -17,79 +17,170 @@ or with `uv`:
 uv add pyobservablejs
 ```
 
-## Create a Notebook
+## Render a Notebook
 
-Use `obs.Notebook` with cell helpers. `obs.ojs` creates Observable JavaScript
-cells, `obs.js` creates ES module JavaScript cells, `obs.md` creates Markdown
-cells, and `obs.html` creates HTML cells.
+`obs.Notebook` accepts Python-authored cells. `variables` exposes Python values
+as Observable variables, so OJS cells can read them directly.
 
-```python
-import pyobservablejs as obs
+```{marimo-config}
+:pyproject:
 
-notebook = obs.Notebook(
-    obs.md("# A small notebook"),
-    obs.ojs("answer = 40 + 2", name="answer"),
-    obs.ojs("md`The answer is **${answer}**.`"),
-)
-
-notebook
+  requires-python = ">=3.10"
+  dependencies = [
+      "pyobservablejs @ https://files.peter.gy/pkg/py/pyobservablejs/pyobservablejs-0.0.0rc1-py3-none-any.whl#sha256=02b7ec0a297f81dd77f425a5e315eba537a71f93d9d58057ea0d004639cd44d8",
+  ]
 ```
 
-Displaying `notebook` renders the full Observable notebook in any compatible
-widget frontend.
+```python
+import marimo as mo
+import pyobservablejs as obs
+
+weekly_metrics = [
+    {"week": "Jan 1", "signups": 128, "activations": 93},
+    {"week": "Jan 8", "signups": 164, "activations": 117},
+    {"week": "Jan 15", "signups": 151, "activations": 132},
+    {"week": "Jan 22", "signups": 186, "activations": 145},
+    {"week": "Jan 29", "signups": 214, "activations": 173},
+]
+
+metrics = obs.Notebook(
+    obs.md("# Onboarding metrics"),
+    obs.ojs(
+        'viewof metric = Inputs.radio(["signups", "activations"], '
+        '{value: "signups", label: "metric"})',
+        name="metric",
+    ),
+    obs.ojs(
+        """
+        selected = weeklyMetrics.map((d) => ({
+          week: d.week,
+          value: d[metric]
+        }))
+        """,
+        name="selected",
+        display=False,
+    ),
+    obs.ojs(
+        """
+        Plot.plot({
+          height: 230,
+          marginLeft: 48,
+          y: {grid: true, label: metric},
+          marks: [
+            Plot.lineY(selected, {
+              x: "week",
+              y: "value",
+              marker: true,
+              stroke: "#4269d0",
+              tip: true
+            })
+          ]
+        })
+        """,
+        name="chart",
+    ),
+    variables={"weeklyMetrics": weekly_metrics},
+)
+
+mo.ui.anywidget(metrics)
+```
+
+```{marimo} python
+:include: false
+
+import marimo as mo
+import pyobservablejs as obs
+```
+
+```{marimo} python
+:include: false
+
+weekly_metrics = [
+    {"week": "Jan 1", "signups": 128, "activations": 93},
+    {"week": "Jan 8", "signups": 164, "activations": 117},
+    {"week": "Jan 15", "signups": 151, "activations": 132},
+    {"week": "Jan 22", "signups": 186, "activations": 145},
+    {"week": "Jan 29", "signups": 214, "activations": 173},
+]
+```
+
+```{marimo} python
+:include: false
+
+metrics = obs.Notebook(
+    obs.md("# Onboarding metrics"),
+    obs.ojs(
+        'viewof metric = Inputs.radio(["signups", "activations"], '
+        '{value: "signups", label: "metric"})',
+        name="metric",
+    ),
+    obs.ojs(
+        """
+        selected = weeklyMetrics.map((d) => ({
+          week: d.week,
+          value: d[metric]
+        }))
+        """,
+        name="selected",
+        display=False,
+    ),
+    obs.ojs(
+        """
+        Plot.plot({
+          height: 230,
+          marginLeft: 48,
+          y: {grid: true, label: metric},
+          marks: [
+            Plot.lineY(selected, {
+              x: "week",
+              y: "value",
+              marker: true,
+              stroke: "#4269d0",
+              tip: true
+            })
+          ]
+        })
+        """,
+        name="chart",
+    ),
+    variables={"weeklyMetrics": weekly_metrics},
+)
+```
+
+```{marimo} python
+mo.ui.anywidget(metrics)
+```
+
+Change the metric input. Observable recomputes `selected` and `chart` in the
+browser because both cells depend on the `viewof metric` value.
 
 What happens here:
 
 - `obs.Notebook(...)` creates one Notebook Kit notebook.
 - `obs.md(...)` and `obs.ojs(...)` keep each cell's source mode explicit.
-- `name="answer"` gives Python a stable handle for that cell.
+- `variables={"weeklyMetrics": weekly_metrics}` sends Python records into OJS.
+- `name="metric"` gives Python a stable handle for the input cell.
+- `display=False` keeps the derived `selected` cell out of the rendered notebook.
 
-## Pass Python Variables
+## Update Python Variables
 
-Pass a mapping with `variables`. Each key becomes an OJS variable name, so keys must
-be JavaScript identifiers. If a notebook defines the same variable, the Python
-value overrides that definition.
+Use `update_variables` when the notebook stays the same and Python supplies new
+values.
 
 ```python
-import pyobservablejs as obs
-
-events = [
-    {"day": "Mon", "value": 12},
-    {"day": "Tue", "value": 18},
-    {"day": "Wed", "value": 15},
-]
-
-notebook = obs.Notebook(
-    obs.ojs("""
-    Plot.plot({
-      height: 220,
-      y: {grid: true},
-      marks: [Plot.lineY(events, {x: "day", y: "value", marker: true})]
-    })
-    """),
-    variables={"events": events},
+metrics.update_variables(
+    weeklyMetrics=[
+        {"week": "Feb 5", "signups": 232, "activations": 181},
+        {"week": "Feb 12", "signups": 245, "activations": 205},
+    ],
 )
 ```
 
-Dependent Observable cells recompute when Python variables change.
-
-Choose the update method by ownership change:
-
-| Method                   | Contract                                                                                                                                         |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `update_variables(...)`  | Merge keys into the current Python-owned environment. Existing keys that are not mentioned stay Python-owned.                                    |
-| `replace_variables(...)` | Swap the full Python-owned environment. Omitted keys are released and the browser rebuilds the runtime to restore original notebook definitions. |
-
-Replace the Python-owned variables explicitly:
+Use `replace_variables` when omitted names should return to the notebook's own
+Observable definitions.
 
 ```python
-notebook.replace_variables({"events": events[-2:]})
-```
-
-Patch the live runtime with `update_variables`:
-
-```python
-notebook.update_variables(events=events[-2:])
+metrics.replace_variables({"weeklyMetrics": weekly_metrics[-3:]})
 ```
 
 ## Read One Cell

@@ -25,9 +25,9 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/peterg-y/pyobservablejs"
-Source = "https://github.com/peterg-y/pyobservablejs"
-Issues = "https://github.com/peterg-y/pyobservablejs/issues"
+Homepage = "https://github.com/peter-gy/pyobservablejs"
+Source = "https://github.com/peter-gy/pyobservablejs"
+Issues = "https://github.com/peter-gy/pyobservablejs/issues"
 
 [dependency-groups]
 dev = [
@@ -38,6 +38,7 @@ dev = [
 	"pytest>=9.0.3",
 	"marimo[recommended]>=0.23.8",
 	"jupyter-book>=2.1.5",
+	"jupyter-book-marimo>=0.0.1",
 ]
 
 [tool.uv]

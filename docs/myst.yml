@@ -8,10 +8,13 @@ project:
     - jupyter
     - marimo
     - notebooks
-  authors:
-    - name: Peter Ferenc Gyarmati
-  github: https://github.com/peterg-y/pyobservablejs
+  github: https://github.com/peter-gy/pyobservablejs
   license: MIT
+  exclude:
+    - .jupyter-book-marimo/**
+  plugins:
+    - type: executable
+      path: ../.venv/bin/jupyter-book-marimo
   toc:
     - file: index.md
     - file: quickstart.md

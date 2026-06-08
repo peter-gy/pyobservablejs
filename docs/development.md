@@ -61,13 +61,8 @@ uv run marimo edit workbench/construction_methods.py
 uv run marimo edit workbench/observable_urls.py
 ```
 
-`workbench/gallery_examples.py` can load a local Observable Notebook Kit example
-gallery. Set `NOTEBOOK_KIT_GALLERY_ROOT` to the `docs/ex` directory from a local
-`observablehq/notebook-kit` checkout:
-
-```sh
-NOTEBOOK_KIT_GALLERY_ROOT=/Users/petergy/Projects/opensource/observablehq/notebook-kit/docs/ex uv run marimo edit workbench/gallery_examples.py
-```
+`workbench/gallery_examples.py` loads the repo-local Notebook Kit HTML examples
+under `workbench/notebook_kit_gallery`.
 
 The notebooks cover separate runtime paths:
 
@@ -125,8 +120,7 @@ frontends and verify them with `$agent-browser`.
 ```sh
 uv run jupyter lab --no-browser --port 27273 --ServerApp.token='' --ServerApp.password=''
 uv run marimo run --no-sandbox --headless --no-token --port 27271 workbench/python_vars.py
-NOTEBOOK_KIT_GALLERY_ROOT=/Users/petergy/Projects/opensource/observablehq/notebook-kit/docs/ex \
-  uv run marimo run --no-sandbox --headless --no-token --port 27272 workbench/gallery_examples.py
+uv run marimo run --no-sandbox --headless --no-token --port 27272 workbench/gallery_examples.py
 ```
 
 Verify:

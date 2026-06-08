@@ -42,8 +42,7 @@ For notebook/runtime changes, the default deep check is:
 ```sh
 uv run jupyter lab --no-browser --port 27273 --ServerApp.token='' --ServerApp.password=''
 uv run marimo run --no-sandbox --headless --no-token --port 27271 workbench/python_vars.py
-NOTEBOOK_KIT_GALLERY_ROOT=/Users/petergy/Projects/opensource/observablehq/notebook-kit/docs/ex \
-  uv run marimo run --no-sandbox --headless --no-token --port 27272 workbench/gallery_examples.py
+uv run marimo run --no-sandbox --headless --no-token --port 27272 workbench/gallery_examples.py
 ```
 
 Then verify with `agent-browser` that:
