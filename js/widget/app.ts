@@ -5,6 +5,7 @@ import { createCompositionHost, renderComposedCells } from "./composition";
 import { createNotebookRoot, createTopLevelError, prepareWidgetShell } from "./dom";
 import { NOTEBOOK_MODEL_CHANGE_EVENTS, readCellRefs, readNotebookFromModel, readNotebookOptions } from "./model";
 import { createRuntimeVariablesSync, syncNotebookGraph, syncNotebookValues, writeProgrammaticViewValue } from "./sync";
+import { installNotebookThemeStyles } from "./themes";
 import type { WidgetModel } from "./model";
 
 type RenderNotebookWidgetOptions = {
@@ -75,6 +76,8 @@ async function renderCurrentNotebook(
 	variablesOverride?: Record<string, unknown>,
 ): Promise<void> {
 	prepareWidgetShell(el);
+	const ownerRoot = el.getRootNode();
+	installNotebookThemeStyles(ownerRoot instanceof ShadowRoot ? ownerRoot : el.ownerDocument);
 	if (signal.aborted) return;
 
 	const notebook = readNotebookFromModel(model);

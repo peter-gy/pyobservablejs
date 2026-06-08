@@ -10,6 +10,42 @@ import { composedText } from "./testing";
 import { createHost, createModel, hasSavedTrait, variableValue, waitFor } from "./testing";
 
 describe("widget graph and notebook values", () => {
+	test("rerenders the scoped notebook root when the theme trait changes", async () => {
+		const model = createModel({
+			role: "notebook",
+			spec: { theme: "air", cells: [] },
+			theme: "air",
+			attachments: {},
+			_variables: {},
+			options: {},
+			_cell_widgets: [],
+		});
+		const controller = new AbortController();
+		const el = document.createElement("div");
+
+		widget.render({
+			model,
+			el,
+			signal: controller.signal,
+			host: createHost(new Map()),
+		} as unknown as RenderProps<WidgetModel>);
+
+		expect(await waitFor(() => el.querySelector<HTMLElement>(".pyobservablejs-notebook") ?? undefined)).toHaveProperty(
+			"dataset.theme",
+			"air",
+		);
+
+		model.set("theme", "slate");
+
+		expect(
+			await waitFor(() => {
+				const root = el.querySelector<HTMLElement>(".pyobservablejs-notebook");
+				return root?.dataset.theme === "slate" ? root : undefined;
+			}),
+		).toHaveProperty("dataset.theme", "slate");
+		controller.abort();
+	});
+
 	test("writes the Notebook Kit graph to the notebook model after child models resolve", async () => {
 		const model = createModel({
 			role: "notebook",

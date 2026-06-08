@@ -1,5 +1,6 @@
 import type { Cell, Notebook } from "@observablehq/notebook-kit";
 import type { HighlighterCore, ThemedToken } from "@shikijs/types";
+import { applyNotebookTheme } from "./themes";
 
 export const CLASS_NAMES = {
 	widget: "pyobservablejs",
@@ -89,7 +90,7 @@ export function prepareWidgetShell(el: HTMLElement): void {
 export function createNotebookRoot(parent: HTMLElement, theme: Notebook["theme"]): HTMLElement {
 	const root = document.createElement("div");
 	root.className = `${CLASS_NAMES.notebook} observablehq observablehq--block`;
-	root.dataset.theme = typeof theme === "string" ? theme : "light-dark";
+	applyNotebookTheme(root, theme);
 	parent.appendChild(root);
 	return root;
 }

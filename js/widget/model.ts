@@ -9,6 +9,7 @@ export type WidgetModel = {
 	name?: string;
 	source?: string;
 	spec?: Record<string, unknown>;
+	theme?: unknown;
 	attachments?: Record<string, AttachmentInfo>;
 	base_url?: string;
 	_variables?: Record<string, unknown>;
@@ -43,6 +44,7 @@ export type { NotebookGraph } from "../notebook/graph";
 export const NOTEBOOK_MODEL_CHANGE_EVENTS = [
 	"change:source",
 	"change:spec",
+	"change:theme",
 	"change:attachments",
 	"change:base_url",
 	"change:options",
@@ -74,8 +76,19 @@ export function readNotebookVariables(model: AnyWidgetModel): Record<string, unk
  */
 export function readNotebookFromModel(model: RenderProps<WidgetModel>["model"]): Notebook {
 	const source = model.get("source");
-	if (source?.trim()) return deserialize(source);
-	return toNotebook(model.get("spec") ?? {});
+	const notebook = source?.trim() ? deserialize(source) : toNotebook(model.get("spec") ?? {});
+	const theme = readNotebookTheme(model);
+	return theme === undefined ? notebook : { ...notebook, theme };
+}
+
+export function readNotebookTheme(model: RenderProps<WidgetModel>["model"]): Notebook["theme"] | undefined {
+	const theme = model.get("theme");
+	if (typeof theme === "string") return theme as Notebook["theme"];
+	if (theme === null || typeof theme !== "object" || Array.isArray(theme)) return undefined;
+	const light = (theme as Record<string, unknown>).light;
+	const dark = (theme as Record<string, unknown>).dark;
+	if (typeof light === "string" && typeof dark === "string") return { light, dark } as Notebook["theme"];
+	return undefined;
 }
 
 /**

@@ -32,10 +32,9 @@ runtime.
 
 - `*cells`: strings or helper-created cell objects.
 - `title`: title written to exported Notebook Kit HTML.
-- `theme`: Notebook Kit theme. Defaults to `"air"`. Pass a string theme name or
-  a mapping with `light` and `dark` theme names. Theme mappings serialize as
-  `light-dark(light, dark)`. Missing mapping keys raise `KeyError` when the
-  notebook is serialized.
+- `theme`: Notebook Kit theme. Defaults to `"air"`. Pass one of
+  `obs.NOTEBOOK_THEMES` or a mapping with `light` and `dark` theme names. Theme
+  mappings serialize as `light-dark(light, dark)`.
 - `mode`: default mode for plain string cells.
 - `attachments`: mapping from `FileAttachment` names to local paths, URLs, or
   metadata. Local paths resolve against `base_path` or the current working
@@ -50,14 +49,36 @@ Plain string cells use `mode="ojs"` by default.
 
 Raises:
 
-- `ValueError`: `mode` or a variable name is invalid.
-- `TypeError`: a cell is not a string or `Cell`, or a variable value cannot be
-  serialized.
+- `ValueError`: `mode`, `theme`, or a variable name is invalid.
+- `TypeError`: a cell is not a string or `Cell`, `theme` has the wrong shape, or
+  a variable value cannot be serialized.
 - `FileNotFoundError` or `OSError`: an explicit local attachment path is missing
   or unreadable.
 
 Browser-populated fields such as `values`, `graph`, and cell metadata are empty
 until the widget has rendered.
+
+### `NOTEBOOK_THEMES`
+
+```python
+obs.NOTEBOOK_THEMES
+```
+
+Tuple of Notebook Kit theme names bundled by the widget frontend. Use these
+names with `Notebook(..., theme=...)` or `notebook.theme`.
+
+### `Notebook.theme`
+
+```python
+notebook.theme = "slate"
+notebook.theme = {"light": "air", "dark": "midnight"}
+```
+
+Set the live Notebook Kit theme. Names are stripped, lowercased, and validated
+against `obs.NOTEBOOK_THEMES`. Python-authored notebooks also update
+`notebook.spec["theme"]`, so `to_notebook_html()` serializes the new theme.
+Source-backed notebooks keep their original HTML source and pass the live theme
+trait to the browser renderer.
 
 ### `Notebook.variables`
 
@@ -237,6 +258,8 @@ string before calling this method.
 - `variables`: Python-owned OJS variables. Invalid names raise `ValueError`.
   Unsupported values raise `TypeError`.
 - `show_pinned_source`: render Notebook Kit pinned source panels in cell widgets.
+- Raises `ValueError` when the source HTML declares an unsupported Notebook Kit
+  theme.
 - Raises `FileNotFoundError` or `OSError` when an explicit local attachment path
   is missing or unreadable.
 

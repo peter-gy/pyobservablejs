@@ -5,7 +5,9 @@ from __future__ import annotations
 import html as _html
 import re
 from collections.abc import Mapping
-from typing import Any, Literal
+from typing import Any, Literal, get_args
+
+from ._themes import serialize_theme
 
 AuthorMode = Literal[
     "js",
@@ -28,7 +30,7 @@ Mode = Literal[
     "r",
 ]
 
-AUTHOR_MODES: frozenset[str] = frozenset(("js", "ojs", "md", "html"))
+AUTHOR_MODES: frozenset[str] = frozenset(get_args(AuthorMode))
 
 SCRIPT_TYPES = {
     "js": "module",
@@ -48,11 +50,7 @@ SCRIPT_TYPES = {
 def serialize(spec: Mapping[str, Any]) -> str:
     """Render a Notebook Kit HTML document from the Python cell spec."""
 
-    theme = spec.get("theme", "air")
-    if isinstance(theme, Mapping):
-        theme_value = f"light-dark({theme['light']}, {theme['dark']})"
-    else:
-        theme_value = str(theme)
+    theme_value = serialize_theme(spec.get("theme", "air"))
     parts = [
         "<!doctype html>",
         f'<notebook theme="{_html.escape(theme_value, quote=True)}">',

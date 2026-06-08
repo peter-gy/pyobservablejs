@@ -1,5 +1,5 @@
 {
-	"include": ["js", "vite.config.ts"],
+	"include": ["js", "vite.config.ts", "vitest.config.ts"],
 	"compilerOptions": {
 		"target": "ES2020",
 		"module": "ESNext",

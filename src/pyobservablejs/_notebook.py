@@ -17,6 +17,11 @@ from ._files import FileInput, normalize_files, prepare_source
 from ._graph import CellInfo, NotebookGraph, graph_from_raw
 from ._observable import fetch_observablehq_notebook
 from ._serialize import AUTHOR_MODES, SCRIPT_TYPES, AuthorMode, Mode, serialize
+from ._themes import (
+    Theme,
+    deserialize_theme_attribute,
+    normalize_theme,
+)
 from ._variables import deserialize_value, serialize_variables
 
 
@@ -205,6 +210,7 @@ class Notebook(_ObservableWidget):
     role = traitlets.Unicode("notebook").tag(sync=True)
     source = traitlets.Unicode("").tag(sync=True)
     spec = traitlets.Dict().tag(sync=True)
+    theme = traitlets.Any(default_value="air").tag(sync=True)
     attachments = traitlets.Dict().tag(sync=True)
     base_url = traitlets.Unicode("").tag(sync=True)
     _variables = traitlets.Dict(default_value={}).tag(sync=True)
@@ -226,6 +232,18 @@ class Notebook(_ObservableWidget):
                 "_cell_widgets must contain NotebookCell widgets"
             )
         return cast(list[NotebookCell], widgets)
+
+    @traitlets.validate("theme")
+    def _validate_theme(self, proposal: Any) -> Theme:
+        return normalize_theme(proposal["value"])
+
+    @traitlets.observe("theme")
+    def _sync_theme_to_spec(self, change: Any) -> None:
+        if getattr(self, "_initializing_notebook", False) or self.source:
+            return
+        spec = dict(self.spec)
+        spec["theme"] = change["new"]
+        self.set_trait("spec", spec)
 
     def __init__(
         self,
@@ -253,13 +271,14 @@ class Notebook(_ObservableWidget):
         """
 
         _ensure_author_mode(mode)
+        normalized_theme = normalize_theme(theme)
         cell_specs = [
             _coerce_cell(item, mode=mode).to_spec(i)
             for i, item in enumerate(cells, start=1)
         ]
         self._initialize(
             source="",
-            spec={"title": title, "theme": theme, "cells": cell_specs},
+            spec={"title": title, "theme": normalized_theme, "cells": cell_specs},
             attachments=normalize_files(attachments, base_path=base_path),
             variables=variables,
             show_pinned_source=show_pinned_source,
@@ -300,14 +319,23 @@ class Notebook(_ObservableWidget):
     ) -> None:
         self._variable_values = _copy_variables(variables)
         self._variable_update_seq = 0
-        super().__init__(
-            source=source,
-            spec=dict(spec),
-            attachments=dict(attachments),
-            _variables=serialize_variables(self._variable_values),
-            options={"show_source": show_pinned_source},
-            _cell_widgets=list(cell_widgets),
-        )
+        normalized_theme = _notebook_theme(source, spec)
+        spec_dict = dict(spec)
+        if not source:
+            spec_dict["theme"] = normalized_theme
+        self._initializing_notebook = True
+        try:
+            super().__init__(
+                source=source,
+                spec=spec_dict,
+                theme=normalized_theme,
+                attachments=dict(attachments),
+                _variables=serialize_variables(self._variable_values),
+                options={"show_source": show_pinned_source},
+                _cell_widgets=list(cell_widgets),
+            )
+        finally:
+            self._initializing_notebook = False
         for index, cell_widget in enumerate(self._cell_widgets):
             if isinstance(cell_widget, NotebookCell):
                 cell_widget._bind_notebook(self, index)
@@ -814,6 +842,20 @@ def _cell_widgets_for_cells(cells: Sequence[Cell]) -> list[NotebookCell]:
     return [NotebookCell(name=item.name or "") for item in cells]
 
 
+def _notebook_theme(source: str, spec: Mapping[str, Any]) -> Theme:
+    if "theme" in spec:
+        return normalize_theme(spec["theme"])
+    if source:
+        return _parse_html_theme(source)
+    return "air"
+
+
+def _parse_html_theme(source: str) -> Theme:
+    parser = _NotebookHTMLParser()
+    parser.feed(source)
+    return parser.theme or "air"
+
+
 _MODE_BY_SCRIPT_TYPE = {
     script_type.lower(): mode for mode, script_type in SCRIPT_TYPES.items()
 }
@@ -825,6 +867,7 @@ class _NotebookHTMLParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.cells: list[Cell] = []
+        self.theme: Theme | None = None
         self._inside_notebook = False
         self._script_attrs: dict[str, str | None] | None = None
         self._script_parts: list[str] = []
@@ -832,6 +875,9 @@ class _NotebookHTMLParser(HTMLParser):
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag = tag.lower()
         if tag == "notebook":
+            attrs_by_name = {name.lower(): value for name, value in attrs}
+            if self.theme is None:
+                self.theme = deserialize_theme_attribute(attrs_by_name.get("theme"))
             self._inside_notebook = True
             return
         if tag != "script" or not self._inside_notebook:

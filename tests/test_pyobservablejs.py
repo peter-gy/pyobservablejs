@@ -256,7 +256,7 @@ def test_chunked_anywidget_rejects_symlink_escape(
 
 
 def test_public_namespace_is_small() -> None:
-    expected_public = {"Notebook", "html", "js", "md", "ojs"}
+    expected_public = {"NOTEBOOK_THEMES", "Notebook", "html", "js", "md", "ojs"}
     assert set(obs.__all__) == expected_public
     assert {name for name in dir(obs) if not name.startswith("_")} == expected_public
 
@@ -264,6 +264,24 @@ def test_public_namespace_is_small() -> None:
     exec("from pyobservablejs import *", namespace)
 
     assert {name for name in namespace if not name.startswith("_")} == expected_public
+
+
+def test_notebook_themes_match_notebook_kit_theme_names() -> None:
+    assert obs.NOTEBOOK_THEMES == (
+        "air",
+        "coffee",
+        "cotton",
+        "deep-space",
+        "glacier",
+        "ink",
+        "midnight",
+        "near-midnight",
+        "ocean-floor",
+        "parchment",
+        "slate",
+        "stark",
+        "sun-faded",
+    )
 
 
 def test_public_api_signatures_keep_keyword_only_options() -> None:
@@ -352,6 +370,79 @@ def test_cell_options_serialize_to_notebook_html(
     assert attrs.get("database") == "duckdb"
     assert "hidden" in attrs
     assert "pinned" in attrs
+
+
+@pytest.mark.parametrize("theme", obs.NOTEBOOK_THEMES)
+def test_notebook_accepts_shipped_notebook_kit_themes(
+    theme: str,
+    document_title: DocumentTitle,
+) -> None:
+    notebook = obs.Notebook(obs.ojs("answer = 42"), title="Demo", theme=theme)
+
+    source = notebook.to_notebook_html()
+
+    assert document_title(source) == "Demo"
+    assert notebook.theme == theme
+    assert notebook.spec["theme"] == theme
+    assert f'<notebook theme="{theme}">' in source
+
+
+def test_notebook_theme_mapping_normalizes_and_serializes() -> None:
+    notebook = obs.Notebook(
+        obs.ojs("answer = 42"),
+        theme={"light": " Cotton ", "dark": "Near-Midnight"},
+    )
+
+    assert notebook.theme == {"light": "cotton", "dark": "near-midnight"}
+    assert notebook.spec["theme"] == {"light": "cotton", "dark": "near-midnight"}
+    assert '<notebook theme="light-dark(cotton, near-midnight)">' in (
+        notebook.to_notebook_html()
+    )
+
+
+@pytest.mark.parametrize(
+    "theme",
+    [
+        "unknown",
+        {"light": "air"},
+        {"light": "air", "dark": "slate", "extra": "coffee"},
+        {"light": "air", "dark": "unknown"},
+    ],
+)
+def test_notebook_rejects_unsupported_themes(theme: Any) -> None:
+    with pytest.raises((TypeError, ValueError), match="theme|Unsupported"):
+        obs.Notebook(obs.ojs("answer = 42"), theme=theme)
+
+
+def test_notebook_theme_setter_syncs_spec_trait() -> None:
+    notebook = obs.Notebook(obs.ojs("answer = 42"), theme="air")
+
+    notebook.theme = "slate"
+
+    assert notebook.theme == "slate"
+    assert notebook.spec["theme"] == "slate"
+    assert notebook.get_state(["theme", "spec"])["theme"] == "slate"
+    assert notebook.get_state(["theme", "spec"])["spec"]["theme"] == "slate"
+
+
+def test_source_backed_notebook_theme_trait_preserves_source() -> None:
+    source = """<!doctype html>
+<notebook theme="coffee">
+  <script id="1">answer = 42</script>
+</notebook>
+"""
+    notebook = obs.Notebook.from_html(source)
+
+    notebook.theme = {"light": "cotton", "dark": "slate"}
+
+    assert notebook.theme == {"light": "cotton", "dark": "slate"}
+    assert notebook.spec == {}
+    assert notebook.to_notebook_html() == source
+
+
+def test_notebook_from_html_rejects_unsupported_theme() -> None:
+    with pytest.raises(ValueError, match="Unsupported Notebook Kit theme"):
+        obs.Notebook.from_html("<notebook theme='unknown'></notebook>")
 
 
 def test_cell_raw_controls_serialized_source_dedenting(
