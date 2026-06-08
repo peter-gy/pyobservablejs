@@ -1,6 +1,6 @@
 import type { InitializeProps, RenderProps } from "@anywidget/types";
+import { analyzeNotebook, notebookViewNamesFromAnalysis } from "../notebook/graph";
 import { createRuntime, createRuntimeCleanup, registerAttachments } from "../runtime";
-import { notebookViewNames } from "./cells";
 import { createCompositionHost, renderComposedCells } from "./composition";
 import { createNotebookRoot, createTopLevelError, prepareWidgetShell } from "./dom";
 import { NOTEBOOK_MODEL_CHANGE_EVENTS, readCellRefs, readNotebookFromModel, readNotebookOptions } from "./model";
@@ -78,6 +78,7 @@ async function renderCurrentNotebook(
 	if (signal.aborted) return;
 
 	const notebook = readNotebookFromModel(model);
+	const analysis = analyzeNotebook(notebook);
 	const cellRefs = readCellRefs(model.get("_cell_widgets"));
 	if (cellRefs.length > 0) {
 		if (cellRefs.length !== notebook.cells.length) {
@@ -87,7 +88,7 @@ async function renderCurrentNotebook(
 		throw new Error(`Expected ${notebook.cells.length} cell widgets, received 0`);
 	}
 	if (cellRefs.length === 0) {
-		syncNotebookGraph(model, notebook);
+		syncNotebookGraph(model, notebook, [], analysis);
 		syncNotebookValues(model, []);
 	}
 
@@ -100,7 +101,7 @@ async function renderCurrentNotebook(
 		model,
 		runtime,
 		options,
-		viewNames: notebookViewNames(notebook),
+		viewNames: notebookViewNamesFromAnalysis(analysis),
 		signal,
 		onReset: onInputReset,
 		writeViewValue: writeProgrammaticViewValue,
@@ -114,6 +115,7 @@ async function renderCurrentNotebook(
 				root,
 				notebook,
 				cellRefs,
+				analysis,
 				runtime,
 				options,
 				variablesSync,

@@ -2,7 +2,12 @@
 
 import { toNotebook } from "@observablehq/notebook-kit";
 import { describe, expect, test } from "vitest";
-import { createNotebookGraph } from "./graph";
+import {
+	analyzeNotebook,
+	createNotebookGraph,
+	createNotebookGraphFromAnalysis,
+	notebookViewNamesFromAnalysis,
+} from "./graph";
 
 describe("notebook graph metadata", () => {
 	test("uses Notebook Kit transpile metadata for references, outputs, and edges", () => {
@@ -26,6 +31,23 @@ describe("notebook graph metadata", () => {
 		expect(graph.edges).toContainEqual({ from: 1, to: 2, variable: "a" });
 		expect(graph.edges).toContainEqual({ from: 3, to: 4, variable: "gain" });
 		expect(graph.edges).toContainEqual({ from: 2, to: 4, variable: "b" });
+	});
+
+	test("reuses analyzed Notebook Kit definitions for graph names and view names", () => {
+		const notebook = toNotebook({
+			cells: [
+				{ id: 1, mode: "ojs", value: "viewof gain = Inputs.range([0, 10])" },
+				{ id: 2, mode: "ojs", value: "gain * 2" },
+			],
+		});
+
+		const analysis = analyzeNotebook(notebook);
+		const graph = createNotebookGraphFromAnalysis(analysis, ["gain", "readout"]);
+
+		expect(Array.from(notebookViewNamesFromAnalysis(analysis))).toEqual(["gain"]);
+		expect(graph.cells.map((cell) => cell.name)).toEqual(["gain", "readout"]);
+		expect(graph.cells.map((cell) => cell.defines)).toEqual([["gain"], []]);
+		expect(graph.edges).toContainEqual({ from: 1, to: 2, variable: "gain" });
 	});
 
 	test("preserves raw JS declarations separately from visible variables", () => {

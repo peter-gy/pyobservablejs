@@ -1,6 +1,7 @@
 import type { RenderProps } from "@anywidget/types";
 import type { Notebook } from "@observablehq/notebook-kit";
 import type { NotebookRuntime } from "@observablehq/notebook-kit/runtime";
+import type { NotebookAnalysis } from "../notebook/graph";
 import type { NotebookOptions, RuntimeVariablesSync } from "../runtime";
 import { renderCell, renderCellError } from "./cells";
 import { appendCellWrapper } from "./dom";
@@ -125,6 +126,7 @@ export async function renderComposedCells(
 	root: HTMLElement,
 	notebook: Notebook,
 	cellRefs: string[],
+	analysis: NotebookAnalysis,
 	runtime: NotebookRuntime,
 	options: NotebookOptions,
 	variablesSync: RuntimeVariablesSync,
@@ -151,7 +153,7 @@ export async function renderComposedCells(
 	for (const resolution of resolutions) void resolution.then((result) => renderResolvedCell(result));
 	await Promise.all(resolutions);
 	if (!signal.aborted) {
-		syncNotebookGraph(model, notebook, cellModels);
+		syncNotebookGraph(model, notebook, cellModels, analysis);
 		variablesSync.applyInitialViews();
 	}
 
@@ -180,6 +182,7 @@ export async function renderComposedCells(
 			signal,
 			cellName: sync.model.get("name"),
 			pythonVariableNames: new Set(Object.keys(options.variables)),
+			analysis: analysis.cells[resolution.index],
 		});
 	}
 

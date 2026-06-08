@@ -1,7 +1,7 @@
 import type { InitializeProps, RenderProps } from "@anywidget/types";
 import { transpile, type Cell, type Notebook } from "@observablehq/notebook-kit";
 import { observe, type NotebookRuntime } from "@observablehq/notebook-kit/runtime";
-import { exposedVariableNames, unprefix } from "../notebook/graph";
+import { exposedVariableNames, unprefix, type CellAnalysis, type RuntimeCellDefinition } from "../notebook/graph";
 import { createRuntimeDefinition, toWireValue } from "../runtime";
 import { createCellOutput, createTopLevelError, markWidgetShell, renderSource } from "./dom";
 import type { WidgetModel } from "./model";
@@ -16,9 +16,11 @@ type RenderCellOptions = {
 	signal: AbortSignal;
 	cellName?: string;
 	pythonVariableNames?: Set<string>;
+	analysis?: CellAnalysis;
 };
 type RuntimeDefinition = Parameters<NotebookRuntime["define"]>[1];
 type RuntimeObserver = Parameters<NotebookRuntime["main"]["variable"]>[0];
+type DefinitionInput = { definition: RuntimeCellDefinition } | { error: unknown };
 
 /**
  * Child cell widgets hold trait state for the parent notebook render.
@@ -53,10 +55,11 @@ export function renderCell({
 	signal,
 	cellName,
 	pythonVariableNames,
+	analysis,
 }: RenderCellOptions): void {
 	wrapper.replaceChildren();
 	const output = createCellOutput(wrapper, cell);
-	defineCell(runtime, output, cell, sync, cellName, pythonVariableNames);
+	defineCell(runtime, output, cell, sync, cellName, pythonVariableNames, definitionInputFromAnalysis(analysis));
 
 	if (showSource && cell.pinned) {
 		appendSource(wrapper, cell, signal);
@@ -73,9 +76,10 @@ export function defineCell(
 	sync?: CellVariableSync,
 	cellName?: string,
 	pythonVariableNames: Set<string> = new Set(),
+	definitionInput?: DefinitionInput,
 ): void {
 	try {
-		const definition = transpile(cell, { resolveLocalImports: true });
+		const definition = readDefinition(cell, definitionInput);
 		const exposed = exposedVariableNames(definition);
 		const displayName = exposed.length === 0 && cellName ? cellName : null;
 		const pythonNames = pythonOwnedNames(definition, exposed, pythonVariableNames);
@@ -158,6 +162,18 @@ export function notebookViewNames(notebook: Notebook): Set<string> {
 		}
 	}
 	return names;
+}
+
+function definitionInputFromAnalysis(analysis: CellAnalysis | undefined): DefinitionInput | undefined {
+	if (!analysis) return undefined;
+	if (analysis.definition) return { definition: analysis.definition };
+	return { error: analysis.error };
+}
+
+function readDefinition(cell: Cell, input: DefinitionInput | undefined): RuntimeCellDefinition {
+	if (!input) return transpile(cell, { resolveLocalImports: true });
+	if ("definition" in input) return input.definition;
+	throw input.error;
 }
 
 function createCellObserver(

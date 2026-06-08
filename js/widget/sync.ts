@@ -1,7 +1,7 @@
 import type { RenderProps } from "@anywidget/types";
 import type { Notebook } from "@observablehq/notebook-kit";
 import type { NotebookRuntime } from "@observablehq/notebook-kit/runtime";
-import { createNotebookGraph } from "../notebook/graph";
+import { createNotebookGraph, createNotebookGraphFromAnalysis, type NotebookAnalysis } from "../notebook/graph";
 import {
 	isViewTarget,
 	readNestedSelectState,
@@ -193,9 +193,10 @@ export function syncNotebookGraph(
 	model: RenderProps<WidgetModel>["model"],
 	notebook: Notebook,
 	cellModels: Array<RenderProps<WidgetModel>["model"] | undefined> = [],
+	analysis?: NotebookAnalysis,
 ): void {
 	const names = cellModels.map((cellModel) => cellModel?.get("name") ?? "");
-	const graph = createNotebookGraph(notebook, names);
+	const graph = analysis ? createNotebookGraphFromAnalysis(analysis, names) : createNotebookGraph(notebook, names);
 	if (!sameWireValue(model.get("_graph"), graph)) {
 		model.set("_graph", graph);
 		model.save_changes();
