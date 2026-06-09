@@ -3,7 +3,8 @@
 from importlib.metadata import PackageNotFoundError as _PackageNotFoundError
 from importlib.metadata import version as _version
 
-from ._notebook import Notebook, html, js, md, ojs
+from ._cells import html, js, md, ojs
+from ._notebook import Notebook
 from ._themes import NOTEBOOK_THEMES
 
 globals().pop("annotations", None)

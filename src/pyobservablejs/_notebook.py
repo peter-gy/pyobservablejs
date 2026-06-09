@@ -2,75 +2,23 @@
 
 from __future__ import annotations
 
-import dataclasses
 import pathlib
-import textwrap
 from collections.abc import Iterable, Mapping, Sequence
-from html.parser import HTMLParser
 from typing import Any, cast
 
 import anywidget
 import traitlets
 
+from ._cells import Cell, CellInput, coerce_cell, ensure_author_mode
 from ._chunked_anywidget import ChunkedAnyWidget, ChunkedAnyWidgetFrontend
+from ._html import parse_html_cells, parse_html_theme
 from ._files import FileInput, normalize_files, prepare_source
 from ._graph import CellInfo, NotebookGraph, graph_from_raw
 from ._observable import fetch_observablehq_notebook
-from ._serialize import AUTHOR_MODES, SCRIPT_TYPES, AuthorMode, Mode, serialize
-from ._themes import (
-    Theme,
-    deserialize_theme_attribute,
-    normalize_theme,
-)
+from ._serialize import AuthorMode, serialize
+from ._themes import Theme, normalize_theme
 from ._variables import deserialize_value, serialize_variables
 
-
-@dataclasses.dataclass(frozen=True)
-class Cell:
-    """Notebook Kit cell authored from Python source.
-
-    Source strings are dedented and stripped of leading or trailing newlines
-    unless ``raw=True``. ``to_spec`` returns the JSON shape consumed by Notebook
-    Kit and by the bundled anywidget renderer.
-    """
-
-    source: str
-    mode: Mode = "ojs"
-    name: str | None = None
-    display: bool = True
-    raw: bool = False
-    attrs: Mapping[str, Any] = dataclasses.field(default_factory=dict)
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.source, str):
-            raise TypeError("cell source must be a string")
-        if self.raw:
-            return
-        source = textwrap.dedent(self.source).strip("\n")
-        object.__setattr__(self, "source", source)
-
-    def to_spec(self, id: int) -> dict[str, Any]:
-        """Return this cell in Notebook Kit's JSON cell shape."""
-
-        if self.mode not in SCRIPT_TYPES:
-            raise ValueError(f"Unsupported Observable cell mode: {self.mode!r}")
-        attrs = dict(self.attrs)
-        spec: dict[str, Any] = {
-            "id": attrs.pop("id", id),
-            "value": self.source,
-            "mode": self.mode,
-        }
-        if self.name is not None:
-            spec["name"] = self.name
-        if not self.display:
-            spec["hidden"] = True
-        for key, value in attrs.items():
-            if value is not None:
-                spec[key] = value
-        return spec
-
-
-CellInput = str | Cell
 
 _WIDGET_TRAIT = anywidget.WidgetTrait()
 _WIDGET_TO_JSON = _WIDGET_TRAIT.metadata["to_json"]
@@ -270,10 +218,10 @@ class Notebook(_ObservableWidget):
             OSError: An explicit local attachment path cannot be read.
         """
 
-        _ensure_author_mode(mode)
+        ensure_author_mode(mode)
         normalized_theme = normalize_theme(theme)
         cell_specs = [
-            _coerce_cell(item, mode=mode).to_spec(i)
+            coerce_cell(item, mode=mode).to_spec(i)
             for i, item in enumerate(cells, start=1)
         ]
         self._initialize(
@@ -567,7 +515,7 @@ class Notebook(_ObservableWidget):
             rewrite_imports=portable,
         )
         normalized = normalize_files(attachments, base_path=base_path)
-        parsed = _parse_html_cells(source)
+        parsed = parse_html_cells(source)
         return cls._from_prepared(
             variables=variables,
             show_pinned_source=show_pinned_source,
@@ -613,182 +561,6 @@ class Notebook(_ObservableWidget):
         if self.source:
             return self.source
         return serialize(self.spec)
-
-
-def ojs(
-    source: CellInput,
-    *,
-    name: str | None = None,
-    display: bool = True,
-    raw: bool = False,
-    id: int | None = None,
-    pinned: bool = False,
-    output: str | None = None,
-    attrs: Mapping[str, Any] | None = None,
-) -> Cell:
-    """Return an Observable JavaScript source cell."""
-
-    return _source_cell(
-        source,
-        mode="ojs",
-        name=name,
-        display=display,
-        raw=raw,
-        id=id,
-        pinned=pinned,
-        output=output,
-        attrs=attrs,
-    )
-
-
-def js(
-    source: CellInput,
-    *,
-    name: str | None = None,
-    display: bool = True,
-    raw: bool = False,
-    id: int | None = None,
-    pinned: bool = False,
-    output: str | None = None,
-    attrs: Mapping[str, Any] | None = None,
-) -> Cell:
-    """Return a standard JavaScript module source cell."""
-
-    return _source_cell(
-        source,
-        mode="js",
-        name=name,
-        display=display,
-        raw=raw,
-        id=id,
-        pinned=pinned,
-        output=output,
-        attrs=attrs,
-    )
-
-
-def md(
-    source: CellInput,
-    *,
-    name: str | None = None,
-    display: bool = True,
-    raw: bool = False,
-    id: int | None = None,
-    pinned: bool = False,
-    output: str | None = None,
-    attrs: Mapping[str, Any] | None = None,
-) -> Cell:
-    """Return a Markdown source cell."""
-
-    return _source_cell(
-        source,
-        mode="md",
-        name=name,
-        display=display,
-        raw=raw,
-        id=id,
-        pinned=pinned,
-        output=output,
-        attrs=attrs,
-    )
-
-
-def html(
-    source: CellInput,
-    *,
-    name: str | None = None,
-    display: bool = True,
-    raw: bool = False,
-    id: int | None = None,
-    pinned: bool = False,
-    output: str | None = None,
-    attrs: Mapping[str, Any] | None = None,
-) -> Cell:
-    """Return an HTML source cell."""
-
-    return _source_cell(
-        source,
-        mode="html",
-        name=name,
-        display=display,
-        raw=raw,
-        id=id,
-        pinned=pinned,
-        output=output,
-        attrs=attrs,
-    )
-
-
-def _source_cell(
-    source: CellInput,
-    *,
-    mode: Mode,
-    name: str | None = None,
-    display: bool = True,
-    raw: bool = False,
-    id: int | None = None,
-    pinned: bool = False,
-    output: str | None = None,
-    attrs: Mapping[str, Any] | None = None,
-) -> Cell:
-    if isinstance(source, Cell):
-        if any(
-            [
-                name is not None,
-                display is not True,
-                mode != source.mode,
-                raw,
-                id is not None,
-                pinned,
-                output is not None,
-                attrs,
-            ]
-        ):
-            raise TypeError("Cannot override an existing Cell")
-        return source
-    if not isinstance(source, str):
-        raise TypeError("notebook cells must be strings or Cell objects")
-    return Cell(
-        source=source,
-        mode=mode,
-        name=name,
-        display=display,
-        raw=raw,
-        attrs=_cell_attrs(
-            attrs,
-            id=id,
-            pinned=pinned,
-            output=output,
-        ),
-    )
-
-
-def _coerce_cell(source: CellInput, *, mode: AuthorMode) -> Cell:
-    if isinstance(source, Cell):
-        return source
-    return _source_cell(source, mode=mode)
-
-
-def _ensure_author_mode(mode: str) -> None:
-    if mode not in AUTHOR_MODES:
-        raise ValueError(f"Unsupported Python-authored cell mode: {mode!r}")
-
-
-def _cell_attrs(
-    attrs: Mapping[str, Any] | None,
-    *,
-    id: int | None,
-    pinned: bool,
-    output: str | None,
-) -> dict[str, Any]:
-    out = {} if attrs is None else dict(attrs)
-    if id is not None:
-        out["id"] = id
-    if pinned:
-        out["pinned"] = True
-    if output is not None:
-        out["output"] = output
-    return out
 
 
 def _updates_from_args(
@@ -846,107 +618,5 @@ def _notebook_theme(source: str, spec: Mapping[str, Any]) -> Theme:
     if "theme" in spec:
         return normalize_theme(spec["theme"])
     if source:
-        return _parse_html_theme(source)
+        return parse_html_theme(source)
     return "air"
-
-
-def _parse_html_theme(source: str) -> Theme:
-    parser = _NotebookHTMLParser()
-    parser.feed(source)
-    return parser.theme or "air"
-
-
-_MODE_BY_SCRIPT_TYPE = {
-    script_type.lower(): mode for mode, script_type in SCRIPT_TYPES.items()
-}
-
-
-class _NotebookHTMLParser(HTMLParser):
-    """Collect script cells from Notebook Kit HTML."""
-
-    def __init__(self) -> None:
-        super().__init__(convert_charrefs=True)
-        self.cells: list[Cell] = []
-        self.theme: Theme | None = None
-        self._inside_notebook = False
-        self._script_attrs: dict[str, str | None] | None = None
-        self._script_parts: list[str] = []
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        tag = tag.lower()
-        if tag == "notebook":
-            attrs_by_name = {name.lower(): value for name, value in attrs}
-            if self.theme is None:
-                self.theme = deserialize_theme_attribute(attrs_by_name.get("theme"))
-            self._inside_notebook = True
-            return
-        if tag != "script" or not self._inside_notebook:
-            return
-        self._script_attrs = {name.lower(): value for name, value in attrs}
-        self._script_parts = []
-
-    def handle_data(self, data: str) -> None:
-        if self._script_attrs is not None:
-            self._script_parts.append(data)
-
-    def handle_entityref(self, name: str) -> None:
-        if self._script_attrs is not None:
-            self._script_parts.append(f"&{name};")
-
-    def handle_charref(self, name: str) -> None:
-        if self._script_attrs is not None:
-            self._script_parts.append(f"&#{name};")
-
-    def handle_endtag(self, tag: str) -> None:
-        tag = tag.lower()
-        if tag == "notebook":
-            self._inside_notebook = False
-            return
-        if tag != "script" or self._script_attrs is None:
-            return
-        attrs = self._script_attrs
-        self._script_attrs = None
-        value = (
-            textwrap.dedent("".join(self._script_parts))
-            .strip("\n")
-            .replace("<\\/script", "</script")
-        )
-        cell_attrs: dict[str, Any] = {}
-        cell_id = _optional_int(attrs.get("id"))
-        if cell_id is not None:
-            cell_attrs["id"] = cell_id
-        for key in ("database", "format", "output"):
-            if attrs.get(key) is not None:
-                cell_attrs[key] = attrs[key]
-        if "pinned" in attrs:
-            cell_attrs["pinned"] = True
-        self.cells.append(
-            Cell(
-                source=value,
-                mode=cast(
-                    Mode,
-                    _MODE_BY_SCRIPT_TYPE.get(
-                        (attrs.get("type") or "module").lower(), "ojs"
-                    ),
-                ),
-                name=attrs.get("name"),
-                display="hidden" not in attrs,
-                raw=True,
-                attrs=cell_attrs,
-            )
-        )
-
-
-def _parse_html_cells(source: str) -> list[Cell]:
-    parser = _NotebookHTMLParser()
-    parser.feed(source)
-    return parser.cells
-
-
-def _optional_int(value: str | None) -> int | None:
-    if value is None:
-        return None
-    try:
-        return int(value)
-    except ValueError:
-        return None

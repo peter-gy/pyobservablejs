@@ -30,14 +30,16 @@ outputs, values, and graph metadata to Python through widget traits.
 
 ## Python Package
 
-| File                                | Role                                                                                |
-| ----------------------------------- | ----------------------------------------------------------------------------------- |
-| `src/pyobservablejs/_notebook.py`   | Public `Notebook`, authored cell records, runtime `NotebookCell`, and cell helpers. |
-| `src/pyobservablejs/_variables.py`  | Python value serialization for `variables`.                                         |
-| `src/pyobservablejs/_files.py`      | `FileAttachment` discovery and portable source rewriting.                           |
-| `src/pyobservablejs/_graph.py`      | Immutable Python view of browser-produced graph metadata.                           |
-| `src/pyobservablejs/_observable.py` | ObservableHQ document API specifier resolution and response conversion.             |
-| `src/pyobservablejs/_serialize.py`  | Notebook Kit HTML serialization for Python-authored cells.                          |
+| File                                | Role                                                                             |
+| ----------------------------------- | -------------------------------------------------------------------------------- |
+| `src/pyobservablejs/_notebook.py`   | Public `Notebook`, runtime `NotebookCell`, traits, values, graph, and factories. |
+| `src/pyobservablejs/_cells.py`      | Authored `Cell` records and `ojs`, `js`, `md`, and `html` helpers.               |
+| `src/pyobservablejs/_html.py`       | Notebook Kit HTML script-cell and theme parsing.                                 |
+| `src/pyobservablejs/_variables.py`  | Python value serialization for `variables`.                                      |
+| `src/pyobservablejs/_files.py`      | `FileAttachment` discovery and portable source rewriting.                        |
+| `src/pyobservablejs/_graph.py`      | Immutable Python view of browser-produced graph metadata.                        |
+| `src/pyobservablejs/_observable.py` | ObservableHQ document API specifier resolution and response conversion.          |
+| `src/pyobservablejs/_serialize.py`  | Notebook Kit HTML serialization for Python-authored cells.                       |
 
 `obs.Notebook(...)` builds a Notebook Kit `spec`, serializes `variables`, creates
 one `NotebookCell` per cell, and records attachment metadata.

@@ -3,10 +3,14 @@ from __future__ import annotations
 import base64
 import dataclasses
 import json
+import pathlib
 import subprocess
+import textwrap
 import urllib.parse
 from collections.abc import Callable, Sequence
 from typing import Any, Protocol
+
+import pyobservablejs as obs
 
 
 @dataclasses.dataclass(frozen=True)
@@ -29,6 +33,7 @@ class JavaScriptImport:
     exported: tuple[str, ...] = ()
 
 
+ExpectedImport = tuple[str, bytes, tuple[str, ...], tuple[str, ...]]
 ObservableHQResponseInstaller = Callable[
     [dict[str, Any]], list[tuple[str, float | None]]
 ]
@@ -52,6 +57,75 @@ class BrowserGraphCellBuilder(Protocol):
         output: str | None = None,
         runtime_outputs: Sequence[str] = (),
     ) -> BrowserGraphCell: ...
+
+
+def notebook_from_html_file(path: pathlib.Path, **kwargs: Any) -> obs.Notebook:
+    return obs.Notebook.from_html(
+        path.read_text(encoding="utf-8"),
+        base_path=path.parent,
+        **kwargs,
+    )
+
+
+def script_by_id(scripts: list[dict[str, Any]], script_id: str) -> dict[str, Any]:
+    matches = [script for script in scripts if script["attrs"].get("id") == script_id]
+    assert len(matches) == 1
+    return matches[0]
+
+
+def assert_javascript_import_payloads(
+    source: str,
+    expected_imports: Sequence[ExpectedImport],
+) -> None:
+    actual_imports = decoded_data_imports(javascript_imports(source))
+    assert actual_imports == [
+        expected_import_payload(expected) for expected in expected_imports
+    ]
+    assert_no_relative_javascript_import_specifiers(source)
+
+
+def assert_no_relative_javascript_import_specifiers(source: str) -> None:
+    assert [
+        specifier
+        for specifier in javascript_import_specifiers(source)
+        if specifier.startswith(("./", "../"))
+    ] == []
+
+
+def decoded_data_imports(
+    records: Sequence[JavaScriptImport],
+) -> list[tuple[str, str, bytes, tuple[str, ...], tuple[str, ...]]]:
+    return [
+        (record.kind, mime_type, payload, record.imported, record.exported)
+        for record in records
+        if record.specifier.startswith("data:")
+        for mime_type, payload in [decode_data_url(record.specifier)]
+    ]
+
+
+def expected_import_payload(
+    item: ExpectedImport,
+) -> tuple[str, str, bytes, tuple[str, ...], tuple[str, ...]]:
+    kind, payload, imported, exported = item
+    return (kind, "text/javascript", payload, imported, exported)
+
+
+def normalized_source(source: str) -> str:
+    return textwrap.dedent(source).strip()
+
+
+def normalized_source_with_embedded_imports(source: str) -> str:
+    normalized = source
+    for specifier in javascript_import_specifiers(source):
+        if specifier.startswith("data:"):
+            normalized = normalized.replace(specifier, "<embedded>")
+    return normalized_source(normalized)
+
+
+def line_indent(source: str, text: str) -> int:
+    matches = [line for line in source.splitlines() if line.strip() == text]
+    assert len(matches) == 1
+    return len(matches[0]) - len(matches[0].lstrip(" "))
 
 
 def decode_data_url(url: str) -> tuple[str, bytes]:
