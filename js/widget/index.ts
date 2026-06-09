@@ -6,6 +6,6 @@ import "./widget.css";
 
 const WIDGET_APP_MODULE = "__PYOBSERVABLEJS_APP_MODULE__";
 
-export default createObservableWidgetEntry((props: RenderProps<WidgetModel>, signal: AbortSignal) =>
-	loadChunkedAnyWidgetApp<WidgetModel>(props.model, WIDGET_APP_MODULE, signal, { invoke: props.experimental?.invoke }),
-);
+export default createObservableWidgetEntry((props: RenderProps<WidgetModel>, signal: AbortSignal) => {
+	return loadChunkedAnyWidgetApp<WidgetModel>(props.model, WIDGET_APP_MODULE, signal);
+});

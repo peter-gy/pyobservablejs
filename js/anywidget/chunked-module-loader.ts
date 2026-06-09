@@ -1,4 +1,4 @@
-import type { Experimental, InitializeProps, RenderProps } from "@anywidget/types";
+import type { InitializeProps, RenderProps } from "@anywidget/types";
 
 export type AnyWidgetState = Record<string, unknown>;
 
@@ -17,12 +17,10 @@ export type ChunkedAnyWidgetModel = {
 
 const MODULE_RESPONSE_TRAIT = "_esm_module_response";
 const MODULE_REQUEST_TRAIT = "_esm_module_request";
-const READ_MODULE_COMMAND = "read_esm_module";
 const STATIC_IMPORT_PATTERN = /(\bimport(?!\s*\()[^'";]*?)(["'])(\.{1,2}\/[^"']+\.js)\2/g;
 const EXPORT_FROM_PATTERN = /(\bexport\b[^'";]*?\bfrom\s*)(["'])(\.{1,2}\/[^"']+\.js)\2/g;
 const DYNAMIC_IMPORT_PATTERN = /\bimport\s*\(\s*(["'])(\.{1,2}\/[^"']+\.js)\1\s*\)/g;
 const LOADER_REGISTRY = "__chunkedAnyWidgetModuleLoaders";
-const COMMAND_FALLBACK_DELAY_MS = 250;
 const MODULE_TIMEOUT_MS = 30_000;
 
 type ModuleResponse = {
@@ -43,7 +41,6 @@ type ModuleState = {
 export type ChunkedModuleLoaderOptions = {
 	createModuleUrl?: (source: string, path: string) => string;
 	importModule?: (url: string) => Promise<unknown>;
-	invoke?: Experimental["invoke"];
 };
 
 const states = new WeakMap<ChunkedAnyWidgetModel, ModuleState>();
@@ -99,7 +96,7 @@ async function createModuleUrl(
 	signal: AbortSignal,
 	options: ChunkedModuleLoaderOptions,
 ): Promise<string> {
-	const source = await readModuleSource(model, state, path, signal, options);
+	const source = await readModuleSource(model, state, path, signal);
 	const imports = new Map(
 		await Promise.all(
 			Array.from(staticImportSpecifiers(source), async (specifier) => {
@@ -124,7 +121,6 @@ async function readModuleSource(
 	state: ModuleState,
 	path: string,
 	signal: AbortSignal,
-	options: ChunkedModuleLoaderOptions,
 ): Promise<string> {
 	const previous = state.requestQueue;
 	let releaseQueue: () => void = () => {};
@@ -133,7 +129,7 @@ async function readModuleSource(
 	});
 	await previous;
 	try {
-		return await readModuleSourceNow(model, state, path, signal, options);
+		return await readModuleSourceNow(model, state, path, signal);
 	} finally {
 		releaseQueue();
 	}
@@ -144,22 +140,9 @@ async function readModuleSourceNow(
 	state: ModuleState,
 	path: string,
 	signal: AbortSignal,
-	options: ChunkedModuleLoaderOptions,
 ): Promise<string> {
 	if (signal.aborted) throw new DOMException("Widget module request aborted", "AbortError");
-	if (options.invoke === undefined) return await readModuleSourceViaTraitlet(model, state, path, signal);
-	const transportController = new AbortController();
-	const transportSignal = AbortSignal.any([signal, transportController.signal]);
-	const traitletSource = readModuleSourceViaTraitlet(model, state, path, transportSignal);
-	const commandSource = delay(COMMAND_FALLBACK_DELAY_MS, transportSignal).then(async () => {
-		const source = await readModuleSourceViaCommand(path, transportSignal, options.invoke);
-		return source === undefined ? traitletSource : source;
-	});
-	try {
-		return await Promise.race([traitletSource, commandSource]);
-	} finally {
-		transportController.abort();
-	}
+	return await readModuleSourceViaTraitlet(model, state, path, signal);
 }
 
 function readModuleSourceViaTraitlet(
@@ -205,46 +188,11 @@ function readModuleSourceViaTraitlet(
 	});
 }
 
-function delay(ms: number, signal: AbortSignal): Promise<void> {
-	if (signal.aborted) return Promise.reject(new DOMException("Widget module request aborted", "AbortError"));
-	return new Promise((resolve, reject) => {
-		const timeout = window.setTimeout(resolve, ms);
-		signal.addEventListener(
-			"abort",
-			() => {
-				window.clearTimeout(timeout);
-				reject(new DOMException("Widget module request aborted", "AbortError"));
-			},
-			{ once: true },
-		);
-	});
-}
-
-async function readModuleSourceViaCommand(
-	path: string,
-	signal: AbortSignal,
-	invoke: Experimental["invoke"] | undefined,
-): Promise<string | undefined> {
-	if (invoke === undefined) return undefined;
-	try {
-		const [response] = await invoke<ModuleResponse>(READ_MODULE_COMMAND, { path }, { signal });
-		return moduleSourceFromResponse(response, path);
-	} catch (error) {
-		if (!isUnsupportedInvokeError(error)) throw error;
-		return undefined;
-	}
-}
-
 function moduleSourceFromResponse(response: ModuleResponse, path: string): string {
 	if (response.error !== undefined) throw new Error(String(response.error));
 	if (response.path !== path) throw new Error(`Widget module response path mismatch: ${String(response.path)}`);
 	if (typeof response.source !== "string") throw new Error(`Widget module ${path} did not return source text`);
 	return response.source;
-}
-
-function isUnsupportedInvokeError(error: unknown): boolean {
-	if (!(error instanceof Error)) return false;
-	return /invoke not supported|not supported in marimo/i.test(error.message);
 }
 
 function stateFor(model: ChunkedAnyWidgetModel): ModuleState {

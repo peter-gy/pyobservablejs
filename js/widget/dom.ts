@@ -89,7 +89,7 @@ export function prepareWidgetShell(el: HTMLElement): void {
 
 export function createNotebookRoot(parent: HTMLElement, theme: Notebook["theme"]): HTMLElement {
 	const root = document.createElement("div");
-	root.className = `${CLASS_NAMES.notebook} observablehq observablehq--block`;
+	root.className = `${CLASS_NAMES.notebook} observablehq observablehq-root observablehq--block`;
 	applyNotebookTheme(root, theme);
 	parent.appendChild(root);
 	return root;

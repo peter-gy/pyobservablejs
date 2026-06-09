@@ -2,7 +2,7 @@ import type { InitializeProps, RenderProps } from "@anywidget/types";
 import { transpile, type Cell, type Notebook } from "@observablehq/notebook-kit";
 import { observe, type NotebookRuntime } from "@observablehq/notebook-kit/runtime";
 import { exposedVariableNames, unprefix, type CellAnalysis, type RuntimeCellDefinition } from "../notebook/graph";
-import { createRuntimeDefinition, toWireValue } from "../runtime";
+import { createRuntimeDefinition, runtimeDocument, toWireValue } from "../runtime";
 import { createCellOutput, createTopLevelError, markWidgetShell, renderSource } from "./dom";
 import type { WidgetModel } from "./model";
 import { applyModelVariablesToViews, registerView, type CellVariableSync } from "./sync";
@@ -97,7 +97,7 @@ export function defineCell(
 				expanded: [],
 				variables: [],
 			},
-			createRuntimeDefinition(cell, sourceDefinition),
+			createRuntimeDefinition(cell, sourceDefinition, { document: runtimeDocument(runtime) }),
 			sync ? createCellObserver(sync, sourceDefinition, displayName) : observe,
 		);
 		if (sync) defineSyncObservers(runtime, sync, exposed);

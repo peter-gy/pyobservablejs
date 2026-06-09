@@ -34,6 +34,7 @@ describe("widget graph and notebook values", () => {
 			"dataset.theme",
 			"air",
 		);
+		expect(el.querySelector(".pyobservablejs-notebook")?.classList.contains("observablehq-root")).toBe(true);
 
 		model.set("theme", "slate");
 
@@ -163,6 +164,59 @@ describe("widget graph and notebook values", () => {
 
 		expect(changedGain).toBe(7.5);
 		expect(await waitFor(() => (variableValue(model, "readout") === 15 ? 15 : undefined))).toBe(15);
+		controller.abort();
+	});
+
+	test("keeps notebook and child surfaces stable across repeated Python variable updates", async () => {
+		const model = createModel({
+			role: "notebook",
+			spec: {
+				cells: [
+					{ id: 1, mode: "ojs", value: "baseEcho = base" },
+					{ id: 2, mode: "ojs", value: "doubled = base * 2" },
+				],
+			},
+			attachments: {},
+			_variables: { base: 1 },
+			options: {},
+			_cell_widgets: ["anywidget:base", "anywidget:doubled"],
+		});
+		const baseModel = createModel({ role: "cell", name: "baseEcho", _values: {}, _value_names: [] });
+		const doubledModel = createModel({ role: "cell", name: "doubled", _values: {}, _value_names: [] });
+		const childModels = new Map([
+			["anywidget:base", baseModel],
+			["anywidget:doubled", doubledModel],
+		]);
+		const controller = new AbortController();
+		const el = document.createElement("div");
+
+		widget.render({
+			model,
+			el,
+			signal: controller.signal,
+			host: createHost(childModels),
+		} as unknown as RenderProps<WidgetModel>);
+
+		const root = await waitFor(() => el.querySelector<HTMLElement>(".pyobservablejs-notebook") ?? undefined);
+		const doubledOutput = await waitFor(() => el.querySelector<HTMLElement>("#cell-2") ?? undefined);
+		expect(await waitFor(() => (variableValue(model, "doubled") === 2 ? 2 : undefined))).toBe(2);
+
+		setVariableUpdate(model, 1, { base: 3 });
+		expect(await waitFor(() => (variableValue(model, "doubled") === 6 ? 6 : undefined))).toBe(6);
+		setVariableUpdate(model, 2, { base: 5 });
+		expect(await waitFor(() => (variableValue(model, "doubled") === 10 ? 10 : undefined))).toBe(10);
+		setVariableUpdate(model, 3, { base: 8 });
+		expect(await waitFor(() => (variableValue(model, "doubled") === 16 ? 16 : undefined))).toBe(16);
+
+		expect(el.querySelector(".pyobservablejs-notebook")).toBe(root);
+		expect(el.querySelector("#cell-2")).toBe(doubledOutput);
+		expect(
+			Array.from(el.querySelectorAll<HTMLElement>(SELECTORS.composedCell)).map(
+				(cell) => cell.dataset.pyobservablejsCellRef,
+			),
+		).toEqual(["anywidget:base", "anywidget:doubled"]);
+		expect(childModels.get("anywidget:base")).toBe(baseModel);
+		expect(childModels.get("anywidget:doubled")).toBe(doubledModel);
 		controller.abort();
 	});
 
@@ -500,3 +554,9 @@ describe("widget graph and notebook values", () => {
 		controller.abort();
 	});
 });
+
+function setVariableUpdate(model: ReturnType<typeof createModel>, seq: number, values: Record<string, unknown>): void {
+	const previous = model.get("_variables");
+	model.set("_variable_update", { seq, kind: "set", values });
+	model.set("_variables", previous && typeof previous === "object" ? { ...previous, ...values } : values);
+}

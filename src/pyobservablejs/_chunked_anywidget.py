@@ -10,7 +10,6 @@ from typing import Any, ClassVar, cast
 
 import anywidget
 import traitlets
-from anywidget.experimental import command as anywidget_command
 
 
 @dataclasses.dataclass(frozen=True)
@@ -91,13 +90,6 @@ class ChunkedAnyWidget(anywidget.AnyWidget):
             "_esm_module_response",
             self._module_response(request.get("path"), seq=request.get("seq")),
         )
-
-    @anywidget_command
-    def read_esm_module(
-        self, msg: object, _buffers: list[bytes]
-    ) -> tuple[dict[str, Any], list[bytes]]:
-        request = cast(Mapping[str, object], msg) if isinstance(msg, Mapping) else {}
-        return self._module_response(request.get("path")), []
 
     def _module_response(
         self, request_path: object, *, seq: object | None = None

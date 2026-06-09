@@ -8,6 +8,7 @@ import {
 	createRuntimeCleanup,
 	createRuntimeDefinition,
 	registerAttachments,
+	runtimeDocument,
 	type AttachmentRegistry,
 	type NotebookOptions,
 } from "./index";
@@ -119,6 +120,122 @@ describe("runtime bindings", () => {
 		observer.emit(800);
 		await new Promise((resolve) => window.setTimeout(resolve, 20));
 		expect(values).toEqual([400, 640]);
+	});
+
+	test("scopes the document builtin to the notebook root", async () => {
+		const root = document.createElement("div");
+		root.className = "observablehq-root";
+		const localHeading = document.createElement("h2");
+		localHeading.id = 'local heading"]';
+		localHeading.textContent = "Inside";
+		root.append(localHeading);
+		const outside = document.createElement("section");
+		outside.id = "outside-heading";
+		outside.className = "outside-only";
+		outside.innerHTML = "<h2>Outside</h2>";
+		document.body.append(outside);
+		const el = document.createElement("div");
+		const registry: AttachmentRegistry = {
+			baseUrl: "",
+			names: new Set(),
+			cleanup() {},
+		};
+		const runtime = createRuntime(root, el, baseOptions, registry);
+		const values: Array<{
+			rootFound: boolean;
+			headings: string[];
+			localIdFound: boolean;
+			outsideVisible: boolean;
+			createdTag: string;
+		}> = [];
+
+		runtime.main
+			.variable({
+				pending() {},
+				fulfilled(value: unknown) {
+					values.push(value as (typeof values)[number]);
+				},
+				rejected(error: unknown) {
+					throw error;
+				},
+			})
+			.define("documentProbe", ["document"], (document: Document) => ({
+				rootFound: document.querySelector(".observablehq-root") === root,
+				headings: [...document.querySelectorAll("h2")].map((node) => node.textContent ?? ""),
+				localIdFound: document.getElementById('local heading"]') === localHeading,
+				outsideVisible:
+					document.querySelector(".outside-only") !== null || document.getElementById("outside-heading") !== null,
+				createdTag: document.createElement("span").tagName,
+			}));
+
+		expect(await waitFor(() => values[0])).toEqual({
+			rootFound: true,
+			headings: ["Inside"],
+			localIdFound: true,
+			outsideVisible: false,
+			createdTag: "SPAN",
+		});
+
+		const runtimeDefinition = createRuntimeDefinition(
+			{ id: 1, mode: "ojs", value: "" } as Cell,
+			{
+				body: 'function(){ return document.querySelector(".observablehq-root")?.textContent; }',
+				inputs: [],
+				outputs: [],
+				autodisplay: true,
+				autoview: false,
+				automutable: false,
+			} as ReturnType<typeof transpile>,
+			{ document: runtimeDocument(runtime) },
+		);
+		expect(runtimeDefinition.body()).toBe("Inside");
+		createRuntimeCleanup(runtime, registry)();
+		outside.remove();
+	});
+
+	test("keeps document selectors isolated across simultaneous runtimes", () => {
+		const firstRoot = document.createElement("div");
+		firstRoot.className = "observablehq-root";
+		firstRoot.innerHTML = '<span id="shared-target" class="first-only">First</span>';
+		const secondRoot = document.createElement("div");
+		secondRoot.className = "observablehq-root";
+		secondRoot.innerHTML = '<span id="shared-target" class="second-only">Second</span>';
+		const registry: AttachmentRegistry = {
+			baseUrl: "",
+			names: new Set(),
+			cleanup() {},
+		};
+		const firstRuntime = createRuntime(firstRoot, document.createElement("div"), baseOptions, registry);
+		const secondRuntime = createRuntime(secondRoot, document.createElement("div"), baseOptions, registry);
+
+		try {
+			const firstDocument = runtimeDocument(firstRuntime)!;
+			const secondDocument = runtimeDocument(secondRuntime)!;
+
+			expect(firstDocument.querySelector(".observablehq-root")).toBe(firstRoot);
+			expect(secondDocument.querySelector(".observablehq-root")).toBe(secondRoot);
+			expect(firstDocument.getElementById("shared-target")?.textContent).toBe("First");
+			expect(secondDocument.getElementById("shared-target")?.textContent).toBe("Second");
+			expect(firstDocument.querySelector(".second-only")).toBeNull();
+			expect(secondDocument.querySelector(".first-only")).toBeNull();
+		} finally {
+			createRuntimeCleanup(firstRuntime, registry)();
+			createRuntimeCleanup(secondRuntime, registry)();
+		}
+	});
+
+	test("releases runtime scope on cleanup", () => {
+		const registry: AttachmentRegistry = {
+			baseUrl: "",
+			names: new Set(),
+			cleanup() {},
+		};
+		const runtime = createRuntime(document.createElement("div"), document.createElement("div"), baseOptions, registry);
+
+		expect(runtimeDocument(runtime)).toBeDefined();
+		createRuntimeCleanup(runtime, registry)();
+
+		expect(runtimeDocument(runtime)).toBeUndefined();
 	});
 
 	test("awaits template inputs without replacing the previous value receiver", async () => {

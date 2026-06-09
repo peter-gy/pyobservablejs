@@ -1,6 +1,7 @@
 import { transpile, type Cell } from "@observablehq/notebook-kit";
 import { FileAttachment, NotebookRuntime, library, registerFile } from "@observablehq/notebook-kit/runtime";
 import { exposedVariableNames, unprefix } from "../notebook/graph";
+import { bindRuntimeScope, cleanupRuntimeScope, createRuntimeScope } from "./scope";
 import { createVariableBuiltins } from "./values";
 
 export type AttachmentInfo = {
@@ -24,6 +25,7 @@ export type AttachmentRegistry = {
 };
 
 export type { NestedSelectState, RuntimeVariablesSync, ViewTarget } from "./values";
+export { runtimeDocument } from "./scope";
 export {
 	createVariableBuiltins,
 	isViewTarget,
@@ -38,6 +40,9 @@ export {
 
 type RuntimeBuiltins = NonNullable<ConstructorParameters<typeof NotebookRuntime>[0]>;
 type RuntimeBuiltinsWithVars = RuntimeBuiltins & Record<string, () => unknown>;
+export type RuntimeGlobals = {
+	document?: Document;
+};
 
 export function createRuntime(
 	root: HTMLElement,
@@ -47,13 +52,17 @@ export function createRuntime(
 ): NotebookRuntime {
 	// Python variables enter OJS as Observable builtins before Notebook Kit defines cells.
 	const width = () => observeWidth(root, el);
+	const scope = createRuntimeScope(root);
 	const builtins = {
 		...library,
 		FileAttachment: () => createFileAttachment(options.baseUrl, attachmentRegistry),
+		document: () => scope.document,
 		width: width as RuntimeBuiltins["width"],
 		...createVariableBuiltins(options.variables),
 	} as RuntimeBuiltinsWithVars;
-	return new NotebookRuntime(builtins);
+	const runtime = new NotebookRuntime(builtins);
+	bindRuntimeScope(runtime, scope);
+	return runtime;
 }
 
 function observeWidth(root: HTMLElement, fallback: HTMLElement): AsyncGenerator<number, void, unknown> {
@@ -162,6 +171,7 @@ export function createRuntimeCleanup(runtime: NotebookRuntime, attachmentRegistr
 	return () => {
 		if (disposed) return;
 		disposed = true;
+		cleanupRuntimeScope(runtime);
 		runtime.runtime.dispose();
 		attachmentRegistry.cleanup();
 	};
@@ -225,8 +235,12 @@ type TranspiledDefinition = ReturnType<typeof transpile>;
 
 const TEMPLATE_MODES = new Set<Cell["mode"]>(["dot", "html", "md", "sql", "tex"]);
 
-export function createRuntimeDefinition(cell: Cell, definition: TranspiledDefinition): RuntimeDefinition {
-	const body = new Function(`"use strict"; return (${definition.body});`)() as RuntimeBody;
+export function createRuntimeDefinition(
+	cell: Cell,
+	definition: TranspiledDefinition,
+	globals: RuntimeGlobals = {},
+): RuntimeDefinition {
+	const body = compileRuntimeBody(definition.body, globals);
 	return {
 		id: cell.id,
 		body: TEMPLATE_MODES.has(cell.mode) ? awaitTemplateInputs(body) : body,
@@ -237,6 +251,13 @@ export function createRuntimeDefinition(cell: Cell, definition: TranspiledDefini
 		autoview: definition.autoview,
 		automutable: definition.automutable,
 	};
+}
+
+function compileRuntimeBody(source: string, globals: RuntimeGlobals): RuntimeBody {
+	const entries = Object.entries(globals).filter((entry) => entry[1] !== undefined) as [string, unknown][];
+	const names = entries.map(([name]) => name);
+	const values = entries.map(([, value]) => value);
+	return new Function(...names, `"use strict"; return (${source});`)(...values) as RuntimeBody;
 }
 
 function awaitTemplateInputs(body: RuntimeBody): RuntimeBody {
