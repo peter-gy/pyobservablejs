@@ -111,6 +111,19 @@ export function reviveSyncedValue(value: unknown): unknown {
 	return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, reviveSyncedValue(item)]));
 }
 
+export function isWritableSyncedViewValue(value: unknown): boolean {
+	if (Array.isArray(value)) return value.every(isWritableSyncedViewValue);
+	if (!isRecord(value)) return true;
+	const type = value[TYPE_KEY];
+	if (type === undefined) return Object.values(value).every(isWritableSyncedViewValue);
+	if (type === "number" || type === "bigint" || type === "datetime") return true;
+	if (type === "object") return isWritableSyncedViewValue(value.value);
+	if (type === "map" || type === "set") {
+		return Array.isArray(value.value) && value.value.every(isWritableSyncedViewValue);
+	}
+	return false;
+}
+
 export function sameWireValue(left: unknown, right: unknown): boolean {
 	return JSON.stringify(left) === JSON.stringify(right);
 }

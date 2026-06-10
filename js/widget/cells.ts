@@ -1,7 +1,13 @@
 import type { InitializeProps, RenderProps } from "@anywidget/types";
-import { transpile, type Cell, type Notebook } from "@observablehq/notebook-kit";
+import type { Cell, Notebook } from "@observablehq/notebook-kit";
 import { observe, type NotebookRuntime } from "@observablehq/notebook-kit/runtime";
-import { exposedVariableNames, unprefix, type CellAnalysis, type RuntimeCellDefinition } from "../notebook/graph";
+import {
+	exposedVariableNames,
+	transpileNotebookCell,
+	unprefix,
+	type CellAnalysis,
+	type RuntimeCellDefinition,
+} from "../notebook/graph";
 import { createRuntimeDefinition, runtimeDocument, toWireValue } from "../runtime";
 import { createCellOutput, createTopLevelError, markWidgetShell, renderSource } from "./dom";
 import type { WidgetModel } from "./model";
@@ -123,7 +129,7 @@ function renderPythonVariableCell(
 	runtime: NotebookRuntime,
 	root: HTMLDivElement,
 	cell: Cell,
-	sourceDefinition: ReturnType<typeof transpile>,
+	sourceDefinition: RuntimeCellDefinition,
 	names: string[],
 ): void {
 	const definition: RuntimeDefinition = {
@@ -155,7 +161,7 @@ export function notebookViewNames(notebook: Notebook): Set<string> {
 	const names = new Set<string>();
 	for (const cell of notebook.cells) {
 		try {
-			const name = viewVariableName(transpile(cell, { resolveLocalImports: true }));
+			const name = viewVariableName(transpileNotebookCell(cell));
 			if (name) names.add(name);
 		} catch {
 			continue;
@@ -171,14 +177,14 @@ function definitionInputFromAnalysis(analysis: CellAnalysis | undefined): Defini
 }
 
 function readDefinition(cell: Cell, input: DefinitionInput | undefined): RuntimeCellDefinition {
-	if (!input) return transpile(cell, { resolveLocalImports: true });
+	if (!input) return transpileNotebookCell(cell);
 	if ("definition" in input) return input.definition;
 	throw input.error;
 }
 
 function createCellObserver(
 	sync: CellVariableSync,
-	definition: ReturnType<typeof transpile>,
+	definition: RuntimeCellDefinition,
 	displayName: string | null,
 ): typeof observe {
 	return (state, runtimeDefinition) => {
@@ -218,7 +224,7 @@ function defineSyncObservers(runtime: NotebookRuntime, sync: CellVariableSync, n
 }
 
 function pythonOwnedNames(
-	definition: ReturnType<typeof transpile>,
+	definition: RuntimeCellDefinition,
 	exposed: string[],
 	pythonVariableNames: Set<string>,
 ): string[] {
@@ -227,9 +233,9 @@ function pythonOwnedNames(
 }
 
 function sourceRuntimeDefinition(
-	definition: ReturnType<typeof transpile>,
+	definition: RuntimeCellDefinition,
 	pythonNames: readonly string[],
-): ReturnType<typeof transpile> {
+): RuntimeCellDefinition {
 	if (!definition.outputs || pythonNames.length === 0) return definition;
 	const pythonNameSet = new Set(pythonNames);
 	return {
@@ -238,7 +244,7 @@ function sourceRuntimeDefinition(
 	};
 }
 
-function viewVariableName(definition: ReturnType<typeof transpile>): string | null {
+function viewVariableName(definition: RuntimeCellDefinition): string | null {
 	if (!definition.autoview || !definition.output) return null;
 	return unprefix(definition.output, "viewof$");
 }

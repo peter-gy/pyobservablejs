@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { describe, expect, test } from "vitest";
-import { createVariableBuiltins, reviveSyncedValue, toWireValue } from "./values";
+import { createVariableBuiltins, isWritableSyncedViewValue, reviveSyncedValue, toWireValue } from "./values";
 
 describe("wire values", () => {
 	test("round trips synced numbers, dates, maps, and sets", () => {
@@ -55,5 +55,10 @@ describe("wire values", () => {
 
 		expect(reviveSyncedValue(toWireValue(value))).toEqual(value);
 		expect(builtins.row()).toEqual(value);
+	});
+
+	test("does not treat browser object summaries as writable view values", () => {
+		expect(isWritableSyncedViewValue(toWireValue(document.createElement("img")))).toBe(false);
+		expect(isWritableSyncedViewValue({ pointDensity: 21 })).toBe(true);
 	});
 });

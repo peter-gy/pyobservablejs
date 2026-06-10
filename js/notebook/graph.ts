@@ -1,5 +1,35 @@
 import { transpile, type Cell, type Notebook } from "@observablehq/notebook-kit";
 
+type RuntimeModule = {
+	defines(name: string): boolean;
+	derive(injections: ObservableImportInjection[], module: RuntimeModule): RuntimeModule;
+	variable(observer: unknown): {
+		import(name: string, module: RuntimeModule): void;
+	};
+};
+type ObservableRuntime = {
+	module(define?: unknown): RuntimeModule;
+};
+type RuntimeVariable = {
+	_module: RuntimeModule;
+};
+type ObservableObserverFactory = () => unknown;
+type ObservableImportSpecifier = {
+	imported: string;
+	local: string;
+	runtimeName: string;
+};
+type ObservableImportInjection = {
+	name: string;
+	alias?: string;
+};
+type ObservableImportWith = {
+	sourceUrl: string;
+	imports: ObservableImportSpecifier[];
+	injections: ObservableImportInjection[];
+};
+type RuntimeBody = (...values: unknown[]) => unknown;
+
 export type CellGraph = {
 	id: number;
 	index: number;
@@ -27,7 +57,10 @@ export type NotebookGraph = {
 	edges: GraphEdge[];
 };
 
-type Definition = ReturnType<typeof transpile>;
+type NotebookKitDefinition = ReturnType<typeof transpile>;
+type Definition = Omit<NotebookKitDefinition, "body"> & {
+	body: NotebookKitDefinition["body"] | RuntimeBody;
+};
 
 export type RuntimeCellDefinition = Definition;
 
@@ -81,7 +114,7 @@ export function notebookViewNamesFromAnalysis(analysis: NotebookAnalysis): Set<s
 
 function analyzeCell(cell: Cell, index: number, name: string): CellAnalysis {
 	try {
-		const definition = transpile(cell, { resolveLocalImports: true });
+		const definition = transpileNotebookCell(cell);
 		return {
 			cell,
 			index,
@@ -99,6 +132,10 @@ function analyzeCell(cell: Cell, index: number, name: string): CellAnalysis {
 			error,
 		};
 	}
+}
+
+export function transpileNotebookCell(cell: Cell): RuntimeCellDefinition {
+	return transpileObservableImportWith(cell) ?? transpile(cell, { resolveLocalImports: true });
 }
 
 function analysisFromCells(cells: CellAnalysis[]): NotebookAnalysis {
@@ -205,4 +242,159 @@ function definedNames(cell: CellGraph): string[] {
 function viewVariableName(definition: Definition): string | null {
 	if (!definition.autoview || !definition.output) return null;
 	return unprefix(definition.output, "viewof$");
+}
+
+function transpileObservableImportWith(cell: Cell): RuntimeCellDefinition | null {
+	const parsed = parseObservableImportWith(cell);
+	if (!parsed) return null;
+	return {
+		id: cell.id,
+		body: async (
+			__ojs_runtime: ObservableRuntime,
+			__ojs_observer: ObservableObserverFactory,
+			__variable: RuntimeVariable,
+			..._injectionValues: unknown[]
+		) => {
+			void _injectionValues;
+			const imported = (await import(/* @vite-ignore */ parsed.sourceUrl)) as { default: unknown };
+			const source = __ojs_runtime.module(imported.default);
+			const module = source.derive(parsed.injections, __variable._module);
+			const main = __ojs_runtime.module();
+			const observers: Record<string, unknown> = {};
+			for (const specifier of parsed.imports) {
+				if (!module.defines(specifier.runtimeName)) {
+					throw new SyntaxError(`export '${specifier.runtimeName}' not found`);
+				}
+				const observer = __ojs_observer();
+				observers[specifier.local] = observer;
+				main.variable(observer).import(specifier.runtimeName, module);
+			}
+			return observers;
+		},
+		inputs: ["__ojs_runtime", "__ojs_observer", "@variable", ...parsed.injections.map((injection) => injection.name)],
+		outputs: parsed.imports.map((specifier) => specifier.local),
+		autodisplay: false,
+	} as RuntimeCellDefinition;
+}
+
+function parseObservableImportWith(cell: Cell): ObservableImportWith | null {
+	if (cell.mode !== "ojs") return null;
+	const source = stripLeadingImportTrivia(cell.value);
+	const match = source.match(
+		/^\s*import\s*\{(?<imports>[\s\S]*?)\}\s+with\s*\{(?<injections>[\s\S]*?)\}\s+from\s*(?<quote>["'])(?<source>[^"']+)\k<quote>\s*;?\s*$/,
+	);
+	if (!match?.groups) return null;
+	const imports = parseImportSpecifiers(match.groups.imports);
+	const injections = parseImportInjections(match.groups.injections);
+	if (imports.length === 0 || injections.length === 0) return null;
+	return {
+		sourceUrl: resolveObservableImportSource(match.groups.source),
+		imports,
+		injections,
+	};
+}
+
+function stripLeadingImportTrivia(source: string): string {
+	let value = source.trimStart();
+	for (;;) {
+		if (value.startsWith("//")) {
+			const newline = value.indexOf("\n");
+			if (newline === -1) return "";
+			value = value.slice(newline + 1).trimStart();
+			continue;
+		}
+		if (value.startsWith("/*")) {
+			const end = value.indexOf("*/");
+			if (end === -1) return "";
+			value = value.slice(end + 2).trimStart();
+			continue;
+		}
+		return value;
+	}
+}
+
+function parseImportSpecifiers(source: string): ObservableImportSpecifier[] {
+	return parseNamedEntries(source, { allowSpecial: true }).flatMap((entry) => importSpecifiersFromEntry(entry));
+}
+
+function parseImportInjections(source: string): ObservableImportInjection[] {
+	return parseNamedEntries(source).map(({ name, alias }) => (alias ? { name, alias } : { name }));
+}
+
+type NamedEntry = { name: string; alias?: string; kind?: "mutable" | "viewof" };
+
+function parseNamedEntries(source: string, options: { allowSpecial?: boolean } = {}): NamedEntry[] {
+	return source
+		.split(",")
+		.map((entry) => entry.trim())
+		.filter(Boolean)
+		.map((entry) => {
+			const special = options.allowSpecial ? "(?:(?<kind>viewof|mutable)\\s+)?" : "";
+			const match = entry.match(
+				new RegExp(`^${special}(?<name>[A-Za-z_$][0-9A-Za-z_$]*)(?:\\s+as\\s+(?<alias>[A-Za-z_$][0-9A-Za-z_$]*))?$`),
+			);
+			if (!match?.groups) throw new SyntaxError(`unsupported Observable import specifier: ${entry}`);
+			return {
+				name: match.groups.name,
+				alias: match.groups.alias,
+				kind: match.groups.kind as NamedEntry["kind"],
+			};
+		});
+}
+
+function importSpecifiersFromEntry(entry: NamedEntry): ObservableImportSpecifier[] {
+	if (!entry.kind) {
+		return [
+			{
+				imported: entry.name,
+				local: entry.alias ?? entry.name,
+				runtimeName: dedollar(entry.name),
+			},
+		];
+	}
+	const runtimeName = dedollar(entry.name);
+	const localName = entry.alias ?? entry.name;
+	const specialRuntimeName = `${entry.kind} ${runtimeName}`;
+	const specialLocal = entry.kind === "viewof" ? `viewof$${localName}` : `mutable$${localName}`;
+	return [
+		{
+			imported: entry.name,
+			local: localName,
+			runtimeName,
+		},
+		{
+			imported: `${entry.kind} ${entry.name}`,
+			local: specialLocal,
+			runtimeName: specialRuntimeName,
+		},
+	];
+}
+
+function resolveObservableImportSource(source: string): string {
+	if (source.startsWith("observable:")) {
+		let path = source.slice("observable:".length);
+		if (/^[0-9a-f]{16}(@|$)/.test(path)) path = `d/${path}`;
+		return `https://api.observablehq.com/${path}.js?v=4`;
+	}
+	if (/^\w+:/.test(source)) return source;
+	const path = /^[0-9a-f]{16}(@|$)/.test(source) ? `d/${source}` : source;
+	return `https://api.observablehq.com/${path}.js?v=4`;
+}
+
+function dedollar(input: string): string {
+	let output = "";
+	let dollars = 0;
+	for (const character of input) {
+		if (character === "$") {
+			dollars += 1;
+			continue;
+		}
+		if (dollars > 0) {
+			output += dollars === 1 ? " " : "$".repeat(dollars - 1);
+			dollars = 0;
+		}
+		output += character;
+	}
+	if (dollars > 0) output += dollars === 1 ? " " : "$".repeat(dollars - 1);
+	return output;
 }

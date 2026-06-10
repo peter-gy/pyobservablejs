@@ -4,6 +4,7 @@ import type { NotebookRuntime } from "@observablehq/notebook-kit/runtime";
 import { createNotebookGraph, createNotebookGraphFromAnalysis, type NotebookAnalysis } from "../notebook/graph";
 import {
 	isViewTarget,
+	isWritableSyncedViewValue,
 	readNestedSelectState,
 	readViewValue,
 	revivePythonValue,
@@ -128,6 +129,7 @@ export function applyModelVariablesToViews(sync: CellVariableSync): void {
 	for (const [name, wireValue] of Object.entries(sync.currentVariables())) {
 		const view = sync.views.get(name);
 		if (!view) continue;
+		if (!isWritableSyncedViewValue(wireValue)) continue;
 		if (sameWireValue(toWireValue(readViewValue(view)), wireValue)) continue;
 		writeProgrammaticViewValue(view, reviveSyncedValue(wireValue), readModelViewState(sync, name, wireValue));
 	}
@@ -163,7 +165,8 @@ function createBaseSync(
 	};
 	let writing = false;
 	const apply = () => {
-		if (!writing) recordExternalModelValues(sync);
+		if (writing) return;
+		recordExternalModelValues(sync);
 		applyModelVariablesToViews(sync);
 	};
 	const originalSetVariable = sync.setVariable.bind(sync);

@@ -290,6 +290,58 @@ viewof gain = {
 		controller.abort();
 	});
 
+	test("does not replay lossy element summaries into view controls", async () => {
+		const model = createModel({
+			role: "notebook",
+			spec: {
+				cells: [
+					{
+						id: 1,
+						mode: "ojs",
+						value: `
+viewof image = {
+  const form = document.createElement("form");
+  form.value = Promise.resolve(document.createElement("img"));
+  return form;
+}`,
+					},
+					{ id: 2, mode: "ojs", value: "imageTag = image.tagName" },
+				],
+			},
+			attachments: {},
+			_variables: {},
+			options: {},
+			_cell_widgets: ["anywidget:image", "anywidget:image-tag"],
+		});
+		const childModels = new Map([
+			["anywidget:image", createModel({ role: "cell", name: "image", _values: {}, _value_names: [] })],
+			["anywidget:image-tag", createModel({ role: "cell", name: "imageTag", _values: {}, _value_names: [] })],
+		]);
+		const el = document.createElement("div");
+		const controller = new AbortController();
+
+		widget.render({
+			model,
+			el,
+			signal: controller.signal,
+			host: createHost(childModels),
+		} as unknown as RenderProps<WidgetModel>);
+
+		const form = await waitFor(() => el.querySelector("form") ?? undefined);
+		expect(await waitFor(() => (variableValue(model, "imageTag") === "IMG" ? "IMG" : undefined))).toBe("IMG");
+		expect(variableValue(model, "image")).toEqual({
+			__pyobservablejs_type__: "element",
+			value: "img",
+		});
+		expect((form as HTMLFormElement & { value: unknown }).value).toBeInstanceOf(Promise);
+
+		await new Promise((resolve) => window.setTimeout(resolve, 25));
+
+		expect((form as HTMLFormElement & { value: unknown }).value).toBeInstanceOf(Promise);
+		expect(variableValue(model, "imageTag")).toBe("IMG");
+		controller.abort();
+	});
+
 	test("keeps Python-owned view values while dependencies change", async () => {
 		const model = createModel({
 			role: "notebook",

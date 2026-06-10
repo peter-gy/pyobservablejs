@@ -1,6 +1,6 @@
-import { transpile, type Cell } from "@observablehq/notebook-kit";
+import type { Cell } from "@observablehq/notebook-kit";
 import { FileAttachment, NotebookRuntime, library, registerFile } from "@observablehq/notebook-kit/runtime";
-import { exposedVariableNames, unprefix } from "../notebook/graph";
+import { exposedVariableNames, unprefix, type RuntimeCellDefinition } from "../notebook/graph";
 import { bindRuntimeScope, cleanupRuntimeScope, createRuntimeScope } from "./scope";
 import { createVariableBuiltins } from "./values";
 
@@ -21,6 +21,7 @@ export type NotebookOptions = {
 export type AttachmentRegistry = {
 	baseUrl: string;
 	names: Set<string>;
+	blobUrls: Map<string, string>;
 	cleanup(): void;
 };
 
@@ -28,6 +29,7 @@ export type { NestedSelectState, RuntimeVariablesSync, ViewTarget } from "./valu
 export { runtimeDocument } from "./scope";
 export {
 	createVariableBuiltins,
+	isWritableSyncedViewValue,
 	isViewTarget,
 	readNestedSelectState,
 	readViewValue,
@@ -43,6 +45,32 @@ type RuntimeBuiltinsWithVars = RuntimeBuiltins & Record<string, () => unknown>;
 export type RuntimeGlobals = {
 	document?: Document;
 };
+type RuntimeFileAttachment = ReturnType<typeof FileAttachment> & {
+	sqlite(): Promise<SQLiteDatabaseClient>;
+};
+type RuntimeFileAttachmentFactory = {
+	(name: string, base?: string): RuntimeFileAttachment;
+	prototype: typeof FileAttachment.prototype;
+};
+type RuntimeFileResolver = (name: string) => { url: string; mimeType?: string } | string | null;
+type RuntimeFileAttachments = (resolve: RuntimeFileResolver) => (name: string) => ReturnType<typeof FileAttachment>;
+type SqlJsDatabase = {
+	exec(query: string, params?: unknown[]): SqlJsResult[];
+};
+type SqlJsResult = {
+	columns: string[];
+	values: unknown[][];
+};
+type SqlJsModule = {
+	Database: new (data?: Uint8Array) => SqlJsDatabase;
+};
+type SqlJsInit = (options: { locateFile(name: string): string }) => Promise<SqlJsModule>;
+type SQLiteRows = Record<string, unknown>[] & { columns?: string[]; value?: SQLiteRows };
+
+const SQL_JS_URL = "https://cdn.jsdelivr.net/npm/sql.js@1.13.0/dist/sql-wasm.js";
+const SQL_JS_WASM_BASE = "https://cdn.jsdelivr.net/npm/sql.js@1.13.0/dist/";
+let sqliteModule: Promise<SqlJsModule> | undefined;
+const loadedScripts = new Map<string, Promise<void>>();
 
 export function createRuntime(
 	root: HTMLElement,
@@ -55,14 +83,38 @@ export function createRuntime(
 	const scope = createRuntimeScope(root);
 	const builtins = {
 		...library,
+		DuckDBClient: () =>
+			Promise.resolve((library.DuckDBClient as () => unknown)()).then((DuckDBClient) =>
+				createDuckDBClient(DuckDBClient as object, attachmentRegistry),
+			),
 		FileAttachment: () => createFileAttachment(options.baseUrl, attachmentRegistry),
+		Generators: () => createGenerators(library.Generators()),
+		SQLite: () => loadSQLiteModule(),
+		SQLiteDatabaseClient: () => SQLiteDatabaseClient,
 		document: () => scope.document,
 		width: width as RuntimeBuiltins["width"],
 		...createVariableBuiltins(options.variables),
 	} as RuntimeBuiltinsWithVars;
 	const runtime = new NotebookRuntime(builtins);
+	extendRuntimeFileAttachments(runtime);
 	bindRuntimeScope(runtime, scope);
 	return runtime;
+}
+
+function extendRuntimeFileAttachments(runtime: NotebookRuntime): void {
+	const runtimeWithFiles = runtime.runtime as NotebookRuntime["runtime"] & {
+		fileAttachments?: RuntimeFileAttachments;
+	};
+	const fileAttachments = runtimeWithFiles.fileAttachments;
+	if (typeof fileAttachments !== "function") return;
+	runtimeWithFiles.fileAttachments = (resolve: RuntimeFileResolver) => {
+		const FileAttachment = fileAttachments(resolve);
+		const wrapped = ((name: string) => withSQLiteFileAttachment(FileAttachment(name))) as ReturnType<
+			typeof fileAttachments
+		>;
+		wrapped.prototype = FileAttachment.prototype;
+		return wrapped;
+	};
 }
 
 function observeWidth(root: HTMLElement, fallback: HTMLElement): AsyncGenerator<number, void, unknown> {
@@ -177,17 +229,326 @@ export function createRuntimeCleanup(runtime: NotebookRuntime, attachmentRegistr
 	};
 }
 
-export function createFileAttachment(baseUrl: string, registry: AttachmentRegistry): typeof FileAttachment {
+export function createFileAttachment(baseUrl: string, registry: AttachmentRegistry): RuntimeFileAttachmentFactory {
 	// A synthetic base URL scopes registered attachments to this widget instance.
 	const attachment = ((name: string, base?: string) => {
 		const key = String(name);
-		if (base !== undefined) return FileAttachment(key, base);
+		if (base !== undefined) return withSQLiteFileAttachment(FileAttachment(key, base));
 		const decoded = safeDecodeURI(key);
 		const registered = registry.names.has(key) ? key : decoded && registry.names.has(decoded) ? decoded : null;
-		return FileAttachment(registered ?? key, registered ? registry.baseUrl : baseUrl || document.baseURI);
-	}) as typeof FileAttachment;
+		return withSQLiteFileAttachment(
+			FileAttachment(registered ?? key, registered ? registry.baseUrl : baseUrl || document.baseURI),
+		);
+	}) as RuntimeFileAttachmentFactory;
 	attachment.prototype = FileAttachment.prototype;
 	return attachment;
+}
+
+function withSQLiteFileAttachment(file: ReturnType<typeof FileAttachment>): RuntimeFileAttachment {
+	if ("sqlite" in file && typeof file.sqlite === "function") return file as RuntimeFileAttachment;
+	return new Proxy(file, {
+		get(target, property, receiver) {
+			if (property === "sqlite") return () => SQLiteDatabaseClient.open(target);
+			return Reflect.get(target, property, receiver);
+		},
+	}) as RuntimeFileAttachment;
+}
+
+export class SQLiteDatabaseClient {
+	constructor(private readonly db: SqlJsDatabase) {}
+
+	static async open(source: unknown): Promise<SQLiteDatabaseClient> {
+		const [sqlite, data] = await Promise.all([loadSQLiteModule(), loadSQLiteSource(source)]);
+		return new SQLiteDatabaseClient(new sqlite.Database(data));
+	}
+
+	async query(query: string, params?: unknown[]): Promise<SQLiteRows> {
+		return execSQLite(this.db, query, params);
+	}
+
+	async queryRow(query: string, params?: unknown[]): Promise<Record<string, unknown> | null> {
+		return (await this.query(query, params))[0] ?? null;
+	}
+
+	async describeTables({ schema }: { schema?: string } = {}): Promise<SQLiteRows> {
+		return this.query(
+			`SELECT NULLIF(schema, 'main') AS schema, name FROM pragma_table_list() WHERE type = 'table'${
+				schema == null ? "" : " AND schema = ?"
+			} AND name NOT LIKE 'sqlite_%' ORDER BY schema, name`,
+			schema == null ? [] : [schema],
+		);
+	}
+
+	async describeColumns({ schema, table }: { schema?: string; table?: string } = {}): Promise<SQLiteRows> {
+		if (table == null) throw new Error("missing table");
+		const rows = await this.query(
+			`SELECT name, type, "notnull" FROM pragma_table_info(?${schema == null ? "" : ", ?"}) ORDER BY cid`,
+			schema == null ? [table] : [table, schema],
+		);
+		if (!rows.length) throw new Error(`table not found: ${table}`);
+		return withSQLiteRowsValue(
+			rows.map(({ name, type, notnull }) => ({
+				name,
+				type: sqliteType(String(type)),
+				databaseType: type,
+				nullable: !notnull,
+			})) as SQLiteRows,
+		);
+	}
+
+	async describe(table?: string): Promise<SQLiteRows> {
+		return table == null ? this.describeTables() : this.describeColumns({ table });
+	}
+
+	async sql(strings: TemplateStringsArray, ...params: unknown[]): Promise<SQLiteRows> {
+		return this.query(...this.queryTag(strings, ...params));
+	}
+
+	queryTag(strings: TemplateStringsArray, ...params: unknown[]): [string, unknown[]] {
+		return [strings.join("?"), params];
+	}
+}
+
+Object.defineProperty(SQLiteDatabaseClient.prototype, "dialect", { value: "sqlite" });
+
+async function loadSQLiteModule(): Promise<SqlJsModule> {
+	sqliteModule ??= loadClassicScript(SQL_JS_URL).then(() => {
+		const init = (globalThis as { initSqlJs?: SqlJsInit }).initSqlJs;
+		if (init === undefined) throw new Error("sql.js did not register initSqlJs");
+		return init({
+			locateFile: (name) => new URL(name, SQL_JS_WASM_BASE).href,
+		});
+	});
+	return sqliteModule;
+}
+
+function loadClassicScript(src: string): Promise<void> {
+	let promise = loadedScripts.get(src);
+	if (promise !== undefined) return promise;
+	promise = new Promise((resolve, reject) => {
+		const script = document.createElement("script");
+		script.async = true;
+		script.src = src;
+		script.onload = () => resolve();
+		script.onerror = () => reject(new Error(`Unable to load script: ${src}`));
+		document.head.append(script);
+	});
+	loadedScripts.set(src, promise);
+	return promise;
+}
+
+async function loadSQLiteSource(source: unknown): Promise<Uint8Array> {
+	if (typeof source === "string") return fetch(source).then(loadSQLiteSource);
+	if (isArrayBufferSource(source)) return source.arrayBuffer().then(loadSQLiteSource);
+	if (source instanceof ArrayBuffer) return new Uint8Array(source);
+	if (source instanceof Uint8Array) return source;
+	return source as Uint8Array;
+}
+
+function isArrayBufferSource(value: unknown): value is { arrayBuffer(): Promise<ArrayBuffer> } {
+	return (
+		typeof value === "object" && value !== null && "arrayBuffer" in value && typeof value.arrayBuffer === "function"
+	);
+}
+
+function execSQLite(db: SqlJsDatabase, query: string, params?: unknown[]): SQLiteRows {
+	const [result] = db.exec(query, params);
+	if (!result) return withSQLiteRowsValue([] as SQLiteRows);
+	const rows = result.values.map((row) =>
+		Object.fromEntries(row.map((value, index) => [result.columns[index], value])),
+	) as SQLiteRows;
+	rows.columns = result.columns;
+	return withSQLiteRowsValue(rows);
+}
+
+function withSQLiteRowsValue(rows: SQLiteRows): SQLiteRows {
+	Object.defineProperty(rows, "value", { configurable: true, value: rows });
+	return rows;
+}
+
+function sqliteType(type: string): string {
+	switch (type) {
+		case "NULL":
+			return "null";
+		case "INT":
+		case "INTEGER":
+		case "TINYINT":
+		case "SMALLINT":
+		case "MEDIUMINT":
+		case "BIGINT":
+		case "UNSIGNED BIG INT":
+		case "INT2":
+		case "INT8":
+			return "integer";
+		case "TEXT":
+		case "CLOB":
+			return "string";
+		case "REAL":
+		case "DOUBLE":
+		case "DOUBLE PRECISION":
+		case "FLOAT":
+		case "NUMERIC":
+			return "number";
+		case "BLOB":
+			return "buffer";
+		case "DATE":
+		case "DATETIME":
+			return "string";
+		default:
+			if (/^(?:(?:(?:VARYING|NATIVE) )?CHARACTER|(?:N|VAR|NVAR)CHAR)\(/.test(type)) return "string";
+			if (/^(?:DECIMAL|NUMERIC)\(/.test(type)) return "number";
+			return "other";
+	}
+}
+
+export function createDuckDBClient<T extends object>(DuckDBClient: T, registry: AttachmentRegistry): T {
+	return new Proxy(DuckDBClient, {
+		get(target, property, receiver) {
+			const value = Reflect.get(target, property, receiver);
+			if ((property === "of" || property === "sql") && typeof value === "function") {
+				return (...args: unknown[]) => value.apply(target, wrapDuckDBArgs(args, registry));
+			}
+			return value;
+		},
+	});
+}
+
+export function createGenerators<T extends object>(Generators: T): T {
+	return new Proxy(Generators, {
+		get(target, property, receiver) {
+			const value = Reflect.get(target, property, receiver);
+			if ((property === "observe" || property === "queue" || property === "input") && typeof value === "function") {
+				return (...args: unknown[]) => syncIterableAsyncGenerator(value.apply(target, args));
+			}
+			return value;
+		},
+	});
+}
+
+function syncIterableAsyncGenerator<T>(value: T): T {
+	if (!isAsyncGenerator(value) || Symbol.iterator in value) return value;
+	return new Proxy(value, {
+		get(target, property, receiver) {
+			if (property === Symbol.iterator) return () => syncIteratorFromAsyncGenerator(target);
+			return Reflect.get(target, property, receiver);
+		},
+	});
+}
+
+function syncIteratorFromAsyncGenerator<T>(generator: AsyncGenerator<T>): Iterator<Promise<T | undefined>> {
+	return {
+		next() {
+			return {
+				done: false,
+				value: generator.next().then((result) => result.value),
+			};
+		},
+		return() {
+			void generator.return(undefined);
+			return { done: true, value: undefined };
+		},
+	};
+}
+
+function isAsyncGenerator(value: unknown): value is AsyncGenerator<unknown> {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		typeof (value as AsyncGenerator<unknown>).next === "function" &&
+		typeof (value as AsyncGenerator<unknown>)[Symbol.asyncIterator] === "function"
+	);
+}
+
+function wrapDuckDBArgs(args: unknown[], registry: AttachmentRegistry): unknown[] {
+	if (args.length === 0) return args;
+	const [sources, ...rest] = args;
+	if (Array.isArray(sources)) return [wrapDuckDBSourceEntries(sources, registry), ...rest];
+	if (isFileAttachmentLike(sources)) {
+		return [{ [attachmentTableName(sources.name)]: withDuckDBAttachmentUrl(sources, registry) }, ...rest];
+	}
+	return [wrapDuckDBSources(sources, registry), ...rest];
+}
+
+function wrapDuckDBSources(sources: unknown, registry: AttachmentRegistry): unknown {
+	if (!isPlainObject(sources)) return sources;
+	return Object.fromEntries(
+		Object.entries(sources).map(([name, source]) => [name, wrapDuckDBSource(source, registry)]),
+	);
+}
+
+function wrapDuckDBSourceEntries(sources: unknown[], registry: AttachmentRegistry): Record<string, unknown> {
+	const entries = sources.map((source) => duckDBSourceEntry(source, registry));
+	return Object.fromEntries(entries.filter((entry) => entry !== undefined));
+}
+
+function duckDBSourceEntry(source: unknown, registry: AttachmentRegistry): [string, unknown] | undefined {
+	if (Array.isArray(source) && typeof source[0] === "string" && source.length >= 2) {
+		return [source[0], wrapDuckDBSource(source[1], registry)];
+	}
+	if (isFileAttachmentLike(source)) {
+		return [attachmentTableName(source.name), withDuckDBAttachmentUrl(source, registry)];
+	}
+	if (isPlainObject(source) && isFileAttachmentLike(source.file)) {
+		const name = typeof source.name === "string" && source.name ? source.name : attachmentTableName(source.file.name);
+		return [name, wrapDuckDBSource(source, registry)];
+	}
+	return undefined;
+}
+
+function wrapDuckDBSource(source: unknown, registry: AttachmentRegistry): unknown {
+	if (isFileAttachmentLike(source)) return withDuckDBAttachmentUrl(source, registry);
+	if (isPlainObject(source) && isFileAttachmentLike(source.file)) {
+		return { ...source, file: withDuckDBAttachmentUrl(source.file, registry) };
+	}
+	return source;
+}
+
+function withDuckDBAttachmentUrl(file: ReturnType<typeof FileAttachment>, registry: AttachmentRegistry): typeof file {
+	return new Proxy(file, {
+		get(target, property, receiver) {
+			if (property === "url") return () => registeredBlobUrl(target, registry);
+			return Reflect.get(target, property, receiver);
+		},
+	});
+}
+
+function isFileAttachmentLike(value: unknown): value is ReturnType<typeof FileAttachment> {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		"name" in value &&
+		"url" in value &&
+		"blob" in value &&
+		typeof value.name === "string" &&
+		typeof value.url === "function" &&
+		typeof value.blob === "function"
+	);
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+async function registeredBlobUrl(
+	file: ReturnType<typeof FileAttachment>,
+	registry: AttachmentRegistry,
+): Promise<string> {
+	const cacheKey = attachmentCacheKey(file);
+	const cached = registry.blobUrls.get(cacheKey);
+	if (cached) return cached;
+	if (typeof URL.createObjectURL !== "function") return file.url();
+	const url = URL.createObjectURL(await file.blob());
+	registry.blobUrls.set(cacheKey, url);
+	return url;
+}
+
+function attachmentCacheKey(file: ReturnType<typeof FileAttachment>): string {
+	const href = "href" in file && typeof file.href === "string" ? file.href : "";
+	return `${file.name}\n${href}`;
+}
+
+function attachmentTableName(name: string): string {
+	return name.split(".").slice(0, -1).join(".").replace(/@.+?$/, "") || name;
 }
 
 function safeDecodeURI(value: string): string | null {
@@ -202,6 +563,7 @@ export function registerAttachments(attachments: Record<string, AttachmentInfo>)
 	// registerFile mutates Notebook Kit's global registry. Cleanup removes this base.
 	const base = createAttachmentRegistryBase();
 	const registered: string[] = [];
+	const blobUrls = new Map<string, string>();
 	for (const [name, info] of Object.entries(attachments)) {
 		registerFile(
 			name,
@@ -218,7 +580,9 @@ export function registerAttachments(attachments: Record<string, AttachmentInfo>)
 	return {
 		baseUrl: base,
 		names: new Set(registered),
+		blobUrls,
 		cleanup() {
+			for (const url of blobUrls.values()) URL.revokeObjectURL(url);
 			for (const name of registered) registerFile(name, null, base);
 		},
 	};
@@ -231,7 +595,7 @@ function createAttachmentRegistryBase(): string {
 
 type RuntimeDefinition = Parameters<NotebookRuntime["define"]>[1];
 type RuntimeBody = RuntimeDefinition["body"];
-type TranspiledDefinition = ReturnType<typeof transpile>;
+type TranspiledDefinition = RuntimeCellDefinition;
 
 const TEMPLATE_MODES = new Set<Cell["mode"]>(["dot", "html", "md", "sql", "tex"]);
 
@@ -253,7 +617,8 @@ export function createRuntimeDefinition(
 	};
 }
 
-function compileRuntimeBody(source: string, globals: RuntimeGlobals): RuntimeBody {
+function compileRuntimeBody(source: TranspiledDefinition["body"], globals: RuntimeGlobals): RuntimeBody {
+	if (typeof source === "function") return source as RuntimeBody;
 	const entries = Object.entries(globals).filter((entry) => entry[1] !== undefined) as [string, unknown][];
 	const names = entries.map(([name]) => name);
 	const values = entries.map(([, value]) => value);

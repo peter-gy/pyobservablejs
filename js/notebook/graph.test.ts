@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
 
 import { toNotebook } from "@observablehq/notebook-kit";
+import { library, NotebookRuntime } from "@observablehq/notebook-kit/runtime";
 import { describe, expect, test } from "vitest";
 import {
 	analyzeNotebook,
 	createNotebookGraph,
 	createNotebookGraphFromAnalysis,
 	notebookViewNamesFromAnalysis,
+	transpileNotebookCell,
 } from "./graph";
 
 describe("notebook graph metadata", () => {
@@ -121,6 +123,56 @@ describe("notebook graph metadata", () => {
 
 		expect(graph.cells[0]?.defines).toEqual(["foo"]);
 		expect(graph.cells[0]?.outputs).toEqual(["foo"]);
+	});
+
+	test("lowers Observable import-with cells through runtime module derivation", async () => {
+		const importedModule = encodeURIComponent(`
+function define(runtime, observer) {
+  const main = runtime.module();
+  main.variable(observer("renderSnippet")).define("renderSnippet", [], () => "default");
+  main.variable(observer("Q")).define("Q", ["renderSnippet"], (renderSnippet) => "Q:" + renderSnippet);
+  main.variable(observer("viewof showAll")).define("viewof showAll", [], () => "view-control");
+  main.variable(observer("showAll")).define("showAll", ["viewof showAll"], () => true);
+  main.variable(observer("styles")).define("styles", [], () => "styles");
+  return main;
+}
+export default define;
+`);
+		const notebook = toNotebook({
+			cells: [
+				{ id: 1, mode: "ojs", value: 'renderSnippetOverride = "override"' },
+				{
+					id: 2,
+					mode: "ojs",
+					value: `// imported cells often carry source comments\nimport {Q, viewof showAll, styles as themeStyles} with {renderSnippetOverride as renderSnippet} from "data:text/javascript,${importedModule}"`,
+				},
+			],
+		});
+
+		const analysis = analyzeNotebook(notebook);
+		const graph = createNotebookGraphFromAnalysis(analysis);
+		const runtime = new NotebookRuntime();
+		runtime.main.define("renderSnippetOverride", [], () => "override");
+		const definition = transpileNotebookCell(notebook.cells[1]!);
+		if (typeof definition.body !== "function") throw new Error("expected import-with definition body");
+		const values = (await definition.body(
+			runtime.runtime,
+			library.__ojs_observer(),
+			{ _module: runtime.main },
+			"override",
+		)) as Record<string, AsyncIterator<unknown>>;
+
+		expect(graph.cells[1]?.defines).toEqual(["Q", "showAll", "viewof$showAll", "themeStyles"]);
+		expectMembers(graph.cells[1]?.references, [
+			"__ojs_runtime",
+			"__ojs_observer",
+			"@variable",
+			"renderSnippetOverride",
+		]);
+		await expect(values.Q?.next()).resolves.toEqual({ done: false, value: "Q:override" });
+		await expect(values.showAll?.next()).resolves.toEqual({ done: false, value: true });
+		await expect(values.viewof$showAll?.next()).resolves.toEqual({ done: false, value: "view-control" });
+		await expect(values.themeStyles?.next()).resolves.toEqual({ done: false, value: "styles" });
 	});
 
 	test("keeps graph entries for cells with transpile errors", () => {

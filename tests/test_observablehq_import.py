@@ -226,6 +226,54 @@ def test_notebook_from_observablehq_converts_chart_nodes_to_plot_auto(
     assert widget.cells[0].name == "revenueChart"
 
 
+def test_notebook_from_observablehq_preserves_chart_channel_options(
+    observablehq_response: ObservableHQResponseInstaller,
+    script_tags: ScriptTags,
+) -> None:
+    observablehq_response(
+        {
+            "title": "Remote",
+            "nodes": [
+                {
+                    "id": 1,
+                    "mode": "chart",
+                    "pinned": True,
+                    "data": {
+                        "source": {"type": "cell", "name": "rows"},
+                        "config": {
+                            "x": {"type": "field", "value": "year"},
+                            "y": {
+                                "type": "field",
+                                "value": "life",
+                                "reduce": "mean",
+                            },
+                            "fx": {"type": "undefined"},
+                            "fy": {"type": "undefined"},
+                            "mark": {"type": "constant", "value": "bar"},
+                            "size": {"type": "undefined"},
+                            "color": {"type": "field", "value": "region"},
+                            "options": {
+                                "x": {"grid": True, "label": "Year"},
+                                "color": {"legend": True},
+                                "height": 300,
+                            },
+                        },
+                    },
+                },
+            ],
+        }
+    )
+
+    widget = obs.Notebook.from_observablehq("@d3/chart-view", timeout=1)
+
+    scripts = script_tags(widget.to_notebook_html())
+    assert scripts[0]["text"].strip() == (
+        'Plot.auto(await rows, {"x": {"grid": true, "label": "Year", "value": "year"}, '
+        '"y": {"value": "life", "reduce": "mean"}, "color": {"legend": true, '
+        '"value": "region"}, "mark": "bar", "height": 300}).plot()'
+    )
+
+
 def test_notebook_from_observablehq_converts_empty_chart_nodes(
     observablehq_response: ObservableHQResponseInstaller,
     script_tags: ScriptTags,
@@ -258,8 +306,559 @@ def test_notebook_from_observablehq_converts_empty_chart_nodes(
     widget = obs.Notebook.from_observablehq("@d3/chart-view", timeout=1)
 
     scripts = script_tags(widget.to_notebook_html())
-    assert scripts[0]["text"].strip() == "Plot.auto(await [], {}).plot()"
+    assert scripts[0]["text"].strip() == "undefined"
     assert len(widget.cells) == 1
+
+
+@pytest.mark.parametrize("mode", ["html", "md"])
+def test_notebook_from_observablehq_converts_named_template_cells_to_outputs(
+    observablehq_response: ObservableHQResponseInstaller,
+    script_tags: ScriptTags,
+    mode: str,
+) -> None:
+    observablehq_response(
+        {
+            "title": "Remote",
+            "nodes": [
+                {
+                    "id": 1,
+                    "mode": mode,
+                    "name": "templateCell",
+                    "value": "Rendered template",
+                },
+                {
+                    "id": 2,
+                    "mode": "js",
+                    "value": "templateCell",
+                },
+            ],
+        }
+    )
+
+    widget = obs.Notebook.from_observablehq("@d3/template-view", timeout=1)
+
+    scripts = script_tags(widget.to_notebook_html())
+    assert scripts[0]["attrs"].get("output") == "templateCell"
+    assert scripts[1]["text"].strip() == "templateCell"
+
+
+def test_notebook_from_observablehq_converts_duckdb_sql_nodes(
+    observablehq_response: ObservableHQResponseInstaller,
+    script_tags: ScriptTags,
+) -> None:
+    observablehq_response(
+        {
+            "title": "Remote",
+            "nodes": [
+                {
+                    "id": 1,
+                    "mode": "js",
+                    "value": 'starDB = DuckDBClient.of({stars: FileAttachment("stars.parquet")})',
+                },
+                {
+                    "id": 2,
+                    "mode": "sql",
+                    "name": "stars",
+                    "pinned": True,
+                    "value": "select * from stars",
+                    "data": {
+                        "source": {
+                            "name": "starDB",
+                            "type": "cell",
+                            "dialect": "duckdb",
+                        }
+                    },
+                },
+            ],
+        }
+    )
+
+    widget = obs.Notebook.from_observablehq("@d3/sql-view", timeout=1)
+
+    scripts = script_tags(widget.to_notebook_html())
+    assert scripts[1]["attrs"].get("type") == "application/sql"
+    assert scripts[1]["attrs"].get("database") == "var:starDB"
+    assert scripts[1]["attrs"].get("output") == "stars"
+    assert scripts[1]["text"].strip() == "select * from stars"
+    assert widget.cells[1].name == "stars"
+
+
+def test_notebook_from_observablehq_converts_sql_database_nodes(
+    observablehq_response: ObservableHQResponseInstaller,
+    script_tags: ScriptTags,
+) -> None:
+    observablehq_response(
+        {
+            "title": "Remote",
+            "nodes": [
+                {
+                    "id": 1,
+                    "mode": "js",
+                    "value": 'import {db} from "@observablehq/google-merchandise-sales-data"',
+                },
+                {
+                    "id": 2,
+                    "mode": "sql",
+                    "name": "clothing",
+                    "pinned": True,
+                    "value": "select * from items where category = 'Apparel'",
+                    "data": {
+                        "source": {
+                            "name": "db",
+                            "type": "cell",
+                            "dialect": "sql",
+                        }
+                    },
+                },
+            ],
+        }
+    )
+
+    widget = obs.Notebook.from_observablehq("@d3/sql-view", timeout=1)
+
+    scripts = script_tags(widget.to_notebook_html())
+    assert scripts[1]["attrs"].get("type") == "application/sql"
+    assert scripts[1]["attrs"].get("database") == "var:db"
+    assert scripts[1]["attrs"].get("output") == "clothing"
+    assert (
+        scripts[1]["text"].strip() == "select * from items where category = 'Apparel'"
+    )
+
+
+def test_notebook_from_observablehq_uses_builtin_duckdb_client_for_legacy_imports(
+    observablehq_response: ObservableHQResponseInstaller,
+    script_tags: ScriptTags,
+) -> None:
+    observablehq_response(
+        {
+            "title": "Remote",
+            "nodes": [
+                {
+                    "id": 1,
+                    "mode": "js",
+                    "value": 'import {DuckDBClient} from "@cmudig/duckdb"',
+                },
+                {
+                    "id": 2,
+                    "mode": "js",
+                    "value": 'db = DuckDBClient.of([["papers", FileAttachment("papers.csv")]])',
+                },
+            ],
+        }
+    )
+
+    widget = obs.Notebook.from_observablehq("@d3/duckdb-view", timeout=1)
+
+    scripts = script_tags(widget.to_notebook_html())
+    assert scripts[0]["attrs"].get("type") == "application/vnd.observable.javascript"
+    assert "hidden" in scripts[0]["attrs"]
+    assert scripts[0]["text"].strip() == "undefined"
+    assert scripts[1]["text"].strip() == (
+        'db = DuckDBClient.of([["papers", FileAttachment("papers.csv")]])'
+    )
+
+
+def test_notebook_from_observablehq_keeps_legacy_duckdb_import_for_legacy_methods(
+    observablehq_response: ObservableHQResponseInstaller,
+    script_tags: ScriptTags,
+) -> None:
+    observablehq_response(
+        {
+            "title": "Remote",
+            "nodes": [
+                {
+                    "id": 1,
+                    "mode": "js",
+                    "value": 'import {DuckDBClient} from "@cmudig/duckdb"',
+                },
+                {
+                    "id": 2,
+                    "mode": "js",
+                    "value": "db = new DuckDBClient()",
+                },
+                {
+                    "id": 3,
+                    "mode": "js",
+                    "value": "db.describe()",
+                },
+            ],
+        }
+    )
+
+    widget = obs.Notebook.from_observablehq("@d3/duckdb-view", timeout=1)
+
+    scripts = script_tags(widget.to_notebook_html())
+    assert "hidden" not in scripts[0]["attrs"]
+    assert scripts[0]["text"].strip() == ('import {DuckDBClient} from "@cmudig/duckdb"')
+
+
+def test_notebook_from_observablehq_converts_array_sql_nodes(
+    observablehq_response: ObservableHQResponseInstaller,
+    script_tags: ScriptTags,
+) -> None:
+    observablehq_response(
+        {
+            "title": "Remote",
+            "nodes": [
+                {"id": 1, "mode": "js", "value": "rows = []"},
+                {
+                    "id": 2,
+                    "mode": "sql",
+                    "name": "summary",
+                    "pinned": True,
+                    "value": "select count(*) as n from rows",
+                    "data": {
+                        "source": {
+                            "name": "rows",
+                            "type": "cell",
+                            "dialect": "array",
+                        }
+                    },
+                },
+            ],
+        }
+    )
+
+    widget = obs.Notebook.from_observablehq("@d3/sql-view", timeout=1)
+
+    scripts = script_tags(widget.to_notebook_html())
+    assert scripts[1]["attrs"].get("type") == "application/vnd.observable.javascript"
+    assert "hidden" in scripts[1]["attrs"]
+    assert scripts[1]["attrs"].get("output") == "rowsDB"
+    assert scripts[1]["text"].strip() == ('rowsDB = DuckDBClient.of({["rows"]: rows})')
+    assert scripts[2]["attrs"].get("type") == "application/sql"
+    assert scripts[2]["attrs"].get("database") == "var:rowsDB"
+    assert scripts[2]["attrs"].get("output") == "summary"
+    assert scripts[2]["text"].strip() == "select count(*) as n from rows"
+    assert widget.cells[2].name == "summary"
+
+
+def test_notebook_from_observablehq_avoids_sql_client_output_collisions(
+    observablehq_response: ObservableHQResponseInstaller,
+    script_tags: ScriptTags,
+) -> None:
+    observablehq_response(
+        {
+            "title": "Remote",
+            "nodes": [
+                {
+                    "id": 1,
+                    "mode": "js",
+                    "value": "// existing database client\nrowsDB = DuckDBClient.of()",
+                },
+                {"id": 2, "mode": "js", "value": "rows = []"},
+                {
+                    "id": 3,
+                    "mode": "sql",
+                    "name": "summary",
+                    "value": "select count(*) as n from rows",
+                    "data": {
+                        "source": {
+                            "name": "rows",
+                            "type": "cell",
+                            "dialect": "array",
+                        }
+                    },
+                },
+            ],
+        }
+    )
+
+    widget = obs.Notebook.from_observablehq("@d3/sql-view", timeout=1)
+
+    scripts = script_tags(widget.to_notebook_html())
+    assert scripts[2]["attrs"].get("output") == "rowsDB2"
+    assert scripts[2]["text"].strip() == ('rowsDB2 = DuckDBClient.of({["rows"]: rows})')
+    assert scripts[3]["attrs"].get("database") == "var:rowsDB2"
+
+
+def test_notebook_from_observablehq_converts_file_attachment_sql_nodes(
+    observablehq_response: ObservableHQResponseInstaller,
+    script_tags: ScriptTags,
+) -> None:
+    observablehq_response(
+        {
+            "title": "Remote",
+            "nodes": [
+                {
+                    "id": 1,
+                    "mode": "sql",
+                    "name": "plants",
+                    "pinned": True,
+                    "value": 'select * from "Power_Plants"',
+                    "data": {
+                        "source": {
+                            "name": "Power_Plants.csv",
+                            "type": "FileAttachment",
+                            "dialect": "csv",
+                        },
+                        "display": {"mode": "none"},
+                    },
+                },
+            ],
+        }
+    )
+
+    widget = obs.Notebook.from_observablehq("@d3/sql-view", timeout=1)
+
+    scripts = script_tags(widget.to_notebook_html())
+    assert scripts[0]["attrs"].get("type") == "application/vnd.observable.javascript"
+    assert "hidden" in scripts[0]["attrs"]
+    assert scripts[0]["attrs"].get("output") == "Power_PlantsDB"
+    assert scripts[0]["text"].strip() == (
+        'Power_PlantsDB = DuckDBClient.of({["Power_Plants"]: '
+        'FileAttachment("Power_Plants.csv")})'
+    )
+    assert scripts[1]["attrs"].get("type") == "application/sql"
+    assert scripts[1]["attrs"].get("database") == "var:Power_PlantsDB"
+    assert scripts[1]["attrs"].get("output") == "plants"
+    assert scripts[1]["text"].strip() == 'select * from "Power_Plants"'
+    assert widget.cells[1].name == "plants"
+
+
+def test_notebook_from_observablehq_converts_sqlite_file_sql_nodes(
+    observablehq_response: ObservableHQResponseInstaller,
+    script_tags: ScriptTags,
+) -> None:
+    observablehq_response(
+        {
+            "title": "Remote",
+            "nodes": [
+                {
+                    "id": 1,
+                    "mode": "sql",
+                    "pinned": True,
+                    "value": "select * from customers",
+                    "data": {
+                        "source": {
+                            "name": "chinook.db",
+                            "type": "FileAttachment",
+                            "dialect": "sqlite",
+                        }
+                    },
+                },
+            ],
+        }
+    )
+
+    widget = obs.Notebook.from_observablehq("@d3/sql-view", timeout=1)
+
+    scripts = script_tags(widget.to_notebook_html())
+    assert scripts[0]["attrs"].get("type") == "application/vnd.observable.javascript"
+    assert "hidden" in scripts[0]["attrs"]
+    assert scripts[0]["attrs"].get("output") == "chinookDB"
+    assert scripts[0]["text"].strip() == (
+        'chinookDB = FileAttachment("chinook.db").sqlite()'
+    )
+    assert scripts[1]["attrs"].get("type") == "application/sql"
+    assert scripts[1]["attrs"].get("database") == "var:chinookDB"
+    assert scripts[1]["text"].strip() == "select * from customers"
+
+
+def test_notebook_from_observablehq_converts_sqlite_table_nodes(
+    observablehq_response: ObservableHQResponseInstaller,
+    script_tags: ScriptTags,
+) -> None:
+    observablehq_response(
+        {
+            "title": "Remote",
+            "nodes": [
+                {
+                    "id": 1,
+                    "mode": "table",
+                    "pinned": True,
+                    "data": {
+                        "source": {
+                            "name": "chinook.db",
+                            "type": "FileAttachment",
+                            "dialect": "sqlite",
+                        },
+                        "operations": {
+                            "from": {"table": {"table": "customers"}},
+                        },
+                    },
+                },
+            ],
+        }
+    )
+
+    widget = obs.Notebook.from_observablehq("@d3/table-view", timeout=1)
+
+    scripts = script_tags(widget.to_notebook_html())
+    assert scripts[0]["attrs"].get("output") == "chinookDB"
+    assert scripts[0]["text"].strip() == (
+        'chinookDB = FileAttachment("chinook.db").sqlite()'
+    )
+    assert scripts[1]["attrs"].get("type") == "application/vnd.observable.javascript"
+    assert scripts[1]["text"].strip() == (
+        'Inputs.table(await chinookDB.query("SELECT * FROM \\"customers\\""))'
+    )
+
+
+def test_notebook_from_observablehq_converts_sql_database_table_nodes(
+    observablehq_response: ObservableHQResponseInstaller,
+    script_tags: ScriptTags,
+) -> None:
+    observablehq_response(
+        {
+            "title": "Remote",
+            "nodes": [
+                {
+                    "id": 1,
+                    "mode": "js",
+                    "value": 'import {db} from "@observablehq/google-merchandise-sales-data"',
+                },
+                {
+                    "id": 2,
+                    "mode": "table",
+                    "pinned": True,
+                    "data": {
+                        "source": {
+                            "name": "db",
+                            "type": "cell",
+                            "dialect": "sql",
+                        },
+                        "operations": {
+                            "from": {"table": {"table": "items"}, "mimeType": None},
+                            "sort": [{"column": "price_in_usd", "direction": "desc"}],
+                            "slice": {"to": 1000, "from": 0},
+                            "filter": [
+                                {
+                                    "type": "eq",
+                                    "operands": [
+                                        {"type": "column", "value": "category"},
+                                        {"type": "primitive", "value": "Apparel"},
+                                    ],
+                                }
+                            ],
+                            "select": {
+                                "columns": [
+                                    "id",
+                                    "name",
+                                    "brand",
+                                    "variant",
+                                    "category",
+                                    "price_in_usd",
+                                ]
+                            },
+                        },
+                    },
+                },
+            ],
+        }
+    )
+
+    widget = obs.Notebook.from_observablehq("@d3/table-view", timeout=1)
+
+    scripts = script_tags(widget.to_notebook_html())
+    assert scripts[1]["attrs"].get("type") == "application/vnd.observable.javascript"
+    assert scripts[1]["text"].strip() == (
+        'Inputs.table(await db.query("SELECT \\"id\\", \\"name\\", \\"brand\\", '
+        '\\"variant\\", \\"category\\", \\"price_in_usd\\" FROM \\"items\\" WHERE '
+        '\\"category\\" = \'Apparel\' ORDER BY \\"price_in_usd\\" DESC LIMIT 1000"))'
+    )
+
+
+def test_notebook_from_observablehq_converts_sql_table_contains_and_in_filters(
+    observablehq_response: ObservableHQResponseInstaller,
+    script_tags: ScriptTags,
+) -> None:
+    observablehq_response(
+        {
+            "title": "Remote",
+            "nodes": [
+                {
+                    "id": 1,
+                    "mode": "js",
+                    "value": 'db = FileAttachment("sql-murder-mystery.db").sqlite()',
+                },
+                {
+                    "id": 2,
+                    "mode": "table",
+                    "pinned": True,
+                    "data": {
+                        "source": {
+                            "name": "db",
+                            "type": "cell",
+                            "dialect": "sqlite",
+                        },
+                        "operations": {
+                            "from": {"table": {"table": "interview"}},
+                            "slice": {"to": 100, "from": 0},
+                            "filter": [
+                                {
+                                    "type": "c",
+                                    "operands": [
+                                        {"type": "column", "value": "transcript"},
+                                        {"type": "primitive", "value": "Annabel"},
+                                    ],
+                                },
+                                {
+                                    "type": "in",
+                                    "operands": [
+                                        {"type": "column", "value": "person_id"},
+                                        {"type": "primitive", "value": "14887"},
+                                        {"type": "primitive", "value": "16371"},
+                                    ],
+                                },
+                            ],
+                            "select": {"columns": ["person_id", "transcript"]},
+                        },
+                    },
+                },
+            ],
+        }
+    )
+
+    widget = obs.Notebook.from_observablehq("@d3/table-view", timeout=1)
+
+    scripts = script_tags(widget.to_notebook_html())
+    assert scripts[1]["text"].strip() == (
+        'Inputs.table(await db.query("SELECT \\"person_id\\", \\"transcript\\" FROM '
+        '\\"interview\\" WHERE \\"transcript\\" LIKE \'%Annabel%\' AND '
+        "\\\"person_id\\\" IN ('14887', '16371') LIMIT 100\"))"
+    )
+
+
+def test_notebook_from_observablehq_uses_cell_backed_sqlite_databases(
+    observablehq_response: ObservableHQResponseInstaller,
+    script_tags: ScriptTags,
+) -> None:
+    observablehq_response(
+        {
+            "title": "Remote",
+            "nodes": [
+                {
+                    "id": 1,
+                    "mode": "js",
+                    "value": 'sampleDB = FileAttachment("chinook.db").sqlite()',
+                },
+                {
+                    "id": 2,
+                    "mode": "sql",
+                    "pinned": True,
+                    "value": "select * from customers",
+                    "data": {
+                        "source": {
+                            "name": "sampleDB",
+                            "type": "cell",
+                            "dialect": "sqlite",
+                        }
+                    },
+                },
+            ],
+        }
+    )
+
+    widget = obs.Notebook.from_observablehq("@d3/sql-view", timeout=1)
+
+    scripts = script_tags(widget.to_notebook_html())
+    assert scripts[0]["text"].strip() == (
+        'sampleDB = FileAttachment("chinook.db").sqlite()'
+    )
+    assert scripts[1]["attrs"].get("type") == "application/sql"
+    assert scripts[1]["attrs"].get("database") == "var:sampleDB"
+    assert scripts[1]["text"].strip() == "select * from customers"
 
 
 def test_notebook_from_observablehq_accepts_initial_variables(

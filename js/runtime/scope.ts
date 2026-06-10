@@ -34,13 +34,25 @@ export function cleanupRuntimeScope(runtime: NotebookRuntime): void {
 }
 
 function createScopedDocument(root: HTMLElement): Document {
+	const customProperties = new Map<PropertyKey, unknown>();
 	const scoped = new Proxy(document, {
-		get(target, property, receiver) {
+		get(target, property) {
+			if (customProperties.has(property)) return customProperties.get(property);
 			if (property === "querySelector") return (selectors: string) => scopedQuerySelector(root, selectors);
 			if (property === "querySelectorAll") return (selectors: string) => scopedQuerySelectorAll(root, selectors);
 			if (property === "getElementById") return (id: string) => scopedGetElementById(root, id);
-			const value = Reflect.get(target, property, receiver);
+			if (property === "getElementsByClassName") {
+				return (classNames: string) => scopedGetElementsByClassName(root, classNames);
+			}
+			const value = Reflect.get(target, property, target);
 			return typeof value === "function" ? value.bind(target) : value;
+		},
+		set(target, property, value) {
+			if (!(property in target)) {
+				customProperties.set(property, value);
+				return true;
+			}
+			return Reflect.set(target, property, value, target);
 		},
 	});
 	return scoped as Document;
@@ -64,8 +76,26 @@ function scopedGetElementById(root: HTMLElement, id: string): Element | null {
 	return null;
 }
 
+function scopedGetElementsByClassName(root: HTMLElement, classNames: string): HTMLCollectionOf<Element> {
+	const rootMatches = matchesClassNames(root, classNames) ? [root] : [];
+	return htmlCollectionLike([...rootMatches, ...root.getElementsByClassName(classNames)]);
+}
+
+function matchesClassNames(element: Element, classNames: string): boolean {
+	const names = classNames.trim().split(/\s+/).filter(Boolean);
+	return names.length > 0 && names.every((name) => element.classList.contains(name));
+}
+
 function nodeListLike(elements: Element[]): NodeListOf<Element> {
 	return Object.assign(elements, {
 		item: (index: number) => elements[index] ?? null,
 	}) as unknown as NodeListOf<Element>;
+}
+
+function htmlCollectionLike(elements: Element[]): HTMLCollectionOf<Element> {
+	return Object.assign(elements, {
+		item: (index: number) => elements[index] ?? null,
+		namedItem: (name: string) =>
+			elements.find((element) => element.id === name || element.getAttribute("name") === name) ?? null,
+	}) as unknown as HTMLCollectionOf<Element>;
 }
