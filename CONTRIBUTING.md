@@ -20,13 +20,13 @@ pnpm build
 Build the Jupyter Book docs:
 
 ```sh
-(cd docs && uv run jupyter book build --site)
+uv run python scripts/docs.py build
 ```
 
 Preview them locally:
 
 ```sh
-(cd docs && uv run jupyter book start)
+uv run python scripts/docs.py serve
 ```
 
 ## Checks
@@ -43,7 +43,7 @@ uv run ruff check
 uv run ty check
 uv run pytest -q
 pnpm build
-(cd docs && uv run jupyter book build --site)
+uv run python scripts/docs.py build
 git diff --check
 ```
 

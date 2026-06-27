@@ -15,7 +15,7 @@ uv run ruff check
 uv run ty check
 uv run pytest -q
 pnpm build
-(cd docs && uv run jupyter book build --site)
+uv run python scripts/docs.py build
 git diff --check
 ```
 
@@ -41,7 +41,7 @@ For notebook/runtime changes, the default deep check is:
 
 ```sh
 uv run jupyter lab --no-browser --port 27273 --ServerApp.token='' --ServerApp.password=''
-(cd docs && uv run jupyter book start --port 27331)
+uv run python scripts/docs.py serve
 ```
 
 Then verify with `agent-browser` that:

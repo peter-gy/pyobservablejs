@@ -8,7 +8,7 @@ OJS variables, and cell widgets. TypeScript owns Notebook Kit evaluation,
 rendering, and runtime metadata.
 
 ```python
-import pyobservablejs as obs
+import observablejs as obs
 
 rows = [
     {"letter": "A", "frequency": 0.0812},
@@ -47,7 +47,7 @@ or:
 uv add pyobservablejs
 ```
 
-`pyobservablejs` supports Python 3.10 through 3.14.
+`pyobservablejs` supports Python 3.11 or newer.
 
 ## Notebook Model
 
@@ -55,9 +55,9 @@ uv add pyobservablejs
 - `variables={...}` sets OJS variables. A matching notebook variable is overridden.
 - `notebook.update_variables(...)` pushes Python-side changes into the live OJS
   runtime.
-- `name="..."` gives Python a stable name for a cell.
-- `notebook.values` and `notebook.cell("name").value` read browser-synchronized
-  outputs after rendering.
+- `key="..."` gives Python a stable handle for a cell.
+- `notebook.runtime_values` and `notebook.cell_by_key("key").values` read
+  browser-synchronized outputs after rendering.
 - `notebook.graph` exposes Notebook Kit-derived cell definitions, references, and
   dependency edges.
 
@@ -73,8 +73,8 @@ Cell helpers keep the source mode explicit:
 ```python
 notebook = obs.Notebook(
     obs.md("# Inputs"),
-    obs.ojs('viewof gain = Inputs.range([0, 11], {value: 5})', name="gain"),
-    obs.ojs("double = gain * 2", name="double"),
+    obs.ojs('viewof gain = Inputs.range([0, 11], {value: 5})', key="gain"),
+    obs.ojs("double = gain * 2", key="double"),
 )
 
 notebook
@@ -84,28 +84,24 @@ After the parent notebook has rendered in the browser, read the synced value
 from a later Python cell:
 
 ```python
-notebook.cell("gain").value
+notebook.cell_by_key("gain").value("gain")
 notebook.value("double")
 ```
 
 ## Source Notebooks
 
-Load Notebook Kit HTML from a string:
+Load Notebook Kit HTML from a file:
 
 ```python
 from pathlib import Path
 
 path = Path("chart.html")
-notebook = obs.Notebook.from_html(
-    path.read_text(encoding="utf-8"),
-    base_path=path.parent,
-)
+notebook = obs.Notebook.from_html_file(path)
 ```
 
-With `base_path` set, local `FileAttachment(...)` references and relative
-JavaScript imports discovered in Notebook Kit script cells are embedded by
-default. Local JavaScript imports are embedded recursively, so imported helper
-modules can reference other local modules.
+For file-backed notebooks, set `embed_file_attachments=True` to embed local
+`FileAttachment(...)` references. Set `rewrite_imports=True` to inline relative
+JavaScript imports discovered in Notebook Kit script cells.
 
 Load a public ObservableHQ notebook by URL, slug, or id:
 
@@ -117,15 +113,27 @@ Remote `FileAttachment(...)` entries are registered as URL-backed attachments,
 so Plot notebooks and examples with uploaded files can render in the widget.
 Pass `variables={...}` to override variables in a loaded notebook with Python values.
 
+Use already-fetched ObservableHQ data with the constructor that matches the
+input shape:
+
+```python
+document = json.loads(path.read_text())
+notebook = obs.Notebook.from_observablehq_document(document)
+
+page_data = json.loads(page_path.read_text())
+notebook = obs.Notebook.from_observablehq_page_data(page_data)
+
+notebook = obs.Notebook.from_observablehq_nodes(nodes, observable_files=files, title="Imported")
+```
+
 ## Documentation
 
-- [Quickstart](docs/quickstart.md)
-- [Examples](docs/examples.md)
-- [Tutorials](docs/tutorials/index.md)
-- [Concepts](docs/concepts.md)
-- [Architecture](docs/architecture.md)
-- [Widget composition](docs/composition.md)
-- [API reference](docs/api.md)
+- [Getting started](docs/getting-started.md)
+- [Examples](docs/examples/index.md)
+- [Guides](docs/guides/index.md)
+- [Reference](docs/reference/index.md)
+- [Architecture](docs/internals/architecture.md)
+- [Widget composition](docs/internals/widget-composition.md)
 - [Development](docs/development.md)
 
 ## Built On
