@@ -1,4 +1,4 @@
-"""anywidget base classes for Vite-built chunked frontends."""
+"""Bundle assets and request JavaScript modules through anywidget traitlets."""
 
 from __future__ import annotations
 
@@ -12,44 +12,52 @@ import anywidget
 import traitlets
 
 
+_MODULE_REQUEST_TRAIT = "_anywidget_bundle_module_request"
+_MODULE_RESPONSE_TRAIT = "_anywidget_bundle_module_response"
+
+
 @dataclasses.dataclass(frozen=True)
-class ChunkedAnyWidgetFrontend:
-    """Resolve anywidget assets and serve built JavaScript chunks."""
+class Bundle:
+    """Resolve anywidget assets and read built JavaScript modules on request."""
 
     static_dir: pathlib.Path
     dev_server_env: str | None = None
-    dev_module: str | None = None
-    entry_module: str = "index.js"
+    dev_entry: str = "/@anywidget-bundle/entry?anywidget"
+    entry_file: str = "widget.js"
     css_file: str = "widget.css"
-    chunk_dir: str = "chunks"
+    module_dir: str = "chunks"
 
-    def with_static_dir(
-        self, static_dir: str | pathlib.Path
-    ) -> ChunkedAnyWidgetFrontend:
+    def with_static_dir(self, static_dir: str | pathlib.Path) -> Bundle:
         return dataclasses.replace(self, static_dir=pathlib.Path(static_dir))
 
     def anywidget_assets(self) -> tuple[str | pathlib.Path, str | pathlib.Path]:
         dev_server = self._dev_server()
         if dev_server is not None:
-            return f"{dev_server}/{self._dev_module()}", ""
-        return self.static_dir / self.entry_module, self.static_dir / self.css_file
+            return f"{dev_server}/{self.dev_entry.lstrip('/')}", ""
+        return self.static_dir / self.entry_file, self.static_dir / self.css_file
 
     def read_module(self, module_path: object) -> str:
         if not isinstance(module_path, str):
             raise TypeError("module path must be a string")
         path = pathlib.PurePosixPath(module_path)
+        module_dir = pathlib.PurePosixPath(self.module_dir.strip("/"))
         if (
             path.is_absolute()
-            or len(path.parts) < 2
-            or path.parts[0] != self.chunk_dir
+            or not module_dir.parts
+            or path.parts[: len(module_dir.parts)] != module_dir.parts
+            or len(path.parts) <= len(module_dir.parts)
             or ".." in path.parts
             or path.suffix != ".js"
         ):
             raise ValueError(f"unsupported widget module path: {module_path}")
+
         root = self.static_dir.resolve()
+        module_root = (root / pathlib.Path(*module_dir.parts)).resolve()
         resolved = (root / pathlib.Path(*path.parts)).resolve()
         try:
+            module_root.relative_to(root)
             resolved.relative_to(root)
+            resolved.relative_to(module_root)
         except ValueError as error:
             raise ValueError(
                 f"unsupported widget module path: {module_path}"
@@ -66,28 +74,29 @@ class ChunkedAnyWidgetFrontend:
             dev_server = f"http://{dev_server}"
         return dev_server
 
-    def _dev_module(self) -> str:
-        if self.dev_module is None:
-            raise ValueError("dev_module is required when dev_server_env is set")
-        return self.dev_module.lstrip("/")
 
+class BundledWidget(anywidget.AnyWidget):
+    """anywidget model that serves bundle modules through synced traitlets."""
 
-class ChunkedAnyWidget(anywidget.AnyWidget):
-    """anywidget model that serves Vite-built JavaScript chunks on demand."""
+    bundle: ClassVar[Bundle]
+    _anywidget_bundle_module_request = traitlets.Dict(default_value={}).tag(sync=True)
+    _anywidget_bundle_module_response = traitlets.Dict(default_value={}).tag(sync=True)
 
-    _frontend: ClassVar[ChunkedAnyWidgetFrontend]
-    _esm_module_request = traitlets.Dict(default_value={}).tag(sync=True)
-    _esm_module_response = traitlets.Dict(default_value={}).tag(sync=True)
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        esm, css = self.bundle.anywidget_assets()
+        self._esm = _asset_text(esm)
+        self._css = _asset_text(css)
+        super().__init__(*args, **kwargs)
 
-    @traitlets.observe("_esm_module_request")
-    def _respond_to_esm_module_request(self, change: dict[str, Any]) -> None:
+    @traitlets.observe(_MODULE_REQUEST_TRAIT)
+    def _respond_to_module_request(self, change: dict[str, Any]) -> None:
         request = (
             cast(Mapping[str, object], change["new"])
             if isinstance(change["new"], Mapping)
             else {}
         )
         self.set_trait(
-            "_esm_module_response",
+            _MODULE_RESPONSE_TRAIT,
             self._module_response(request.get("path"), seq=request.get("seq")),
         )
 
@@ -98,7 +107,13 @@ class ChunkedAnyWidget(anywidget.AnyWidget):
         if seq is not None:
             response["seq"] = seq
         try:
-            response["source"] = self._frontend.read_module(request_path)
+            response["source"] = self.bundle.read_module(request_path)
         except Exception as error:
             response["error"] = f"{type(error).__name__}: {error}"
         return response
+
+
+def _asset_text(asset: str | pathlib.Path) -> str:
+    if isinstance(asset, pathlib.Path):
+        return asset.read_text(encoding="utf-8")
+    return asset

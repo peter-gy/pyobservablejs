@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import pyobservablejs as obs
+import observablejs as obs
 import pytest
 from helpers import DocumentTitle, ObservableHQResponseInstaller, ScriptTags
 
@@ -77,7 +77,7 @@ def test_notebook_from_observablehq_fetches_source_and_remote_attachments(
     widget = obs.Notebook.from_observablehq(
         "https://observablehq.com/@d3/bar-chart",
         timeout=1,
-        attachments={"local.csv": "https://example.test/local.csv"},
+        files={"local.csv": "https://example.test/local.csv"},
     )
 
     source = widget.to_notebook_html()

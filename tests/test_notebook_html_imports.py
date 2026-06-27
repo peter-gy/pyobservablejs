@@ -3,7 +3,7 @@ from __future__ import annotations
 import pathlib
 from typing import Any
 
-import pyobservablejs as obs
+import observablejs as obs
 import pytest
 from helpers import (
     ScriptTags,
@@ -61,6 +61,38 @@ def test_from_html_embeds_file_attachments_and_local_imports(
         """
     )
     assert len(widget.cells) == 1
+
+
+def test_from_html_file_uses_file_parent_as_base_path(
+    tmp_path: pathlib.Path,
+    script_tags: ScriptTags,
+) -> None:
+    (tmp_path / "points.csv").write_text("x,y\n1,2\n", encoding="utf-8")
+    notebook = tmp_path / "example.html"
+    notebook.write_text(
+        """<!doctype html>
+<notebook>
+  <script id="1" type="module">
+    data = FileAttachment("points.csv").csv();
+  </script>
+</notebook>
+""",
+        encoding="utf-8",
+    )
+
+    widget = obs.Notebook.from_html_file(
+        notebook,
+        embed_file_attachments=True,
+        rewrite_imports=True,
+    )
+
+    assert set(widget.attachments) == {"points.csv"}
+    mime_type, payload = decode_data_url(widget.attachments["points.csv"]["url"])
+    assert mime_type == "text/csv"
+    assert payload == b"x,y\n1,2\n"
+    assert script_by_id(script_tags(widget.to_notebook_html()), "1")[
+        "text"
+    ].strip() == ('data = FileAttachment("points.csv").csv();')
 
 
 def test_from_html_recursively_embeds_local_imports(
@@ -133,13 +165,13 @@ def test_source_backed_notebook_exposes_one_cell_per_script() -> None:
     widget = obs.Notebook.from_html(SOURCE_BACKED_NAMED_CELLS)
 
     assert len(widget.cells) == 3
-    assert [widget.cell(index).name for index in range(3)] == [
+    assert [widget.cell_at(index).key for index in range(3)] == [
         "title",
         "svg",
         "display",
     ]
-    display_cell = widget.cell("display")
-    svg_cell = widget.cell("svg")
+    display_cell = widget.cell_by_key("display")
+    svg_cell = widget.cell_by_key("svg")
     assert display_cell.name == "display"
     assert svg_cell.name == "svg"
 

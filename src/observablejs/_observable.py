@@ -8,11 +8,12 @@ import re
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections.abc import Mapping
-from dataclasses import dataclass
-from typing import Any, cast
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field
+from typing import Any, TypedDict, cast
 
-from ._serialize import serialize
+from ._cells import NotebookCellSpec
+from ._files import FileAttachment
 
 _UI_ORIGIN = "https://observablehq.com"
 _ID_SPECIFIER_RE = re.compile(r"^[0-9a-f]{16}(?:@\d+|@latest|@\w+|~\d+)?$")
@@ -26,6 +27,62 @@ _OJS_OUTPUT_RE = re.compile(
 _LEGACY_DUCKDB_IMPORT_RE = re.compile(
     r"""^\s*import\s*\{\s*DuckDBClient\s*\}\s*from\s*["']@cmudig/duckdb["']\s*;?\s*$"""
 )
+
+
+class ObservableSourceRecord(TypedDict, total=False):
+    name: str
+    type: str
+    dialect: str
+
+
+class ObservableDataRecord(TypedDict, total=False):
+    source: ObservableSourceRecord | Mapping[str, Any]
+    operations: Mapping[str, Any]
+    config: Mapping[str, Any]
+    display: Mapping[str, Any]
+
+
+class ObservableNodeRecord(TypedDict, total=False):
+    id: int | str
+    mode: str
+    value: Any
+    name: str | None
+    pinned: bool
+    hidden: bool
+    database: str
+    format: str
+    output: str
+    data: ObservableDataRecord | Mapping[str, Any]
+
+
+class ObservableFileRecord(TypedDict, total=False):
+    name: str
+    download_url: str
+    mime_type: str
+    size: int
+    create_time: str
+
+
+ObservableNodeInput = ObservableNodeRecord | Mapping[str, Any]
+ObservableFileInput = ObservableFileRecord | Mapping[str, Any]
+
+
+class ObservableDocument(TypedDict, total=False):
+    title: str
+    nodes: Sequence[ObservableNodeInput]
+    files: Sequence[ObservableFileInput]
+
+
+class ObservablePageProps(TypedDict, total=False):
+    initialNotebook: ObservableDocument
+
+
+class ObservablePageData(TypedDict, total=False):
+    pageProps: ObservablePageProps | Mapping[str, Any]
+    initialNotebook: ObservableDocument
+
+
+ObservableFilesInput = Sequence[ObservableFileInput] | None
 
 
 @dataclass(frozen=True)
@@ -45,6 +102,64 @@ class SqlSource:
     name: str
     source_type: str | None
     dialect: str | None
+
+
+@dataclass(frozen=True)
+class SqlPlan:
+    database: str | None = None
+    cells: tuple[NotebookCellSpec, ...] = ()
+
+
+@dataclass
+class SqlContext:
+    next_id: int
+    used_names: set[str]
+    clients: dict[str, str] = field(default_factory=dict)
+
+    def cell_source_client(self, source: SqlSource) -> SqlPlan:
+        return self._client(
+            key=source.name,
+            seed=source.name,
+            cell=_sql_client_cell,
+            table_name=source.name,
+            source_expression=source.name,
+        )
+
+    def sqlite_attachment_client(self, source: SqlSource) -> SqlPlan:
+        return self._client(
+            key=f"sqlite:{source.name}",
+            seed=_js_identifier_from_name(_attachment_table_name(source.name)),
+            cell=_sqlite_client_cell,
+            attachment_name=source.name,
+        )
+
+    def duckdb_attachment_client(self, source: SqlSource) -> SqlPlan:
+        table_name = _attachment_table_name(source.name)
+        return self._client(
+            key=f"duckdb:{source.name}:{table_name}",
+            seed=_js_identifier_from_name(table_name),
+            cell=_sql_client_cell,
+            table_name=table_name,
+            source_expression=_file_attachment_object_expression(source.name),
+        )
+
+    def _client(
+        self,
+        *,
+        key: str,
+        seed: str,
+        cell: Callable[..., NotebookCellSpec],
+        **kwargs: Any,
+    ) -> SqlPlan:
+        database = self.clients.get(key)
+        if database is not None:
+            return SqlPlan(database=database)
+        database = _generated_sql_client_name(seed, self.used_names)
+        self.used_names.add(database)
+        self.clients[key] = database
+        generated = cell(id=self.next_id, name=database, **kwargs)
+        self.next_id += 1
+        return SqlPlan(database=database, cells=(generated,))
 
 
 def resolve_observablehq_api_url(specifier: str) -> str:
@@ -74,12 +189,12 @@ def resolve_observablehq_api_url(specifier: str) -> str:
     )
 
 
-def fetch_observablehq_notebook(
+def fetch_observablehq_document(
     specifier: str,
     *,
     timeout: float | None = 30,
-) -> tuple[str, dict[str, dict[str, Any]]]:
-    """Fetch a public ObservableHQ notebook and return Notebook Kit HTML plus files."""
+) -> ObservableDocument:
+    """Fetch a public ObservableHQ notebook document."""
 
     api_url = resolve_observablehq_api_url(specifier)
     request = urllib.request.Request(
@@ -107,34 +222,29 @@ def fetch_observablehq_notebook(
         raise ValueError(
             f"ObservableHQ document response was not JSON: {api_url}"
         ) from error
-    return observable_document_to_html(document)
+    if not isinstance(document, Mapping):
+        raise ValueError(f"ObservableHQ document response was not an object: {api_url}")
+    return cast(ObservableDocument, document)
 
 
-def observable_document_to_html(
-    document: Mapping[str, Any],
-) -> tuple[str, dict[str, dict[str, Any]]]:
-    """Convert an Observable document API response to Notebook Kit inputs."""
+def observable_nodes_to_cells(
+    nodes: Sequence[ObservableNodeInput],
+) -> list[NotebookCellSpec]:
+    """Convert ObservableHQ document nodes to Notebook Kit cell specs."""
 
-    nodes = [
-        _normalize_node(node, index)
-        for index, node in enumerate(_document_nodes(document))
-    ]
-    spec = {
-        "title": document.get("title") or "Untitled",
-        "theme": "air",
-        "cells": _lower_nodes(nodes),
-    }
-    return serialize(spec), _files_to_attachments(document.get("files"))
+    normalized = [_normalize_node(node, index) for index, node in enumerate(nodes)]
+    return _lower_nodes(normalized)
 
 
-def _document_nodes(document: Mapping[str, Any]) -> list[object]:
-    nodes = document.get("nodes")
-    if not isinstance(nodes, list):
-        raise ValueError("Observable document response is missing a nodes list")
-    return nodes
+def observable_files_to_attachments(
+    files: Sequence[ObservableFileInput] | None,
+) -> dict[str, FileAttachment]:
+    """Convert ObservableHQ file records to frontend FileAttachment records."""
+
+    return _files_to_attachments(files)
 
 
-def _normalize_node(node: object, index: int) -> ObservableNode:
+def _normalize_node(node: ObservableNodeInput, index: int) -> ObservableNode:
     if not isinstance(node, Mapping):
         raise ValueError("Observable document node must be an object")
     raw = dict(node)
@@ -153,97 +263,50 @@ def _normalize_node(node: object, index: int) -> ObservableNode:
     )
 
 
-def _lower_nodes(nodes: list[ObservableNode]) -> list[dict[str, Any]]:
-    cells: list[dict[str, Any]] = []
-    sql_clients: dict[str, str] = {}
-    used_names = set[str]()
+def _lower_nodes(nodes: list[ObservableNode]) -> list[NotebookCellSpec]:
+    cells: list[NotebookCellSpec] = []
+    used_names: set[str] = set()
     use_builtin_duckdb = _can_use_builtin_duckdb_client(nodes)
     for node in nodes:
         if node.name is not None:
             used_names.add(node.name)
         if output_name := _cell_output_name(node):
             used_names.add(output_name)
-    next_id = max((node.id for node in nodes), default=0) + 1
+    sql_context = SqlContext(
+        next_id=max((node.id for node in nodes), default=0) + 1,
+        used_names=used_names,
+    )
 
     for node in nodes:
-        sql_database = _sql_database(node)
-        if sql_database is None:
-            source = _sql_source(node)
-            if source is not None:
-                if source.source_type == "cell" and source.dialect in {
-                    "duckdb",
-                    "sqlite",
-                    "sql",
-                }:
-                    sql_database = source.name
-                elif source.source_type == "cell" and source.dialect == "array":
-                    sql_database = sql_clients.get(source.name)
-                    if sql_database is None:
-                        sql_database = _generated_sql_client_name(
-                            source.name, used_names
-                        )
-                        used_names.add(sql_database)
-                        sql_clients[source.name] = sql_database
-                        cells.append(
-                            _sql_client_cell(
-                                id=next_id,
-                                name=sql_database,
-                                table_name=source.name,
-                                source_expression=source.name,
-                            )
-                        )
-                        next_id += 1
-                elif (
-                    source.source_type == "FileAttachment"
-                    and source.dialect == "sqlite"
-                ):
-                    sql_database = sql_clients.get(f"sqlite:{source.name}")
-                    if sql_database is None:
-                        sql_database = _generated_sql_client_name(
-                            _js_identifier_from_name(
-                                _attachment_table_name(source.name)
-                            ),
-                            used_names,
-                        )
-                        used_names.add(sql_database)
-                        sql_clients[f"sqlite:{source.name}"] = sql_database
-                        cells.append(
-                            _sqlite_client_cell(
-                                id=next_id,
-                                name=sql_database,
-                                attachment_name=source.name,
-                            )
-                        )
-                        next_id += 1
-                elif source.source_type == "FileAttachment":
-                    table_name = _attachment_table_name(source.name)
-                    client_key = f"duckdb:{source.name}:{table_name}"
-                    sql_database = sql_clients.get(client_key)
-                    if sql_database is None:
-                        sql_database = _generated_sql_client_name(
-                            _js_identifier_from_name(table_name), used_names
-                        )
-                        used_names.add(sql_database)
-                        sql_clients[client_key] = sql_database
-                        cells.append(
-                            _sql_client_cell(
-                                id=next_id,
-                                name=sql_database,
-                                table_name=table_name,
-                                source_expression=_file_attachment_object_expression(
-                                    source.name
-                                ),
-                            )
-                        )
-                        next_id += 1
+        sql_plan = _sql_plan(node, sql_context)
+        cells.extend(sql_plan.cells)
         cells.append(
             _lower_node(
                 node,
-                sql_database=sql_database,
+                sql_database=sql_plan.database,
                 use_builtin_duckdb=use_builtin_duckdb,
             )
         )
     return cells
+
+
+def _sql_plan(node: ObservableNode, context: SqlContext) -> SqlPlan:
+    database = _sql_database(node)
+    if database is not None:
+        return SqlPlan(database=database)
+
+    source = _sql_source(node)
+    if source is None:
+        return SqlPlan()
+    if source.source_type == "cell" and source.dialect in {"duckdb", "sqlite", "sql"}:
+        return SqlPlan(database=source.name)
+    if source.source_type == "cell" and source.dialect == "array":
+        return context.cell_source_client(source)
+    if source.source_type == "FileAttachment" and source.dialect == "sqlite":
+        return context.sqlite_attachment_client(source)
+    if source.source_type == "FileAttachment":
+        return context.duckdb_attachment_client(source)
+    return SqlPlan()
 
 
 def _lower_node(
@@ -251,7 +314,7 @@ def _lower_node(
     *,
     sql_database: str | None = None,
     use_builtin_duckdb: bool = False,
-) -> dict[str, Any]:
+) -> NotebookCellSpec:
     if node.mode == "table":
         return _table_node_to_cell(node, sql_database=sql_database)
     if node.mode == "chart":
@@ -268,7 +331,7 @@ def _code_node_to_cell(
     *,
     sql_database: str | None = None,
     use_builtin_duckdb: bool = False,
-) -> dict[str, Any]:
+) -> NotebookCellSpec:
     value = "" if node.value is None else str(node.value)
     uses_builtin_duckdb = (
         use_builtin_duckdb
@@ -293,7 +356,7 @@ def _code_node_to_cell(
         value = node.raw.get(key)
         if value is not None and key not in cell:
             cell[key] = value
-    return cell
+    return cast(NotebookCellSpec, cell)
 
 
 def _can_use_builtin_duckdb_client(nodes: list[ObservableNode]) -> bool:
@@ -324,7 +387,7 @@ def _sql_client_cell(
     name: str,
     table_name: str,
     source_expression: str,
-) -> dict[str, Any]:
+) -> NotebookCellSpec:
     return {
         "id": id,
         "value": (
@@ -343,7 +406,7 @@ def _sqlite_client_cell(
     id: int,
     name: str,
     attachment_name: str,
-) -> dict[str, Any]:
+) -> NotebookCellSpec:
     return {
         "id": id,
         "value": (
@@ -422,7 +485,7 @@ def _table_node_to_cell(
     node: ObservableNode,
     *,
     sql_database: str | None = None,
-) -> dict[str, Any]:
+) -> NotebookCellSpec:
     data = node.raw.get("data")
     sql_query = _table_sql_query(data)
     if sql_database is not None and sql_query is not None:
@@ -442,10 +505,10 @@ def _table_node_to_cell(
         cell["hidden"] = True
     if node.name is not None:
         cell["name"] = node.name
-    return cell
+    return cast(NotebookCellSpec, cell)
 
 
-def _chart_node_to_cell(node: ObservableNode) -> dict[str, Any]:
+def _chart_node_to_cell(node: ObservableNode) -> NotebookCellSpec:
     data = node.raw.get("data")
     source = _source_expression(data, fallback="[]")
     options = _chart_options_dict(data)
@@ -464,7 +527,7 @@ def _chart_node_to_cell(node: ObservableNode) -> dict[str, Any]:
     _copy_visibility_attrs(cell, node)
     if node.name is not None:
         cell["name"] = node.name
-    return cell
+    return cast(NotebookCellSpec, cell)
 
 
 def _copy_visibility_attrs(cell: dict[str, Any], node: ObservableNode) -> None:
@@ -553,10 +616,6 @@ def _table_sql_query(data: object) -> str | None:
         f"SELECT {select_clause} FROM {_sql_identifier(table_name)}"
         f"{filter_clause}{sort_clause}{slice_clause}"
     )
-
-
-def _sqlite_identifier(name: str) -> str:
-    return _sql_identifier(name)
 
 
 def _sql_identifier(name: str) -> str:
@@ -715,10 +774,6 @@ def _table_slice_clause(slice_spec: object) -> str | None:
     return f" LIMIT {limit}" + (f" OFFSET {offset}" if offset else "")
 
 
-def _chart_options(data: object) -> str:
-    return _json_literal(_chart_options_dict(data))
-
-
 def _chart_options_dict(data: object) -> dict[str, Any]:
     if not isinstance(data, Mapping):
         raise ValueError("Observable chart node is missing chart data")
@@ -820,10 +875,12 @@ def _node_id(value: object, index: int) -> int:
     return index + 1
 
 
-def _files_to_attachments(files: object) -> dict[str, dict[str, Any]]:
-    if not isinstance(files, list):
+def _files_to_attachments(
+    files: Sequence[ObservableFileInput] | None,
+) -> dict[str, FileAttachment]:
+    if files is None:
         return {}
-    attachments: dict[str, dict[str, Any]] = {}
+    attachments: dict[str, FileAttachment] = {}
     for item in files:
         if not isinstance(item, Mapping):
             continue
@@ -832,7 +889,7 @@ def _files_to_attachments(files: object) -> dict[str, dict[str, Any]]:
         url = item.get("download_url")
         if not isinstance(name, str) or not isinstance(url, str):
             continue
-        info: dict[str, Any] = {"url": url}
+        info: FileAttachment = {"url": url}
         mime_type = item.get("mime_type")
         size = item.get("size")
         create_time = item.get("create_time")

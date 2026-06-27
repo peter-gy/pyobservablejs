@@ -1,22 +1,41 @@
 from __future__ import annotations
 
 import inspect
+from importlib.metadata import version as package_version
 from typing import Any
 
-import pyobservablejs as obs
+import observablejs as obs
 import pytest
 from helpers import DocumentTitle, ScriptTags, line_indent
 
 
 def test_public_namespace_is_small() -> None:
-    expected_public = {"NOTEBOOK_THEMES", "Notebook", "html", "js", "md", "ojs"}
+    expected_public = {
+        "NOTEBOOK_THEMES",
+        "Cell",
+        "CellInfo",
+        "CellValues",
+        "DependencyEdge",
+        "Notebook",
+        "NotebookCell",
+        "NotebookGraph",
+        "NotRenderedError",
+        "html",
+        "js",
+        "md",
+        "ojs",
+    }
     assert set(obs.__all__) == expected_public
     assert {name for name in dir(obs) if not name.startswith("_")} == expected_public
 
     namespace: dict[str, object] = {}
-    exec("from pyobservablejs import *", namespace)
+    exec("from observablejs import *", namespace)
 
     assert {name for name in namespace if not name.startswith("_")} == expected_public
+
+
+def test_version_matches_package_metadata() -> None:
+    assert obs.__version__ == package_version("pyobservablejs")
 
 
 def test_notebook_themes_match_notebook_kit_theme_names() -> None:
@@ -45,8 +64,7 @@ def test_public_api_signatures_keep_keyword_only_options() -> None:
         ("cells", inspect.Parameter.VAR_POSITIONAL),
         ("title", inspect.Parameter.KEYWORD_ONLY),
         ("theme", inspect.Parameter.KEYWORD_ONLY),
-        ("mode", inspect.Parameter.KEYWORD_ONLY),
-        ("attachments", inspect.Parameter.KEYWORD_ONLY),
+        ("files", inspect.Parameter.KEYWORD_ONLY),
         ("base_path", inspect.Parameter.KEYWORD_ONLY),
         ("variables", inspect.Parameter.KEYWORD_ONLY),
         ("show_pinned_source", inspect.Parameter.KEYWORD_ONLY),
@@ -56,9 +74,23 @@ def test_public_api_signatures_keep_keyword_only_options() -> None:
         for name, param in inspect.signature(obs.Notebook.from_html).parameters.items()
     ] == [
         ("source", inspect.Parameter.POSITIONAL_OR_KEYWORD),
-        ("attachments", inspect.Parameter.KEYWORD_ONLY),
+        ("files", inspect.Parameter.KEYWORD_ONLY),
         ("base_path", inspect.Parameter.KEYWORD_ONLY),
-        ("portable", inspect.Parameter.KEYWORD_ONLY),
+        ("embed_file_attachments", inspect.Parameter.KEYWORD_ONLY),
+        ("rewrite_imports", inspect.Parameter.KEYWORD_ONLY),
+        ("variables", inspect.Parameter.KEYWORD_ONLY),
+        ("show_pinned_source", inspect.Parameter.KEYWORD_ONLY),
+    ]
+    assert [
+        (name, param.kind)
+        for name, param in inspect.signature(
+            obs.Notebook.from_html_file
+        ).parameters.items()
+    ] == [
+        ("path", inspect.Parameter.POSITIONAL_OR_KEYWORD),
+        ("files", inspect.Parameter.KEYWORD_ONLY),
+        ("embed_file_attachments", inspect.Parameter.KEYWORD_ONLY),
+        ("rewrite_imports", inspect.Parameter.KEYWORD_ONLY),
         ("variables", inspect.Parameter.KEYWORD_ONLY),
         ("show_pinned_source", inspect.Parameter.KEYWORD_ONLY),
     ]
@@ -70,9 +102,46 @@ def test_public_api_signatures_keep_keyword_only_options() -> None:
     ] == [
         ("specifier", inspect.Parameter.POSITIONAL_OR_KEYWORD),
         ("variables", inspect.Parameter.KEYWORD_ONLY),
-        ("attachments", inspect.Parameter.KEYWORD_ONLY),
+        ("files", inspect.Parameter.KEYWORD_ONLY),
         ("show_pinned_source", inspect.Parameter.KEYWORD_ONLY),
         ("timeout", inspect.Parameter.KEYWORD_ONLY),
+    ]
+    assert [
+        (name, param.kind)
+        for name, param in inspect.signature(
+            obs.Notebook.from_observablehq_document
+        ).parameters.items()
+    ] == [
+        ("document", inspect.Parameter.POSITIONAL_OR_KEYWORD),
+        ("title", inspect.Parameter.KEYWORD_ONLY),
+        ("variables", inspect.Parameter.KEYWORD_ONLY),
+        ("files", inspect.Parameter.KEYWORD_ONLY),
+        ("show_pinned_source", inspect.Parameter.KEYWORD_ONLY),
+    ]
+    assert [
+        (name, param.kind)
+        for name, param in inspect.signature(
+            obs.Notebook.from_observablehq_page_data
+        ).parameters.items()
+    ] == [
+        ("page_data", inspect.Parameter.POSITIONAL_OR_KEYWORD),
+        ("title", inspect.Parameter.KEYWORD_ONLY),
+        ("variables", inspect.Parameter.KEYWORD_ONLY),
+        ("files", inspect.Parameter.KEYWORD_ONLY),
+        ("show_pinned_source", inspect.Parameter.KEYWORD_ONLY),
+    ]
+    assert [
+        (name, param.kind)
+        for name, param in inspect.signature(
+            obs.Notebook.from_observablehq_nodes
+        ).parameters.items()
+    ] == [
+        ("nodes", inspect.Parameter.POSITIONAL_OR_KEYWORD),
+        ("observable_files", inspect.Parameter.KEYWORD_ONLY),
+        ("title", inspect.Parameter.KEYWORD_ONLY),
+        ("variables", inspect.Parameter.KEYWORD_ONLY),
+        ("files", inspect.Parameter.KEYWORD_ONLY),
+        ("show_pinned_source", inspect.Parameter.KEYWORD_ONLY),
     ]
     for helper in (obs.ojs, obs.js, obs.md, obs.html):
         assert [
@@ -80,13 +149,13 @@ def test_public_api_signatures_keep_keyword_only_options() -> None:
             for name, param in inspect.signature(helper).parameters.items()
         ] == [
             ("source", inspect.Parameter.POSITIONAL_OR_KEYWORD),
-            ("name", inspect.Parameter.KEYWORD_ONLY),
+            ("key", inspect.Parameter.KEYWORD_ONLY),
             ("display", inspect.Parameter.KEYWORD_ONLY),
             ("raw", inspect.Parameter.KEYWORD_ONLY),
             ("id", inspect.Parameter.KEYWORD_ONLY),
             ("pinned", inspect.Parameter.KEYWORD_ONLY),
             ("output", inspect.Parameter.KEYWORD_ONLY),
-            ("attrs", inspect.Parameter.KEYWORD_ONLY),
+            ("notebookkit_attrs", inspect.Parameter.KEYWORD_ONLY),
         ]
 
 
@@ -96,12 +165,12 @@ def test_cell_options_serialize_to_notebook_html(
 ) -> None:
     cell = obs.ojs(
         "answer = 42",
-        name="answer",
+        key="answer",
         display=False,
         id=7,
         pinned=True,
         output="answer",
-        attrs={"database": "duckdb"},
+        notebookkit_attrs={"database": "duckdb"},
     )
     notebook = obs.Notebook(
         cell,
@@ -116,13 +185,23 @@ def test_cell_options_serialize_to_notebook_html(
     assert notebook.options["show_source"] is True
     assert len(scripts) == 1
     assert scripts[0]["text"].strip() == "answer = 42"
+    assert notebook.cells[0].key == "answer"
     assert attrs.get("id") == "7"
     assert attrs.get("type") == "application/vnd.observable.javascript"
-    assert attrs.get("name") == "answer"
+    assert "name" not in attrs
     assert attrs.get("output") == "answer"
     assert attrs.get("database") == "duckdb"
     assert "hidden" in attrs
     assert "pinned" in attrs
+
+
+def test_cell_notebookkit_attrs_reject_first_class_option_collisions() -> None:
+    with pytest.raises(ValueError, match="first-class cell options: hidden, output"):
+        obs.ojs(
+            "answer = 42",
+            output="answer",
+            notebookkit_attrs={"hidden": True, "output": "other"},
+        )
 
 
 @pytest.mark.parametrize("theme", obs.NOTEBOOK_THEMES)
@@ -167,18 +246,18 @@ def test_notebook_rejects_unsupported_themes(theme: Any) -> None:
         obs.Notebook(obs.ojs("answer = 42"), theme=theme)
 
 
-def test_notebook_theme_setter_syncs_spec_trait() -> None:
+def test_notebook_theme_setter_syncs_spec_transport() -> None:
     notebook = obs.Notebook(obs.ojs("answer = 42"), theme="air")
 
     notebook.theme = "slate"
 
     assert notebook.theme == "slate"
     assert notebook.spec["theme"] == "slate"
-    assert notebook.get_state(["theme", "spec"])["theme"] == "slate"
-    assert notebook.get_state(["theme", "spec"])["spec"]["theme"] == "slate"
+    assert notebook.get_state(["theme", "_spec"])["theme"] == "slate"
+    assert notebook.get_state(["theme", "_spec"])["_spec"]["theme"] == "slate"
 
 
-def test_source_backed_notebook_theme_trait_preserves_source() -> None:
+def test_source_backed_notebook_theme_trait_is_source_owned() -> None:
     source = """<!doctype html>
 <notebook theme="coffee">
   <script id="1">answer = 42</script>
@@ -186,9 +265,10 @@ def test_source_backed_notebook_theme_trait_preserves_source() -> None:
 """
     notebook = obs.Notebook.from_html(source)
 
-    notebook.theme = {"light": "cotton", "dark": "slate"}
+    with pytest.raises(Exception, match="source HTML"):
+        notebook.theme = {"light": "cotton", "dark": "slate"}
 
-    assert notebook.theme == {"light": "cotton", "dark": "slate"}
+    assert notebook.theme == "coffee"
     assert notebook.spec == {}
     assert notebook.to_notebook_html() == source
 
@@ -240,7 +320,7 @@ def test_public_api_rejects_unknown_constructor_options() -> None:
         bad_from_observablehq("@d3/bar-chart", unknown_option=True)
 
 
-def test_sql_mode_is_not_publicly_authorable() -> None:
-    mode: Any = "sql"
-    with pytest.raises(ValueError, match="Unsupported Python-authored cell mode"):
-        obs.Notebook("select 1", mode=mode)
+def test_notebook_requires_explicit_cell_helpers() -> None:
+    source: Any = "answer = 42"
+    with pytest.raises(TypeError, match="obs.ojs"):
+        obs.Notebook(source)

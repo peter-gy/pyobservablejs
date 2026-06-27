@@ -182,10 +182,16 @@ def browser_value_sync() -> BrowserValueSync:
         values: dict[str, Any],
         value_names: Sequence[str] | None = None,
     ) -> None:
+        notebook = getattr(widget, "_notebook", None)
+        if notebook is not None and not notebook.has_rendered:
+            notebook.set_trait("_graph", {"cells": [], "edges": []})
+        elif widget.has_trait("_graph") and not widget.has_rendered:
+            widget.set_trait("_graph", {"cells": [], "edges": []})
         widget.set_trait("_values", values)
-        widget.set_trait(
-            "_value_names", list(value_names if value_names is not None else values)
-        )
+        if widget.has_trait("_value_names"):
+            widget.set_trait(
+                "_value_names", list(value_names if value_names is not None else values)
+            )
 
     return sync
 
@@ -199,6 +205,7 @@ def _browser_graph_cell(
     raw: dict[str, Any] = {
         "id": cell.id if cell.id is not None else id,
         "index": cell.index if cell.index is not None else index,
+        "key": cell.key,
         "mode": "ojs",
         "defines": list(cell.defines),
     }

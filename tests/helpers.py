@@ -10,7 +10,7 @@ import urllib.parse
 from collections.abc import Callable, Sequence
 from typing import Any, Protocol
 
-import pyobservablejs as obs
+import observablejs as obs
 
 
 @dataclasses.dataclass(frozen=True)
@@ -60,6 +60,8 @@ class BrowserGraphCellBuilder(Protocol):
 
 
 def notebook_from_html_file(path: pathlib.Path, **kwargs: Any) -> obs.Notebook:
+    kwargs.setdefault("embed_file_attachments", True)
+    kwargs.setdefault("rewrite_imports", True)
     return obs.Notebook.from_html(
         path.read_text(encoding="utf-8"),
         base_path=path.parent,

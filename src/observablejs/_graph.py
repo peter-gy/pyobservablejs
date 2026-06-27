@@ -30,6 +30,7 @@ class CellInfo:
     id: int
     index: int
     mode: str
+    key: str | None
     name: str | None
     defines: tuple[str, ...]
     references: tuple[str, ...]
@@ -115,6 +116,7 @@ def cell_info_from_raw(raw: Any) -> CellInfo | None:
         id=cell_id,
         index=index,
         mode=mode,
+        key=_optional_string(raw.get("key")),
         name=_optional_string(raw.get("name")),
         defines=_strings(raw, "defines"),
         references=_strings(raw, "references"),

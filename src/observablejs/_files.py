@@ -2,8 +2,8 @@
 
 Source-backed notebooks can reference local files with ``FileAttachment`` or
 relative JavaScript imports. This module discovers those references inside real
-notebook script cells and rewrites local assets to data URLs when the widget
-needs a portable, self-contained representation.
+notebook script cells and rewrites local assets to data URLs when the caller
+requests embedded file attachments or import rewriting.
 """
 
 from __future__ import annotations
@@ -14,7 +14,16 @@ import pathlib
 import re
 from collections.abc import Mapping
 from html.parser import HTMLParser
-from typing import Any, NamedTuple, cast
+from typing import Any, NamedTuple, NotRequired, TypedDict, cast
+
+
+class FileAttachment(TypedDict, total=False):
+    url: NotRequired[str]
+    path: NotRequired[str]
+    mimeType: NotRequired[str]
+    lastModified: NotRequired[int]
+    size: NotRequired[int]
+
 
 FileInput = str | pathlib.Path | Mapping[str, Any]
 
@@ -90,7 +99,7 @@ def normalize_files(
     files: Mapping[str, FileInput] | None,
     *,
     base_path: str | pathlib.Path | None,
-) -> dict[str, dict[str, Any]]:
+) -> dict[str, FileAttachment]:
     """Normalize explicit attachment inputs for the frontend registry."""
 
     if not files:
@@ -108,19 +117,22 @@ def prepare_source(
     base_path: str | pathlib.Path | None,
     embed: bool,
     rewrite_imports: bool,
-) -> tuple[str, dict[str, dict[str, Any]]]:
+) -> tuple[str, dict[str, FileAttachment]]:
     """Prepare Notebook Kit HTML and discovered attachments.
 
-    When ``embed`` is true and ``base_path`` is set, local ``FileAttachment``
-    files are discovered. When ``rewrite_imports`` is also true, relative
-    JavaScript imports are rewritten to data URLs. Other option combinations
-    return the original source with no discovered attachments.
+    ``embed`` discovers local ``FileAttachment`` files. ``rewrite_imports``
+    rewrites relative JavaScript imports to data URLs. Either option needs a
+    base path because the source string has no filesystem owner.
     """
 
-    if not embed or base_path is None:
+    if (embed or rewrite_imports) and base_path is None:
+        raise ValueError(
+            "base_path is required when embedding files or rewriting imports"
+        )
+    if not embed and not rewrite_imports:
         return source, {}
-    base = pathlib.Path(base_path).expanduser().resolve()
-    attachments = _collect_attachments(source, base)
+    base = pathlib.Path(cast(str | pathlib.Path, base_path)).expanduser().resolve()
+    attachments = _collect_attachments(source, base) if embed else {}
     if rewrite_imports:
         source = _embed_local_imports(source, base)
     return source, attachments
@@ -131,9 +143,9 @@ def _normalize_file_info(
     value: FileInput,
     *,
     base_path: pathlib.Path | None,
-) -> dict[str, Any]:
+) -> FileAttachment:
     if isinstance(value, Mapping):
-        return cast(dict[str, Any], dict(value))
+        return cast(FileAttachment, dict(value))
     if isinstance(value, str) and _is_url(value):
         return {"url": value, "mimeType": _guess_mime_type(name)}
     path = pathlib.Path(value).expanduser()
@@ -144,8 +156,8 @@ def _normalize_file_info(
 
 def _collect_attachments(
     source: str, base_path: pathlib.Path
-) -> dict[str, dict[str, Any]]:
-    attachments: dict[str, dict[str, Any]] = {}
+) -> dict[str, FileAttachment]:
+    attachments: dict[str, FileAttachment] = {}
     for script in _iter_notebook_script_blocks(source):
         if not _is_javascript_script(script.attrs):
             continue
@@ -288,7 +300,7 @@ def _rewrite_import_specifiers(
     base_path: pathlib.Path,
     seen: frozenset[pathlib.Path] = frozenset(),
 ) -> str:
-    """Inline relative JavaScript imports that can run inside a portable widget."""
+    """Inline relative JavaScript imports for source-backed notebook rendering."""
 
     def replace(
         match: re.Match[str],
@@ -570,7 +582,7 @@ def _mask_regex(source: str, mask: list[bool], start: int) -> int:
     return index
 
 
-def _file_info(name: str, path: pathlib.Path) -> dict[str, Any]:
+def _file_info(name: str, path: pathlib.Path) -> FileAttachment:
     return {
         "url": _data_url(path),
         "mimeType": _guess_mime_type(name),

@@ -2,7 +2,7 @@
 
 Python sends variables through anywidget as JSON-compatible trait state. Plain values
 stay normal JSON. Values that need a browser-side type use
-``__pyobservablejs_type__`` tags that ``js/runtime/values.ts`` revives before the OJS
+``__observablejs_type__`` tags that ``js/runtime/values.ts`` revives before the OJS
 runtime evaluates cells.
 """
 
@@ -16,10 +16,64 @@ import sys
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-TYPE_KEY = "__pyobservablejs_type__"
+TYPE_KEY = "__observablejs_type__"
 _MAX_SAFE_JS_INTEGER = 9_007_199_254_740_991
 
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z_$][0-9A-Za-z_$]*$")
+RESERVED_VARIABLE_NAMES = frozenset(
+    {
+        "Arrow",
+        "DOM",
+        "DatabaseClient",
+        "DuckDBClient",
+        "FileAttachment",
+        "Files",
+        "Generators",
+        "Inputs",
+        "Interpreter",
+        "L",
+        "Mutable",
+        "Plot",
+        "Promises",
+        "React",
+        "ReactDOM",
+        "SQLite",
+        "SQLiteDatabaseClient",
+        "_",
+        "__ojs_observer",
+        "aapl",
+        "alphabet",
+        "aq",
+        "cars",
+        "citywages",
+        "d3",
+        "dark",
+        "diamonds",
+        "document",
+        "dot",
+        "duckdb",
+        "echarts",
+        "flare",
+        "htl",
+        "html",
+        "industries",
+        "mapboxgl",
+        "md",
+        "mermaid",
+        "miserables",
+        "now",
+        "olympians",
+        "penguins",
+        "pizza",
+        "require",
+        "svg",
+        "tex",
+        "topojson",
+        "vl",
+        "weather",
+        "width",
+    }
+)
 
 
 def serialize_variables(values: Mapping[str, Any] | None) -> dict[str, Any]:
@@ -33,10 +87,42 @@ def serialize_variables(values: Mapping[str, Any] | None) -> dict[str, Any]:
         )
     out: dict[str, Any] = {}
     for name, value in values.items():
-        if not isinstance(name, str) or not _IDENTIFIER_RE.match(name):
-            raise ValueError(f"Invalid Observable variable name: {name!r}")
+        validate_variable_name(name)
         out[name] = serialize_value(value)
     return out
+
+
+def copy_variables(variables: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Validate and copy the Python-owned variable map."""
+
+    serialize_variables(variables)
+    return {} if variables is None else dict(variables)
+
+
+def validate_variable_name(name: object) -> str:
+    if not isinstance(name, str) or not _IDENTIFIER_RE.match(name):
+        raise ValueError(f"Invalid Observable variable name: {name!r}")
+    if name in RESERVED_VARIABLE_NAMES:
+        raise ValueError(f"Reserved Observable runtime name: {name!r}")
+    return name
+
+
+def variable_updates_from_args(
+    name: str,
+    values: Mapping[str, Any] | Iterable[tuple[str, Any]] | None,
+    kwargs: Mapping[str, Any],
+) -> dict[str, Any]:
+    updates: dict[str, Any] = {}
+    if values is not None:
+        if isinstance(values, Mapping):
+            updates.update(values)
+        else:
+            try:
+                updates.update(dict(values))
+            except (TypeError, ValueError) as exc:
+                raise TypeError(f"{name} expects a mapping or key/value pairs") from exc
+    updates.update(kwargs)
+    return updates
 
 
 def serialize_value(value: Any) -> Any:

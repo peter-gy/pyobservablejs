@@ -84,10 +84,11 @@ class _NotebookHTMLParser(HTMLParser):
                         (attrs.get("type") or "module").lower(), "ojs"
                     ),
                 ),
+                key=attrs.get("name"),
                 name=attrs.get("name"),
                 display="hidden" not in attrs,
                 raw=True,
-                attrs=cell_attrs,
+                notebookkit_attrs=cell_attrs,
             )
         )
 

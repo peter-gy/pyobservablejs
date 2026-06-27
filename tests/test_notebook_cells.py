@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-import pyobservablejs as obs
+import observablejs as obs
 import pytest
 from helpers import (
     BrowserGraphCellBuilder,
@@ -26,23 +26,24 @@ def test_cell_defaults_to_observable_js_and_dedents(script_tags: ScriptTags) -> 
 
 def test_notebook_rejects_list_wrapped_cells() -> None:
     bad_cells: Any = [obs.ojs("answer = 42")]
-    with pytest.raises(TypeError, match="strings or Cell objects"):
+    with pytest.raises(TypeError, match="obs.ojs"):
         obs.Notebook(bad_cells)
 
 
-def test_notebook_cell_lookup_returns_child_widget_instances() -> None:
+def test_notebook_cell_accessors_return_child_widget_instances() -> None:
     widget = obs.Notebook(
-        obs.md("# Title", name="title"),
-        obs.ojs("answer = 42", name="answer"),
+        obs.md("# Title", key="title"),
+        obs.ojs("answer = 42", key="answer"),
         title="Composed",
     )
 
     assert len(widget.cells) == 2
-    assert [widget.cell(index).name for index in range(2)] == ["title", "answer"]
-    assert [cell.name for cell in widget.cells] == ["title", "answer"]
-    assert widget.cell("answer").name == "answer"
-    assert widget.cell(1) is widget.cells[1]
-    assert widget.cell("answer") is widget.cells[1]
+    assert [widget.cell_at(index).key for index in range(2)] == ["title", "answer"]
+    assert [cell.key for cell in widget.cells] == ["title", "answer"]
+    assert [cell.name for cell in widget.cells] == ["", ""]
+    assert widget.cell_by_key("answer").key == "answer"
+    assert widget.cell_at(1) is widget.cells[1]
+    assert widget.cell_by_key("answer") is widget.cells[1]
 
 
 def test_notebook_graph_exposes_symbolic_cell_metadata(
@@ -50,8 +51,8 @@ def test_notebook_graph_exposes_symbolic_cell_metadata(
     browser_graph_cell: BrowserGraphCellBuilder,
 ) -> None:
     widget = obs.Notebook(
-        obs.ojs("a = 1", name="a"),
-        obs.ojs("b = a + rows.length", name="b"),
+        obs.ojs("a = 1", key="a"),
+        obs.ojs("b = a + rows.length", key="b"),
         variables={"rows": [{"x": 1}]},
     )
     browser_graph_sync(
@@ -59,14 +60,12 @@ def test_notebook_graph_exposes_symbolic_cell_metadata(
         cells=[
             browser_graph_cell(
                 "a",
-                name="a",
                 defines=["a"],
                 output="a",
                 runtime_outputs=["a"],
             ),
             browser_graph_cell(
                 "b",
-                name="b",
                 defines=["b"],
                 references=["a", "rows"],
                 output="b",
@@ -82,23 +81,23 @@ def test_notebook_graph_exposes_symbolic_cell_metadata(
     assert graph.defines == ("a", "b")
     assert graph.references == ("a", "rows")
     assert graph.external_references == ("rows",)
-    assert graph.cell_for_variable("a").name == "a"
-    assert graph.cell_for_variable("b").name == "b"
+    assert graph.cell_for_variable("a").key == "a"
+    assert graph.cell_for_variable("b").key == "b"
     assert [
         edge.variable
         for edge in graph.edges
         if edge.source_id == graph.cell_for_variable("a").id
         and edge.target_id == graph.cell_for_variable("b").id
     ] == ["a"]
-    assert widget.cell("b").defines == ("b",)
-    assert widget.cell("b").references == ("a", "rows")
-    assert widget.cell("b").outputs == ()
-    assert widget.cell("b").runtime_outputs == ("b",)
-    assert widget.cell("b").output == "b"
+    assert widget.cell_by_key("b").defines == ("b",)
+    assert widget.cell_by_key("b").references == ("a", "rows")
+    assert widget.cell_by_key("b").outputs == ()
+    assert widget.cell_by_key("b").runtime_outputs == ("b",)
+    assert widget.cell_by_key("b").output == "b"
 
 
 def test_notebook_graph_drops_invalid_browser_entries() -> None:
-    widget = obs.Notebook(obs.ojs("answer = 42", name="answer"))
+    widget = obs.Notebook(obs.ojs("answer = 42", key="answer"))
     widget.set_trait(
         "_graph",
         {
@@ -106,8 +105,8 @@ def test_notebook_graph_drops_invalid_browser_entries() -> None:
                 {
                     "id": 1,
                     "index": 0,
+                    "key": "answer",
                     "mode": "ojs",
-                    "name": "answer",
                     "defines": ["answer"],
                 },
                 {"id": "bad", "index": 1, "mode": ""},
@@ -133,7 +132,7 @@ def test_cell_lookup_can_use_unique_graph_output(
 ) -> None:
     widget = obs.Notebook(
         obs.ojs("answer = 42"),
-        obs.ojs("answer + 1", name="readout"),
+        obs.ojs("answer + 1", key="readout"),
     )
     browser_graph_sync(
         widget,
@@ -147,8 +146,8 @@ def test_cell_lookup_can_use_unique_graph_output(
         ],
     )
 
-    with pytest.raises(KeyError, match="Unknown Observable cell name"):
-        widget.cell("answer")
+    with pytest.raises(KeyError, match="Unknown Observable cell key"):
+        widget.cell_by_key("answer")
     assert widget.cell_for_variable("answer") is widget.cells[0]
     assert widget.cell_for_variable("answer").defines == ("answer",)
 
@@ -173,13 +172,13 @@ def test_cell_lookup_rejects_ambiguous_graph_variable(
         widget.cell_for_variable("answer")
 
 
-def test_cell_lookup_separates_python_name_from_ojs_variable(
+def test_cell_lookup_separates_python_key_from_ojs_variable(
     browser_graph_sync: BrowserGraphSync,
     browser_graph_cell: BrowserGraphCellBuilder,
 ) -> None:
     widget = obs.Notebook(
-        obs.ojs("alpha = 1", name="conflict"),
-        obs.ojs("conflict = 2", name="other"),
+        obs.ojs("alpha = 1", key="conflict"),
+        obs.ojs("conflict = 2", key="other"),
     )
     browser_graph_sync(
         widget,
@@ -189,45 +188,47 @@ def test_cell_lookup_separates_python_name_from_ojs_variable(
         ],
     )
 
-    assert widget.cell("conflict").defines == ("alpha",)
-    assert widget.cell_for_variable("conflict").name == "other"
+    assert widget.cell_by_key("conflict").defines == ("alpha",)
+    assert widget.cell_for_variable("conflict").key == "other"
     assert widget.cell_for_variable("conflict").defines == ("conflict",)
 
 
 def test_named_notebook_cells_expose_values(
     browser_value_sync: BrowserValueSync,
 ) -> None:
-    widget = obs.Notebook(obs.ojs("viewof gain = Inputs.range([0, 11])", name="gain"))
-    cell_widget = widget.cell("gain")
+    widget = obs.Notebook(obs.ojs("viewof gain = Inputs.range([0, 11])", key="gain"))
+    cell_widget = widget.cell_by_key("gain")
 
     browser_value_sync(cell_widget, {"gain": 7}, ["gain", "doubled"])
 
-    assert cell_widget.value == 7
+    assert cell_widget.value("gain") == 7
+    assert cell_widget.only_value() == 7
     assert cell_widget.values == {"gain": 7}
-    assert widget.value("gain") == 7
-    assert widget.values == {"gain": 7}
+    assert widget.runtime_values == {}
+    assert widget.cell_values() == (
+        obs.CellValues(index=0, key="gain", values={"gain": 7}),
+    )
 
 
 def test_cell_value_error_points_to_values_mapping(
     browser_value_sync: BrowserValueSync,
 ) -> None:
-    cell_widget = obs.Notebook(obs.ojs("answer = 42", name="cell")).cell("cell")
+    cell_widget = obs.Notebook(obs.ojs("answer = 42", key="cell")).cell_by_key("cell")
     browser_value_sync(cell_widget, {"answer": 42, "double": 84})
 
-    with pytest.raises(KeyError, match=r"cell\.values\[name\]"):
-        _ = cell_widget.value
+    with pytest.raises(KeyError, match=r"cell\.value\(name\)"):
+        cell_widget.only_value()
 
 
 def test_browser_values_are_exposed_to_notebook_values(
     browser_value_sync: BrowserValueSync,
 ) -> None:
-    widget = obs.Notebook(obs.ojs("viewof gain = Inputs.range([0, 11])", name="gain"))
+    widget = obs.Notebook(obs.ojs("viewof gain = Inputs.range([0, 11])", key="gain"))
 
     browser_value_sync(widget, {"gain": 8}, ["gain"])
 
-    assert widget.values == {"gain": 8}
+    assert widget.runtime_values == {"gain": 8}
     assert widget.value("gain") == 8
-    assert widget.value_names == ("gain",)
 
 
 def test_script_end_tag_literal_stays_inside_script_cell(

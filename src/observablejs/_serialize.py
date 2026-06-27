@@ -5,16 +5,9 @@ from __future__ import annotations
 import html as _html
 import re
 from collections.abc import Mapping
-from typing import Any, Literal, get_args
+from typing import Any, Literal
 
 from ._themes import serialize_theme
-
-AuthorMode = Literal[
-    "js",
-    "ojs",
-    "md",
-    "html",
-]
 
 Mode = Literal[
     "js",
@@ -29,8 +22,6 @@ Mode = Literal[
     "python",
     "r",
 ]
-
-AUTHOR_MODES: frozenset[str] = frozenset(get_args(AuthorMode))
 
 SCRIPT_TYPES = {
     "js": "module",

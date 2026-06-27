@@ -9,4 +9,4 @@ docs/.jupyter-book-marimo
 __pycache__
 .ipynb_checkpoints
 
-src/pyobservablejs/static
+src/observablejs/static

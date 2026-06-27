@@ -8,15 +8,15 @@ version = "0.0.0rc1"
 description = "Observable JavaScript notebooks as reusable Python widgets"
 readme = "README.md"
 license = "MIT"
+license-files = ["LICENSE", "NOTICE"]
 authors = [{ name = "Peter Ferenc Gyarmati", email = "dev.petergy@gmail.com" }]
 maintainers = [{ name = "Peter Ferenc Gyarmati", email = "dev.petergy@gmail.com" }]
-requires-python = ">=3.10,<3.15"
+requires-python = ">=3.11"
 keywords = ["anywidget", "jupyter", "marimo", "notebooks", "observable", "visualization"]
 dependencies = ["anywidget>=0.11.0", "traitlets>=5"]
 classifiers = [
 	"Programming Language :: Python :: 3",
 	"Programming Language :: Python :: 3 :: Only",
-	"Programming Language :: Python :: 3.10",
 	"Programming Language :: Python :: 3.11",
 	"Programming Language :: Python :: 3.12",
 	"Programming Language :: Python :: 3.13",
@@ -48,7 +48,7 @@ cache-keys = [
 	{ file = "pnpm-lock.yaml" },
 	{ file = "pnpm-workspace.yaml" },
 	{ file = "vite.config.ts" },
-	{ file = "src/pyobservablejs/**/*.py" },
+	{ file = "src/observablejs/**/*.py" },
 	{ file = "js/**/*.ts" },
 	{ file = "js/**/*.mjs" },
 	{ file = "js/**/*.css" },
@@ -57,10 +57,27 @@ cache-keys = [
 
 [tool.hatch.build]
 only-packages = true
-artifacts = ["src/pyobservablejs/static/**"]
+artifacts = ["src/observablejs/static/**"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/observablejs"]
 
 [tool.hatch.build.targets.sdist.force-include]
-"js" = "js"
+"js/anywidget-bundle/runtime.ts" = "js/anywidget-bundle/runtime.ts"
+"js/anywidget-bundle/vite.ts" = "js/anywidget-bundle/vite.ts"
+"js/runtime/graph.ts" = "js/runtime/graph.ts"
+"js/runtime/index.ts" = "js/runtime/index.ts"
+"js/runtime/scope.ts" = "js/runtime/scope.ts"
+"js/runtime/values.ts" = "js/runtime/values.ts"
+"js/widget/app.ts" = "js/widget/app.ts"
+"js/widget/composition.ts" = "js/widget/composition.ts"
+"js/widget/dom.css" = "js/widget/dom.css"
+"js/widget/dom.ts" = "js/widget/dom.ts"
+"js/widget/entry.ts" = "js/widget/entry.ts"
+"js/widget/index.ts" = "js/widget/index.ts"
+"js/widget/state.ts" = "js/widget/state.ts"
+"js/widget/themes.ts" = "js/widget/themes.ts"
+"js/widget/widget.css" = "js/widget/widget.css"
 "package.json" = "package.json"
 "pnpm-lock.yaml" = "pnpm-lock.yaml"
 "pnpm-workspace.yaml" = "pnpm-workspace.yaml"
@@ -68,7 +85,7 @@ artifacts = ["src/pyobservablejs/static/**"]
 
 [tool.hatch.build.hooks.jupyter-builder]
 build-function = "hatch_jupyter_builder.npm_builder"
-ensured-targets = ["src/pyobservablejs/static/index.js", "src/pyobservablejs/static/widget.css"]
+ensured-targets = ["src/observablejs/static/index.js", "src/observablejs/static/widget.css"]
 dependencies = ["hatch-jupyter-builder>=0.5.0"]
 
 [tool.hatch.build.hooks.jupyter-builder.build-kwargs]

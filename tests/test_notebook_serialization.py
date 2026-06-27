@@ -3,7 +3,7 @@ from __future__ import annotations
 import textwrap
 from typing import Any
 
-import pyobservablejs as obs
+import observablejs as obs
 from helpers import DocumentTitle, ObservableHQResponseInstaller, ScriptTags
 
 

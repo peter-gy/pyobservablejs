@@ -4,7 +4,7 @@ import datetime as dt
 import sys
 import types
 
-import pyobservablejs as obs
+import observablejs as obs
 import pytest
 from helpers import BrowserValueSync
 
@@ -24,15 +24,15 @@ def test_python_variables_serialize_to_frontend_state() -> None:
     assert widget.variables["rows"][0]["date"] == dt.date(2026, 5, 23)
     assert wire["py_answer"] == 42
     assert wire["rows"][0]["date"] == {
-        "__pyobservablejs_type__": "datetime",
+        "__observablejs_type__": "datetime",
         "value": "2026-05-23",
     }
     assert wire["rows"][0]["value"] == {
-        "__pyobservablejs_type__": "number",
+        "__observablejs_type__": "number",
         "value": "NaN",
     }
     assert wire["raw"] == {
-        "__pyobservablejs_type__": "bytes",
+        "__observablejs_type__": "bytes",
         "value": "YWJj",
     }
     assert wire["span"] == [0, 1, 2]
@@ -50,11 +50,11 @@ def test_python_ints_serialize_as_bigints_after_js_safe_integer_boundary() -> No
     wire = widget.get_state(["_variables"])["_variables"]
     assert wire["safe"] == 9007199254740991
     assert wire["huge"] == {
-        "__pyobservablejs_type__": "bigint",
+        "__observablejs_type__": "bigint",
         "value": "9007199254740992",
     }
     assert wire["negative"] == {
-        "__pyobservablejs_type__": "bigint",
+        "__observablejs_type__": "bigint",
         "value": "-9007199254740992",
     }
 
@@ -76,7 +76,7 @@ def test_variables_update_serializes_merged_frontend_state() -> None:
     assert widget.get_state(["_variables"])["_variables"] == {
         "py_value": 8,
         "other": {
-            "__pyobservablejs_type__": "datetime",
+            "__observablejs_type__": "datetime",
             "value": "2026-05-25",
         },
     }
@@ -122,7 +122,7 @@ def test_variable_update_emits_frontend_protocol_packet() -> None:
     assert reset_update["seq"] > replace_update["seq"]
 
 
-def test_browser_values_are_python_facing_with_wire_escape_hatch(
+def test_browser_values_decode_to_python_values(
     browser_value_sync: BrowserValueSync,
 ) -> None:
     widget = obs.Notebook()
@@ -131,19 +131,17 @@ def test_browser_values_are_python_facing_with_wire_escape_hatch(
         widget,
         {
             "when": {
-                "__pyobservablejs_type__": "datetime",
+                "__observablejs_type__": "datetime",
                 "value": "2026-05-25T10:00:00.000Z",
             },
-            "raw": {"__pyobservablejs_type__": "arraybuffer", "value": "YWJj"},
+            "raw": {"__observablejs_type__": "arraybuffer", "value": "YWJj"},
         },
     )
 
-    assert widget.values["when"] == dt.datetime(2026, 5, 25, 10, tzinfo=dt.timezone.utc)
-    assert widget.values["raw"] == b"abc"
-    assert widget.wire_values["raw"] == {
-        "__pyobservablejs_type__": "arraybuffer",
-        "value": "YWJj",
-    }
+    assert widget.runtime_values["when"] == dt.datetime(
+        2026, 5, 25, 10, tzinfo=dt.timezone.utc
+    )
+    assert widget.runtime_values["raw"] == b"abc"
 
 
 def test_browser_bigint_values_decode_to_python_int(
@@ -155,13 +153,13 @@ def test_browser_bigint_values_decode_to_python_int(
         widget,
         {
             "huge": {
-                "__pyobservablejs_type__": "bigint",
+                "__observablejs_type__": "bigint",
                 "value": "9007199254740993",
             }
         },
     )
 
-    assert widget.values["huge"] == 9007199254740993
+    assert widget.runtime_values["huge"] == 9007199254740993
 
 
 def test_browser_values_with_wire_type_key_decode_as_user_objects(
@@ -173,9 +171,9 @@ def test_browser_values_with_wire_type_key_decode_as_user_objects(
         widget,
         {
             "row": {
-                "__pyobservablejs_type__": "object",
+                "__observablejs_type__": "object",
                 "value": {
-                    "__pyobservablejs_type__": "datetime",
+                    "__observablejs_type__": "datetime",
                     "value": "not a date",
                     "other": 1,
                 },
@@ -183,8 +181,8 @@ def test_browser_values_with_wire_type_key_decode_as_user_objects(
         },
     )
 
-    assert widget.values["row"] == {
-        "__pyobservablejs_type__": "datetime",
+    assert widget.runtime_values["row"] == {
+        "__observablejs_type__": "datetime",
         "value": "not a date",
         "other": 1,
     }
@@ -197,12 +195,12 @@ def test_invalid_python_var_name_raises() -> None:
 
 def test_python_variables_with_wire_type_key_serialize_as_user_objects() -> None:
     widget = obs.Notebook(
-        variables={"row": {"__pyobservablejs_type__": "not-a-wire-tag", "value": 1}}
+        variables={"row": {"__observablejs_type__": "not-a-wire-tag", "value": 1}}
     )
 
     assert widget.get_state(["_variables"])["_variables"]["row"] == {
-        "__pyobservablejs_type__": "object",
-        "value": {"__pyobservablejs_type__": "not-a-wire-tag", "value": 1},
+        "__observablejs_type__": "object",
+        "value": {"__observablejs_type__": "not-a-wire-tag", "value": 1},
     }
 
 
