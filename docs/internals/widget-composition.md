@@ -22,6 +22,12 @@ The frontend resolves child models through the host widget manager before it
 renders cells. Each child view is attached to the corresponding rendered cell.
 The parent render owns cleanup for both runtime state and child views.
 
+`NotebookCompositionState` reads `_cell_keys` and `_cell_widgets` from the
+parent model as one transport concept. `CellCompositionState` reads
+`_notebook_widget` and `_notebook_index` from a child model. Runtime rendering
+uses those state objects instead of reading raw trait names throughout the
+render path.
+
 ## Display contract
 
 Display the parent `Notebook` for the full notebook.
@@ -48,6 +54,12 @@ Cells outside the selected cell's dependency closure are not defined for direct
 display, so unrelated outputs do not run. A direct cell display marks the child
 cell as rendered and can sync graph metadata to the parent. It does not mark the
 parent notebook as fully rendered.
+
+Both parent and direct display open a `NotebookRuntimeSession`. The session owns
+the shell, scoped theme styles, attachment registry, Observable runtime,
+variable sync, and abort cleanup. Cell rendering then consumes explicit
+`CellRenderTarget` records. A parent target has one visible child model and a
+direct target has one visible cell plus hidden dependency cells.
 
 ## Failure mode
 

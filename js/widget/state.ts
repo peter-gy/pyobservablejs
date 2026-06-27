@@ -119,17 +119,6 @@ export function readNotebookOptions(
 	};
 }
 
-export function readCellRefs(value: unknown): string[] {
-	if (!Array.isArray(value)) return [];
-	return value.filter((item): item is string => typeof item === "string");
-}
-
-export function readCellKeys(model: AnyWidgetModel): string[] {
-	const value = model.get("_cell_keys");
-	if (!Array.isArray(value)) return [];
-	return value.map((item) => (typeof item === "string" ? item : ""));
-}
-
 export function markRendered(model: AnyWidgetModel): void {
 	if (model.get("_has_rendered") === true) return;
 	model.set("_has_rendered", true);

@@ -22,7 +22,6 @@ import {
 	createCellModelSync,
 	markRendered,
 	markUnrendered,
-	readCellKeys,
 	registerView,
 	resetRenderReadback,
 	syncNotebookGraph,
@@ -30,6 +29,7 @@ import {
 	type CellVariableSync,
 	type WidgetModel,
 } from "./state";
+import { readNotebookCompositionState, type NotebookCompositionState } from "./composition-state";
 
 const MODEL_LOOKUP_TIMEOUT_MS = 1_000;
 const MODEL_LOOKUP_RETRY_MS = 25;
@@ -48,6 +48,49 @@ type RenderCellOptions = {
 type RuntimeDefinition = Parameters<NotebookRuntime["define"]>[1];
 type RuntimeObserver = Parameters<NotebookRuntime["main"]["variable"]>[0];
 type DefinitionInput = { definition: RuntimeCellDefinition } | { error: unknown };
+
+type CellRenderTarget = {
+	index: number;
+	wrapper: HTMLElement;
+	cell: Cell;
+	showSource: boolean;
+	visible: boolean;
+	sync?: CellVariableSync;
+	cellName?: string;
+};
+
+type CellRenderContext = {
+	runtime: NotebookRuntime;
+	signal: AbortSignal;
+	pythonVariableNames: Set<string>;
+	analysis: NotebookAnalysis;
+};
+
+type RenderComposedCellsOptions = {
+	model: RenderProps<WidgetModel>["model"];
+	root: HTMLElement;
+	notebook: Notebook;
+	composition: NotebookCompositionState;
+	analysis: NotebookAnalysis;
+	runtime: NotebookRuntime;
+	options: NotebookOptions;
+	variablesSync: RuntimeVariablesSync;
+	signal: AbortSignal;
+	host: CompositionHost;
+};
+
+type RenderStandaloneCellProjectionOptions = {
+	parentModel: RenderProps<WidgetModel>["model"];
+	cellModel: RenderProps<WidgetModel>["model"];
+	root: HTMLElement;
+	notebook: Notebook;
+	cellIndex: number;
+	analysis: NotebookAnalysis;
+	runtime: NotebookRuntime;
+	options: NotebookOptions;
+	variablesSync: RuntimeVariablesSync;
+	signal: AbortSignal;
+};
 
 export type CompositionHost = {
 	getModel(ref: string, signal?: AbortSignal): Promise<RenderProps<WidgetModel>["model"] | undefined>;
@@ -86,6 +129,20 @@ export async function resolveCellModel(
 	if (signal.aborted) throw new Error(`Unable to resolve cell widget ${ref}`);
 	if (!childModel) throw new Error(`Unknown widget model ${ref}`);
 	return childModel;
+}
+
+export async function resolveNotebookModel(
+	host: CompositionHost,
+	ref: string,
+	signal: AbortSignal,
+): Promise<RenderProps<WidgetModel>["model"]> {
+	parseWidgetRef(ref);
+	if (signal.aborted) throw new Error(`Unable to resolve parent Notebook widget ${ref}`);
+	const parentModel = await host.getModel(ref, signal);
+	if (signal.aborted) throw new Error(`Unable to resolve parent Notebook widget ${ref}`);
+	if (!parentModel) throw new Error(`Unknown parent Notebook widget ${ref}`);
+	if (parentModel.get("role") !== "notebook") throw new Error(`Parent widget ${ref} is not a Notebook`);
+	return parentModel;
 }
 
 export function parseWidgetRef(ref: string): string {
@@ -159,27 +216,32 @@ function waitForModelRetry(signal: AbortSignal | undefined): Promise<void> {
  * Resolve child widgets, bind each one to the parent runtime, and render them
  * in notebook order.
  */
-export async function renderComposedCells(
-	model: RenderProps<WidgetModel>["model"],
-	root: HTMLElement,
-	notebook: Notebook,
-	cellRefs: string[],
-	analysis: NotebookAnalysis,
-	runtime: NotebookRuntime,
-	options: NotebookOptions,
-	variablesSync: RuntimeVariablesSync,
-	signal: AbortSignal,
-	host: CompositionHost,
-	cellKeys: readonly string[],
-): Promise<void> {
+export async function renderComposedCells({
+	model,
+	root,
+	notebook,
+	composition,
+	analysis,
+	runtime,
+	options,
+	variablesSync,
+	signal,
+	host,
+}: RenderComposedCellsOptions): Promise<void> {
 	const cells = notebook.cells;
 	const wrappers = cells.map((_, index) => {
-		return appendCellWrapper(root, { composedCellRef: cellRefs[index] ?? "" });
+		return appendCellWrapper(root, { composedCellRef: composition.cellRefs[index] ?? "" });
 	});
 	const cellModels: Array<RenderProps<WidgetModel>["model"] | undefined> = Array.from(
 		{ length: cells.length },
 		() => undefined,
 	);
+	const renderContext: CellRenderContext = {
+		runtime,
+		signal,
+		pythonVariableNames: new Set(Object.keys(options.variables)),
+		analysis,
+	};
 	const syncValues = () => {
 		const resolved = resolvedCellModels(cellModels);
 		syncNotebookValues(model, resolved);
@@ -191,7 +253,7 @@ export async function renderComposedCells(
 	};
 	syncValues();
 
-	const resolutions = cellRefs.map((ref, index) =>
+	const resolutions = composition.cellRefs.map((ref, index) =>
 		resolveCellModel(host, ref, signal).then(
 			(childModel) => ({ childModel, index }),
 			(error: unknown) => ({ error, index }),
@@ -200,7 +262,7 @@ export async function renderComposedCells(
 	for (const resolution of resolutions) void resolution.then((result) => renderResolvedCell(result));
 	await Promise.all(resolutions);
 	if (!signal.aborted) {
-		syncNotebookGraph(model, notebook, cellKeys, analysis);
+		syncNotebookGraph(model, notebook, composition.cellKeys, analysis);
 		variablesSync.applyInitialViews();
 	}
 
@@ -221,17 +283,18 @@ export async function renderComposedCells(
 		resetRenderReadback(childModel);
 		bindResolvedCellModel(childModel);
 		const sync = createCellModelSync(childModel, signal, variablesSync);
-		renderCell({
-			wrapper,
-			runtime,
-			cell,
-			showSource: options.showSource,
-			sync,
-			signal,
-			cellName: sync.model.get("key") || sync.model.get("name"),
-			pythonVariableNames: new Set(Object.keys(options.variables)),
-			analysis: analysis.cells[resolution.index],
-		});
+		renderCellTarget(
+			{
+				index: resolution.index,
+				wrapper,
+				cell,
+				showSource: options.showSource,
+				visible: true,
+				sync,
+				cellName: sync.model.get("key") || sync.model.get("name"),
+			},
+			renderContext,
+		);
 	}
 
 	function bindResolvedCellModel(cellModel: RenderProps<WidgetModel>["model"]): void {
@@ -256,26 +319,65 @@ export async function renderComposedCells(
  * into this widget output. Dependency cells are defined in the runtime, but
  * only the requested cell is displayed and synced to the child model.
  */
-export function renderStandaloneCellProjection(
-	parentModel: RenderProps<WidgetModel>["model"],
-	cellModel: RenderProps<WidgetModel>["model"],
-	root: HTMLElement,
-	notebook: Notebook,
-	cellIndex: number,
-	analysis: NotebookAnalysis,
-	runtime: NotebookRuntime,
-	options: NotebookOptions,
-	variablesSync: RuntimeVariablesSync,
-	signal: AbortSignal,
-): void {
+export function renderStandaloneCellProjection({
+	parentModel,
+	cellModel,
+	root,
+	notebook,
+	cellIndex,
+	analysis,
+	runtime,
+	options,
+	variablesSync,
+	signal,
+}: RenderStandaloneCellProjectionOptions): void {
 	const cells = notebook.cells;
 	if (!Number.isInteger(cellIndex) || cellIndex < 0 || cellIndex >= cells.length) {
 		throw new Error(`NotebookCell index ${cellIndex} is outside the parent Notebook`);
 	}
 	resetRenderReadback(cellModel);
-	syncNotebookGraph(parentModel, notebook, readCellKeys(parentModel), analysis);
+	syncNotebookGraph(parentModel, notebook, readNotebookCompositionState(parentModel).cellKeys, analysis);
 
+	const targets = standaloneCellRenderTargets({
+		root,
+		cells,
+		cellIndex,
+		cellModel,
+		options,
+		variablesSync,
+		signal,
+		analysis,
+	});
+	renderCellTargets(targets, {
+		runtime,
+		signal,
+		pythonVariableNames: new Set(Object.keys(options.variables)),
+		analysis,
+	});
+	variablesSync.applyInitialViews();
+}
+
+function standaloneCellRenderTargets({
+	root,
+	cells,
+	cellIndex,
+	cellModel,
+	options,
+	variablesSync,
+	signal,
+	analysis,
+}: {
+	root: HTMLElement;
+	cells: readonly Cell[];
+	cellIndex: number;
+	cellModel: RenderProps<WidgetModel>["model"];
+	options: NotebookOptions;
+	variablesSync: RuntimeVariablesSync;
+	signal: AbortSignal;
+	analysis: NotebookAnalysis;
+}): CellRenderTarget[] {
 	const renderIndexes = standaloneRenderIndexes(analysis, cellIndex);
+	const targets: CellRenderTarget[] = [];
 	for (let index = 0; index < cells.length; index++) {
 		if (!renderIndexes.has(index)) continue;
 		const cell = cells[index];
@@ -286,20 +388,17 @@ export function renderStandaloneCellProjection(
 			wrapper.hidden = true;
 			wrapper.setAttribute("aria-hidden", "true");
 		}
-		const sync = selected ? createCellModelSync(cellModel, signal, variablesSync) : undefined;
-		renderCell({
+		targets.push({
+			index,
 			wrapper,
-			runtime,
 			cell,
 			showSource: selected && options.showSource,
-			sync,
-			signal,
+			visible: selected,
+			sync: selected ? createCellModelSync(cellModel, signal, variablesSync) : undefined,
 			cellName: selected ? cellModel.get("key") || cellModel.get("name") : undefined,
-			pythonVariableNames: new Set(Object.keys(options.variables)),
-			analysis: analysis.cells[index],
 		});
 	}
-	variablesSync.applyInitialViews();
+	return targets;
 }
 
 function standaloneRenderIndexes(analysis: NotebookAnalysis, cellIndex: number): Set<number> {
@@ -327,6 +426,24 @@ function resolvedCellModels(
 	cellModels: Array<RenderProps<WidgetModel>["model"] | undefined>,
 ): Array<RenderProps<WidgetModel>["model"]> {
 	return cellModels.filter((cellModel): cellModel is RenderProps<WidgetModel>["model"] => cellModel !== undefined);
+}
+
+function renderCellTargets(targets: readonly CellRenderTarget[], context: CellRenderContext): void {
+	for (const target of targets) renderCellTarget(target, context);
+}
+
+function renderCellTarget(target: CellRenderTarget, context: CellRenderContext): void {
+	renderCell({
+		wrapper: target.wrapper,
+		runtime: context.runtime,
+		cell: target.cell,
+		showSource: target.visible && target.showSource,
+		sync: target.sync,
+		signal: context.signal,
+		cellName: target.cellName,
+		pythonVariableNames: context.pythonVariableNames,
+		analysis: context.analysis.cells[target.index],
+	});
 }
 
 function renderCell({
