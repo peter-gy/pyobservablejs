@@ -5,8 +5,9 @@ description: NotebookCell values and NotebookGraph metadata.
 
 # Values and graph
 
-The browser synchronizes values and graph metadata back to Python after the
-notebook renders.
+The browser synchronizes values and graph metadata back to Python after a
+notebook or cell renders. Graph metadata and value readback have separate
+lifecycle states.
 
 ```python
 cell = notebook.cell_by_key("gain_control")
@@ -26,6 +27,7 @@ notebook.graph
 | ----------------- | ----------------------------------------------- |
 | `key`             | Python cell handle                              |
 | `name`            | Notebook Kit cell name                          |
+| `has_rendered`    | Whether this cell has synced a browser output   |
 | `info`            | `CellInfo` after graph sync                     |
 | `defines`         | Variables defined by the cell                   |
 | `references`      | Variables read by the cell                      |
@@ -36,19 +38,22 @@ notebook.graph
 | `value(name)`     | Decoded synchronized value for `name`           |
 | `only_value()`    | The only decoded value, when exactly one exists |
 
-Before render, `values`, `value(name)`, `only_value()`, and `info` raise
+Before the cell renders, `values`, `value(name)`, and `only_value()` raise
+`NotRenderedError`. Before graph metadata syncs, `info` raises
 `NotRenderedError`. After render, `value(name)` raises `KeyError` when `name`
 has not synchronized. `only_value()` raises `KeyError` when no value has
 synchronized or when the cell exposes more than one value.
 
 ## `NotebookGraph`
 
-`notebook.graph` raises `NotRenderedError` before render. After graph sync, it
-returns an immutable `NotebookGraph` with `cells` and `edges`. Malformed browser
-entries are dropped while decoding the synced graph trait.
+`notebook.graph` raises `NotRenderedError` before graph metadata syncs. A full
+notebook render and a direct `NotebookCell` render can both sync graph metadata.
+After graph sync, it returns an immutable `NotebookGraph` with `cells` and
+`edges`. Malformed browser entries are dropped while decoding the synced graph
+trait.
 
 ```python
-if notebook.has_rendered:
+if notebook.has_graph_snapshot:
     graph = notebook.graph
     graph.defines
     graph.references
@@ -56,6 +61,11 @@ if notebook.has_rendered:
     graph.cell(0)
     graph.cell_for_variable("double")
 ```
+
+`notebook.has_graph_snapshot` reports whether graph metadata is available.
+`notebook.has_rendered` reports whether the full notebook output has rendered.
+Directly displaying one `NotebookCell` can make `notebook.graph` available
+without making `notebook.runtime_values` or `notebook.cell_values()` available.
 
 | Attribute             | Behavior                                                 |
 | --------------------- | -------------------------------------------------------- |

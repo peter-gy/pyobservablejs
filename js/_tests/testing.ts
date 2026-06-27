@@ -1,4 +1,5 @@
 import type { RenderProps } from "@anywidget/types";
+import type { NotebookGraph } from "@/runtime/graph";
 import { SELECTORS } from "@/widget/dom";
 import type { WidgetModel } from "@/widget/state";
 
@@ -94,6 +95,13 @@ export function variableValue(model: Model, name: string): unknown | undefined {
 	const variables = model.get("_values");
 	if (variables === null || typeof variables !== "object" || Array.isArray(variables)) return undefined;
 	return (variables as Record<string, unknown>)[name];
+}
+
+export function graphValue(model: Model): NotebookGraph | undefined {
+	const graph = model.get("_graph");
+	if (graph === null || typeof graph !== "object" || Array.isArray(graph)) return undefined;
+	const value = graph as Partial<NotebookGraph>;
+	return Array.isArray(value.cells) && Array.isArray(value.edges) ? (graph as NotebookGraph) : undefined;
 }
 
 export async function waitFor<T>(read: () => T | undefined, timeoutMs = 1000): Promise<T> {

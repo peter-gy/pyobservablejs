@@ -20,7 +20,11 @@ import { appendCellWrapper, createCellOutput, createTopLevelError, renderSource 
 import {
 	applyModelVariablesToViews,
 	createCellModelSync,
+	markRendered,
+	markUnrendered,
+	readCellKeys,
 	registerView,
+	resetRenderReadback,
 	syncNotebookGraph,
 	syncNotebookValues,
 	type CellVariableSync,
@@ -166,6 +170,7 @@ export async function renderComposedCells(
 	variablesSync: RuntimeVariablesSync,
 	signal: AbortSignal,
 	host: CompositionHost,
+	cellKeys: readonly string[],
 ): Promise<void> {
 	const cells = notebook.cells;
 	const wrappers = cells.map((_, index) => {
@@ -175,7 +180,15 @@ export async function renderComposedCells(
 		{ length: cells.length },
 		() => undefined,
 	);
-	const syncValues = () => syncNotebookValues(model, resolvedCellModels(cellModels));
+	const syncValues = () => {
+		const resolved = resolvedCellModels(cellModels);
+		syncNotebookValues(model, resolved);
+		if (resolved.length === cells.length && resolved.every((cellModel) => cellModel.get("_has_rendered") === true)) {
+			markRendered(model);
+		} else {
+			markUnrendered(model);
+		}
+	};
 	syncValues();
 
 	const resolutions = cellRefs.map((ref, index) =>
@@ -187,7 +200,7 @@ export async function renderComposedCells(
 	for (const resolution of resolutions) void resolution.then((result) => renderResolvedCell(result));
 	await Promise.all(resolutions);
 	if (!signal.aborted) {
-		syncNotebookGraph(model, notebook, cellModels, analysis);
+		syncNotebookGraph(model, notebook, cellKeys, analysis);
 		variablesSync.applyInitialViews();
 	}
 
@@ -205,6 +218,7 @@ export async function renderComposedCells(
 		if (!cell) return;
 		const childModel = resolution.childModel;
 		cellModels[resolution.index] = childModel;
+		resetRenderReadback(childModel);
 		bindResolvedCellModel(childModel);
 		const sync = createCellModelSync(childModel, signal, variablesSync);
 		renderCell({
@@ -222,11 +236,13 @@ export async function renderComposedCells(
 
 	function bindResolvedCellModel(cellModel: RenderProps<WidgetModel>["model"]): void {
 		syncValues();
+		cellModel.on("change:_has_rendered", syncValues);
 		cellModel.on("change:_value_names", syncValues);
 		cellModel.on("change:_values", syncValues);
 		signal.addEventListener(
 			"abort",
 			() => {
+				cellModel.off("change:_has_rendered", syncValues);
 				cellModel.off("change:_value_names", syncValues);
 				cellModel.off("change:_values", syncValues);
 			},
@@ -256,14 +272,12 @@ export function renderStandaloneCellProjection(
 	if (!Number.isInteger(cellIndex) || cellIndex < 0 || cellIndex >= cells.length) {
 		throw new Error(`NotebookCell index ${cellIndex} is outside the parent Notebook`);
 	}
-	const cellModels: Array<RenderProps<WidgetModel>["model"] | undefined> = Array.from(
-		{ length: cells.length },
-		() => undefined,
-	);
-	cellModels[cellIndex] = cellModel;
-	syncNotebookGraph(parentModel, notebook, cellModels, analysis);
+	resetRenderReadback(cellModel);
+	syncNotebookGraph(parentModel, notebook, readCellKeys(parentModel), analysis);
 
+	const renderIndexes = standaloneRenderIndexes(analysis, cellIndex);
 	for (let index = 0; index < cells.length; index++) {
+		if (!renderIndexes.has(index)) continue;
 		const cell = cells[index];
 		if (!cell) continue;
 		const selected = index === cellIndex;
@@ -286,6 +300,27 @@ export function renderStandaloneCellProjection(
 		});
 	}
 	variablesSync.applyInitialViews();
+}
+
+function standaloneRenderIndexes(analysis: NotebookAnalysis, cellIndex: number): Set<number> {
+	const indexById = new Map(analysis.graph.cells.map((cell) => [cell.id, cell.index]));
+	const sourceIndexesByTarget = new Map<number, number[]>();
+	for (const edge of analysis.graph.edges) {
+		const sourceIndex = indexById.get(edge.from);
+		const targetIndex = indexById.get(edge.to);
+		if (sourceIndex === undefined || targetIndex === undefined) continue;
+		const sources = sourceIndexesByTarget.get(targetIndex);
+		if (sources) sources.push(sourceIndex);
+		else sourceIndexesByTarget.set(targetIndex, [sourceIndex]);
+	}
+	const indexes = new Set<number>();
+	const visit = (index: number) => {
+		if (indexes.has(index)) return;
+		indexes.add(index);
+		for (const sourceIndex of sourceIndexesByTarget.get(index) ?? []) visit(sourceIndex);
+	};
+	visit(cellIndex);
+	return indexes;
 }
 
 function resolvedCellModels(
@@ -343,12 +378,13 @@ function defineCell(
 				variables: [],
 			},
 			createRuntimeDefinition(cell, sourceDefinition, { document: runtimeDocument(runtime) }),
-			sync ? createCellObserver(sync, sourceDefinition, displayName) : observe,
+			sync ? createCellObserver(sync, sourceDefinition, displayName, exposed.length > 0) : observe,
 		);
 		if (sync) defineSyncObservers(runtime, sync, exposed);
 		if (sync) applyModelVariablesToViews(sync);
 	} catch (error) {
 		root.appendChild(createTopLevelError(error));
+		if (sync) markRendered(sync.model);
 	}
 }
 
@@ -409,7 +445,9 @@ function createCellObserver(
 	sync: CellVariableSync,
 	definition: RuntimeCellDefinition,
 	displayName: string | null,
+	hasSyncedNames: boolean,
 ): typeof observe {
+	const displayObserverCompletesReadback = displayName !== null || !hasSyncedNames;
 	return (state, runtimeDefinition) => {
 		const observer = observe(state, runtimeDefinition);
 		const fulfilled = observer.fulfilled.bind(observer);
@@ -417,32 +455,47 @@ function createCellObserver(
 			const viewName = viewVariableName(definition);
 			if (viewName) registerView(sync, viewName, value);
 			if (displayName) sync.setVariable(displayName, toWireValue(value));
+			if (displayObserverCompletesReadback) markRendered(sync.model);
 			fulfilled(value);
 		};
 		const rejected = observer.rejected.bind(observer);
 		observer.rejected = (error: unknown) => {
 			if (displayName) sync.setVariable(displayName, toWireValue(error));
+			if (displayObserverCompletesReadback) markRendered(sync.model);
 			rejected(error);
 		};
 		return observer;
 	};
 }
 
-function createSyncObserver(sync: CellVariableSync, name: string): RuntimeObserver {
+function createSyncObserver(sync: CellVariableSync, name: string, onSettled: () => void): RuntimeObserver {
+	let settled = false;
+	const settle = () => {
+		if (settled) return;
+		settled = true;
+		onSettled();
+	};
 	return {
 		pending() {},
 		fulfilled(value: unknown) {
 			sync.setVariable(name, toWireValue(value));
+			settle();
 		},
 		rejected(error: unknown) {
 			sync.setVariable(name, toWireValue(error));
+			settle();
 		},
 	};
 }
 
 function defineSyncObservers(runtime: NotebookRuntime, sync: CellVariableSync, names: string[]): void {
+	const pending = new Set(names);
+	const settle = (name: string) => {
+		pending.delete(name);
+		if (pending.size === 0) markRendered(sync.model);
+	};
 	for (const name of names) {
-		runtime.main.variable(createSyncObserver(sync, name)).define([name], (value: unknown) => value);
+		runtime.main.variable(createSyncObserver(sync, name, () => settle(name))).define([name], (value: unknown) => value);
 	}
 }
 

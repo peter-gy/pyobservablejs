@@ -99,6 +99,7 @@ class NotebookCell(_ObservableWidget):
     name = traitlets.Unicode("").tag(sync=True)
     _notebook_widget = _WidgetReferenceTrait().tag(sync=True)
     _notebook_index = traitlets.Int(-1).tag(sync=True)
+    _has_rendered = traitlets.Bool(False).tag(sync=True)
     _value_names = traitlets.List(traitlets.Unicode(), default_value=[]).tag(sync=True)
     _values = traitlets.Dict(default_value={}).tag(sync=True)
 
@@ -112,8 +113,16 @@ class NotebookCell(_ObservableWidget):
         self.set_trait("_notebook_index", index)
 
     def _require_rendered(self) -> None:
-        if self._notebook is not None:
-            self._notebook._require_rendered()
+        if not self.has_rendered:
+            raise NotRenderedError(
+                "NotebookCell readback is available after the cell renders in a browser"
+            )
+
+    @property
+    def has_rendered(self) -> bool:
+        """Whether this cell has synced a rendered browser output."""
+
+        return bool(self._has_rendered)
 
     @property
     def info(self) -> CellInfo:
@@ -121,7 +130,7 @@ class NotebookCell(_ObservableWidget):
 
         if self._notebook is None or self._notebook_index < 0:
             raise NotRenderedError("NotebookCell is not bound to a rendered Notebook")
-        self._notebook._require_rendered()
+        self._notebook._require_graph_snapshot()
         graph = self._notebook.graph
         info = graph.cell(self._notebook_index)
         if info is None:
@@ -190,9 +199,11 @@ class Notebook(_ObservableWidget):
     _base_url = traitlets.Unicode("").tag(sync=True)
     _variables = traitlets.Dict(default_value={}).tag(sync=True)
     _variable_update = traitlets.Dict(default_value={}).tag(sync=True)
+    _has_rendered = traitlets.Bool(False).tag(sync=True)
     _graph = traitlets.Dict(default_value={}).tag(sync=True)
     _values = traitlets.Dict(default_value={}).tag(sync=True)
     _options = traitlets.Dict().tag(sync=True)
+    _cell_keys = traitlets.List(traitlets.Unicode(), default_value=[]).tag(sync=True)
     _cell_widgets = traitlets.List(
         anywidget.WidgetTrait(),
         default_value=[],
@@ -295,6 +306,7 @@ class Notebook(_ObservableWidget):
             attachments=model.attachments,
             variables=variables,
             show_pinned_source=show_pinned_source,
+            cell_keys=model.cell_keys,
             cell_widgets=_cell_widgets_for_model(model),
         )
 
@@ -307,6 +319,7 @@ class Notebook(_ObservableWidget):
         attachments: Mapping[str, FileAttachment],
         variables: Mapping[str, Any] | None,
         show_pinned_source: bool,
+        cell_keys: Sequence[str],
         cell_widgets: Sequence[NotebookCell],
     ) -> None:
         self._variable_values = copy_variables(variables)
@@ -323,6 +336,7 @@ class Notebook(_ObservableWidget):
                 _attachments=dict(attachments),
                 _variables=serialize_variables(self._variable_values),
                 _options={"show_source": show_pinned_source},
+                _cell_keys=list(cell_keys),
                 _cell_widgets=list(cell_widgets),
             )
         finally:
@@ -456,7 +470,13 @@ class Notebook(_ObservableWidget):
 
     @property
     def has_rendered(self) -> bool:
-        """Whether the browser has synced a rendered notebook snapshot."""
+        """Whether the browser has synced a full notebook render."""
+
+        return bool(self._has_rendered)
+
+    @property
+    def has_graph_snapshot(self) -> bool:
+        """Whether the browser has synced notebook graph metadata."""
 
         return (
             isinstance(self._graph, Mapping)
@@ -470,11 +490,17 @@ class Notebook(_ObservableWidget):
                 "Notebook readback is available after the widget renders in a browser"
             )
 
+    def _require_graph_snapshot(self) -> None:
+        if not self.has_graph_snapshot:
+            raise NotRenderedError(
+                "Notebook graph metadata is available after a notebook or cell renders in a browser"
+            )
+
     @property
     def graph(self) -> NotebookGraph:
         """Symbolic cell graph synced from the browser runtime."""
 
-        self._require_rendered()
+        self._require_graph_snapshot()
         graph = graph_from_raw(self._graph)
         if graph is None:
             raise NotRenderedError("Browser graph snapshot is unavailable")

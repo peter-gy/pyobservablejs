@@ -36,6 +36,8 @@ describe("widget entrypoint", () => {
 
 		await waitFor(() => composedText(el, "42"));
 		expect(variableValue(model, "answer")).toBe(42);
+		expect(model.get("_has_rendered")).toBe(true);
+		expect(parentModel.get("_has_rendered")).toBeUndefined();
 		expect(hasSavedTrait(model, "_anywidget_bundle_module_request")).toBe(false);
 		controller.abort();
 	});

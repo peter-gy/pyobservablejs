@@ -6,8 +6,8 @@ description: Read browser-synchronized values and graph metadata from Python.
 # Cell values
 
 `NotebookCell` objects expose values and graph metadata synchronized from the
-browser. Display the parent `Notebook` first, then read values from a later
-Python cell.
+browser. Display the parent `Notebook` for full notebook values, or display a
+single `NotebookCell` for that cell output.
 
 ```{marimo-config}
 :pyproject:
@@ -38,7 +38,8 @@ view
 ```
 
 Move `gain` from 5 to 8. The readout changes to `gain is 8 and double is 16`.
-After render, `notebook.value("double")` returns the synchronized browser value.
+After the full notebook renders, `notebook.value("double")` returns the
+synchronized browser value.
 
 After the widget has rendered, the Python object can read synchronized values.
 
@@ -50,11 +51,12 @@ runtime_values = notebook.runtime_values
 cell_values = notebook.cell_values()
 ```
 
-The graph is also browser-produced. It is `None` before the browser renders.
+The graph is also browser-produced. `notebook.graph` raises `NotRenderedError`
+before graph metadata syncs.
 
 ```python
-graph = notebook.graph
-if graph is not None:
+if notebook.has_graph_snapshot:
+    graph = notebook.graph
     double_cell = notebook.cell_for_variable("double")
     defined_names = double_cell.defines
     referenced_names = double_cell.references
@@ -66,14 +68,16 @@ if graph is not None:
 returns a cell by the Python helper `key`.
 
 `notebook.cell_for_variable(name)` uses graph metadata to find the cell that
-defines an Observable variable. It raises `NotRenderedError` before render and
-`KeyError` when no cell defines the variable or when more than one cell defines
-it.
+defines an Observable variable. It raises `NotRenderedError` before graph sync
+and `KeyError` when no cell defines the variable or when more than one cell
+defines it.
 
 `NotebookCell.value(name)` reads a named synchronized value from one cell.
 `NotebookCell.only_value()` is available when the cell exposes exactly one
 value.
 
-`notebook.runtime_values` contains notebook-level values synchronized by the
-browser runtime. `notebook.cell_values()` returns values grouped by cell helper
-name.
+`notebook.runtime_values` contains notebook-level values synchronized by a full
+notebook render. `notebook.cell_values()` returns values grouped by cell helper
+name after the full notebook renders. Displaying one `NotebookCell` can sync that
+cell's `values` and the parent graph without making full notebook values
+available.

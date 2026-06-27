@@ -183,11 +183,17 @@ def browser_value_sync() -> BrowserValueSync:
         value_names: Sequence[str] | None = None,
     ) -> None:
         notebook = getattr(widget, "_notebook", None)
-        if notebook is not None and not notebook.has_rendered:
+        if notebook is not None and not notebook.has_graph_snapshot:
             notebook.set_trait("_graph", {"cells": [], "edges": []})
-        elif widget.has_trait("_graph") and not widget.has_rendered:
+        elif (
+            widget.has_trait("_graph")
+            and widget.has_trait("_has_rendered")
+            and not widget.has_graph_snapshot
+        ):
             widget.set_trait("_graph", {"cells": [], "edges": []})
         widget.set_trait("_values", values)
+        if widget.has_trait("_has_rendered"):
+            widget.set_trait("_has_rendered", True)
         if widget.has_trait("_value_names"):
             widget.set_trait(
                 "_value_names", list(value_names if value_names is not None else values)

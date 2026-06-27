@@ -2,12 +2,11 @@
 
 import type { RenderProps } from "@anywidget/types";
 import { describe, expect, test } from "vitest";
-import type { NotebookGraph } from "@/runtime/graph";
 import { SELECTORS } from "@/widget/dom";
 import type { WidgetModel } from "@/widget/state";
 import widget from "@/widget/app";
 import { composedText } from "@/_tests/testing";
-import { createHost, createModel, hasSavedTrait, variableValue, waitFor } from "@/_tests/testing";
+import { createHost, createModel, graphValue, hasSavedTrait, variableValue, waitFor } from "@/_tests/testing";
 
 describe("widget graph and notebook values", () => {
 	test("rerenders the scoped notebook root when the theme trait changes", async () => {
@@ -59,6 +58,7 @@ describe("widget graph and notebook values", () => {
 			_attachments: {},
 			_variables: {},
 			_options: {},
+			_cell_keys: ["answer", "readout"],
 			_cell_widgets: ["anywidget:cell-1", "anywidget:cell-2"],
 		});
 		const childModels = new Map([
@@ -93,7 +93,7 @@ describe("widget graph and notebook values", () => {
 			host: createHost(childModels),
 		} as unknown as RenderProps<WidgetModel>);
 
-		const graph = await waitFor(() => model.get("_graph") as NotebookGraph | undefined);
+		const graph = await waitFor(() => graphValue(model));
 
 		expect(hasSavedTrait(model, "_graph")).toBe(true);
 		expect(graph.cells.map((cell) => cell.key)).toEqual(["answer", "readout"]);
@@ -101,6 +101,7 @@ describe("widget graph and notebook values", () => {
 		expect(graph.cells[1]?.references).toEqual(["answer"]);
 		expect(graph.edges).toHaveLength(1);
 		expect(graph.edges).toContainEqual({ from: 1, to: 2, variable: "answer" });
+		expect(await waitFor(() => (model.get("_has_rendered") === true ? true : undefined))).toBe(true);
 		controller.abort();
 	});
 
@@ -112,7 +113,7 @@ describe("widget graph and notebook values", () => {
 					{
 						id: 1,
 						mode: "ojs",
-						value: "viewof gain = Inputs.range([0, 11], {value: 5})",
+						value: "gain = 5",
 					},
 					{ id: 2, mode: "ojs", value: "gain * 2" },
 				],
@@ -151,7 +152,7 @@ describe("widget graph and notebook values", () => {
 			signal: controller.signal,
 			host: createHost(childModels),
 		} as unknown as RenderProps<WidgetModel>);
-		await waitFor(() => model.get("_graph") as NotebookGraph | undefined);
+		await waitFor(() => graphValue(model));
 
 		const gainModel = childModels.get("anywidget:gain");
 		gainModel?.set("_value_names", ["gain"]);
@@ -508,6 +509,7 @@ describe("widget graph and notebook values", () => {
 			_attachments: {},
 			_variables: {},
 			_options: {},
+			_cell_keys: ["answer", "double"],
 			_cell_widgets: ["anywidget:source-1", "anywidget:source-2"],
 		});
 		const childModels = new Map([
@@ -541,7 +543,7 @@ describe("widget graph and notebook values", () => {
 			host: createHost(childModels),
 		} as unknown as RenderProps<WidgetModel>);
 
-		const graph = await waitFor(() => model.get("_graph") as NotebookGraph | undefined);
+		const graph = await waitFor(() => graphValue(model));
 
 		expect(graph.cells.map((cell) => cell.id)).toEqual([1, 2]);
 		expect(graph.cells.map((cell) => cell.key)).toEqual(["answer", "double"]);

@@ -56,9 +56,11 @@ export type WidgetModel = {
 	_graph?: NotebookGraph;
 	_values?: Record<string, unknown>;
 	_value_names?: string[];
+	_has_rendered?: boolean;
 	_options?: {
 		show_source?: boolean;
 	};
+	_cell_keys?: string[];
 	_cell_widgets?: string[];
 };
 
@@ -71,6 +73,7 @@ export const NOTEBOOK_MODEL_CHANGE_EVENTS = [
 	"change:_attachments",
 	"change:_base_url",
 	"change:_options",
+	"change:_cell_keys",
 	"change:_cell_widgets",
 ] as const;
 
@@ -119,6 +122,47 @@ export function readNotebookOptions(
 export function readCellRefs(value: unknown): string[] {
 	if (!Array.isArray(value)) return [];
 	return value.filter((item): item is string => typeof item === "string");
+}
+
+export function readCellKeys(model: AnyWidgetModel): string[] {
+	const value = model.get("_cell_keys");
+	if (!Array.isArray(value)) return [];
+	return value.map((item) => (typeof item === "string" ? item : ""));
+}
+
+export function markRendered(model: AnyWidgetModel): void {
+	if (model.get("_has_rendered") === true) return;
+	model.set("_has_rendered", true);
+	model.save_changes();
+}
+
+export function markUnrendered(model: AnyWidgetModel): void {
+	if (model.get("_has_rendered") === false) return;
+	model.set("_has_rendered", false);
+	model.save_changes();
+}
+
+export function resetRenderReadback(model: AnyWidgetModel): void {
+	let changed = false;
+	if (model.get("_has_rendered") !== false) {
+		model.set("_has_rendered", false);
+		changed = true;
+	}
+	if (!sameWireValue(model.get("_values"), {})) {
+		model.set("_values", {});
+		changed = true;
+	}
+	if (Array.isArray(model.get("_value_names")) && !sameWireValue(model.get("_value_names"), [])) {
+		model.set("_value_names", []);
+		changed = true;
+	}
+	if (changed) model.save_changes();
+}
+
+export function resetGraphSnapshot(model: AnyWidgetModel): void {
+	if (sameWireValue(model.get("_graph"), {})) return;
+	model.set("_graph", {} as NotebookGraph);
+	model.save_changes();
 }
 
 type ModelViewState = {
@@ -296,10 +340,9 @@ function createBaseSync(
 export function syncNotebookGraph(
 	model: RenderProps<WidgetModel>["model"],
 	notebook: Notebook,
-	cellModels: Array<RenderProps<WidgetModel>["model"] | undefined> = [],
+	keys: readonly string[] = [],
 	analysis?: NotebookAnalysis,
 ): void {
-	const keys = cellModels.map((cellModel) => cellModel?.get("key") ?? "");
 	const graph = analysis ? createNotebookGraphFromAnalysis(analysis, keys) : createNotebookGraph(notebook, keys);
 	if (!sameWireValue(model.get("_graph"), graph)) {
 		model.set("_graph", graph);

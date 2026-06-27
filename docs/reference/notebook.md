@@ -79,8 +79,12 @@ notebook.value("answer")
 notebook.graph
 ```
 
-Values and graph metadata are browser-synchronized. Before the widget renders in
-a browser, these readback APIs raise `NotRenderedError`.
+Values and graph metadata are browser-synchronized. `notebook.graph` is
+available after graph metadata syncs from either a full notebook display or a
+direct `NotebookCell` display. `notebook.runtime_values`,
+`notebook.cell_values()`, and `notebook.value(name)` require a full notebook
+render. These readback APIs raise `NotRenderedError` before their lifecycle
+state is available.
 
 ## Source output
 

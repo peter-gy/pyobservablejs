@@ -44,6 +44,7 @@ def test_notebook_cell_accessors_return_child_widget_instances() -> None:
     assert widget.cell_by_key("answer").key == "answer"
     assert widget.cell_at(1) is widget.cells[1]
     assert widget.cell_by_key("answer") is widget.cells[1]
+    assert widget.get_state(["_cell_keys"])["_cell_keys"] == ["title", "answer"]
     child_state = widget.cell_at(1).get_state(["_notebook_widget", "_notebook_index"])
     assert child_state["_notebook_widget"] == f"anywidget:{widget.model_id}"
     assert child_state["_notebook_index"] == 1
@@ -217,10 +218,47 @@ def test_named_notebook_cells_expose_values(
     assert cell_widget.value("gain") == 7
     assert cell_widget.only_value() == 7
     assert cell_widget.values == {"gain": 7}
-    assert widget.runtime_values == {}
-    assert widget.cell_values() == (
-        obs.CellValues(index=0, key="gain", values={"gain": 7}),
+    assert cell_widget.has_rendered is True
+    assert widget.has_rendered is False
+    assert widget.has_graph_snapshot is True
+    with pytest.raises(obs.NotRenderedError):
+        widget.runtime_values
+    with pytest.raises(obs.NotRenderedError):
+        widget.cell_values()
+
+
+def test_direct_cell_render_does_not_mark_parent_notebook_rendered(
+    browser_graph_sync: BrowserGraphSync,
+    browser_graph_cell: BrowserGraphCellBuilder,
+    browser_value_sync: BrowserValueSync,
+) -> None:
+    widget = obs.Notebook(
+        obs.ojs("answer = 42", key="answer"),
+        obs.ojs("double = answer * 2", key="double"),
     )
+    browser_graph_sync(
+        widget,
+        cells=[
+            browser_graph_cell("answer", defines=["answer"], output="answer"),
+            browser_graph_cell(
+                "double",
+                defines=["double"],
+                references=["answer"],
+                output="double",
+            ),
+        ],
+        edges=[("answer", "double", "answer")],
+    )
+    browser_value_sync(widget.cell_by_key("double"), {"double": 84}, ["double"])
+
+    assert widget.has_graph_snapshot is True
+    assert widget.has_rendered is False
+    assert widget.graph.cell_for_variable("double").key == "double"
+    assert widget.cell_by_key("double").value("double") == 84
+    with pytest.raises(obs.NotRenderedError):
+        widget.runtime_values
+    with pytest.raises(obs.NotRenderedError):
+        widget.cell_values()
 
 
 def test_cell_value_error_points_to_values_mapping(
@@ -240,6 +278,7 @@ def test_browser_values_are_exposed_to_notebook_values(
 
     browser_value_sync(widget, {"gain": 8}, ["gain"])
 
+    assert widget.has_rendered is True
     assert widget.runtime_values == {"gain": 8}
     assert widget.value("gain") == 8
 

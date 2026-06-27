@@ -2,14 +2,23 @@ import type { InitializeProps, RenderProps } from "@anywidget/types";
 import type { NotebookRuntime } from "@observablehq/notebook-kit/runtime";
 import { analyzeNotebook, notebookViewNamesFromAnalysis } from "@/runtime/graph";
 import { createRuntime, createRuntimeCleanup, registerAttachments } from "@/runtime";
-import { createCompositionHost, renderComposedCells, renderStandaloneCellProjection } from "./composition";
+import {
+	createCompositionHost,
+	renderComposedCells,
+	renderStandaloneCellProjection,
+	type CompositionHost,
+} from "./composition";
 import { createNotebookRoot, createTopLevelError, prepareWidgetShell } from "./dom";
 import {
 	NOTEBOOK_MODEL_CHANGE_EVENTS,
 	createRuntimeVariablesSync,
+	markRendered,
+	readCellKeys,
 	readCellRefs,
 	readNotebookFromModel,
 	readNotebookOptions,
+	resetGraphSnapshot,
+	resetRenderReadback,
 	syncNotebookGraph,
 	syncNotebookValues,
 	writeProgrammaticViewValue,
@@ -25,6 +34,7 @@ type RenderNotebookWidgetOptions = {
 };
 
 const CELL_MODEL_CHANGE_EVENTS = ["change:_notebook_widget", "change:_notebook_index"] as const;
+const READBACK_RESET_LOOKUP_TIMEOUT_MS = 50;
 
 function initialize({ model }: InitializeProps<WidgetModel> & { signal?: AbortSignal }): undefined {
 	void model;
@@ -122,14 +132,23 @@ async function renderCurrentNotebook(
 	onInputReset: (variables: Record<string, unknown>) => void,
 	variablesOverride?: Record<string, unknown>,
 ): Promise<void> {
+	resetRenderReadback(model);
+	resetGraphSnapshot(model);
 	prepareWidgetShell(el);
 	const ownerRoot = el.getRootNode();
 	installNotebookThemeStyles(ownerRoot instanceof ShadowRoot ? ownerRoot : el.ownerDocument);
 	if (signal.aborted) return;
 
+	const cellKeys = readCellKeys(model);
+	const cellRefs = readCellRefs(model.get("_cell_widgets"));
+	const compositionHost = createCompositionHost(host, model);
+	if (cellRefs.length > 0) {
+		await resetResolvedCellReadback(compositionHost, cellRefs, signal);
+		if (signal.aborted) return;
+	}
+
 	const notebook = readNotebookFromModel(model);
 	const analysis = analyzeNotebook(notebook);
-	const cellRefs = readCellRefs(model.get("_cell_widgets"));
 	if (cellRefs.length > 0) {
 		if (cellRefs.length !== notebook.cells.length) {
 			throw new Error(`Expected ${notebook.cells.length} cell widgets, received ${cellRefs.length}`);
@@ -138,8 +157,9 @@ async function renderCurrentNotebook(
 		throw new Error(`Expected ${notebook.cells.length} cell widgets, received 0`);
 	}
 	if (cellRefs.length === 0) {
-		syncNotebookGraph(model, notebook, [], analysis);
+		syncNotebookGraph(model, notebook, cellKeys, analysis);
 		syncNotebookValues(model, []);
+		markRendered(model);
 	}
 
 	const root = createNotebookRoot(el, notebook.theme);
@@ -176,13 +196,56 @@ async function renderCurrentNotebook(
 				options,
 				variablesSync,
 				signal,
-				createCompositionHost(host, model),
+				compositionHost,
+				cellKeys,
 			);
 		}
 	} catch (error) {
 		if (!signal.aborted) cleanup();
 		throw error;
 	}
+}
+
+async function resetResolvedCellReadback(
+	host: CompositionHost,
+	cellRefs: readonly string[],
+	signal: AbortSignal,
+): Promise<void> {
+	await Promise.all(
+		cellRefs.map(async (ref) => {
+			try {
+				const childModel = await modelLookupForReadbackReset(host, ref, signal);
+				if (!signal.aborted && childModel) resetRenderReadback(childModel);
+			} catch {
+				return;
+			}
+		}),
+	);
+}
+
+async function modelLookupForReadbackReset(
+	host: CompositionHost,
+	ref: string,
+	signal: AbortSignal,
+): Promise<RenderProps<WidgetModel>["model"] | undefined> {
+	return await Promise.race([
+		host.getModel(ref, signal),
+		new Promise<undefined>((resolve) => {
+			if (signal.aborted) {
+				resolve(undefined);
+				return;
+			}
+			const timeout = window.setTimeout(() => resolve(undefined), READBACK_RESET_LOOKUP_TIMEOUT_MS);
+			signal.addEventListener(
+				"abort",
+				() => {
+					window.clearTimeout(timeout);
+					resolve(undefined);
+				},
+				{ once: true },
+			);
+		}),
+	]);
 }
 
 /**
@@ -267,7 +330,7 @@ async function resolveParentNotebookModel(
 	const parentModel = await createCompositionHost(host, model).getModel(parentRef, signal);
 	if (signal.aborted) throw new Error(`Unable to resolve parent Notebook widget ${parentRef}`);
 	if (!parentModel) throw new Error(`Unknown parent Notebook widget ${parentRef}`);
-	if (parentModel.get("role") === "cell") throw new Error(`Parent widget ${parentRef} is not a Notebook`);
+	if (parentModel.get("role") !== "notebook") throw new Error(`Parent widget ${parentRef} is not a Notebook`);
 	return parentModel;
 }
 

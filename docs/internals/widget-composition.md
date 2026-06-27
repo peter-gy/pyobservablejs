@@ -10,8 +10,11 @@ Python handles for values, metadata, and direct cell display.
 
 ```text
 Notebook
+  _cell_keys[0] -> Python helper key
   _cell_widgets[0] -> NotebookCell
+  _cell_keys[1] -> Python helper key
   _cell_widgets[1] -> NotebookCell
+  _cell_keys[2] -> Python helper key
   _cell_widgets[2] -> NotebookCell
 ```
 
@@ -35,11 +38,16 @@ cell = notebook.cell_by_key("chart")
 mo.ui.anywidget(cell)
 ```
 
-The child model syncs `_notebook_widget` and `_notebook_index`. Direct display
-uses those traits to resolve the parent model, build a projected Observable
-runtime from the parent notebook, and render the selected cell. Dependency cells
-are defined in that runtime so references work, but only the selected cell is
-visible and synced to the child model.
+The parent model syncs `_cell_keys` so graph identity does not depend on child
+model resolution order. The child model syncs `_notebook_widget` and
+`_notebook_index`. Direct display uses those traits to resolve the parent model,
+build a projected Observable runtime from the parent notebook, and render the
+selected cell. Dependency cells are defined in that runtime so references work,
+but only the selected cell is visible and synced to the child model.
+Cells outside the selected cell's dependency closure are not defined for direct
+display, so unrelated outputs do not run. A direct cell display marks the child
+cell as rendered and can sync graph metadata to the parent. It does not mark the
+parent notebook as fully rendered.
 
 ## Failure mode
 
