@@ -26,6 +26,7 @@ classifiers = [
 
 [project.urls]
 Homepage = "https://github.com/peter-gy/pyobservablejs"
+Documentation = "https://peter-gy.github.io/pyobservablejs/"
 Source = "https://github.com/peter-gy/pyobservablejs"
 Issues = "https://github.com/peter-gy/pyobservablejs/issues"
 
