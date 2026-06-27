@@ -44,6 +44,19 @@ def test_notebook_cell_accessors_return_child_widget_instances() -> None:
     assert widget.cell_by_key("answer").key == "answer"
     assert widget.cell_at(1) is widget.cells[1]
     assert widget.cell_by_key("answer") is widget.cells[1]
+    child_state = widget.cell_at(1).get_state(["_notebook_widget", "_notebook_index"])
+    assert child_state["_notebook_widget"] == f"anywidget:{widget.model_id}"
+    assert child_state["_notebook_index"] == 1
+
+
+def test_notebook_cell_parent_reference_accepts_browser_wire_state() -> None:
+    widget = obs.Notebook(obs.ojs("answer = 42", key="answer"))
+    cell = widget.cell_at(0)
+    ref = f"anywidget:{widget.model_id}"
+
+    cell.set_state({"_notebook_widget": ref})
+
+    assert cell.get_state(["_notebook_widget"])["_notebook_widget"] == ref
 
 
 def test_notebook_graph_exposes_symbolic_cell_metadata(

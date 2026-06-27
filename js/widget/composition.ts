@@ -235,6 +235,59 @@ export async function renderComposedCells(
 	}
 }
 
+/**
+ * Render one child widget directly by projecting its parent notebook runtime
+ * into this widget output. Dependency cells are defined in the runtime, but
+ * only the requested cell is displayed and synced to the child model.
+ */
+export function renderStandaloneCellProjection(
+	parentModel: RenderProps<WidgetModel>["model"],
+	cellModel: RenderProps<WidgetModel>["model"],
+	root: HTMLElement,
+	notebook: Notebook,
+	cellIndex: number,
+	analysis: NotebookAnalysis,
+	runtime: NotebookRuntime,
+	options: NotebookOptions,
+	variablesSync: RuntimeVariablesSync,
+	signal: AbortSignal,
+): void {
+	const cells = notebook.cells;
+	if (!Number.isInteger(cellIndex) || cellIndex < 0 || cellIndex >= cells.length) {
+		throw new Error(`NotebookCell index ${cellIndex} is outside the parent Notebook`);
+	}
+	const cellModels: Array<RenderProps<WidgetModel>["model"] | undefined> = Array.from(
+		{ length: cells.length },
+		() => undefined,
+	);
+	cellModels[cellIndex] = cellModel;
+	syncNotebookGraph(parentModel, notebook, cellModels, analysis);
+
+	for (let index = 0; index < cells.length; index++) {
+		const cell = cells[index];
+		if (!cell) continue;
+		const selected = index === cellIndex;
+		const wrapper = appendCellWrapper(root, selected ? { composedCellRef: `standalone:${cellIndex}` } : {});
+		if (!selected) {
+			wrapper.hidden = true;
+			wrapper.setAttribute("aria-hidden", "true");
+		}
+		const sync = selected ? createCellModelSync(cellModel, signal, variablesSync) : undefined;
+		renderCell({
+			wrapper,
+			runtime,
+			cell,
+			showSource: selected && options.showSource,
+			sync,
+			signal,
+			cellName: selected ? cellModel.get("key") || cellModel.get("name") : undefined,
+			pythonVariableNames: new Set(Object.keys(options.variables)),
+			analysis: analysis.cells[index],
+		});
+	}
+	variablesSync.applyInitialViews();
+}
+
 function resolvedCellModels(
 	cellModels: Array<RenderProps<WidgetModel>["model"] | undefined>,
 ): Array<RenderProps<WidgetModel>["model"]> {

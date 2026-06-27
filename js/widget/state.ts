@@ -30,6 +30,8 @@ export type WidgetModel = {
 	role?: "notebook" | "cell";
 	key?: string;
 	name?: string;
+	_notebook_widget?: string | null;
+	_notebook_index?: number;
 	_source?: string;
 	_spec?: Record<string, unknown>;
 	theme?: unknown;

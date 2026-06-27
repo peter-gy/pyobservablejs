@@ -2,7 +2,7 @@ import type { InitializeProps, RenderProps } from "@anywidget/types";
 import type { NotebookRuntime } from "@observablehq/notebook-kit/runtime";
 import { analyzeNotebook, notebookViewNamesFromAnalysis } from "@/runtime/graph";
 import { createRuntime, createRuntimeCleanup, registerAttachments } from "@/runtime";
-import { createCompositionHost, renderComposedCells } from "./composition";
+import { createCompositionHost, renderComposedCells, renderStandaloneCellProjection } from "./composition";
 import { createNotebookRoot, createTopLevelError, prepareWidgetShell } from "./dom";
 import {
 	NOTEBOOK_MODEL_CHANGE_EVENTS,
@@ -24,6 +24,8 @@ type RenderNotebookWidgetOptions = {
 	host?: RenderProps<WidgetModel>["host"];
 };
 
+const CELL_MODEL_CHANGE_EVENTS = ["change:_notebook_widget", "change:_notebook_index"] as const;
+
 function initialize({ model }: InitializeProps<WidgetModel> & { signal?: AbortSignal }): undefined {
 	void model;
 	return undefined;
@@ -32,12 +34,17 @@ function initialize({ model }: InitializeProps<WidgetModel> & { signal?: AbortSi
 function render(props: RenderProps<WidgetModel> & { signal?: AbortSignal }): void {
 	const signal = props.signal ?? new AbortController().signal;
 	if (signal.aborted) return;
-	renderNotebookWidget({
+	const options = {
 		model: props.model,
 		el: props.el,
 		signal,
 		host: props.host,
-	});
+	};
+	if (props.model.get("role") === "cell") {
+		renderStandaloneCellWidget(options);
+	} else {
+		renderNotebookWidget(options);
+	}
 }
 
 export default { initialize, render };
@@ -66,6 +73,37 @@ function renderNotebookWidget({ model, el, signal, host }: RenderNotebookWidgetO
 		"abort",
 		() => {
 			for (const event of NOTEBOOK_MODEL_CHANGE_EVENTS) model.off(event, rerenderFromModel);
+			current.abort();
+		},
+		{ once: true },
+	);
+	rerender();
+}
+
+/**
+ * Render a child cell widget by resolving its explicit parent notebook model.
+ */
+function renderStandaloneCellWidget({ model, el, signal, host }: RenderNotebookWidgetOptions): void {
+	let current = createAbortController(signal);
+	let version = 0;
+	const rerender = (variables?: Record<string, unknown>) => {
+		current.abort();
+		current = createAbortController(signal);
+		const attempt = current;
+		const renderVersion = ++version;
+		void renderCurrentStandaloneCell(model, el, attempt.signal, host, rerender, variables).catch((error: unknown) => {
+			if (attempt.signal.aborted || renderVersion !== version) return;
+			attempt.abort();
+			el.replaceChildren(createTopLevelError(error));
+		});
+	};
+	const rerenderFromModel = () => rerender();
+
+	for (const event of CELL_MODEL_CHANGE_EVENTS) model.on(event, rerenderFromModel);
+	signal.addEventListener(
+		"abort",
+		() => {
+			for (const event of CELL_MODEL_CHANGE_EVENTS) model.off(event, rerenderFromModel);
 			current.abort();
 		},
 		{ once: true },
@@ -145,6 +183,100 @@ async function renderCurrentNotebook(
 		if (!signal.aborted) cleanup();
 		throw error;
 	}
+}
+
+/**
+ * Build one projected runtime for a directly displayed NotebookCell.
+ */
+async function renderCurrentStandaloneCell(
+	model: RenderProps<WidgetModel>["model"],
+	el: HTMLElement,
+	signal: AbortSignal,
+	host: RenderProps<WidgetModel>["host"] | undefined,
+	onInputReset: (variables: Record<string, unknown>) => void,
+	variablesOverride?: Record<string, unknown>,
+): Promise<void> {
+	prepareWidgetShell(el);
+	const parentModel = await resolveParentNotebookModel(model, host, signal);
+	if (signal.aborted) return;
+	const rerenderFromParent = () => onInputReset(readNotebookOptions(parentModel).variables);
+	for (const event of NOTEBOOK_MODEL_CHANGE_EVENTS) parentModel.on(event, rerenderFromParent);
+	signal.addEventListener(
+		"abort",
+		() => {
+			for (const event of NOTEBOOK_MODEL_CHANGE_EVENTS) parentModel.off(event, rerenderFromParent);
+		},
+		{ once: true },
+	);
+
+	const notebook = readNotebookFromModel(parentModel);
+	const cellIndex = readStandaloneCellIndex(model);
+	const analysis = analyzeNotebook(notebook);
+	const root = createNotebookRoot(el, notebook.theme);
+	const ownerRoot = el.getRootNode();
+	installNotebookThemeStyles(ownerRoot instanceof ShadowRoot ? ownerRoot : el.ownerDocument);
+	const options = readNotebookOptions(parentModel, variablesOverride);
+	const attachmentRegistry = registerAttachments(options.attachments);
+	let runtime: NotebookRuntime;
+	try {
+		runtime = createRuntime(root, el, options, attachmentRegistry);
+	} catch (error) {
+		attachmentRegistry.cleanup();
+		throw error;
+	}
+	const cleanup = createRuntimeCleanup(runtime, attachmentRegistry);
+	const variablesSync = createRuntimeVariablesSync({
+		model: parentModel,
+		runtime,
+		options,
+		viewNames: notebookViewNamesFromAnalysis(analysis),
+		signal,
+		onReset: onInputReset,
+		writeViewValue: writeProgrammaticViewValue,
+	});
+	signal.addEventListener("abort", cleanup, { once: true });
+
+	try {
+		renderStandaloneCellProjection(
+			parentModel,
+			model,
+			root,
+			notebook,
+			cellIndex,
+			analysis,
+			runtime,
+			options,
+			variablesSync,
+			signal,
+		);
+	} catch (error) {
+		if (!signal.aborted) cleanup();
+		throw error;
+	}
+}
+
+async function resolveParentNotebookModel(
+	model: RenderProps<WidgetModel>["model"],
+	host: RenderProps<WidgetModel>["host"] | undefined,
+	signal: AbortSignal,
+): Promise<RenderProps<WidgetModel>["model"]> {
+	const parentRef = model.get("_notebook_widget");
+	if (typeof parentRef !== "string" || !parentRef) {
+		throw new Error("NotebookCell has no parent Notebook reference");
+	}
+	const parentModel = await createCompositionHost(host, model).getModel(parentRef, signal);
+	if (signal.aborted) throw new Error(`Unable to resolve parent Notebook widget ${parentRef}`);
+	if (!parentModel) throw new Error(`Unknown parent Notebook widget ${parentRef}`);
+	if (parentModel.get("role") === "cell") throw new Error(`Parent widget ${parentRef} is not a Notebook`);
+	return parentModel;
+}
+
+function readStandaloneCellIndex(model: RenderProps<WidgetModel>["model"]): number {
+	const index = model.get("_notebook_index");
+	if (!Number.isInteger(index) || (index as number) < 0) {
+		throw new Error("NotebookCell has no parent Notebook index");
+	}
+	return index as number;
 }
 
 /**

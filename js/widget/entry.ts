@@ -2,7 +2,6 @@ import type { InitializeProps, RenderProps } from "@anywidget/types";
 import type { AnyWidgetApp } from "@/anywidget-bundle/runtime";
 import type { WidgetModel } from "./state";
 
-const WIDGET_CLASS_NAME = "pyobservablejs";
 const ERROR_CLASS_NAME = "pyobservablejs-error";
 
 type WidgetApp = AnyWidgetApp<WidgetModel>;
@@ -16,14 +15,10 @@ export function createObservableWidgetEntry(loadApp: LoadApp): WidgetApp {
 	function render(props: RenderProps<WidgetModel> & { signal?: AbortSignal }): void {
 		const signal = props.signal ?? new AbortController().signal;
 		if (signal.aborted) return;
-		if (props.model.get("role") === "cell") {
-			renderCellWidget(props.el, signal);
-			return;
-		}
-		void renderNotebook(props, signal);
+		void renderWidgetApp(props, signal);
 	}
 
-	async function renderNotebook(props: RenderProps<WidgetModel>, signal: AbortSignal): Promise<void> {
+	async function renderWidgetApp(props: RenderProps<WidgetModel>, signal: AbortSignal): Promise<void> {
 		try {
 			if (signal.aborted) return;
 			const app = await loadApp(props, signal);
@@ -35,12 +30,6 @@ export function createObservableWidgetEntry(loadApp: LoadApp): WidgetApp {
 	}
 
 	return { initialize, render };
-}
-
-function renderCellWidget(el: HTMLElement, signal: AbortSignal): void {
-	if (signal.aborted) return;
-	el.classList.add(WIDGET_CLASS_NAME);
-	el.replaceChildren(createTopLevelError(new Error("NotebookCell renders only inside its parent Notebook display")));
 }
 
 function createTopLevelError(error: unknown): HTMLElement {

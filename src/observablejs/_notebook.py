@@ -71,6 +71,15 @@ def _widgets_from_json(value: object, _widget: object) -> object:
     return value
 
 
+class _WidgetReferenceTrait(anywidget.WidgetTrait):
+    """WidgetTrait variant that also accepts anywidget wire references."""
+
+    def validate(self, obj: object, value: object) -> object:
+        if isinstance(value, str) and value.startswith("anywidget:"):
+            return value
+        return super().validate(obj, value)
+
+
 class _ObservableWidget(BundledWidget):
     """Shared anywidget base for the bundled frontend assets."""
 
@@ -88,17 +97,19 @@ class NotebookCell(_ObservableWidget):
     role = traitlets.Unicode("cell").tag(sync=True)
     key = traitlets.Unicode("").tag(sync=True)
     name = traitlets.Unicode("").tag(sync=True)
+    _notebook_widget = _WidgetReferenceTrait().tag(sync=True)
+    _notebook_index = traitlets.Int(-1).tag(sync=True)
     _value_names = traitlets.List(traitlets.Unicode(), default_value=[]).tag(sync=True)
     _values = traitlets.Dict(default_value={}).tag(sync=True)
 
     def __init__(self, **kwargs: Any) -> None:
         self._notebook: Notebook | None = None
-        self._notebook_index: int | None = None
         super().__init__(**kwargs)
 
     def _bind_notebook(self, notebook: Notebook, index: int) -> None:
         self._notebook = notebook
-        self._notebook_index = index
+        self.set_trait("_notebook_widget", notebook)
+        self.set_trait("_notebook_index", index)
 
     def _require_rendered(self) -> None:
         if self._notebook is not None:
@@ -108,7 +119,7 @@ class NotebookCell(_ObservableWidget):
     def info(self) -> CellInfo:
         """Notebook Kit metadata for this cell after browser render."""
 
-        if self._notebook is None or self._notebook_index is None:
+        if self._notebook is None or self._notebook_index < 0:
             raise NotRenderedError("NotebookCell is not bound to a rendered Notebook")
         self._notebook._require_rendered()
         graph = self._notebook.graph

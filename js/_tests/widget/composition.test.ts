@@ -5,7 +5,6 @@ import { describe, expect, test } from "vitest";
 import type { NotebookGraph } from "@/runtime/graph";
 import widget from "@/widget/app";
 import { SELECTORS } from "@/widget/dom";
-import widgetEntry from "@/widget/index";
 import {
 	composedText,
 	createHost,
@@ -18,24 +17,68 @@ import {
 import type { WidgetModel } from "@/widget/state";
 
 describe("widget composition lifecycle", () => {
-	test("renders direct cell displays as unsupported", () => {
+	test("renders direct cell displays from the explicit parent notebook reference", async () => {
+		const parentModel = createModel({
+			role: "notebook",
+			_spec: {
+				cells: [
+					{ id: 1, mode: "ojs", value: "answer = 42" },
+					{ id: 2, mode: "ojs", value: "double = answer * 2" },
+				],
+			},
+			_attachments: {},
+			_variables: {},
+			_options: {},
+			_cell_widgets: ["anywidget:answer", "anywidget:double"],
+		});
+		const model = createModel({
+			role: "cell",
+			key: "double",
+			name: "double",
+			_notebook_widget: "anywidget:notebook",
+			_notebook_index: 1,
+			_values: {},
+			_value_names: [],
+		});
+		const el = document.createElement("div");
+		const controller = new AbortController();
+
+		widget.render({
+			model,
+			el,
+			signal: controller.signal,
+			host: createHost(new Map([["anywidget:notebook", parentModel]])),
+		} as unknown as RenderProps<WidgetModel>);
+
+		await waitStep("standalone dependency output", () => composedText(el, "84"));
+		expect(el.querySelectorAll(SELECTORS.composedCell)).toHaveLength(1);
+		expect(variableValue(model, "double")).toBe(84);
+		const graph = await waitFor(() => parentModel.get("_graph") as NotebookGraph | undefined);
+		expect(graph.cells[1]?.key).toBe("double");
+		expect(graph.cells[1]?.references).toEqual(["answer"]);
+		expect(graph.edges).toContainEqual({ from: 1, to: 2, variable: "answer" });
+		controller.abort();
+	});
+
+	test("reports direct cell displays without a parent notebook reference", async () => {
 		const model = createModel({
 			role: "cell",
 			name: "answer",
-			_values: { answer: 42 },
-			_value_names: ["answer"],
+			_values: {},
+			_value_names: [],
 		});
 		const el = document.createElement("div");
+		const controller = new AbortController();
 
-		widgetEntry.render({
+		widget.render({
 			model,
 			el,
-			signal: new AbortController().signal,
+			signal: controller.signal,
 			host: undefined,
 		} as unknown as RenderProps<WidgetModel>);
 
-		expect(projectErrorText(el)).toBe("Error: NotebookCell renders only inside its parent Notebook display");
-		expect(el.textContent?.trim()).toBe("Error: NotebookCell renders only inside its parent Notebook display");
+		expect(await waitFor(() => projectErrorText(el))).toBe("Error: NotebookCell has no parent Notebook reference");
+		controller.abort();
 	});
 
 	test("renders cell output from models resolved by the anywidget host", async () => {
