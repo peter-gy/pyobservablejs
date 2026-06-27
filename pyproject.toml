@@ -64,6 +64,7 @@ artifacts = ["src/observablejs/static/**"]
 packages = ["src/observablejs"]
 
 [tool.hatch.build.targets.sdist.force-include]
+"CITATION.cff" = "CITATION.cff"
 "js/anywidget-bundle/runtime.ts" = "js/anywidget-bundle/runtime.ts"
 "js/anywidget-bundle/vite.ts" = "js/anywidget-bundle/vite.ts"
 "js/runtime/graph.ts" = "js/runtime/graph.ts"
