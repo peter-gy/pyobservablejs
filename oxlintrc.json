@@ -5,5 +5,5 @@
 		"correctness": "error",
 		"perf": "error"
 	},
-	"ignorePatterns": ["node_modules/**", "src/pyobservablejs/static/**"]
+	"ignorePatterns": ["node_modules/**", "src/observablejs/static/**"]
 }

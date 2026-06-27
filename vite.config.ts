@@ -1,19 +1,21 @@
-import { defineChunkedAnyWidgetConfig } from "./js/anywidget/vite-config";
+import { defineConfig } from "vite";
+import anywidgetBundle from "./js/anywidget-bundle/vite";
 
-const WIDGET_STATIC_DIR = "src/pyobservablejs/static";
-const WIDGET_ENTRY = "js/widget/index.ts";
-const WIDGET_APP_ENTRY = "js/widget/app.ts";
-const WIDGET_APP_MODULE_PLACEHOLDER = "__PYOBSERVABLEJS_APP_MODULE__";
-const WIDGET_DEV_HOST = "127.0.0.1";
-const WIDGET_DEV_PORT = 5173;
+const fromRoot = (path: string) => new URL(path, import.meta.url).pathname;
 
-const WIDGET_BUILD = {
-	outDir: WIDGET_STATIC_DIR,
-	entry: WIDGET_ENTRY,
-	appEntry: WIDGET_APP_ENTRY,
-	appModulePlaceholder: WIDGET_APP_MODULE_PLACEHOLDER,
-	devHost: WIDGET_DEV_HOST,
-	devPort: WIDGET_DEV_PORT,
-} as const;
-
-export default defineChunkedAnyWidgetConfig(WIDGET_BUILD);
+export default defineConfig({
+	resolve: {
+		alias: {
+			"@": fromRoot("./js"),
+		},
+	},
+	plugins: [
+		anywidgetBundle({
+			entry: "js/widget/index.ts",
+			app: "js/widget/app.ts",
+			outDir: "src/observablejs/static",
+			dev: { host: "127.0.0.1", port: 5173 },
+			output: { entryFile: "index.js" },
+		}),
+	],
+});

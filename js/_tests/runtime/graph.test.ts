@@ -9,7 +9,7 @@ import {
 	createNotebookGraphFromAnalysis,
 	notebookViewNamesFromAnalysis,
 	transpileNotebookCell,
-} from "./graph";
+} from "@/runtime/graph";
 
 describe("notebook graph metadata", () => {
 	test("uses Notebook Kit transpile metadata for references, outputs, and edges", () => {
@@ -35,7 +35,7 @@ describe("notebook graph metadata", () => {
 		expect(graph.edges).toContainEqual({ from: 2, to: 4, variable: "b" });
 	});
 
-	test("reuses analyzed Notebook Kit definitions for graph names and view names", () => {
+	test("reuses analyzed Notebook Kit definitions for graph keys and view names", () => {
 		const notebook = toNotebook({
 			cells: [
 				{ id: 1, mode: "ojs", value: "viewof gain = Inputs.range([0, 10])" },
@@ -47,7 +47,7 @@ describe("notebook graph metadata", () => {
 		const graph = createNotebookGraphFromAnalysis(analysis, ["gain", "readout"]);
 
 		expect(Array.from(notebookViewNamesFromAnalysis(analysis))).toEqual(["gain"]);
-		expect(graph.cells.map((cell) => cell.name)).toEqual(["gain", "readout"]);
+		expect(graph.cells.map((cell) => cell.key)).toEqual(["gain", "readout"]);
 		expect(graph.cells.map((cell) => cell.defines)).toEqual([["gain"], []]);
 		expect(graph.edges).toContainEqual({ from: 1, to: 2, variable: "gain" });
 	});

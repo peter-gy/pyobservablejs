@@ -2,7 +2,7 @@
 
 import { toCell } from "@observablehq/notebook-kit";
 import { describe, expect, test } from "vitest";
-import { createNotebookRoot, renderSource, SELECTORS } from "./dom";
+import { createNotebookRoot, renderSource, SELECTORS } from "@/widget/dom";
 
 describe("source rendering", () => {
 	test("preserves source text and accessible source labeling", () => {

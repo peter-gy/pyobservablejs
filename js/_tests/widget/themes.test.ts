@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { describe, expect, test } from "vitest";
-import { installNotebookThemeStyles, NOTEBOOK_THEMES, scopedNotebookThemeCss } from "./themes";
+import { installNotebookThemeStyles, NOTEBOOK_THEMES, scopedNotebookThemeCss } from "@/widget/themes";
 
 describe("Notebook Kit theme styles", () => {
 	test("scopes every shipped theme to the notebook root", () => {

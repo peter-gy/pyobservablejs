@@ -2,10 +2,10 @@
 
 import type { RenderProps } from "@anywidget/types";
 import { describe, expect, test } from "vitest";
-import type { WidgetModel } from "./model";
-import widget from "./index";
-import devWidget from "./dev";
-import { createHost, createModel, hasSavedTrait, waitFor } from "./testing";
+import type { WidgetModel } from "@/widget/state";
+import widget from "@/widget/index";
+import devWidget from "@/widget/dev";
+import { createHost, createModel, hasSavedTrait, waitFor } from "@/_tests/testing";
 
 describe("widget entrypoint", () => {
 	test("renders child cells as parent-owned outputs without requesting module source", () => {
@@ -15,16 +15,16 @@ describe("widget entrypoint", () => {
 		widget.render({ model, el, signal: new AbortController().signal } as unknown as RenderProps<WidgetModel>);
 
 		expect(el.textContent?.trim()).toBe("Error: NotebookCell renders only inside its parent Notebook display");
-		expect(hasSavedTrait(model, "_esm_module_request")).toBe(false);
+		expect(hasSavedTrait(model, "_anywidget_bundle_module_request")).toBe(false);
 	});
 
 	test("dev entry renders notebooks from the Vite module graph", async () => {
 		const model = createModel({
 			role: "notebook",
-			spec: { cells: [{ id: 1, mode: "ojs", value: "answer = 42" }] },
-			attachments: {},
+			_spec: { cells: [{ id: 1, mode: "ojs", value: "answer = 42" }] },
+			_attachments: {},
 			_variables: {},
-			options: {},
+			_options: {},
 			_cell_widgets: ["anywidget:answer"],
 		});
 		const childModel = createModel({ role: "cell", name: "answer", _values: {}, _value_names: [] });
@@ -40,7 +40,7 @@ describe("widget entrypoint", () => {
 
 		await waitFor(() => (el.textContent.trim() === "42" ? true : undefined));
 
-		expect(hasSavedTrait(model, "_esm_module_request")).toBe(false);
+		expect(hasSavedTrait(model, "_anywidget_bundle_module_request")).toBe(false);
 		controller.abort();
 	});
 });

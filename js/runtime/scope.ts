@@ -44,15 +44,16 @@ function createScopedDocument(root: HTMLElement): Document {
 			if (property === "getElementsByClassName") {
 				return (classNames: string) => scopedGetElementsByClassName(root, classNames);
 			}
+			if (property === "body" || property === "head" || property === "documentElement") return root;
+			if (property === "addEventListener") return root.addEventListener.bind(root);
+			if (property === "removeEventListener") return root.removeEventListener.bind(root);
+			if (property === "dispatchEvent") return root.dispatchEvent.bind(root);
 			const value = Reflect.get(target, property, target);
 			return typeof value === "function" ? value.bind(target) : value;
 		},
-		set(target, property, value) {
-			if (!(property in target)) {
-				customProperties.set(property, value);
-				return true;
-			}
-			return Reflect.set(target, property, value, target);
+		set(_target, property, value) {
+			customProperties.set(property, value);
+			return true;
 		},
 	});
 	return scoped as Document;

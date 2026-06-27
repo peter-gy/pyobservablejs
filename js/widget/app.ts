@@ -1,12 +1,21 @@
 import type { InitializeProps, RenderProps } from "@anywidget/types";
-import { analyzeNotebook, notebookViewNamesFromAnalysis } from "../notebook/graph";
-import { createRuntime, createRuntimeCleanup, registerAttachments } from "../runtime";
+import type { NotebookRuntime } from "@observablehq/notebook-kit/runtime";
+import { analyzeNotebook, notebookViewNamesFromAnalysis } from "@/runtime/graph";
+import { createRuntime, createRuntimeCleanup, registerAttachments } from "@/runtime";
 import { createCompositionHost, renderComposedCells } from "./composition";
 import { createNotebookRoot, createTopLevelError, prepareWidgetShell } from "./dom";
-import { NOTEBOOK_MODEL_CHANGE_EVENTS, readCellRefs, readNotebookFromModel, readNotebookOptions } from "./model";
-import { createRuntimeVariablesSync, syncNotebookGraph, syncNotebookValues, writeProgrammaticViewValue } from "./sync";
+import {
+	NOTEBOOK_MODEL_CHANGE_EVENTS,
+	createRuntimeVariablesSync,
+	readCellRefs,
+	readNotebookFromModel,
+	readNotebookOptions,
+	syncNotebookGraph,
+	syncNotebookValues,
+	writeProgrammaticViewValue,
+	type WidgetModel,
+} from "./state";
 import { installNotebookThemeStyles } from "./themes";
-import type { WidgetModel } from "./model";
 
 type RenderNotebookWidgetOptions = {
 	model: RenderProps<WidgetModel>["model"];
@@ -98,7 +107,13 @@ async function renderCurrentNotebook(
 	const root = createNotebookRoot(el, notebook.theme);
 	const options = readNotebookOptions(model, variablesOverride);
 	const attachmentRegistry = registerAttachments(options.attachments);
-	const runtime = createRuntime(root, el, options, attachmentRegistry);
+	let runtime: NotebookRuntime;
+	try {
+		runtime = createRuntime(root, el, options, attachmentRegistry);
+	} catch (error) {
+		attachmentRegistry.cleanup();
+		throw error;
+	}
 	const cleanup = createRuntimeCleanup(runtime, attachmentRegistry);
 	const variablesSync = createRuntimeVariablesSync({
 		model,

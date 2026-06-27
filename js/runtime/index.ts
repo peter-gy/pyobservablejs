@@ -1,6 +1,6 @@
 import type { Cell } from "@observablehq/notebook-kit";
 import { FileAttachment, NotebookRuntime, library, registerFile } from "@observablehq/notebook-kit/runtime";
-import { exposedVariableNames, unprefix, type RuntimeCellDefinition } from "../notebook/graph";
+import { exposedVariableNames, unprefix, type RuntimeCellDefinition } from "./graph";
 import { bindRuntimeScope, cleanupRuntimeScope, createRuntimeScope } from "./scope";
 import { createVariableBuiltins } from "./values";
 
@@ -22,10 +22,11 @@ export type AttachmentRegistry = {
 	baseUrl: string;
 	names: Set<string>;
 	blobUrls: Map<string, string>;
+	disposed: boolean;
 	cleanup(): void;
 };
 
-export type { NestedSelectState, RuntimeVariablesSync, ViewTarget } from "./values";
+export type { NestedSelectState, RuntimeVariablesSync, ViewTarget, ViewWriteResult } from "./values";
 export { runtimeDocument } from "./scope";
 export {
 	createVariableBuiltins,
@@ -66,11 +67,22 @@ type SqlJsModule = {
 };
 type SqlJsInit = (options: { locateFile(name: string): string }) => Promise<SqlJsModule>;
 type SQLiteRows = Record<string, unknown>[] & { columns?: string[]; value?: SQLiteRows };
+type SQLiteGlobalConfig = {
+	initSqlJs?: SqlJsInit;
+	locateFile?(name: string): string;
+};
 
-const SQL_JS_URL = "https://cdn.jsdelivr.net/npm/sql.js@1.13.0/dist/sql-wasm.js";
-const SQL_JS_WASM_BASE = "https://cdn.jsdelivr.net/npm/sql.js@1.13.0/dist/";
+const RESERVED_RUNTIME_NAMES = new Set([
+	...Object.keys(library),
+	"DuckDBClient",
+	"FileAttachment",
+	"Generators",
+	"SQLite",
+	"SQLiteDatabaseClient",
+	"document",
+	"width",
+]);
 let sqliteModule: Promise<SqlJsModule> | undefined;
-const loadedScripts = new Map<string, Promise<void>>();
 
 export function createRuntime(
 	root: HTMLElement,
@@ -79,6 +91,9 @@ export function createRuntime(
 	attachmentRegistry: AttachmentRegistry,
 ): NotebookRuntime {
 	// Python variables enter OJS as Observable builtins before Notebook Kit defines cells.
+	const collisions = runtimeBuiltinCollisions(options.variables);
+	if (collisions.length > 0)
+		throw new Error(`Python variables cannot override Observable runtime builtins: ${collisions.join(", ")}`);
 	const width = () => observeWidth(root, el);
 	const scope = createRuntimeScope(root);
 	const builtins = {
@@ -99,6 +114,12 @@ export function createRuntime(
 	extendRuntimeFileAttachments(runtime);
 	bindRuntimeScope(runtime, scope);
 	return runtime;
+}
+
+function runtimeBuiltinCollisions(variables: Record<string, unknown>): string[] {
+	return Object.keys(variables)
+		.filter((name) => RESERVED_RUNTIME_NAMES.has(name))
+		.sort();
 }
 
 function extendRuntimeFileAttachments(runtime: NotebookRuntime): void {
@@ -312,29 +333,21 @@ export class SQLiteDatabaseClient {
 Object.defineProperty(SQLiteDatabaseClient.prototype, "dialect", { value: "sqlite" });
 
 async function loadSQLiteModule(): Promise<SqlJsModule> {
-	sqliteModule ??= loadClassicScript(SQL_JS_URL).then(() => {
-		const init = (globalThis as { initSqlJs?: SqlJsInit }).initSqlJs;
-		if (init === undefined) throw new Error("sql.js did not register initSqlJs");
-		return init({
-			locateFile: (name) => new URL(name, SQL_JS_WASM_BASE).href,
-		});
+	if (sqliteModule !== undefined) return sqliteModule;
+	const config = (globalThis as { observablejsSqlite?: SQLiteGlobalConfig }).observablejsSqlite;
+	const init = config?.initSqlJs ?? (globalThis as { initSqlJs?: SqlJsInit }).initSqlJs;
+	if (init === undefined) {
+		throw new Error("SQLite requires a caller-provided sql.js initSqlJs loader");
+	}
+	const nextModule = init({
+		locateFile: (name) => config?.locateFile?.(name) ?? name,
 	});
-	return sqliteModule;
-}
-
-function loadClassicScript(src: string): Promise<void> {
-	let promise = loadedScripts.get(src);
-	if (promise !== undefined) return promise;
-	promise = new Promise((resolve, reject) => {
-		const script = document.createElement("script");
-		script.async = true;
-		script.src = src;
-		script.onload = () => resolve();
-		script.onerror = () => reject(new Error(`Unable to load script: ${src}`));
-		document.head.append(script);
+	const guarded = nextModule.catch((error) => {
+		if (sqliteModule === guarded) sqliteModule = undefined;
+		throw error;
 	});
-	loadedScripts.set(src, promise);
-	return promise;
+	sqliteModule = guarded;
+	return guarded;
 }
 
 async function loadSQLiteSource(source: unknown): Promise<Uint8Array> {
@@ -537,7 +550,13 @@ async function registeredBlobUrl(
 	const cached = registry.blobUrls.get(cacheKey);
 	if (cached) return cached;
 	if (typeof URL.createObjectURL !== "function") return file.url();
-	const url = URL.createObjectURL(await file.blob());
+	const blob = await file.blob();
+	if (registry.disposed) return file.url();
+	const url = URL.createObjectURL(blob);
+	if (registry.disposed) {
+		URL.revokeObjectURL(url);
+		return file.url();
+	}
 	registry.blobUrls.set(cacheKey, url);
 	return url;
 }
@@ -581,8 +600,12 @@ export function registerAttachments(attachments: Record<string, AttachmentInfo>)
 		baseUrl: base,
 		names: new Set(registered),
 		blobUrls,
+		disposed: false,
 		cleanup() {
+			if (this.disposed) return;
+			this.disposed = true;
 			for (const url of blobUrls.values()) URL.revokeObjectURL(url);
+			blobUrls.clear();
 			for (const name of registered) registerFile(name, null, base);
 		},
 	};

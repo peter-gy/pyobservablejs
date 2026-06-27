@@ -2,12 +2,20 @@
 
 import type { RenderProps } from "@anywidget/types";
 import { describe, expect, test } from "vitest";
-import type { NotebookGraph } from "../notebook/graph";
-import widget from "./app";
-import { SELECTORS } from "./dom";
-import widgetEntry from "./index";
-import { composedText, createHost, createModel, projectErrorText, variableValue, waitFor, waitStep } from "./testing";
-import type { WidgetModel } from "./model";
+import type { NotebookGraph } from "@/runtime/graph";
+import widget from "@/widget/app";
+import { SELECTORS } from "@/widget/dom";
+import widgetEntry from "@/widget/index";
+import {
+	composedText,
+	createHost,
+	createModel,
+	projectErrorText,
+	variableValue,
+	waitFor,
+	waitStep,
+} from "@/_tests/testing";
+import type { WidgetModel } from "@/widget/state";
 
 describe("widget composition lifecycle", () => {
 	test("renders direct cell displays as unsupported", () => {
@@ -39,10 +47,10 @@ describe("widget composition lifecycle", () => {
 		});
 		const model = createModel({
 			role: "notebook",
-			spec: { cells: [{ id: 1, mode: "ojs", value: "answer = 42" }] },
-			attachments: {},
+			_spec: { cells: [{ id: 1, mode: "ojs", value: "answer = 42" }] },
+			_attachments: {},
 			_variables: {},
-			options: {},
+			_options: {},
 			_cell_widgets: ["anywidget:answer"],
 		});
 		const childModels = new Map([["anywidget:answer", childModel]]);
@@ -81,10 +89,10 @@ describe("widget composition lifecycle", () => {
 		});
 		const model = createModel({
 			role: "notebook",
-			spec: { cells: [{ id: 1, mode: "ojs", value: source, pinned: true }] },
-			attachments: {},
+			_spec: { cells: [{ id: 1, mode: "ojs", value: source, pinned: true }] },
+			_attachments: {},
 			_variables: {},
-			options: { show_source: true },
+			_options: { show_source: true },
 			_cell_widgets: ["anywidget:answer"],
 		});
 		const childModels = new Map([["anywidget:answer", answerModel]]);
@@ -120,10 +128,10 @@ describe("widget composition lifecycle", () => {
 		const model = createModel(
 			{
 				role: "notebook",
-				spec: { cells: [{ id: 1, mode: "ojs", value: "answer = 42" }] },
-				attachments: {},
+				_spec: { cells: [{ id: 1, mode: "ojs", value: "answer = 42" }] },
+				_attachments: {},
 				_variables: {},
-				options: {},
+				_options: {},
 				_cell_widgets: ["anywidget:answer"],
 			},
 			{
@@ -157,10 +165,10 @@ describe("widget composition lifecycle", () => {
 	test("reports unsupported composition hosts when no model lookup is available", async () => {
 		const model = createModel({
 			role: "notebook",
-			spec: { cells: [{ id: 1, mode: "ojs", value: "answer = 42" }] },
-			attachments: {},
+			_spec: { cells: [{ id: 1, mode: "ojs", value: "answer = 42" }] },
+			_attachments: {},
 			_variables: {},
-			options: {},
+			_options: {},
 			_cell_widgets: ["anywidget:answer"],
 		});
 		const el = document.createElement("div");
@@ -189,15 +197,15 @@ describe("widget composition lifecycle", () => {
 		const model = createModel(
 			{
 				role: "notebook",
-				spec: {
+				_spec: {
 					cells: [
 						{ id: 1, mode: "ojs", value: "answer = 42" },
 						{ id: 2, mode: "ojs", value: "broken = answer + 1" },
 					],
 				},
-				attachments: {},
+				_attachments: {},
 				_variables: {},
-				options: {},
+				_options: {},
 				_cell_widgets: ["anywidget:answer", "anywidget:broken"],
 			},
 			{
@@ -237,10 +245,10 @@ describe("widget composition lifecycle", () => {
 	test("aborted render ignores later model changes", () => {
 		const model = createModel({
 			role: "notebook",
-			spec: { cells: [] },
-			attachments: {},
+			_spec: { cells: [] },
+			_attachments: {},
 			_variables: {},
-			options: {},
+			_options: {},
 			_cell_widgets: [],
 		});
 		const controller = new AbortController();
@@ -254,7 +262,7 @@ describe("widget composition lifecycle", () => {
 			host: createHost(new Map()),
 		} as unknown as RenderProps<WidgetModel>);
 
-		model.set("spec", {
+		model.set("_spec", {
 			cells: [{ id: 1, mode: "ojs", value: "answer = 42" }],
 		});
 		model.set("_cell_widgets", ["anywidget:answer"]);

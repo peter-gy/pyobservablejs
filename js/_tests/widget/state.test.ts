@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 
 import { describe, expect, test } from "vitest";
-import { readNotebookFromModel, readNotebookTheme } from "./model";
-import { createModel } from "./testing";
+import { readNotebookFromModel, readNotebookTheme } from "@/widget/state";
+import { createModel } from "@/_tests/testing";
 
 describe("widget notebook model", () => {
 	test("reads the synced theme trait for spec-backed notebooks", () => {
 		const model = createModel({
-			spec: {
+			_spec: {
 				theme: "air",
 				cells: [{ id: 1, mode: "ojs", value: "answer = 42" }],
 			},
@@ -21,7 +21,7 @@ describe("widget notebook model", () => {
 
 	test("reads the synced theme trait for source-backed notebooks", () => {
 		const model = createModel({
-			source: '<!doctype html><notebook theme="air"><script id="1">answer = 42</script></notebook>',
+			_source: '<!doctype html><notebook theme="air"><script id="1">answer = 42</script></notebook>',
 			theme: { light: "cotton", dark: "slate" },
 		});
 

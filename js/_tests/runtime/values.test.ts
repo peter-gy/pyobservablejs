@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { describe, expect, test } from "vitest";
-import { createVariableBuiltins, isWritableSyncedViewValue, reviveSyncedValue, toWireValue } from "./values";
+import { createVariableBuiltins, isWritableSyncedViewValue, reviveSyncedValue, toWireValue } from "@/runtime/values";
 
 describe("wire values", () => {
 	test("round trips synced numbers, dates, maps, and sets", () => {
@@ -25,9 +25,9 @@ describe("wire values", () => {
 
 	test("revives Python variables as Observable builtins", () => {
 		const builtins = createVariableBuiltins({
-			when: { __pyobservablejs_type__: "datetime", value: "2026-05-23" },
-			raw: { __pyobservablejs_type__: "bytes", value: "YWJj" },
-			invalid: { __pyobservablejs_type__: "number", value: "NaN" },
+			when: { __observablejs_type__: "datetime", value: "2026-05-23" },
+			raw: { __observablejs_type__: "bytes", value: "YWJj" },
+			invalid: { __observablejs_type__: "number", value: "NaN" },
 		});
 
 		expect(builtins.when()).toEqual(new Date("2026-05-23"));
@@ -37,7 +37,7 @@ describe("wire values", () => {
 
 	test("revives Python bigints without losing integer precision", () => {
 		const builtins = createVariableBuiltins({
-			huge: { __pyobservablejs_type__: "bigint", value: "9007199254740993" },
+			huge: { __observablejs_type__: "bigint", value: "9007199254740993" },
 		});
 
 		expect(builtins.huge()).toBe(9007199254740993n);
@@ -45,12 +45,12 @@ describe("wire values", () => {
 
 	test("escapes user objects that contain the reserved wire tag key", () => {
 		const value = {
-			__pyobservablejs_type__: "datetime",
+			__observablejs_type__: "datetime",
 			value: "not a date",
 			other: 1,
 		};
 		const builtins = createVariableBuiltins({
-			row: { __pyobservablejs_type__: "object", value },
+			row: { __observablejs_type__: "object", value },
 		});
 
 		expect(reviveSyncedValue(toWireValue(value))).toEqual(value);

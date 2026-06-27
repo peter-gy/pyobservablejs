@@ -33,6 +33,7 @@ type RuntimeBody = (...values: unknown[]) => unknown;
 export type CellGraph = {
 	id: number;
 	index: number;
+	key: string;
 	name: string;
 	mode: Cell["mode"];
 	defines: string[];
@@ -87,23 +88,23 @@ export type NotebookAnalysis = {
 	viewNames: Set<string>;
 };
 
-export function analyzeNotebook(notebook: Notebook, names: readonly string[] = []): NotebookAnalysis {
-	const cells = notebook.cells.map((cell, index) => analyzeCell(cell, index, names[index] ?? ""));
+export function analyzeNotebook(notebook: Notebook, keys: readonly string[] = []): NotebookAnalysis {
+	const cells = notebook.cells.map((cell, index) => analyzeCell(cell, index, keys[index] ?? ""));
 	return analysisFromCells(cells);
 }
 
-export function createNotebookGraph(notebook: Notebook, names: readonly string[] = []): NotebookGraph {
-	return analyzeNotebook(notebook, names).graph;
+export function createNotebookGraph(notebook: Notebook, keys: readonly string[] = []): NotebookGraph {
+	return analyzeNotebook(notebook, keys).graph;
 }
 
 export function createNotebookGraphFromAnalysis(
 	analysis: NotebookAnalysis,
-	names: readonly string[] = [],
+	keys: readonly string[] = [],
 ): NotebookGraph {
-	if (names.length === 0) return analysis.graph;
+	if (keys.length === 0) return analysis.graph;
 	const cells = analysis.graph.cells.map((cell, index) => ({
 		...cell,
-		name: names[index] ?? "",
+		key: keys[index] ?? "",
 	}));
 	return createGraphFromCells(cells);
 }
@@ -112,14 +113,14 @@ export function notebookViewNamesFromAnalysis(analysis: NotebookAnalysis): Set<s
 	return new Set(analysis.viewNames);
 }
 
-function analyzeCell(cell: Cell, index: number, name: string): CellAnalysis {
+function analyzeCell(cell: Cell, index: number, key: string): CellAnalysis {
 	try {
 		const definition = transpileNotebookCell(cell);
 		return {
 			cell,
 			index,
 			definition,
-			graph: cellGraphFromDefinition(cell, index, name, definition),
+			graph: cellGraphFromDefinition(cell, index, key, definition),
 			viewName: viewVariableName(definition),
 		};
 	} catch (error) {
@@ -127,7 +128,7 @@ function analyzeCell(cell: Cell, index: number, name: string): CellAnalysis {
 			cell,
 			index,
 			definition: null,
-			graph: cellGraphFromError(cell, index, name, error),
+			graph: cellGraphFromError(cell, index, key, error),
 			viewName: null,
 			error,
 		};
@@ -187,13 +188,14 @@ export function unprefix(value: string, prefix: string): string {
 function cellGraphFromDefinition(
 	notebookCell: Notebook["cells"][number],
 	index: number,
-	name: string,
+	key: string,
 	definition: Definition,
 ): CellGraph {
 	return {
 		id: notebookCell.id,
 		index,
-		name,
+		key,
+		name: notebookCellName(notebookCell),
 		mode: notebookCell.mode,
 		defines: exposedVariableNames(definition),
 		references: definition.inputs ?? [],
@@ -209,13 +211,14 @@ function cellGraphFromDefinition(
 function cellGraphFromError(
 	notebookCell: Notebook["cells"][number],
 	index: number,
-	name: string,
+	key: string,
 	error: unknown,
 ): CellGraph {
 	return {
 		id: notebookCell.id,
 		index,
-		name,
+		key,
+		name: notebookCellName(notebookCell),
 		mode: notebookCell.mode,
 		defines: [],
 		references: [],
@@ -227,6 +230,11 @@ function cellGraphFromError(
 		automutable: false,
 		error: error instanceof Error ? `${error.name}: ${error.message}` : String(error),
 	};
+}
+
+function notebookCellName(cell: Notebook["cells"][number]): string {
+	const name = (cell as { name?: unknown }).name;
+	return typeof name === "string" ? name : "";
 }
 
 function runtimeOutputs(definition: Definition): string[] {

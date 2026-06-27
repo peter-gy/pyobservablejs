@@ -1,6 +1,6 @@
 import type { RenderProps } from "@anywidget/types";
-import { SELECTORS } from "./dom";
-import type { WidgetModel } from "./model";
+import { SELECTORS } from "@/widget/dom";
+import type { WidgetModel } from "@/widget/state";
 
 export type Model = RenderProps<WidgetModel>["model"];
 export type TestModel = Model & {

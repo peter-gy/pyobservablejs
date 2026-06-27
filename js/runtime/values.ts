@@ -1,6 +1,6 @@
-const TYPE_KEY = "__pyobservablejs_type__";
+const TYPE_KEY = "__observablejs_type__";
 
-// anywidget traits carry JSON. __pyobservablejs_type__ tags preserve values that
+// anywidget traits carry JSON. __observablejs_type__ tags preserve values that
 // need browser or Python revival.
 
 export type ViewTarget = EventTarget & {
@@ -18,6 +18,8 @@ export type NestedSelectState = Array<{
 	selectedIndex: number;
 	value: string;
 }>;
+
+export type ViewWriteResult = "applied" | "unsupported";
 
 type WireContext = {
 	seen: WeakMap<object, number>;
@@ -235,7 +237,7 @@ export function readNestedSelectState(view: ViewTarget): NestedSelectState | und
 	}));
 }
 
-export function writeViewValue(view: ViewTarget, value: unknown, nestedState?: NestedSelectState): boolean {
+export function writeViewValue(view: ViewTarget, value: unknown, nestedState?: NestedSelectState): ViewWriteResult {
 	const expected = expectedWireValue(view, value);
 	if (view instanceof HTMLInputElement) {
 		if (view.type === "checkbox") {
@@ -256,10 +258,10 @@ export function writeViewValue(view: ViewTarget, value: unknown, nestedState?: N
 		view.value = value;
 		restoreNestedSelectValue(view, value, nestedState);
 	}
-	if (!sameWireValue(toWireValue(readViewValue(view)), expected)) return false;
+	if (!sameWireValue(toWireValue(readViewValue(view)), expected)) return "unsupported";
 	view.dispatchEvent(new Event("input", { bubbles: true }));
 	view.dispatchEvent(new Event("change", { bubbles: true }));
-	return true;
+	return "applied";
 }
 
 function restoreNestedSelectValue(view: ViewTarget, value: unknown, nestedState?: NestedSelectState): void {

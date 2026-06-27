@@ -14,8 +14,8 @@ import {
 	SQLiteDatabaseClient,
 	type AttachmentRegistry,
 	type NotebookOptions,
-} from "./index";
-import { waitFor } from "../widget/testing";
+} from "@/runtime";
+import { waitFor } from "@/_tests/testing";
 
 const baseOptions: NotebookOptions = {
 	attachments: {},
@@ -123,42 +123,75 @@ describe("runtime bindings", () => {
 		}
 	});
 
-	test("exposes SQLite globals through the Observable runtime", async () => {
+	test("evicts failed SQLite loads so later runtimes can retry", async () => {
 		const registry = registerAttachments({});
 		const root = document.createElement("div");
 		const el = document.createElement("div");
 		root.append(el);
-		const initSqlJs = vi.fn(async () => ({
-			Database: class TestDatabase {
-				exec(): [] {
-					return [];
-				}
-			},
-		}));
-		vi.stubGlobal("initSqlJs", initSqlJs);
-		const append = vi.spyOn(document.head, "append").mockImplementation((...nodes: (Node | string)[]) => {
-			for (const node of nodes) {
-				if (node instanceof HTMLScriptElement) {
-					queueMicrotask(() => node.onload?.(new Event("load")));
-				}
-			}
+		const missingLoaderRuntime = createRuntime(root, document.createElement("div"), baseOptions, registry);
+		missingLoaderRuntime.main.define("missingSQLiteProbe", ["SQLite"], (SQLite: unknown) => SQLite);
+		await expect(missingLoaderRuntime.main.value("missingSQLiteProbe")).rejects.toThrow(
+			"SQLite requires a caller-provided sql.js initSqlJs loader",
+		);
+		createRuntimeCleanup(missingLoaderRuntime, registry)();
+
+		const initSqlJs = vi
+			.fn()
+			.mockRejectedValueOnce(new Error("loader unavailable"))
+			.mockResolvedValue({
+				Database: class TestDatabase {
+					exec(): [] {
+						return [];
+					}
+				},
+			});
+		vi.stubGlobal("observablejsSqlite", {
+			initSqlJs,
+			locateFile: (name: string) => `/sql/${name}`,
 		});
 		const runtime = createRuntime(root, el, baseOptions, registry);
+		const retryRuntime = createRuntime(root, document.createElement("div"), baseOptions, registry);
 
 		try {
+			runtime.main.define("failedSQLiteProbe", ["SQLite"], (SQLite: unknown) => SQLite);
+			await expect(runtime.main.value("failedSQLiteProbe")).rejects.toThrow("loader unavailable");
+
 			runtime.main.define(
 				"sqliteDatabaseClientProbe",
 				["SQLiteDatabaseClient"],
 				(SQLiteDatabaseClient: unknown) => SQLiteDatabaseClient,
 			);
-			runtime.main.define("sqliteProbe", ["SQLite"], (SQLite: unknown) => SQLite);
+			retryRuntime.main.define("sqliteProbe", ["SQLite"], (SQLite: unknown) => SQLite);
 			await expect(runtime.main.value("sqliteDatabaseClientProbe")).resolves.toBe(SQLiteDatabaseClient);
-			await expect(runtime.main.value("sqliteProbe")).resolves.toMatchObject({ Database: expect.any(Function) });
-			expect(initSqlJs).toHaveBeenCalledWith({ locateFile: expect.any(Function) });
-			expect(append).toHaveBeenCalledWith(expect.objectContaining({ src: expect.stringContaining("sql-wasm.js") }));
+			await expect(retryRuntime.main.value("sqliteProbe")).resolves.toMatchObject({ Database: expect.any(Function) });
+			expect(initSqlJs).toHaveBeenCalledTimes(2);
+			const locateFile = initSqlJs.mock.calls[1]?.[0].locateFile;
+			expect(locateFile("sql-wasm.wasm")).toBe("/sql/sql-wasm.wasm");
 		} finally {
-			append.mockRestore();
 			createRuntimeCleanup(runtime, registry)();
+			createRuntimeCleanup(retryRuntime, registry)();
+		}
+	});
+
+	test("rejects Python variables that collide with runtime builtins", () => {
+		const registry = registerAttachments({});
+		const root = document.createElement("div");
+		const el = document.createElement("div");
+
+		try {
+			expect(() =>
+				createRuntime(
+					root,
+					el,
+					{
+						...baseOptions,
+						variables: { FileAttachment: "shadowed", document: "shadowed" },
+					},
+					registry,
+				),
+			).toThrow("Python variables cannot override Observable runtime builtins: FileAttachment, document");
+		} finally {
+			registry.cleanup();
 		}
 	});
 
@@ -250,6 +283,78 @@ describe("runtime bindings", () => {
 			Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: originalRevokeObjectURL });
 		}
 		expect(revokeObjectURL).toHaveBeenCalledWith("blob:imported-data");
+	});
+
+	test("does not create DuckDB blob URLs after attachment cleanup", async () => {
+		const createObjectURL = vi.fn(() => "blob:late-data");
+		const revokeObjectURL = vi.fn();
+		const originalCreateObjectURL = URL.createObjectURL;
+		const originalRevokeObjectURL = URL.revokeObjectURL;
+		Object.defineProperty(URL, "createObjectURL", { configurable: true, value: createObjectURL });
+		Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: revokeObjectURL });
+		const registry = registerAttachments({});
+		let resolveBlob: (value: Blob) => void = () => {};
+		const file = {
+			name: "stores@1.csv",
+			href: "https://static.example/stores.csv",
+			url: vi.fn(async () => "https://static.example/stores.csv"),
+			blob: vi.fn(() => new Promise<Blob>((resolve) => (resolveBlob = resolve))),
+		};
+		const DuckDBClient = {
+			of: vi.fn((sources: Record<string, unknown>) => sources),
+		};
+		const wrappedDuckDBClient = createDuckDBClient(DuckDBClient, registry);
+
+		try {
+			const sources = wrappedDuckDBClient.of({ stores: file }) as Record<string, typeof file>;
+			const url = sources.stores.url();
+			registry.cleanup();
+			resolveBlob(new Blob(["x"], { type: "text/csv" }));
+
+			await expect(url).resolves.toBe("https://static.example/stores.csv");
+			expect(createObjectURL).not.toHaveBeenCalled();
+			expect(revokeObjectURL).not.toHaveBeenCalled();
+			expect(registry.blobUrls.size).toBe(0);
+		} finally {
+			registry.cleanup();
+			Object.defineProperty(URL, "createObjectURL", { configurable: true, value: originalCreateObjectURL });
+			Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: originalRevokeObjectURL });
+		}
+	});
+
+	test("falls back when cleanup runs during DuckDB blob URL creation", async () => {
+		const revokeObjectURL = vi.fn();
+		const originalCreateObjectURL = URL.createObjectURL;
+		const originalRevokeObjectURL = URL.revokeObjectURL;
+		const registry = registerAttachments({});
+		const createObjectURL = vi.fn(() => {
+			registry.cleanup();
+			return "blob:disposed-data";
+		});
+		Object.defineProperty(URL, "createObjectURL", { configurable: true, value: createObjectURL });
+		Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: revokeObjectURL });
+		const file = {
+			name: "stores@1.csv",
+			href: "https://static.example/stores.csv",
+			url: vi.fn(async () => "https://static.example/stores.csv"),
+			blob: vi.fn(async () => new Blob(["x"], { type: "text/csv" })),
+		};
+		const DuckDBClient = {
+			of: vi.fn((sources: Record<string, unknown>) => sources),
+		};
+		const wrappedDuckDBClient = createDuckDBClient(DuckDBClient, registry);
+
+		try {
+			const sources = wrappedDuckDBClient.of({ stores: file }) as Record<string, typeof file>;
+
+			await expect(sources.stores.url()).resolves.toBe("https://static.example/stores.csv");
+			expect(revokeObjectURL).toHaveBeenCalledWith("blob:disposed-data");
+			expect(registry.blobUrls.size).toBe(0);
+		} finally {
+			registry.cleanup();
+			Object.defineProperty(URL, "createObjectURL", { configurable: true, value: originalCreateObjectURL });
+			Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: originalRevokeObjectURL });
+		}
 	});
 
 	test("normalizes legacy DuckDBClient array sources", async () => {
@@ -357,6 +462,7 @@ describe("runtime bindings", () => {
 			baseUrl: "",
 			names: new Set(),
 			blobUrls: new Map(),
+			disposed: false,
 			cleanup() {},
 		};
 		const runtime = createRuntime(root, el, baseOptions, registry);
@@ -405,6 +511,7 @@ describe("runtime bindings", () => {
 			baseUrl: "",
 			names: new Set(),
 			blobUrls: new Map(),
+			disposed: false,
 			cleanup() {},
 		};
 		const runtime = createRuntime(root, el, baseOptions, registry);
@@ -414,7 +521,13 @@ describe("runtime bindings", () => {
 			localIdFound: boolean;
 			slides: string[];
 			customCurrent: number;
+			scopedTitle: string;
+			globalTitle: string;
 			outsideVisible: boolean;
+			bodyIsRoot: boolean;
+			headIsRoot: boolean;
+			rootEvents: number;
+			globalEvents: number;
 			createdTag: string;
 			baseURI: string;
 		}> = [];
@@ -430,15 +543,31 @@ describe("runtime bindings", () => {
 				},
 			})
 			.define("documentProbe", ["document"], (document: Document) => {
+				let rootEvents = 0;
+				let globalEvents = 0;
 				(document as Document & { current?: number }).current = 4;
+				document.title = "Scoped title";
+				document.addEventListener("pyobservablejs-probe", () => {
+					rootEvents += 1;
+				});
+				window.document.addEventListener("pyobservablejs-probe", () => {
+					globalEvents += 1;
+				});
+				document.dispatchEvent(new Event("pyobservablejs-probe"));
 				return {
 					rootFound: document.querySelector(".observablehq-root") === root,
 					headings: [...document.querySelectorAll("h2")].map((node) => node.textContent ?? ""),
 					localIdFound: document.getElementById('local heading"]') === localHeading,
 					slides: [...document.getElementsByClassName("slide")].map((node) => node.textContent ?? ""),
 					customCurrent: (document as Document & { current?: number }).current ?? 0,
+					scopedTitle: document.title,
+					globalTitle: window.document.title,
 					outsideVisible:
 						document.querySelector(".outside-only") !== null || document.getElementById("outside-heading") !== null,
+					bodyIsRoot: document.body === root,
+					headIsRoot: document.head === root,
+					rootEvents,
+					globalEvents,
 					createdTag: document.createElement("span").tagName,
 					baseURI: document.baseURI,
 				};
@@ -450,7 +579,13 @@ describe("runtime bindings", () => {
 			localIdFound: true,
 			slides: ["Inside"],
 			customCurrent: 4,
+			scopedTitle: "Scoped title",
+			globalTitle: "",
 			outsideVisible: false,
+			bodyIsRoot: true,
+			headIsRoot: true,
+			rootEvents: 1,
+			globalEvents: 0,
 			createdTag: "SPAN",
 			baseURI: document.baseURI,
 		});
@@ -483,6 +618,7 @@ describe("runtime bindings", () => {
 			baseUrl: "",
 			names: new Set(),
 			blobUrls: new Map(),
+			disposed: false,
 			cleanup() {},
 		};
 		const firstRuntime = createRuntime(firstRoot, document.createElement("div"), baseOptions, registry);
@@ -509,6 +645,7 @@ describe("runtime bindings", () => {
 			baseUrl: "",
 			names: new Set(),
 			blobUrls: new Map(),
+			disposed: false,
 			cleanup() {},
 		};
 		const runtime = createRuntime(document.createElement("div"), document.createElement("div"), baseOptions, registry);

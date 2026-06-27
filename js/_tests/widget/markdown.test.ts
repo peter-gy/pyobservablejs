@@ -2,21 +2,21 @@
 
 import type { RenderProps } from "@anywidget/types";
 import { describe, test } from "vitest";
-import { SELECTORS } from "./dom";
-import type { WidgetModel } from "./model";
-import widget from "./app";
-import { createHost, createModel, waitFor } from "./testing";
+import { SELECTORS } from "@/widget/dom";
+import type { WidgetModel } from "@/widget/state";
+import widget from "@/widget/app";
+import { createHost, createModel, waitFor } from "@/_tests/testing";
 
 describe("widget markdown rendering", () => {
 	test("renders Python-authored Notebook Kit markdown cells", async () => {
 		const model = createModel({
 			role: "notebook",
-			spec: {
+			_spec: {
 				cells: [{ id: 1, mode: "md", value: "# Python rows drive an Observable Plot bar chart" }],
 			},
-			attachments: {},
+			_attachments: {},
 			_variables: {},
-			options: {},
+			_options: {},
 			_cell_widgets: ["anywidget:title"],
 		});
 		const childModels = new Map([
@@ -50,10 +50,10 @@ describe("widget markdown rendering", () => {
 			"</notebook>";
 		const model = createModel({
 			role: "notebook",
-			source,
-			attachments: {},
+			_source: source,
+			_attachments: {},
 			_variables: {},
-			options: {},
+			_options: {},
 			_cell_widgets: ["anywidget:markdown"],
 		});
 		const childModels = new Map([
@@ -85,10 +85,10 @@ describe("widget markdown rendering", () => {
 			"</notebook>";
 		const model = createModel({
 			role: "notebook",
-			source,
-			attachments: {},
+			_source: source,
+			_attachments: {},
 			_variables: {},
-			options: {},
+			_options: {},
 			_cell_widgets: ["anywidget:source-ojs-markdown"],
 		});
 		const childModels = new Map([
@@ -124,10 +124,10 @@ describe("widget markdown rendering", () => {
 			"</notebook>";
 		const model = createModel({
 			role: "notebook",
-			source,
-			attachments: {},
+			_source: source,
+			_attachments: {},
 			_variables: {},
-			options: {},
+			_options: {},
 			_cell_widgets: ["anywidget:custom-md", "anywidget:custom-md-call"],
 		});
 		const childModels = new Map([
@@ -158,10 +158,10 @@ describe("widget markdown rendering", () => {
 			"<notebook>\n" + '  <script id="1" type="module">md`** 1. Import the library**`</script>\n' + "</notebook>";
 		const model = createModel({
 			role: "notebook",
-			source,
-			attachments: {},
+			_source: source,
+			_attachments: {},
 			_variables: {},
-			options: {},
+			_options: {},
 			_cell_widgets: ["anywidget:module-markdown"],
 		});
 		const childModels = new Map([

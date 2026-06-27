@@ -2,22 +2,22 @@
 
 import type { RenderProps } from "@anywidget/types";
 import { describe, expect, test } from "vitest";
-import type { NotebookGraph } from "../notebook/graph";
-import { SELECTORS } from "./dom";
-import type { WidgetModel } from "./model";
-import widget from "./app";
-import { composedText } from "./testing";
-import { createHost, createModel, hasSavedTrait, variableValue, waitFor } from "./testing";
+import type { NotebookGraph } from "@/runtime/graph";
+import { SELECTORS } from "@/widget/dom";
+import type { WidgetModel } from "@/widget/state";
+import widget from "@/widget/app";
+import { composedText } from "@/_tests/testing";
+import { createHost, createModel, hasSavedTrait, variableValue, waitFor } from "@/_tests/testing";
 
 describe("widget graph and notebook values", () => {
 	test("rerenders the scoped notebook root when the theme trait changes", async () => {
 		const model = createModel({
 			role: "notebook",
-			spec: { theme: "air", cells: [] },
+			_spec: { theme: "air", cells: [] },
 			theme: "air",
-			attachments: {},
+			_attachments: {},
 			_variables: {},
-			options: {},
+			_options: {},
 			_cell_widgets: [],
 		});
 		const controller = new AbortController();
@@ -50,15 +50,15 @@ describe("widget graph and notebook values", () => {
 	test("writes the Notebook Kit graph to the notebook model after child models resolve", async () => {
 		const model = createModel({
 			role: "notebook",
-			spec: {
+			_spec: {
 				cells: [
 					{ id: 1, mode: "ojs", value: "answer = 42" },
 					{ id: 2, mode: "ojs", value: "answer + 1" },
 				],
 			},
-			attachments: {},
+			_attachments: {},
 			_variables: {},
-			options: {},
+			_options: {},
 			_cell_widgets: ["anywidget:cell-1", "anywidget:cell-2"],
 		});
 		const childModels = new Map([
@@ -66,6 +66,7 @@ describe("widget graph and notebook values", () => {
 				"anywidget:cell-1",
 				createModel({
 					role: "cell",
+					key: "answer",
 					name: "answer",
 					_values: {},
 					_value_names: [],
@@ -75,6 +76,7 @@ describe("widget graph and notebook values", () => {
 				"anywidget:cell-2",
 				createModel({
 					role: "cell",
+					key: "readout",
 					name: "readout",
 					_values: {},
 					_value_names: [],
@@ -94,7 +96,7 @@ describe("widget graph and notebook values", () => {
 		const graph = await waitFor(() => model.get("_graph") as NotebookGraph | undefined);
 
 		expect(hasSavedTrait(model, "_graph")).toBe(true);
-		expect(graph.cells.map((cell) => cell.name)).toEqual(["answer", "readout"]);
+		expect(graph.cells.map((cell) => cell.key)).toEqual(["answer", "readout"]);
 		expect(graph.cells.map((cell) => cell.defines)).toEqual([["answer"], []]);
 		expect(graph.cells[1]?.references).toEqual(["answer"]);
 		expect(graph.edges).toHaveLength(1);
@@ -105,7 +107,7 @@ describe("widget graph and notebook values", () => {
 	test("keeps notebook values reactive to slider-like child variable updates", async () => {
 		const model = createModel({
 			role: "notebook",
-			spec: {
+			_spec: {
 				cells: [
 					{
 						id: 1,
@@ -115,9 +117,9 @@ describe("widget graph and notebook values", () => {
 					{ id: 2, mode: "ojs", value: "gain * 2" },
 				],
 			},
-			attachments: {},
+			_attachments: {},
 			_variables: {},
-			options: {},
+			_options: {},
 			_cell_widgets: ["anywidget:gain", "anywidget:readout"],
 		});
 		const childModels = new Map([
@@ -170,15 +172,15 @@ describe("widget graph and notebook values", () => {
 	test("keeps notebook and child surfaces stable across repeated Python variable updates", async () => {
 		const model = createModel({
 			role: "notebook",
-			spec: {
+			_spec: {
 				cells: [
 					{ id: 1, mode: "ojs", value: "baseEcho = base" },
 					{ id: 2, mode: "ojs", value: "doubled = base * 2" },
 				],
 			},
-			attachments: {},
+			_attachments: {},
 			_variables: { base: 1 },
-			options: {},
+			_options: {},
 			_cell_widgets: ["anywidget:base", "anywidget:doubled"],
 		});
 		const baseModel = createModel({ role: "cell", name: "baseEcho", _values: {}, _value_names: [] });
@@ -223,15 +225,15 @@ describe("widget graph and notebook values", () => {
 	test("syncs named display cell values under the cell name", async () => {
 		const model = createModel({
 			role: "notebook",
-			spec: {
+			_spec: {
 				cells: [
 					{ id: 1, mode: "ojs", value: "answer = 42" },
 					{ id: 2, mode: "ojs", value: "answer + 1" },
 				],
 			},
-			attachments: {},
+			_attachments: {},
 			_variables: {},
-			options: {},
+			_options: {},
 			_cell_widgets: ["anywidget:answer", "anywidget:readout"],
 		});
 		const readoutModel = createModel({
@@ -245,6 +247,7 @@ describe("widget graph and notebook values", () => {
 				"anywidget:answer",
 				createModel({
 					role: "cell",
+					key: "answer",
 					name: "answer",
 					_values: {},
 					_value_names: [],
@@ -266,7 +269,6 @@ describe("widget graph and notebook values", () => {
 		expect(await waitFor(() => (variableValue(model, "readout") === 43 ? 43 : undefined))).toBe(43);
 		expect(hasSavedTrait(readoutModel, "_value_names")).toBe(true);
 		expect(hasSavedTrait(readoutModel, "_values")).toBe(true);
-		expect(hasSavedTrait(model, "_value_names")).toBe(true);
 		expect(hasSavedTrait(model, "_values")).toBe(true);
 		controller.abort();
 	});
@@ -274,12 +276,12 @@ describe("widget graph and notebook values", () => {
 	test("syncs named display cell errors under the cell name", async () => {
 		const model = createModel({
 			role: "notebook",
-			spec: {
+			_spec: {
 				cells: [{ id: 1, mode: "ojs", value: "missing + 1" }],
 			},
-			attachments: {},
+			_attachments: {},
 			_variables: {},
-			options: {},
+			_options: {},
 			_cell_widgets: ["anywidget:readout"],
 		});
 		const readoutModel = createModel({
@@ -304,16 +306,10 @@ describe("widget graph and notebook values", () => {
 				Array.isArray(readoutModel.get("_value_names")) ? (readoutModel.get("_value_names") as string[]) : undefined,
 			),
 		).toEqual(["readout"]);
-		expect(
-			await waitFor(() =>
-				Array.isArray(model.get("_value_names")) ? (model.get("_value_names") as string[]) : undefined,
-			),
-		).toEqual(["readout"]);
 		expect(hasSavedTrait(readoutModel, "_value_names")).toBe(true);
 		expect(hasSavedTrait(readoutModel, "_values")).toBe(true);
-		expect(hasSavedTrait(model, "_value_names")).toBe(true);
 		expect(hasSavedTrait(model, "_values")).toBe(true);
-		expect(error.__pyobservablejs_type__).toBe("error");
+		expect(error.__observablejs_type__).toBe("error");
 		expect(error.name).toBe("RuntimeError");
 		expect(String(error.message)).toContain("missing is not defined");
 		expect(await waitFor(() => variableValue(model, "readout") as Record<string, unknown> | undefined)).toEqual(error);
@@ -323,15 +319,15 @@ describe("widget graph and notebook values", () => {
 	test("lets Python variables override notebook-defined variables", async () => {
 		const model = createModel({
 			role: "notebook",
-			spec: {
+			_spec: {
 				cells: [
 					{ id: 1, mode: "ojs", value: "answer = 1" },
 					{ id: 2, mode: "ojs", value: "doubled = answer * 2" },
 				],
 			},
-			attachments: {},
+			_attachments: {},
 			_variables: { answer: 41, unused: 1 },
-			options: {},
+			_options: {},
 			_cell_widgets: ["anywidget:answer", "anywidget:doubled"],
 		});
 		const childModels = new Map([
@@ -376,7 +372,7 @@ describe("widget graph and notebook values", () => {
 	test("uses initial Python variable overrides when source definitions would fail", async () => {
 		const model = createModel({
 			role: "notebook",
-			spec: {
+			_spec: {
 				cells: [
 					{
 						id: 1,
@@ -386,9 +382,9 @@ describe("widget graph and notebook values", () => {
 					{ id: 2, mode: "ojs", value: "doubled = answer * 2" },
 				],
 			},
-			attachments: {},
+			_attachments: {},
 			_variables: { answer: 41 },
-			options: {},
+			_options: {},
 			_cell_widgets: ["anywidget:answer", "anywidget:doubled"],
 		});
 		const childModels = new Map([
@@ -434,21 +430,21 @@ describe("widget graph and notebook values", () => {
 	test("overrides source-backed variables without breaking URL-backed attachments", async () => {
 		const model = createModel({
 			role: "notebook",
-			source: `
+			_source: `
 <notebook>
   <script id="1" type="application/vnd.observable.javascript" name="rows">rows = [{x: 0}, {x: 1}, {x: 2}]</script>
   <script id="2" type="application/vnd.observable.javascript" name="count">count = rows.length</script>
   <script id="3" type="application/vnd.observable.javascript" name="attachmentUrl">attachmentUrl = FileAttachment("points.csv").url()</script>
 </notebook>
 `,
-			attachments: {
+			_attachments: {
 				"points.csv": {
 					url: "https://static.example/points.csv",
 					mimeType: "text/csv",
 				},
 			},
 			_variables: { rows: [{ x: 10 }, { x: 20 }], unused: 1 },
-			options: {},
+			_options: {},
 			_cell_widgets: ["anywidget:rows", "anywidget:count", "anywidget:attachment"],
 		});
 		const childModels = new Map([
@@ -503,15 +499,15 @@ describe("widget graph and notebook values", () => {
 	test("syncs graph metadata for source-backed Notebook Kit HTML", async () => {
 		const model = createModel({
 			role: "notebook",
-			source: `
+			_source: `
 <notebook>
   <script id="1" type="application/vnd.observable.javascript" name="answer">answer = 42</script>
   <script id="2" type="module" name="double">const double = answer * 2;</script>
 </notebook>
 `,
-			attachments: {},
+			_attachments: {},
 			_variables: {},
-			options: {},
+			_options: {},
 			_cell_widgets: ["anywidget:source-1", "anywidget:source-2"],
 		});
 		const childModels = new Map([
@@ -519,6 +515,7 @@ describe("widget graph and notebook values", () => {
 				"anywidget:source-1",
 				createModel({
 					role: "cell",
+					key: "answer",
 					name: "answer",
 					_values: {},
 					_value_names: [],
@@ -528,6 +525,7 @@ describe("widget graph and notebook values", () => {
 				"anywidget:source-2",
 				createModel({
 					role: "cell",
+					key: "double",
 					name: "double",
 					_values: {},
 					_value_names: [],
@@ -546,7 +544,7 @@ describe("widget graph and notebook values", () => {
 		const graph = await waitFor(() => model.get("_graph") as NotebookGraph | undefined);
 
 		expect(graph.cells.map((cell) => cell.id)).toEqual([1, 2]);
-		expect(graph.cells.map((cell) => cell.name)).toEqual(["answer", "double"]);
+		expect(graph.cells.map((cell) => cell.key)).toEqual(["answer", "double"]);
 		expect(graph.cells[1]?.defines).toEqual(["double"]);
 		expect(graph.cells[1]?.references).toEqual(["answer"]);
 		expect(graph.edges).toHaveLength(1);

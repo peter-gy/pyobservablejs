@@ -1,7 +1,12 @@
 import type { RenderProps } from "@anywidget/types";
-import type { Notebook } from "@observablehq/notebook-kit";
+import { deserialize, toNotebook, type Notebook } from "@observablehq/notebook-kit";
 import type { NotebookRuntime } from "@observablehq/notebook-kit/runtime";
-import { createNotebookGraph, createNotebookGraphFromAnalysis, type NotebookAnalysis } from "../notebook/graph";
+import {
+	createNotebookGraph,
+	createNotebookGraphFromAnalysis,
+	type NotebookAnalysis,
+	type NotebookGraph,
+} from "@/runtime/graph";
 import {
 	isViewTarget,
 	isWritableSyncedViewValue,
@@ -13,12 +18,106 @@ import {
 	setRuntimeVariables,
 	toWireValue,
 	writeViewValue as writeRawViewValue,
+	type AttachmentInfo,
 	type NestedSelectState,
 	type NotebookOptions,
 	type RuntimeVariablesSync,
+	type ViewWriteResult,
 	type ViewTarget,
-} from "../runtime";
-import { readModelVariableNames, readModelVariables, type WidgetModel } from "./model";
+} from "@/runtime";
+
+export type WidgetModel = {
+	role?: "notebook" | "cell";
+	key?: string;
+	name?: string;
+	_source?: string;
+	_spec?: Record<string, unknown>;
+	theme?: unknown;
+	_attachments?: Record<string, AttachmentInfo>;
+	_base_url?: string;
+	_variables?: Record<string, unknown>;
+	_variable_update?: {
+		seq?: number;
+		kind?: "set" | "replace";
+		values?: Record<string, unknown>;
+	};
+	_anywidget_bundle_module_request?: {
+		seq?: number;
+		path?: string;
+	};
+	_anywidget_bundle_module_response?: {
+		seq?: number;
+		path?: string;
+		source?: string;
+		error?: string;
+	};
+	_graph?: NotebookGraph;
+	_values?: Record<string, unknown>;
+	_value_names?: string[];
+	_options?: {
+		show_source?: boolean;
+	};
+	_cell_widgets?: string[];
+};
+
+type AnyWidgetModel = RenderProps<WidgetModel>["model"];
+
+export const NOTEBOOK_MODEL_CHANGE_EVENTS = [
+	"change:_source",
+	"change:_spec",
+	"change:theme",
+	"change:_attachments",
+	"change:_base_url",
+	"change:_options",
+	"change:_cell_widgets",
+] as const;
+
+export function readModelVariables(model: AnyWidgetModel): Record<string, unknown> {
+	const value = model.get("_values");
+	if (value === null || typeof value !== "object" || Array.isArray(value)) return {};
+	return value;
+}
+
+export function readNotebookVariables(model: AnyWidgetModel): Record<string, unknown> {
+	const value = model.get("_variables");
+	if (value === null || typeof value !== "object" || Array.isArray(value)) return {};
+	return value;
+}
+
+export function readNotebookFromModel(model: RenderProps<WidgetModel>["model"]): Notebook {
+	const source = model.get("_source");
+	const notebook = source?.trim() ? deserialize(source) : toNotebook(model.get("_spec") ?? {});
+	const theme = readNotebookTheme(model);
+	return theme === undefined ? notebook : { ...notebook, theme };
+}
+
+export function readNotebookTheme(model: RenderProps<WidgetModel>["model"]): Notebook["theme"] | undefined {
+	const theme = model.get("theme");
+	if (typeof theme === "string") return theme as Notebook["theme"];
+	if (theme === null || typeof theme !== "object" || Array.isArray(theme)) return undefined;
+	const light = (theme as Record<string, unknown>).light;
+	const dark = (theme as Record<string, unknown>).dark;
+	if (typeof light === "string" && typeof dark === "string") return { light, dark } as Notebook["theme"];
+	return undefined;
+}
+
+export function readNotebookOptions(
+	model: RenderProps<WidgetModel>["model"],
+	variablesOverride?: Record<string, unknown>,
+): NotebookOptions {
+	const wireOptions = model.get("_options");
+	return {
+		attachments: model.get("_attachments") ?? {},
+		baseUrl: model.get("_base_url") || document.baseURI,
+		variables: variablesOverride ?? readNotebookVariables(model),
+		showSource: wireOptions?.show_source === true,
+	};
+}
+
+export function readCellRefs(value: unknown): string[] {
+	if (!Array.isArray(value)) return [];
+	return value.filter((item): item is string => typeof item === "string");
+}
 
 type ModelViewState = {
 	selects: NestedSelectState;
@@ -34,7 +133,7 @@ type RuntimeVariablesSyncOptions = {
 	viewNames: Set<string>;
 	signal: AbortSignal;
 	onReset(variables: Record<string, unknown>): void;
-	writeViewValue?(view: ViewTarget, value: unknown): boolean;
+	writeViewValue?(view: ViewTarget, value: unknown): ViewWriteResult;
 };
 
 export type CellVariableSync = {
@@ -198,8 +297,8 @@ export function syncNotebookGraph(
 	cellModels: Array<RenderProps<WidgetModel>["model"] | undefined> = [],
 	analysis?: NotebookAnalysis,
 ): void {
-	const names = cellModels.map((cellModel) => cellModel?.get("name") ?? "");
-	const graph = analysis ? createNotebookGraphFromAnalysis(analysis, names) : createNotebookGraph(notebook, names);
+	const keys = cellModels.map((cellModel) => cellModel?.get("key") ?? "");
+	const graph = analysis ? createNotebookGraphFromAnalysis(analysis, keys) : createNotebookGraph(notebook, keys);
 	if (!sameWireValue(model.get("_graph"), graph)) {
 		model.set("_graph", graph);
 		model.save_changes();
@@ -207,65 +306,26 @@ export function syncNotebookGraph(
 }
 
 /**
- * Keep parent notebook values aligned with child cell model outputs.
- */
-export function bindNotebookValueSync(
-	model: RenderProps<WidgetModel>["model"],
-	cellModels: Array<RenderProps<WidgetModel>["model"]>,
-	signal: AbortSignal,
-): void {
-	const sync = () => syncNotebookValues(model, cellModels);
-	sync();
-	for (const cellModel of cellModels) {
-		cellModel.on("change:_value_names", sync);
-		cellModel.on("change:_values", sync);
-	}
-	signal.addEventListener(
-		"abort",
-		() => {
-			for (const cellModel of cellModels) {
-				cellModel.off("change:_value_names", sync);
-				cellModel.off("change:_values", sync);
-			}
-		},
-		{ once: true },
-	);
-}
-
-/**
- * Aggregate child values into the notebook-level public value map.
- *
- * Duplicate variable names stay listed in `_value_names`, but are omitted from
- * `_values` because Python cannot choose one owner safely.
+ * Aggregate child values into the notebook-level public value map. Duplicate
+ * variable names are omitted because Python cannot choose one owner safely.
  */
 export function syncNotebookValues(
 	model: RenderProps<WidgetModel>["model"],
 	cellModels: Array<RenderProps<WidgetModel>["model"]>,
 ): void {
-	const names: string[] = [];
 	const counts = new Map<string, number>();
 	const values: Record<string, unknown> = {};
 	for (const cellModel of cellModels) {
-		for (const name of readModelVariableNames(cellModel)) {
-			if (!names.includes(name)) names.push(name);
-		}
 		for (const [name, value] of Object.entries(readModelVariables(cellModel))) {
-			if (!names.includes(name)) names.push(name);
 			counts.set(name, (counts.get(name) ?? 0) + 1);
 			values[name] = value;
 		}
 	}
 	const variables = Object.fromEntries(Object.entries(values).filter(([name]) => counts.get(name) === 1));
-	let changed = false;
-	if (!sameWireValue(model.get("_value_names"), names)) {
-		model.set("_value_names", names);
-		changed = true;
-	}
 	if (!sameWireValue(model.get("_values"), variables)) {
 		model.set("_values", variables);
-		changed = true;
+		model.save_changes();
 	}
-	if (changed) model.save_changes();
 }
 
 export function createRuntimeVariablesSync({
@@ -325,7 +385,7 @@ export function createRuntimeVariablesSync({
 			views.set(name, view);
 			if (onVariableRelease) releaseCallbacks.set(name, onVariableRelease);
 			if (Object.prototype.hasOwnProperty.call(variables, name)) {
-				void writeVariableToView(name, view, variables[name], views, signal, () => version, writeViewValue);
+				void writeVariableToView(runtime, name, view, variables[name], views, signal, () => version, writeViewValue);
 			}
 		},
 		deleteView(name, view) {
@@ -349,13 +409,13 @@ function applyRuntimeVariables(
 	viewNames: Set<string>,
 	signal: AbortSignal,
 	readVersion: () => number,
-	writeViewValue: (view: ViewTarget, value: unknown) => boolean,
+	writeViewValue: (view: ViewTarget, value: unknown) => ViewWriteResult,
 ): void {
 	const definitions: Record<string, unknown> = {};
 	for (const [name, value] of Object.entries(variables)) {
 		const view = views.get(name);
 		if (view) {
-			void writeVariableToView(name, view, value, views, signal, readVersion, writeViewValue);
+			void writeVariableToView(runtime, name, view, value, views, signal, readVersion, writeViewValue);
 		} else if (viewNames.has(name)) {
 			continue;
 		} else {
@@ -366,25 +426,33 @@ function applyRuntimeVariables(
 }
 
 async function writeVariableToView(
+	runtime: NotebookRuntime,
 	name: string,
 	view: ViewTarget,
 	wireValue: unknown,
 	views: Map<string, ViewTarget>,
 	signal: AbortSignal,
 	readVersion: () => number,
-	writeViewValue: (view: ViewTarget, value: unknown) => boolean,
+	writeViewValue: (view: ViewTarget, value: unknown) => ViewWriteResult,
 ): Promise<void> {
 	const version = readVersion();
 	const value = await revivePythonValue(wireValue);
 	if (signal.aborted || version !== readVersion() || views.get(name) !== view) return;
 	if (sameWireValue(toWireValue(readViewValue(view)), toWireValue(value))) return;
-	writeViewValue(view, value);
+	const result = writeViewValue(view, value);
+	if (result === "unsupported" && !signal.aborted && version === readVersion() && views.get(name) === view) {
+		setRuntimeVariables(runtime, { [name]: wireValue });
+	}
 }
 
 /**
  * Write a view value while suppressing ownership tracking for the dispatched events.
  */
-export function writeProgrammaticViewValue(view: ViewTarget, value: unknown, nestedState?: NestedSelectState): boolean {
+export function writeProgrammaticViewValue(
+	view: ViewTarget,
+	value: unknown,
+	nestedState?: NestedSelectState,
+): ViewWriteResult {
 	programmaticViewWrites.add(view);
 	try {
 		return writeRawViewValue(view, value, nestedState);

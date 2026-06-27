@@ -2,24 +2,24 @@
 
 import type { RenderProps } from "@anywidget/types";
 import { describe, expect, test } from "vitest";
-import widget from "./app";
-import { SELECTORS } from "./dom";
-import { createHost, createModel, objectValuedSelectSource, variableValue, waitFor } from "./testing";
-import type { WidgetModel } from "./model";
+import widget from "@/widget/app";
+import { SELECTORS } from "@/widget/dom";
+import { createHost, createModel, objectValuedSelectSource, variableValue, waitFor } from "@/_tests/testing";
+import type { WidgetModel } from "@/widget/state";
 
 describe("widget runtime variable sync", () => {
 	test("updates existing Python variables through the runtime", async () => {
 		const model = createModel({
 			role: "notebook",
-			spec: {
+			_spec: {
 				cells: [
 					{ id: 1, mode: "ojs", value: "base_echo = base" },
 					{ id: 2, mode: "ojs", value: "doubled = base * 2" },
 				],
 			},
-			attachments: {},
+			_attachments: {},
 			_variables: { base: 2 },
-			options: {},
+			_options: {},
 			_cell_widgets: ["anywidget:base", "anywidget:doubled"],
 		});
 		const childModels = new Map([
@@ -51,12 +51,12 @@ describe("widget runtime variable sync", () => {
 	test("keeps Python-owned hidden cells hidden", async () => {
 		const model = createModel({
 			role: "notebook",
-			spec: {
+			_spec: {
 				cells: [{ id: 1, mode: "ojs", value: "answer = 1", hidden: true }],
 			},
-			attachments: {},
+			_attachments: {},
 			_variables: { answer: 41 },
-			options: {},
+			_options: {},
 			_cell_widgets: ["anywidget:answer"],
 		});
 		const childModels = new Map([
@@ -80,7 +80,7 @@ describe("widget runtime variable sync", () => {
 	test("uses Python-owned outputs from mixed JS declarations", async () => {
 		const model = createModel({
 			role: "notebook",
-			spec: {
+			_spec: {
 				cells: [
 					{
 						id: 1,
@@ -89,9 +89,9 @@ describe("widget runtime variable sync", () => {
 					},
 				],
 			},
-			attachments: {},
+			_attachments: {},
 			_variables: { answer: 41 },
-			options: {},
+			_options: {},
 			_cell_widgets: ["anywidget:mixed"],
 		});
 		const childModel = createModel({ role: "cell", name: "mixed", _values: {}, _value_names: [] });
@@ -122,15 +122,15 @@ describe("widget runtime variable sync", () => {
 	test("defines newly added Python variables through the runtime", async () => {
 		const model = createModel({
 			role: "notebook",
-			spec: {
+			_spec: {
 				cells: [
 					{ id: 1, mode: "ojs", value: "base_echo = base" },
 					{ id: 2, mode: "ojs", value: "doubled = base * 2" },
 				],
 			},
-			attachments: {},
+			_attachments: {},
 			_variables: {},
-			options: {},
+			_options: {},
 			_cell_widgets: ["anywidget:base", "anywidget:doubled"],
 		});
 		const childModels = new Map([
@@ -156,15 +156,15 @@ describe("widget runtime variable sync", () => {
 	test("restores source definitions when Python variable replacement removes keys", async () => {
 		const model = createModel({
 			role: "notebook",
-			spec: {
+			_spec: {
 				cells: [
 					{ id: 1, mode: "ojs", value: "base = 1" },
 					{ id: 2, mode: "ojs", value: "doubled = base * 2" },
 				],
 			},
-			attachments: {},
+			_attachments: {},
 			_variables: { base: 5 },
-			options: {},
+			_options: {},
 			_cell_widgets: ["anywidget:base", "anywidget:doubled"],
 		});
 		const childModels = new Map([
@@ -192,7 +192,7 @@ describe("widget runtime variable sync", () => {
 	test("updates viewof variable values through the runtime", async () => {
 		const model = createModel({
 			role: "notebook",
-			spec: {
+			_spec: {
 				cells: [
 					{
 						id: 1,
@@ -210,9 +210,9 @@ viewof gain = {
 					{ id: 2, mode: "ojs", value: "doubled = gain * 2" },
 				],
 			},
-			attachments: {},
+			_attachments: {},
 			_variables: { gain: 5 },
-			options: {},
+			_options: {},
 			_cell_widgets: ["anywidget:gain", "anywidget:doubled"],
 		});
 		const childModels = new Map([
@@ -243,10 +243,55 @@ viewof gain = {
 		controller.abort();
 	});
 
+	test("routes unsupported view writes through runtime variables", async () => {
+		const model = createModel({
+			role: "notebook",
+			_spec: {
+				cells: [
+					{
+						id: 1,
+						mode: "ojs",
+						value: `
+viewof gain = {
+  const input = document.createElement("input");
+  input.type = "range";
+  input.min = "0";
+  input.max = "10";
+  input.value = "5";
+  return input;
+}`,
+					},
+					{ id: 2, mode: "ojs", value: "gainKind = typeof gain" },
+				],
+			},
+			_attachments: {},
+			_variables: { gain: { pointDensity: 21 } },
+			_options: {},
+			_cell_widgets: ["anywidget:gain", "anywidget:gain-kind"],
+		});
+		const childModels = new Map([
+			["anywidget:gain", createModel({ role: "cell", name: "gain", _values: {}, _value_names: [] })],
+			["anywidget:gain-kind", createModel({ role: "cell", name: "gainKind", _values: {}, _value_names: [] })],
+		]);
+		const el = document.createElement("div");
+		const controller = new AbortController();
+
+		widget.render({
+			model,
+			el,
+			signal: controller.signal,
+			host: createHost(childModels),
+		} as unknown as RenderProps<WidgetModel>);
+
+		await waitFor(() => rangeWithValue(el, 5));
+		expect(await waitFor(() => (variableValue(model, "gainKind") === "object" ? "object" : undefined))).toBe("object");
+		controller.abort();
+	});
+
 	test("updates object-valued viewof variables through nested selects", async () => {
 		const model = createModel({
 			role: "notebook",
-			spec: {
+			_spec: {
 				cells: [
 					{
 						id: 1,
@@ -258,9 +303,9 @@ viewof gain = {
 					{ id: 4, mode: "ojs", value: "pointDensity = presets ? presets.pointDensity : -1" },
 				],
 			},
-			attachments: {},
+			_attachments: {},
 			_variables: {},
-			options: {},
+			_options: {},
 			_cell_widgets: ["anywidget:select", "anywidget:presets-array", "anywidget:presets", "anywidget:point-density"],
 		});
 		const childModels = new Map([
@@ -293,7 +338,7 @@ viewof gain = {
 	test("does not replay lossy element summaries into view controls", async () => {
 		const model = createModel({
 			role: "notebook",
-			spec: {
+			_spec: {
 				cells: [
 					{
 						id: 1,
@@ -308,9 +353,9 @@ viewof image = {
 					{ id: 2, mode: "ojs", value: "imageTag = image.tagName" },
 				],
 			},
-			attachments: {},
+			_attachments: {},
 			_variables: {},
-			options: {},
+			_options: {},
 			_cell_widgets: ["anywidget:image", "anywidget:image-tag"],
 		});
 		const childModels = new Map([
@@ -330,7 +375,7 @@ viewof image = {
 		const form = await waitFor(() => el.querySelector("form") ?? undefined);
 		expect(await waitFor(() => (variableValue(model, "imageTag") === "IMG" ? "IMG" : undefined))).toBe("IMG");
 		expect(variableValue(model, "image")).toEqual({
-			__pyobservablejs_type__: "element",
+			__observablejs_type__: "element",
 			value: "img",
 		});
 		expect((form as HTMLFormElement & { value: unknown }).value).toBeInstanceOf(Promise);
@@ -345,7 +390,7 @@ viewof image = {
 	test("keeps Python-owned view values while dependencies change", async () => {
 		const model = createModel({
 			role: "notebook",
-			spec: {
+			_spec: {
 				cells: [
 					{
 						id: 1,
@@ -364,9 +409,9 @@ viewof gain = {
 					{ id: 3, mode: "ojs", value: "doubled = gain * 2" },
 				],
 			},
-			attachments: {},
+			_attachments: {},
 			_variables: { seed: 1, gain: 5 },
-			options: {},
+			_options: {},
 			_cell_widgets: ["anywidget:gain", "anywidget:seed-echo", "anywidget:doubled"],
 		});
 		const childModels = new Map([
@@ -401,7 +446,7 @@ viewof gain = {
 	test("preserves user-set view values across repeated dependency replacements", async () => {
 		const model = createModel({
 			role: "notebook",
-			spec: {
+			_spec: {
 				cells: [
 					{
 						id: 1,
@@ -420,9 +465,9 @@ viewof gain = {
 					{ id: 3, mode: "ojs", value: "doubled = gain * 2" },
 				],
 			},
-			attachments: {},
+			_attachments: {},
 			_variables: { seed: 1 },
-			options: {},
+			_options: {},
 			_cell_widgets: ["anywidget:gain", "anywidget:seed-echo", "anywidget:doubled"],
 		});
 		const childModels = new Map([
@@ -461,7 +506,7 @@ viewof gain = {
 	test("uses replacement view defaults until the user changes the view", async () => {
 		const model = createModel({
 			role: "notebook",
-			spec: {
+			_spec: {
 				cells: [
 					{
 						id: 1,
@@ -479,9 +524,9 @@ viewof gain = {
 					{ id: 2, mode: "ojs", value: "doubled = gain * 2" },
 				],
 			},
-			attachments: {},
+			_attachments: {},
 			_variables: { seed: 1 },
-			options: {},
+			_options: {},
 			_cell_widgets: ["anywidget:gain", "anywidget:doubled"],
 		});
 		const childModels = new Map([
@@ -514,7 +559,7 @@ viewof gain = {
 	test("uses view defaults after Python replacement removes a view value", async () => {
 		const model = createModel({
 			role: "notebook",
-			spec: {
+			_spec: {
 				cells: [
 					{
 						id: 1,
@@ -532,9 +577,9 @@ viewof gain = {
 					{ id: 2, mode: "ojs", value: "doubled = gain * 2" },
 				],
 			},
-			attachments: {},
+			_attachments: {},
 			_variables: { seed: 1, gain: 5 },
-			options: {},
+			_options: {},
 			_cell_widgets: ["anywidget:gain", "anywidget:doubled"],
 		});
 		const childModels = new Map([

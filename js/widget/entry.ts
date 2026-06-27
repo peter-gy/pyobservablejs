@@ -1,6 +1,6 @@
 import type { InitializeProps, RenderProps } from "@anywidget/types";
-import type { AnyWidgetApp } from "../anywidget/chunked-module-loader";
-import type { WidgetModel } from "./model";
+import type { AnyWidgetApp } from "@/anywidget-bundle/runtime";
+import type { WidgetModel } from "./state";
 
 const WIDGET_CLASS_NAME = "pyobservablejs";
 const ERROR_CLASS_NAME = "pyobservablejs-error";
