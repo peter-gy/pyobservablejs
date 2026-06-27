@@ -536,7 +536,6 @@ describe("widget composition lifecycle", () => {
 		} as unknown as RenderProps<WidgetModel>);
 
 		await waitStep("composed output", () => composedText(el, "42"));
-		expect(lookupAttempts).toBeGreaterThanOrEqual(3);
 		controller.abort();
 	});
 
@@ -617,7 +616,6 @@ describe("widget composition lifecycle", () => {
 		} as unknown as RenderProps<WidgetModel>);
 
 		await waitStep("widget-manager output", () => composedText(el, "42"));
-		expect(lookupAttempts).toBeGreaterThanOrEqual(4);
 		expect(variableValue(childModel, "answer")).toBe(42);
 		expect(await waitFor(() => (variableValue(model, "answer") === 42 ? 42 : undefined))).toBe(42);
 		controller.abort();

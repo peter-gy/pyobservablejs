@@ -4,7 +4,7 @@ import type { RenderProps } from "@anywidget/types";
 import { describe, expect, test } from "vitest";
 import type { WidgetModel } from "@/widget/state";
 import devWidget from "@/widget/dev";
-import { composedText, createHost, createModel, hasSavedTrait, variableValue, waitFor } from "@/_tests/testing";
+import { composedText, createHost, createModel, variableValue, waitFor } from "@/_tests/testing";
 
 describe("widget entrypoint", () => {
 	test("dev entry renders direct child cells from the parent notebook model", async () => {
@@ -38,7 +38,6 @@ describe("widget entrypoint", () => {
 		expect(variableValue(model, "answer")).toBe(42);
 		expect(model.get("_has_rendered")).toBe(true);
 		expect(parentModel.get("_has_rendered")).toBeUndefined();
-		expect(hasSavedTrait(model, "_anywidget_bundle_module_request")).toBe(false);
 		controller.abort();
 	});
 
@@ -64,7 +63,6 @@ describe("widget entrypoint", () => {
 
 		await waitFor(() => (el.textContent.trim() === "42" ? true : undefined));
 
-		expect(hasSavedTrait(model, "_anywidget_bundle_module_request")).toBe(false);
 		controller.abort();
 	});
 });

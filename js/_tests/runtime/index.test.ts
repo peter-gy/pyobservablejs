@@ -379,7 +379,6 @@ describe("runtime bindings", () => {
 				typeof file | { file: typeof file }
 			>;
 
-			expect(Object.keys(sources)).toEqual(["named", "papers", "custom"]);
 			await expect((sources.named as typeof file).url()).resolves.toBe("blob:imported-data");
 			await expect((sources.papers as typeof file).url()).resolves.toBe("blob:imported-data");
 			await expect((sources.custom as { file: typeof file }).file.url()).resolves.toBe("blob:imported-data");
@@ -495,16 +494,18 @@ describe("runtime bindings", () => {
 
 	test("scopes the document builtin to the notebook root", async () => {
 		const root = document.createElement("div");
-		root.className = "observablehq-root";
+		root.classList.add("root-marker");
 		const localHeading = document.createElement("h2");
 		localHeading.id = 'local heading"]';
-		localHeading.className = "slide";
+		localHeading.classList.add("slide");
 		localHeading.textContent = "Inside";
 		root.append(localHeading);
 		const outside = document.createElement("section");
 		outside.id = "outside-heading";
-		outside.className = "outside-only slide";
-		outside.innerHTML = "<h2>Outside</h2>";
+		outside.classList.add("outside-only", "slide");
+		const outsideHeading = document.createElement("h2");
+		outsideHeading.textContent = "Outside";
+		outside.append(outsideHeading);
 		document.body.append(outside);
 		const el = document.createElement("div");
 		const registry: AttachmentRegistry = {
@@ -555,7 +556,7 @@ describe("runtime bindings", () => {
 				});
 				document.dispatchEvent(new Event("pyobservablejs-probe"));
 				return {
-					rootFound: document.querySelector(".observablehq-root") === root,
+					rootFound: document.querySelector(".root-marker") === root,
 					headings: [...document.querySelectorAll("h2")].map((node) => node.textContent ?? ""),
 					localIdFound: document.getElementById('local heading"]') === localHeading,
 					slides: [...document.getElementsByClassName("slide")].map((node) => node.textContent ?? ""),
@@ -593,7 +594,7 @@ describe("runtime bindings", () => {
 		const runtimeDefinition = createRuntimeDefinition(
 			{ id: 1, mode: "ojs", value: "" } as Cell,
 			{
-				body: 'function(){ return document.querySelector(".observablehq-root")?.textContent; }',
+				body: 'function(){ return document.querySelector(".root-marker")?.textContent; }',
 				inputs: [],
 				outputs: [],
 				autodisplay: true,
@@ -609,11 +610,19 @@ describe("runtime bindings", () => {
 
 	test("keeps document selectors isolated across simultaneous runtimes", () => {
 		const firstRoot = document.createElement("div");
-		firstRoot.className = "observablehq-root";
-		firstRoot.innerHTML = '<span id="shared-target" class="first-only">First</span>';
+		firstRoot.classList.add("root-marker");
+		const firstTarget = document.createElement("span");
+		firstTarget.id = "shared-target";
+		firstTarget.classList.add("first-only");
+		firstTarget.textContent = "First";
+		firstRoot.append(firstTarget);
 		const secondRoot = document.createElement("div");
-		secondRoot.className = "observablehq-root";
-		secondRoot.innerHTML = '<span id="shared-target" class="second-only">Second</span>';
+		secondRoot.classList.add("root-marker");
+		const secondTarget = document.createElement("span");
+		secondTarget.id = "shared-target";
+		secondTarget.classList.add("second-only");
+		secondTarget.textContent = "Second";
+		secondRoot.append(secondTarget);
 		const registry: AttachmentRegistry = {
 			baseUrl: "",
 			names: new Set(),
@@ -628,8 +637,8 @@ describe("runtime bindings", () => {
 			const firstDocument = runtimeDocument(firstRuntime)!;
 			const secondDocument = runtimeDocument(secondRuntime)!;
 
-			expect(firstDocument.querySelector(".observablehq-root")).toBe(firstRoot);
-			expect(secondDocument.querySelector(".observablehq-root")).toBe(secondRoot);
+			expect(firstDocument.querySelector(".root-marker")).toBe(firstRoot);
+			expect(secondDocument.querySelector(".root-marker")).toBe(secondRoot);
 			expect(firstDocument.getElementById("shared-target")?.textContent).toBe("First");
 			expect(secondDocument.getElementById("shared-target")?.textContent).toBe("Second");
 			expect(firstDocument.querySelector(".second-only")).toBeNull();

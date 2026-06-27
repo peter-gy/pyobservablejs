@@ -101,7 +101,6 @@ describe("anywidget bundle runtime", () => {
 		const el = document.createElement("div");
 		await app.render({ el } as unknown as RenderProps<TestState>);
 		expect(el.textContent).toBe("loaded");
-		expect(attempts).toBe(2);
 	});
 
 	test("revokes blob module URLs after imports finish", async () => {

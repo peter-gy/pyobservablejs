@@ -29,20 +29,87 @@ describe("widget graph and notebook values", () => {
 			host: createHost(new Map()),
 		} as unknown as RenderProps<WidgetModel>);
 
-		expect(await waitFor(() => el.querySelector<HTMLElement>(".pyobservablejs-notebook") ?? undefined)).toHaveProperty(
-			"dataset.theme",
-			"air",
-		);
-		expect(el.querySelector(".pyobservablejs-notebook")?.classList.contains("observablehq-root")).toBe(true);
+		expect(await waitFor(() => notebookRoot(el))).toHaveProperty("dataset.theme", "air");
 
 		model.set("theme", "slate");
 
 		expect(
 			await waitFor(() => {
-				const root = el.querySelector<HTMLElement>(".pyobservablejs-notebook");
+				const root = notebookRoot(el);
 				return root?.dataset.theme === "slate" ? root : undefined;
 			}),
 		).toHaveProperty("dataset.theme", "slate");
+		controller.abort();
+	});
+
+	test("renders source-backed theme traits through the notebook widget", async () => {
+		const model = createModel({
+			role: "notebook",
+			_source: '<!doctype html><notebook theme="air"></notebook>',
+			theme: { light: "cotton", dark: "slate" },
+			_attachments: {},
+			_variables: {},
+			_options: {},
+			_cell_widgets: [],
+		});
+		const controller = new AbortController();
+		const el = document.createElement("div");
+
+		widget.render({
+			model,
+			el,
+			signal: controller.signal,
+			host: createHost(new Map()),
+		} as unknown as RenderProps<WidgetModel>);
+
+		const root = await waitFor(() => notebookRoot(el));
+
+		expect(root.dataset.theme).toBe("light-dark");
+		expect(root.dataset.themeLight).toBe("cotton");
+		expect(root.dataset.themeDark).toBe("slate");
+		controller.abort();
+	});
+
+	test("installs theme styles into the widget owner root", async () => {
+		const model = createModel({
+			role: "notebook",
+			_spec: { cells: [] },
+			theme: "air",
+			_attachments: {},
+			_variables: {},
+			_options: {},
+			_cell_widgets: [],
+		});
+		const host = document.createElement("div");
+		const shadowRoot = host.attachShadow({ mode: "open" });
+		const el = document.createElement("div");
+		shadowRoot.append(el);
+		const documentStyleCount = document.head.querySelectorAll("style").length;
+		const controller = new AbortController();
+
+		widget.render({
+			model,
+			el,
+			signal: controller.signal,
+			host: createHost(new Map()),
+		} as unknown as RenderProps<WidgetModel>);
+
+		await waitFor(() => notebookRoot(el));
+		const shadowStyles = shadowRoot.querySelectorAll("style");
+		const themeCss = shadowStyles[0]?.textContent ?? "";
+
+		expect(shadowStyles).toHaveLength(1);
+		expect(themeCss).toContain('.pyobservablejs-notebook[data-theme="air"]');
+		expect(themeCss).toContain('.pyobservablejs-notebook[data-theme="light-dark"][data-theme-light="air"]');
+		expect(themeCss).toContain('.pyobservablejs-notebook[data-theme="light-dark"][data-theme-dark="air"]');
+		expect(themeCss).not.toContain(":root");
+		expect(document.head.querySelectorAll("style")).toHaveLength(documentStyleCount);
+
+		model.set("theme", "slate");
+
+		expect(await waitFor(() => (notebookRoot(el)?.dataset.theme === "slate" ? true : undefined))).toBe(true);
+		expect(shadowRoot.querySelectorAll("style")).toHaveLength(1);
+		expect(document.head.querySelectorAll("style")).toHaveLength(documentStyleCount);
 		controller.abort();
 	});
 
@@ -554,6 +621,11 @@ describe("widget graph and notebook values", () => {
 		controller.abort();
 	});
 });
+
+function notebookRoot(el: HTMLElement): HTMLElement | undefined {
+	const root = el.firstElementChild;
+	return root instanceof HTMLElement && root.classList.contains("pyobservablejs-notebook") ? root : undefined;
+}
 
 function setVariableUpdate(model: ReturnType<typeof createModel>, seq: number, values: Record<string, unknown>): void {
 	const previous = model.get("_variables");
