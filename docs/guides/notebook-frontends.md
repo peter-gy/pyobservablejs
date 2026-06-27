@@ -68,6 +68,20 @@ mo.vstack([slider, view])
 
 ## Direct cell display
 
-Display the parent `Notebook`, not the child `NotebookCell`. Child cell widgets
-depend on the parent runtime and graph. Use child widgets for Python-side value
-and metadata reads.
+A `NotebookCell` can be displayed after it has been created by a parent
+`Notebook`. The child model carries a synced parent notebook reference and its
+cell index. The frontend resolves that parent model, builds a projected runtime
+from the parent notebook, and shows the selected cell.
+
+```python
+notebook = obs.Notebook(
+    obs.ojs("answer = 42", key="answer"),
+    obs.ojs("md`answer is ${answer}`", key="readout"),
+)
+
+mo.ui.anywidget(notebook.cell_by_key("readout"))
+```
+
+The standalone display syncs values to the displayed `NotebookCell` and syncs
+graph metadata through the parent `Notebook`. Display the parent `Notebook` when
+you want every cell output in notebook order.
