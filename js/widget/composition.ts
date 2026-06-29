@@ -566,7 +566,10 @@ function createCellObserver(
 ): typeof observe {
 	const displayObserverCompletesReadback = displayName !== null || !hasSyncedNames;
 	return (state, runtimeDefinition) => {
-		const observer = observe(state, runtimeDefinition);
+		// Notebook Kit v2 uses output to label inspector text. Keep the runtime
+		// output for variable wiring, and clear the display copy so pyobservablejs
+		// cells render value text.
+		const observer = observe(state, { ...runtimeDefinition, output: undefined });
 		const fulfilled = observer.fulfilled.bind(observer);
 		observer.fulfilled = (value: unknown) => {
 			const viewName = viewVariableName(definition);

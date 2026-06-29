@@ -1,19 +1,5 @@
 import { transpile, type Cell, type Notebook } from "@observablehq/notebook-kit";
 
-type RuntimeModule = {
-	defines(name: string): boolean;
-	derive(injections: ObservableImportInjection[], module: RuntimeModule): RuntimeModule;
-	variable(observer: unknown): {
-		import(name: string, module: RuntimeModule): void;
-	};
-};
-type ObservableRuntime = {
-	module(define?: unknown): RuntimeModule;
-};
-type RuntimeVariable = {
-	_module: RuntimeModule;
-};
-type ObservableObserverFactory = () => unknown;
 type ObservableImportSpecifier = {
 	imported: string;
 	local: string;
@@ -136,7 +122,7 @@ function analyzeCell(cell: Cell, index: number, key: string): CellAnalysis {
 }
 
 export function transpileNotebookCell(cell: Cell): RuntimeCellDefinition {
-	return transpileObservableImportWith(cell) ?? transpile(cell, { resolveLocalImports: true });
+	return addObservableImportWithInputs(cell, transpile(cell, { resolveLocalImports: true }));
 }
 
 function analysisFromCells(cells: CellAnalysis[]): NotebookAnalysis {
@@ -252,37 +238,16 @@ function viewVariableName(definition: Definition): string | null {
 	return unprefix(definition.output, "viewof$");
 }
 
-function transpileObservableImportWith(cell: Cell): RuntimeCellDefinition | null {
+function addObservableImportWithInputs(cell: Cell, definition: RuntimeCellDefinition): RuntimeCellDefinition {
 	const parsed = parseObservableImportWith(cell);
-	if (!parsed) return null;
+	if (!parsed) return definition;
+	const inputs = Array.from(
+		new Set([...(definition.inputs ?? []), ...parsed.injections.map((injection) => injection.name)]),
+	);
 	return {
-		id: cell.id,
-		body: async (
-			__ojs_runtime: ObservableRuntime,
-			__ojs_observer: ObservableObserverFactory,
-			__variable: RuntimeVariable,
-			..._injectionValues: unknown[]
-		) => {
-			void _injectionValues;
-			const imported = (await import(/* @vite-ignore */ parsed.sourceUrl)) as { default: unknown };
-			const source = __ojs_runtime.module(imported.default);
-			const module = source.derive(parsed.injections, __variable._module);
-			const main = __ojs_runtime.module();
-			const observers: Record<string, unknown> = {};
-			for (const specifier of parsed.imports) {
-				if (!module.defines(specifier.runtimeName)) {
-					throw new SyntaxError(`export '${specifier.runtimeName}' not found`);
-				}
-				const observer = __ojs_observer();
-				observers[specifier.local] = observer;
-				main.variable(observer).import(specifier.runtimeName, module);
-			}
-			return observers;
-		},
-		inputs: ["__ojs_runtime", "__ojs_observer", "@variable", ...parsed.injections.map((injection) => injection.name)],
-		outputs: parsed.imports.map((specifier) => specifier.local),
-		autodisplay: false,
-	} as RuntimeCellDefinition;
+		...definition,
+		inputs,
+	};
 }
 
 function parseObservableImportWith(cell: Cell): ObservableImportWith | null {
