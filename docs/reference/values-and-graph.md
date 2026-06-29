@@ -60,6 +60,8 @@ if notebook.has_graph_snapshot:
     graph.external_references
     graph.cell(0)
     graph.cell_for_variable("double")
+    graph.to_mermaid()
+    graph.to_d2()
 ```
 
 `notebook.has_graph_snapshot` reports whether graph metadata is available.
@@ -79,6 +81,8 @@ without making `notebook.runtime_values` or `notebook.cell_values()` available.
 | ------------------------------- | ----------------------------------------------- |
 | `graph.cell(index)`             | Returns `CellInfo` for the cell index or `None` |
 | `graph.cell_for_variable(name)` | Returns the unique cell that defines `name`     |
+| `graph.to_mermaid()`            | Returns a Mermaid `flowchart LR` diagram        |
+| `graph.to_d2()`                 | Returns a D2 diagram with `direction: right`    |
 
 `graph.cell_for_variable(name)` raises `KeyError` when the variable is missing or
 ambiguous.

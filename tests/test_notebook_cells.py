@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import json
+import os
+import shutil
+import subprocess
+from pathlib import Path
 from typing import Any
 
 import observablejs as obs
@@ -108,6 +113,159 @@ def test_notebook_graph_exposes_symbolic_cell_metadata(
     assert widget.cell_by_key("b").outputs == ()
     assert widget.cell_by_key("b").runtime_outputs == ("b",)
     assert widget.cell_by_key("b").output == "b"
+
+
+def test_notebook_graph_exports_mermaid_dependency_diagram(
+    browser_graph_sync: BrowserGraphSync,
+    browser_graph_cell: BrowserGraphCellBuilder,
+) -> None:
+    widget = obs.Notebook(
+        obs.ojs("a = 1", key="alpha"),
+        obs.ojs("b = a + rows.length", key="beta"),
+        variables={"rows": [{"x": 1}]},
+    )
+    browser_graph_sync(
+        widget,
+        cells=[
+            browser_graph_cell("alpha", defines=["a"], output="a"),
+            browser_graph_cell(
+                "beta",
+                defines=["b"],
+                references=["a", "rows"],
+                output="b",
+            ),
+        ],
+        edges=[("alpha", "beta", "a")],
+    )
+
+    assert widget.graph.to_mermaid() == (
+        "flowchart LR\n"
+        '  cell_0["Cell 0: alpha, defines: a"]\n'
+        '  cell_1["Cell 1: beta, defines: b"]\n'
+        '  external_0["external: rows"]\n'
+        "  cell_0 -->|a| cell_1\n"
+        "  external_0 -->|rows| cell_1\n"
+    )
+
+
+def test_notebook_graph_exports_d2_dependency_diagram(
+    browser_graph_sync: BrowserGraphSync,
+    browser_graph_cell: BrowserGraphCellBuilder,
+) -> None:
+    widget = obs.Notebook(
+        obs.ojs("a = 1", key="alpha"),
+        obs.ojs("b = a + rows.length", key="beta"),
+        variables={"rows": [{"x": 1}]},
+    )
+    browser_graph_sync(
+        widget,
+        cells=[
+            browser_graph_cell("alpha", defines=["a"], output="a"),
+            browser_graph_cell(
+                "beta",
+                defines=["b"],
+                references=["a", "rows"],
+                output="b",
+            ),
+        ],
+        edges=[("alpha", "beta", "a")],
+    )
+
+    assert widget.graph.to_d2() == (
+        "direction: right\n"
+        'cell_0: "Cell 0: alpha, defines: a"\n'
+        'cell_1: "Cell 1: beta, defines: b"\n'
+        'external_0: "external: rows"\n'
+        'cell_0 -> cell_1: "a"\n'
+        'external_0 -> cell_1: "rows"\n'
+    )
+
+
+def test_notebook_graph_diagram_exports_escape_labels(
+    browser_graph_sync: BrowserGraphSync,
+    browser_graph_cell: BrowserGraphCellBuilder,
+) -> None:
+    widget = obs.Notebook(
+        obs.ojs("answer = 42", key='quote " cell'),
+        obs.ojs("answer + row_count", key="readout"),
+    )
+    browser_graph_sync(
+        widget,
+        cells=[
+            browser_graph_cell('quote " cell', defines=['answer "1"'], output="answer"),
+            browser_graph_cell(
+                "readout",
+                defines=["result"],
+                references=['answer "1"', "row|count"],
+                output="result",
+            ),
+        ],
+        edges=[('quote " cell', "readout", 'answer "1"')],
+    )
+
+    assert "#quot;" in widget.graph.to_mermaid()
+    assert "#124;" in widget.graph.to_mermaid()
+    assert json.loads(widget.graph.to_d2().splitlines()[1].split(": ", 1)[1]) == (
+        'Cell 0: quote " cell, defines: answer "1"'
+    )
+
+
+def test_notebook_graph_diagram_exports_are_valid_when_tools_are_available(
+    browser_graph_sync: BrowserGraphSync,
+    browser_graph_cell: BrowserGraphCellBuilder,
+    tmp_path: Path,
+) -> None:
+    widget = obs.Notebook(
+        obs.ojs("answer = 42", key='quote " cell'),
+        obs.ojs("answer + row_count", key="readout"),
+    )
+    browser_graph_sync(
+        widget,
+        cells=[
+            browser_graph_cell('quote " cell', defines=['answer "1"'], output="answer"),
+            browser_graph_cell(
+                "readout",
+                defines=["result"],
+                references=['answer "1"', "row|count"],
+                output="result",
+            ),
+        ],
+        edges=[('quote " cell', "readout", 'answer "1"')],
+    )
+    ran_validator = False
+    d2 = shutil.which("d2")
+    if d2 is not None:
+        d2_path = tmp_path / "graph.d2"
+        d2_path.write_text(widget.graph.to_d2())
+        subprocess.run([d2, "validate", str(d2_path)], check=True)
+        ran_validator = True
+    chrome_path = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+    mmdc = shutil.which("mmdc")
+    if mmdc is not None and os.path.exists(chrome_path):
+        mermaid_path = tmp_path / "graph.mmd"
+        svg_path = tmp_path / "graph.svg"
+        puppeteer_path = tmp_path / "puppeteer.json"
+        mermaid_path.write_text(widget.graph.to_mermaid())
+        puppeteer_path.write_text(
+            json.dumps({"executablePath": chrome_path, "args": ["--no-sandbox"]})
+        )
+        subprocess.run(
+            [
+                mmdc,
+                "-i",
+                str(mermaid_path),
+                "-o",
+                str(svg_path),
+                "-q",
+                "-p",
+                str(puppeteer_path),
+            ],
+            check=True,
+        )
+        assert svg_path.exists()
+        ran_validator = True
+    if not ran_validator:
+        pytest.skip("D2 and Mermaid validators are unavailable")
 
 
 def test_notebook_graph_drops_invalid_browser_entries() -> None:

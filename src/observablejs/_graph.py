@@ -6,6 +6,8 @@ import dataclasses
 from collections.abc import Iterable, Mapping
 from typing import Any
 
+from ._graph_diagram import graph_to_d2, graph_to_mermaid
+
 
 @dataclasses.dataclass(frozen=True)
 class DependencyEdge:
@@ -77,6 +79,16 @@ class NotebookGraph:
         if len(matches) > 1:
             raise KeyError(f"Ambiguous Observable variable: {variable!r}")
         raise KeyError(f"Unknown Observable variable: {variable!r}")
+
+    def to_mermaid(self) -> str:
+        """Return a Mermaid flowchart for the notebook dependency graph."""
+
+        return graph_to_mermaid(self)
+
+    def to_d2(self) -> str:
+        """Return a D2 diagram for the notebook dependency graph."""
+
+        return graph_to_d2(self)
 
 
 def graph_from_raw(raw: Any) -> NotebookGraph | None:
