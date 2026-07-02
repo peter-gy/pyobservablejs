@@ -23,6 +23,11 @@ const baseOptions: NotebookOptions = {
 	variables: {},
 	showSource: false,
 };
+type LegacyRequire = {
+	(...specifiers: unknown[]): Promise<unknown>;
+	resolve(specifier: unknown): string;
+	alias(aliases: Record<string, string>): LegacyRequire;
+};
 
 describe("runtime bindings", () => {
 	afterEach(() => {
@@ -185,13 +190,73 @@ describe("runtime bindings", () => {
 					el,
 					{
 						...baseOptions,
-						variables: { FileAttachment: "shadowed", document: "shadowed" },
+						variables: { FileAttachment: "shadowed", document: "shadowed", require: "shadowed" },
 					},
 					registry,
 				),
-			).toThrow("Python variables cannot override Observable runtime builtins: FileAttachment, document");
+			).toThrow("Python variables cannot override Observable runtime builtins: FileAttachment, document, require");
 		} finally {
 			registry.cleanup();
+		}
+	});
+
+	test("exposes legacy Observable require in runtime builtins", async () => {
+		const registry = registerAttachments({});
+		const runtime = createRuntime(document.createElement("div"), document.createElement("div"), baseOptions, registry);
+		const defaultModule = moduleUrl("export default {value: 42};");
+		const namedModule = moduleUrl("export const value = 7;");
+
+		try {
+			runtime.main.define("defaultRequireProbe", ["require"], async (require: LegacyRequire) => {
+				const module = (await require(defaultModule)) as { value: number };
+				module.value += 1;
+				return module;
+			});
+			runtime.main.define("cachedRequireProbe", ["require"], async (require: LegacyRequire) => require(defaultModule));
+			runtime.main.define("mergedRequireProbe", ["require"], async (require: LegacyRequire) =>
+				require(defaultModule, namedModule),
+			);
+
+			await expect(runtime.main.value("defaultRequireProbe")).resolves.toMatchObject({ value: 43 });
+			await expect(runtime.main.value("cachedRequireProbe")).resolves.toMatchObject({ value: 43 });
+			await expect(runtime.main.value("mergedRequireProbe")).resolves.toMatchObject({ value: 7 });
+		} finally {
+			createRuntimeCleanup(runtime, registry)();
+		}
+	});
+
+	test("supports legacy Observable require.resolve and require.alias", async () => {
+		const registry = registerAttachments({});
+		const runtime = createRuntime(document.createElement("div"), document.createElement("div"), baseOptions, registry);
+		const aliasedModule = moduleUrl("export default {label: 'aliased'};");
+
+		try {
+			runtime.main.define("requireApiProbe", ["require"], async (require: LegacyRequire) => {
+				const alias = require.alias({ local: aliasedModule });
+				return {
+					d3: require.resolve("d3@7"),
+					javascriptPath: require.resolve("geometric@2/src/line.js"),
+					textPath: require.resolve("example-package/data.txt"),
+					directoryPath: require.resolve("example-package/assets/"),
+					scopedPath: require.resolve("@scope/package@1/path.js"),
+					protocol: require.resolve("https://cdn.example/module.js"),
+					local: require.resolve("./local.js"),
+					aliased: await alias("local"),
+				};
+			});
+
+			await expect(runtime.main.value("requireApiProbe")).resolves.toMatchObject({
+				d3: "https://cdn.jsdelivr.net/npm/d3@7/+esm",
+				javascriptPath: "https://cdn.jsdelivr.net/npm/geometric@2/src/line.js/+esm",
+				textPath: "https://cdn.jsdelivr.net/npm/example-package/data.txt",
+				directoryPath: "https://cdn.jsdelivr.net/npm/example-package/assets/",
+				scopedPath: "https://cdn.jsdelivr.net/npm/@scope/package@1/path.js/+esm",
+				protocol: "https://cdn.example/module.js",
+				local: "./local.js",
+				aliased: { label: "aliased" },
+			});
+		} finally {
+			createRuntimeCleanup(runtime, registry)();
 		}
 	});
 
@@ -693,4 +758,8 @@ describe("runtime bindings", () => {
 
 function last<T>(values: T[]): T | undefined {
 	return values[values.length - 1];
+}
+
+function moduleUrl(source: string): string {
+	return `data:text/javascript;charset=utf-8,${encodeURIComponent(source)}`;
 }

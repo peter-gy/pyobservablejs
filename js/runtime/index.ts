@@ -46,6 +46,16 @@ type RuntimeBuiltinsWithVars = RuntimeBuiltins & Record<string, () => unknown>;
 export type RuntimeGlobals = {
 	document?: Document;
 };
+type LegacyRequire = {
+	(...specifiers: unknown[]): Promise<unknown>;
+	resolve(specifier: unknown): string;
+	alias(aliases: Record<string, string>): LegacyRequire;
+};
+type NpmSpecifier = {
+	name: string;
+	range: string;
+	path: string;
+};
 type RuntimeFileAttachment = ReturnType<typeof FileAttachment> & {
 	sqlite(): Promise<SQLiteDatabaseClient>;
 };
@@ -80,8 +90,11 @@ const RESERVED_RUNTIME_NAMES = new Set([
 	"SQLite",
 	"SQLiteDatabaseClient",
 	"document",
+	"require",
 	"width",
 ]);
+const legacyRequireModuleCache = new WeakMap<object, unknown>();
+const legacyRequire = Object.assign(createLegacyRequire(resolveLegacyRequire), { alias: legacyRequireAlias });
 let sqliteModule: Promise<SqlJsModule> | undefined;
 
 export function createRuntime(
@@ -107,6 +120,7 @@ export function createRuntime(
 		SQLite: () => loadSQLiteModule(),
 		SQLiteDatabaseClient: () => SQLiteDatabaseClient,
 		document: () => scope.document,
+		require: () => legacyRequire,
 		width: width as RuntimeBuiltins["width"],
 		...createVariableBuiltins(options.variables),
 	} as RuntimeBuiltinsWithVars;
@@ -205,6 +219,74 @@ function observe<T>(
 
 function currentWidth(root: HTMLElement, fallback: HTMLElement): number {
 	return root.getBoundingClientRect().width || fallback.clientWidth || 928;
+}
+
+function createLegacyRequire(resolve: (specifier: unknown) => string): LegacyRequire {
+	const require = (async (...specifiers: unknown[]) => {
+		if (specifiers.length === 1) return import(/* @vite-ignore */ resolve(specifiers[0])).then(objectifyModule);
+		return Promise.all(specifiers.map((specifier) => require(specifier))).then(mergeModules);
+	}) as LegacyRequire;
+	require.resolve = resolve;
+	require.alias = legacyRequireAlias;
+	return require;
+}
+
+function legacyRequireAlias(aliases: Record<string, string>): LegacyRequire {
+	return createLegacyRequire((specifier) => resolveLegacyRequire(aliases[String(specifier)] ?? specifier));
+}
+
+function resolveLegacyRequire(specifier: unknown): string {
+	const value = String(specifier);
+	if (isProtocol(value) || isLocal(value)) return value;
+	const { name, range, path } = parseNpmSpecifier(value);
+	const suffix = (isFile(path) && !isJavaScript(path)) || isDirectory(path) ? "" : "/+esm";
+	return `https://cdn.jsdelivr.net/npm/${name}${range}${path}${suffix}`;
+}
+
+function parseNpmSpecifier(specifier: string): NpmSpecifier {
+	const parts = specifier.split("/");
+	const namerange = specifier.startsWith("@") ? [parts.shift()!, parts.shift()!].join("/") : parts.shift()!;
+	const ranged = namerange.indexOf("@", 1);
+	const name = ranged > 0 ? namerange.slice(0, ranged) : namerange;
+	const range = ranged > 0 ? namerange.slice(ranged) : "";
+	const path = parts.length > 0 ? `/${parts.join("/")}` : "";
+	return { name, range, path };
+}
+
+function objectifyModule(module: object): unknown {
+	if (legacyRequireModuleCache.has(module)) return legacyRequireModuleCache.get(module);
+	const object = defaultifyModule(module);
+	legacyRequireModuleCache.set(module, object);
+	return object;
+}
+
+function defaultifyModule(module: object): unknown {
+	for (const key in module) if (key !== "default") return { ...module };
+	return "default" in module ? module.default : { ...module };
+}
+
+function mergeModules(modules: unknown[]): unknown {
+	return Object.assign({}, ...modules);
+}
+
+function isProtocol(specifier: string): boolean {
+	return /^\w+:/.test(specifier);
+}
+
+function isLocal(specifier: string): boolean {
+	return /^(\.\/|\.\.\/|\/)/.test(specifier);
+}
+
+function isJavaScript(specifier: string): boolean {
+	return /\.js$/i.test(specifier);
+}
+
+function isFile(specifier: string): boolean {
+	return /\.\w*$/.test(specifier);
+}
+
+function isDirectory(specifier: string): boolean {
+	return specifier.endsWith("/");
 }
 
 type RedefinableModule = NotebookRuntime["main"] & {

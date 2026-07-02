@@ -5,6 +5,7 @@ import { describe, expect, test } from "vitest";
 import widget from "@/widget/app";
 import { SELECTORS } from "@/widget/dom";
 import {
+	composedInspectorText,
 	composedText,
 	createHost,
 	createModel,
@@ -350,6 +351,57 @@ describe("widget composition lifecycle", () => {
 		expect(model.get("_graph")).toEqual({});
 		expect(answerModel.get("_has_rendered")).toBe(false);
 		expect(variableValue(answerModel, "answer")).toBeUndefined();
+		controller.abort();
+	});
+
+	test("renders source notebooks that use legacy Observable require", async () => {
+		const model = createModel({
+			role: "notebook",
+			_spec: {
+				cells: [
+					{ id: 1, mode: "ojs", value: `geometric = require("${moduleUrl("export const line = 'ready';")}")` },
+					{ id: 2, mode: "ojs", value: `geometric.line` },
+				],
+			},
+			_attachments: {},
+			_variables: {},
+			_options: {},
+			_cell_widgets: ["anywidget:geometric", "anywidget:readout"],
+		});
+		const geometricModel = createModel({
+			role: "cell",
+			name: "geometric",
+			_values: {},
+			_value_names: [],
+		});
+		const readoutModel = createModel({
+			role: "cell",
+			name: "readout",
+			_values: {},
+			_value_names: [],
+		});
+		const controller = new AbortController();
+		const el = document.createElement("div");
+
+		widget.render({
+			model,
+			el,
+			signal: controller.signal,
+			host: createHost(
+				new Map([
+					["anywidget:geometric", geometricModel],
+					["anywidget:readout", readoutModel],
+				]),
+			),
+		} as unknown as RenderProps<WidgetModel>);
+
+		await waitStep("require readout", () => composedInspectorText(el, "ready"));
+		expect(variableValue(geometricModel, "geometric")).toMatchObject({ line: "ready" });
+		expect(readoutModel.get("_has_rendered")).toBe(true);
+		const graph = await waitFor(() => graphValue(model));
+		expect(graph.edges).toContainEqual({ from: 1, to: 2, variable: "geometric" });
+		expect(await waitFor(() => (model.get("_has_rendered") === true ? true : undefined))).toBe(true);
+		expect(projectErrorText(el)).toBeUndefined();
 		controller.abort();
 	});
 
@@ -728,3 +780,7 @@ describe("widget composition lifecycle", () => {
 		expect(el.childElementCount).toBe(0);
 	});
 });
+
+function moduleUrl(source: string): string {
+	return `data:text/javascript;charset=utf-8,${encodeURIComponent(source)}`;
+}
