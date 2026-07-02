@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 
 import { describe, expect, test } from "vitest";
-import { createVariableBuiltins, isWritableSyncedViewValue, reviveSyncedValue, toWireValue } from "@/runtime/values";
+import {
+	createVariableBuiltins,
+	isWritableSyncedViewValue,
+	reviveSyncedValue,
+	sameWireValue,
+	toWireValue,
+} from "@/runtime/values";
 
 describe("wire values", () => {
 	test("round trips synced numbers, dates, maps, and sets", () => {
@@ -61,4 +67,48 @@ describe("wire values", () => {
 		expect(isWritableSyncedViewValue(toWireValue(document.createElement("img")))).toBe(false);
 		expect(isWritableSyncedViewValue({ pointDensity: 21 })).toBe(true);
 	});
+
+	test("compares wire values without serializing large payloads", () => {
+		const payload = { rows: Array.from({ length: 100 }, (_, index) => ({ index })) };
+		Object.defineProperty(payload, "toJSON", {
+			value() {
+				throw new RangeError("Invalid string length");
+			},
+		});
+
+		expect(sameWireValue({}, { payload })).toBe(false);
+		expect(sameWireValue({ payload }, { payload })).toBe(true);
+	});
+
+	test("summarizes deeply nested values before stack overflow", () => {
+		let value: Record<string, unknown> = { leaf: true };
+		for (let index = 0; index < 1_000; index++) value = { next: value };
+
+		expect(hasWireSummary(toWireValue(value))).toBe(true);
+	});
+
+	test("summarizes detached binary buffers", () => {
+		const buffer = new ArrayBuffer(8);
+		const typed = new Uint8Array([1, 2, 3]);
+		structuredClone(buffer, { transfer: [buffer] });
+		structuredClone(typed.buffer, { transfer: [typed.buffer] });
+
+		expect(toWireValue(buffer)).toEqual({ __observablejs_type__: "summary", value: "ArrayBuffer(detached)" });
+		expect(toWireValue(typed)).toEqual({ __observablejs_type__: "summary", value: "Uint8Array(detached)" });
+	});
+
+	test("serializes invalid dates without throwing", () => {
+		expect(toWireValue(new Date(Number.NaN))).toEqual({
+			__observablejs_type__: "datetime",
+			value: "Invalid Date",
+		});
+	});
 });
+
+function hasWireSummary(value: unknown): boolean {
+	if (!value || typeof value !== "object") return false;
+	if (Array.isArray(value)) return value.some(hasWireSummary);
+	const record = value as Record<string, unknown>;
+	if (record.__observablejs_type__ === "summary") return true;
+	return Object.values(record).some(hasWireSummary);
+}

@@ -24,9 +24,26 @@ export type ViewWriteResult = "applied" | "unsupported";
 type WireContext = {
 	seen: WeakMap<object, number>;
 	nextId: number;
+	nodes: number;
 };
 
-export function toWireValue(value: unknown, context: WireContext = { seen: new WeakMap(), nextId: 1 }): unknown {
+const MAX_WIRE_DEPTH = 100;
+const MAX_WIRE_NODES = 50_000;
+const MAX_WIRE_COMPARE_NODES = 50_000;
+
+type WireCompareContext = {
+	seen: WeakMap<object, WeakSet<object>>;
+	nodes: number;
+};
+
+export function toWireValue(
+	value: unknown,
+	context: WireContext = { seen: new WeakMap(), nextId: 1, nodes: 0 },
+): unknown {
+	return toWireValueNode(value, context, 0);
+}
+
+function toWireValueNode(value: unknown, context: WireContext, depth: number): unknown {
 	// Summarize live browser objects before trait sync attempts JSON cloning.
 	if (value === undefined) return { [TYPE_KEY]: "undefined" };
 	if (value === null || typeof value === "boolean" || typeof value === "string") return value;
@@ -42,6 +59,7 @@ export function toWireValue(value: unknown, context: WireContext = { seen: new W
 		return { [TYPE_KEY]: "function", value: value.name || "anonymous" };
 	}
 	if (value instanceof Date) {
+		if (Number.isNaN(value.getTime())) return { [TYPE_KEY]: "datetime", value: "Invalid Date" };
 		return { [TYPE_KEY]: "datetime", value: value.toISOString() };
 	}
 	if (value instanceof Element) {
@@ -60,21 +78,18 @@ export function toWireValue(value: unknown, context: WireContext = { seen: new W
 		return { [TYPE_KEY]: "blob", size: value.size, mimeType: value.type };
 	}
 	if (value instanceof ArrayBuffer) {
-		return { [TYPE_KEY]: "arraybuffer", value: bytesToBase64(new Uint8Array(value)) };
+		return arrayBufferWireValue(value);
 	}
 	if (ArrayBuffer.isView(value)) {
-		const bytes = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
-		return {
-			[TYPE_KEY]: "typedarray",
-			name: value.constructor.name,
-			value: bytesToBase64(bytes),
-		};
+		return arrayBufferViewWireValue(value);
 	}
+	if (depth >= MAX_WIRE_DEPTH || context.nodes >= MAX_WIRE_NODES) return summarizeWireValue(value);
+	context.nodes += 1;
 	if (Array.isArray(value)) {
 		const ref = context.seen.get(value);
 		if (ref !== undefined) return { [TYPE_KEY]: "reference", value: ref };
 		context.seen.set(value, context.nextId++);
-		return value.map((item) => toWireValue(item, context));
+		return value.map((item) => toWireValueNode(item, context, depth + 1));
 	}
 	if (isRecord(value)) {
 		const ref = context.seen.get(value);
@@ -83,17 +98,53 @@ export function toWireValue(value: unknown, context: WireContext = { seen: new W
 		if (value instanceof Map) {
 			return {
 				[TYPE_KEY]: "map",
-				value: Array.from(value, ([key, item]) => [toWireValue(key, context), toWireValue(item, context)]),
+				value: Array.from(value, ([key, item]) => [
+					toWireValueNode(key, context, depth + 1),
+					toWireValueNode(item, context, depth + 1),
+				]),
 			};
 		}
 		if (value instanceof Set) {
-			return { [TYPE_KEY]: "set", value: Array.from(value, (item) => toWireValue(item, context)) };
+			return { [TYPE_KEY]: "set", value: Array.from(value, (item) => toWireValueNode(item, context, depth + 1)) };
 		}
-		const entries = Object.fromEntries(Object.entries(value).map(([key, item]) => [key, toWireValue(item, context)]));
+		const entries = Object.fromEntries(
+			Object.entries(value).map(([key, item]) => [key, toWireValueNode(item, context, depth + 1)]),
+		);
 		if (TYPE_KEY in entries) return { [TYPE_KEY]: "object", value: entries };
 		return entries;
 	}
 	return { [TYPE_KEY]: typeof value, value: String(value) };
+}
+
+function summarizeWireValue(value: unknown): Record<string, string> {
+	if (Array.isArray(value)) return { [TYPE_KEY]: "summary", value: `Array(${value.length})` };
+	if (value instanceof Map) return { [TYPE_KEY]: "summary", value: `Map(${value.size})` };
+	if (value instanceof Set) return { [TYPE_KEY]: "summary", value: `Set(${value.size})` };
+	if (value !== null && typeof value === "object") {
+		return { [TYPE_KEY]: "summary", value: value.constructor?.name || "Object" };
+	}
+	return { [TYPE_KEY]: "summary", value: typeof value };
+}
+
+function arrayBufferWireValue(value: ArrayBuffer): Record<string, unknown> {
+	try {
+		return { [TYPE_KEY]: "arraybuffer", value: bytesToBase64(new Uint8Array(value)) };
+	} catch {
+		return { [TYPE_KEY]: "summary", value: "ArrayBuffer(detached)" };
+	}
+}
+
+function arrayBufferViewWireValue(value: ArrayBufferView): Record<string, unknown> {
+	try {
+		const bytes = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+		return {
+			[TYPE_KEY]: "typedarray",
+			name: value.constructor.name,
+			value: bytesToBase64(bytes),
+		};
+	} catch {
+		return { [TYPE_KEY]: "summary", value: `${value.constructor.name}(detached)` };
+	}
 }
 
 export function reviveSyncedValue(value: unknown): unknown {
@@ -127,7 +178,48 @@ export function isWritableSyncedViewValue(value: unknown): boolean {
 }
 
 export function sameWireValue(left: unknown, right: unknown): boolean {
-	return JSON.stringify(left) === JSON.stringify(right);
+	return sameWireValueNode(left, right, { seen: new WeakMap(), nodes: 0 });
+}
+
+function sameWireValueNode(left: unknown, right: unknown, context: WireCompareContext): boolean {
+	if (Object.is(left, right)) return true;
+	if (context.nodes++ > MAX_WIRE_COMPARE_NODES) return false;
+	if (left === null || right === null) return false;
+	if (typeof left !== typeof right) return false;
+	if (typeof left !== "object" || typeof right !== "object") return false;
+	if (left instanceof Date || right instanceof Date) {
+		return left instanceof Date && right instanceof Date && left.getTime() === right.getTime();
+	}
+	if (left instanceof RegExp || right instanceof RegExp) {
+		return left instanceof RegExp && right instanceof RegExp && String(left) === String(right);
+	}
+	if (Array.isArray(left) || Array.isArray(right)) {
+		if (!Array.isArray(left) || !Array.isArray(right)) return false;
+		if (left.length !== right.length) return false;
+		if (seenWirePair(left, right, context)) return true;
+		for (let index = 0; index < left.length; index++) {
+			if (!sameWireValueNode(left[index], right[index], context)) return false;
+		}
+		return true;
+	}
+	if (!isRecord(left) || !isRecord(right)) return false;
+	if (seenWirePair(left, right, context)) return true;
+	const leftKeys = Object.keys(left);
+	const rightKeys = Object.keys(right);
+	if (leftKeys.length !== rightKeys.length) return false;
+	for (const key of leftKeys) {
+		if (!Object.prototype.hasOwnProperty.call(right, key)) return false;
+		if (!sameWireValueNode(left[key], right[key], context)) return false;
+	}
+	return true;
+}
+
+function seenWirePair(left: object, right: object, context: WireCompareContext): boolean {
+	const seenRight = context.seen.get(left);
+	if (seenRight?.has(right)) return true;
+	if (seenRight) seenRight.add(right);
+	else context.seen.set(left, new WeakSet([right]));
+	return false;
 }
 
 export function createVariableBuiltins(variables: Record<string, unknown>): Record<string, () => unknown> {
