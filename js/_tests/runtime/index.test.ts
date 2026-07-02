@@ -9,6 +9,7 @@ import {
 	createRuntimeCleanup,
 	createRuntimeDefinition,
 	createGenerators,
+	createObservableHtml,
 	registerAttachments,
 	runtimeDocument,
 	SQLiteDatabaseClient,
@@ -489,6 +490,89 @@ describe("runtime bindings", () => {
 		iterator.return?.();
 
 		expect(dispose).toHaveBeenCalledOnce();
+	});
+
+	test("keeps input generators in the runtime native shape", async () => {
+		const generator: AsyncGenerator<string> = {
+			async next() {
+				return { done: false, value: "ready" };
+			},
+			async return() {
+				return { done: true, value: undefined };
+			},
+			async throw(error) {
+				throw error;
+			},
+			[Symbol.asyncIterator]() {
+				return this;
+			},
+		};
+		const input = vi.fn((_view: string) => generator);
+		const Generators = createGenerators({ input });
+
+		const value = Generators.input("view");
+
+		expect(value).toBe(generator);
+		expect(Symbol.iterator in Object(value)).toBe(false);
+		await expect(value.next()).resolves.toEqual({ done: false, value: "ready" });
+	});
+
+	test("exposes mutable holders to raw Observable runtime modules", async () => {
+		const registry = registerAttachments({});
+		const runtime = createRuntime(document.createElement("div"), document.createElement("div"), baseOptions, registry);
+
+		try {
+			runtime.main.define("initial x", [], () => 0);
+			runtime.main
+				.variable(true)
+				.define("mutable x", ["Mutable", "initial x"], (Mutable: new (value: number) => object, x: number) => {
+					return new Mutable(x);
+				});
+			runtime.main
+				.variable(true)
+				.define("x", ["mutable x"], (mutable: { generator: AsyncGenerator<number> }) => mutable.generator);
+
+			const mutable = (await runtime.main.value("mutable x")) as { value: number };
+			expect(mutable.value).toBe(0);
+
+			mutable.value = 5;
+
+			await expect(runtime.main.value("x")).resolves.toBe(5);
+		} finally {
+			createRuntimeCleanup(runtime, registry)();
+		}
+	});
+
+	test("unwraps whitespace-padded single-element html templates", () => {
+		const htlHtml = vi.fn((strings: TemplateStringsArray, ...values: unknown[]) => {
+			const span = document.createElement("span");
+			for (const value of values) {
+				if (value instanceof Node) span.append(value);
+				else if (Array.isArray(value)) span.append(...value);
+			}
+			const hasBoundaryWhitespace =
+				(strings[0] ?? "") !== (strings[0] ?? "").trimStart() ||
+				(strings[strings.length - 1] ?? "") !== (strings[strings.length - 1] ?? "").trimEnd();
+			if (!hasBoundaryWhitespace && span.childElementCount === 1 && span.textContent === "") {
+				return span.firstElementChild!;
+			}
+			if (span.childElementCount === 0) span.textContent = strings.join("");
+			return span;
+		});
+		const html = createObservableHtml(htlHtml);
+		const input = document.createElement("input");
+		input.name = "input";
+		const form = document.createElement("form");
+		form.append(input);
+		const aside = document.createElement("aside");
+
+		const single = html` ${form} `;
+		const multiple = html` ${[form.cloneNode(true), aside]} `;
+
+		expect(single).toBe(form);
+		expect(single).toBeInstanceOf(HTMLFormElement);
+		expect((single as HTMLFormElement).elements.namedItem("input")).toBeInstanceOf(HTMLInputElement);
+		expect(multiple).toBeInstanceOf(HTMLSpanElement);
 	});
 
 	test("updates the Observable width builtin when the root resizes", async () => {

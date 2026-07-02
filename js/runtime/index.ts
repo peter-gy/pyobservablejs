@@ -46,6 +46,7 @@ type RuntimeBuiltinsWithVars = RuntimeBuiltins & Record<string, () => unknown>;
 export type RuntimeGlobals = {
 	document?: Document;
 };
+type HtmlTemplateTag = (strings: TemplateStringsArray, ...values: unknown[]) => unknown;
 type LegacyRequire = {
 	(...specifiers: unknown[]): Promise<unknown>;
 	resolve(specifier: unknown): string;
@@ -96,6 +97,7 @@ const RESERVED_RUNTIME_NAMES = new Set([
 const legacyRequireModuleCache = new WeakMap<object, unknown>();
 const legacyRequire = Object.assign(createLegacyRequire(resolveLegacyRequire), { alias: legacyRequireAlias });
 let sqliteModule: Promise<SqlJsModule> | undefined;
+let htmlBuiltin: Promise<HtmlTemplateTag> | undefined;
 
 export function createRuntime(
 	root: HTMLElement,
@@ -117,6 +119,8 @@ export function createRuntime(
 			),
 		FileAttachment: () => createFileAttachment(options.baseUrl, attachmentRegistry),
 		Generators: () => createGenerators(library.Generators()),
+		html: () => loadHtmlBuiltin(),
+		Mutable: () => ObservableMutable,
 		SQLite: () => loadSQLiteModule(),
 		SQLiteDatabaseClient: () => SQLiteDatabaseClient,
 		document: () => scope.document,
@@ -512,7 +516,7 @@ export function createGenerators<T extends object>(Generators: T): T {
 	return new Proxy(Generators, {
 		get(target, property, receiver) {
 			const value = Reflect.get(target, property, receiver);
-			if ((property === "observe" || property === "queue" || property === "input") && typeof value === "function") {
+			if ((property === "observe" || property === "queue") && typeof value === "function") {
 				return (...args: unknown[]) => syncIterableAsyncGenerator(value.apply(target, args));
 			}
 			return value;
@@ -617,6 +621,68 @@ function isFileAttachmentLike(value: unknown): value is ReturnType<typeof FileAt
 		typeof value.name === "string" &&
 		typeof value.url === "function" &&
 		typeof value.blob === "function"
+	);
+}
+
+function loadHtmlBuiltin(): Promise<HtmlTemplateTag> {
+	return (htmlBuiltin ??= Promise.resolve((library.html as () => unknown)()).then((html) =>
+		createObservableHtml(html as HtmlTemplateTag),
+	));
+}
+
+export function createObservableHtml(html: HtmlTemplateTag): HtmlTemplateTag {
+	return (strings, ...values) => normalizeObservableHtmlResult(html(strings, ...values), strings);
+}
+
+function normalizeObservableHtmlResult(value: unknown, strings: TemplateStringsArray): unknown {
+	if (!hasBoundaryWhitespace(strings)) return value;
+	const element = singleElementChild(value);
+	if (!element) return value;
+	if (value instanceof DocumentFragment) return element;
+	if (value instanceof HTMLElement && value.localName === "span" && value.attributes.length === 0) return element;
+	return value;
+}
+
+function hasBoundaryWhitespace(strings: TemplateStringsArray): boolean {
+	const first = strings[0] ?? "";
+	const last = strings[strings.length - 1] ?? "";
+	return first !== first.trimStart() || last !== last.trimEnd();
+}
+
+function singleElementChild(value: unknown): Element | null {
+	if (!(value instanceof DocumentFragment || value instanceof HTMLElement)) return null;
+	let element: Element | null = null;
+	for (const child of value.childNodes) {
+		if (child.nodeType === Node.ELEMENT_NODE) {
+			if (element) return null;
+			element = child as Element;
+		} else if (child.nodeType === Node.TEXT_NODE) {
+			if (/\S/.test(child.textContent ?? "")) return null;
+		} else {
+			return null;
+		}
+	}
+	return element;
+}
+
+function ObservableMutable(this: unknown, value: unknown): object {
+	let change: ((value: unknown) => unknown) | undefined;
+	const generator = observe((notify) => {
+		change = notify;
+		if (value !== undefined) notify(value);
+	});
+	return Object.defineProperties(
+		{},
+		{
+			generator: { value: generator },
+			value: {
+				get: () => value,
+				set: (next) => {
+					value = next;
+					change?.(value);
+				},
+			},
+		},
 	);
 }
 
