@@ -3,3 +3,6 @@ minimumReleaseAgeStrict: true
 useNodeVersion: 26.4.0
 allowBuilds:
   esbuild: true
+peerDependencyRules:
+  allowedVersions:
+    "@anywidget/vite>vite": "^8.0.0"
