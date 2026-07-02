@@ -836,6 +836,48 @@ describe("runtime bindings", () => {
 		expect(runtimeDocument(runtime)).toBeUndefined();
 	});
 
+	test("resolves notebook-defined view template tags before Notebook Kit display helpers", async () => {
+		const registry = registerAttachments({});
+		const root = document.createElement("div");
+		const runtime = createRuntime(root, document.createElement("div"), baseOptions, registry);
+		const notebookNames = new Set(["view"]);
+		const view = vi.fn((strings: TemplateStringsArray) => {
+			const node = document.createElement("div") as HTMLDivElement & { value: number };
+			node.textContent = strings[0];
+			node.value = 42;
+			return node;
+		});
+
+		try {
+			runtime.main.define("view", [], () => view);
+			runtime.define(
+				{
+					root,
+					expanded: [],
+					variables: [],
+				},
+				createRuntimeDefinition(
+					{ id: 1, mode: "ojs", value: "" } as Cell,
+					{
+						body: "function viewof$panel(view) { return view`<div>${1}</div>`; }",
+						inputs: ["view"],
+						outputs: [],
+						output: "viewof$panel",
+						autodisplay: true,
+						autoview: true,
+						automutable: false,
+					} as ReturnType<typeof transpile>,
+					{ notebookNames },
+				),
+			);
+
+			await expect(runtime.main.value("panel")).resolves.toBe(42);
+			expect(view).toHaveBeenCalledOnce();
+		} finally {
+			createRuntimeCleanup(runtime, registry)();
+		}
+	});
+
 	test("awaits template inputs without replacing the previous value receiver", async () => {
 		const definition = createRuntimeDefinition(
 			{ id: 1, mode: "md", value: "" } as Cell,

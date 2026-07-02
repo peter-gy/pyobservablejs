@@ -46,6 +46,9 @@ type RuntimeBuiltinsWithVars = RuntimeBuiltins & Record<string, () => unknown>;
 export type RuntimeGlobals = {
 	document?: Document;
 };
+export type RuntimeDefinitionOptions = RuntimeGlobals & {
+	notebookNames?: ReadonlySet<string>;
+};
 type HtmlTemplateTag = (strings: TemplateStringsArray, ...values: unknown[]) => unknown;
 type LegacyRequire = {
 	(...specifiers: unknown[]): Promise<unknown>;
@@ -810,8 +813,9 @@ const TEMPLATE_MODES = new Set<Cell["mode"]>(["dot", "html", "md", "sql", "tex"]
 export function createRuntimeDefinition(
 	cell: Cell,
 	definition: TranspiledDefinition,
-	globals: RuntimeGlobals = {},
+	options: RuntimeDefinitionOptions = {},
 ): RuntimeDefinition {
+	const { notebookNames, ...globals } = options;
 	const body = compileRuntimeBody(definition.body, globals);
 	return {
 		id: cell.id,
@@ -822,7 +826,16 @@ export function createRuntimeDefinition(
 		autodisplay: definition.autodisplay,
 		autoview: definition.autoview,
 		automutable: definition.automutable,
+		display: usesNotebookDisplayName(definition, notebookNames) ? false : (definition as RuntimeDefinition).display,
 	};
+}
+
+function usesNotebookDisplayName(
+	definition: TranspiledDefinition,
+	notebookNames: ReadonlySet<string> | undefined,
+): boolean {
+	if (!notebookNames) return false;
+	return (definition.inputs ?? []).some((name) => (name === "display" || name === "view") && notebookNames.has(name));
 }
 
 function compileRuntimeBody(source: TranspiledDefinition["body"], globals: RuntimeGlobals): RuntimeBody {

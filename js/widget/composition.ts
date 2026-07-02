@@ -44,6 +44,7 @@ type RenderCellOptions = {
 	cellName?: string;
 	pythonVariableNames?: Set<string>;
 	analysis?: CellAnalysis;
+	notebookNames?: ReadonlySet<string>;
 };
 type RuntimeDefinition = Parameters<NotebookRuntime["define"]>[1];
 type RuntimeObserver = Parameters<NotebookRuntime["main"]["variable"]>[0];
@@ -71,6 +72,7 @@ type CellRenderContext = {
 	signal: AbortSignal;
 	pythonVariableNames: Set<string>;
 	analysis: NotebookAnalysis;
+	notebookNames: ReadonlySet<string>;
 };
 
 type RenderComposedCellsOptions = {
@@ -248,6 +250,7 @@ export async function renderComposedCells({
 		signal,
 		pythonVariableNames: new Set(Object.keys(options.variables)),
 		analysis,
+		notebookNames: notebookNamesFromAnalysis(analysis),
 	};
 	const syncValues = () => {
 		const resolved = resolvedCellModels(cellModels);
@@ -360,6 +363,7 @@ export function renderStandaloneCellProjection({
 		signal,
 		pythonVariableNames: new Set(Object.keys(options.variables)),
 		analysis,
+		notebookNames: notebookNamesFromAnalysis(analysis),
 	});
 	variablesSync.applyInitialViews();
 }
@@ -450,6 +454,7 @@ function renderCellTarget(target: CellRenderTarget, context: CellRenderContext):
 		cellName: target.cellName,
 		pythonVariableNames: context.pythonVariableNames,
 		analysis: context.analysis.cells[target.index],
+		notebookNames: context.notebookNames,
 	});
 }
 
@@ -463,10 +468,20 @@ function renderCell({
 	cellName,
 	pythonVariableNames,
 	analysis,
+	notebookNames,
 }: RenderCellOptions): void {
 	wrapper.replaceChildren();
 	const output = createCellOutput(wrapper, cell);
-	defineCell(runtime, output, cell, sync, cellName, pythonVariableNames, definitionInputFromAnalysis(analysis));
+	defineCell(
+		runtime,
+		output,
+		cell,
+		sync,
+		cellName,
+		pythonVariableNames,
+		definitionInputFromAnalysis(analysis),
+		notebookNames,
+	);
 
 	if (showSource && cell.pinned) {
 		appendSource(wrapper, cell, signal);
@@ -481,6 +496,7 @@ function defineCell(
 	cellName?: string,
 	pythonVariableNames: Set<string> = new Set(),
 	definitionInput?: DefinitionInput,
+	notebookNames?: ReadonlySet<string>,
 ): void {
 	try {
 		const definition = readDefinition(cell, definitionInput);
@@ -501,7 +517,7 @@ function defineCell(
 				expanded: [],
 				variables: [],
 			},
-			createRuntimeDefinition(cell, sourceDefinition, { document: runtimeDocument(runtime) }),
+			createRuntimeDefinition(cell, sourceDefinition, { document: runtimeDocument(runtime), notebookNames }),
 			sync ? createCellObserver(sync, sourceDefinition, displayName, exposed.length > 0) : safeObserve,
 		);
 		if (sync) defineSyncObservers(runtime, sync, exposed);
@@ -510,6 +526,15 @@ function defineCell(
 		root.appendChild(createTopLevelError(error));
 		if (sync) markRendered(sync.model);
 	}
+}
+
+function notebookNamesFromAnalysis(analysis: NotebookAnalysis): ReadonlySet<string> {
+	const names = new Set<string>();
+	for (const cell of analysis.graph.cells) {
+		for (const name of cell.defines) names.add(name);
+		for (const name of cell.runtime_outputs) names.add(name);
+	}
+	return names;
 }
 
 function renderCellError(wrapper: HTMLElement, error: unknown): void {
