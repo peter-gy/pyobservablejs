@@ -631,7 +631,14 @@ function loadHtmlBuiltin(): Promise<HtmlTemplateTag> {
 }
 
 export function createObservableHtml(html: HtmlTemplateTag): HtmlTemplateTag {
-	return (strings, ...values) => normalizeObservableHtmlResult(html(strings, ...values), strings);
+	return (strings, ...values) =>
+		finalizeObservableHtmlResult(html(strings, ...values.map(coerceObservableHtmlValue)), strings);
+}
+
+function finalizeObservableHtmlResult(value: unknown, strings: TemplateStringsArray): unknown {
+	const normalized = normalizeObservableHtmlResult(value, strings);
+	installFormNamedProperties(normalized);
+	return normalized;
 }
 
 function normalizeObservableHtmlResult(value: unknown, strings: TemplateStringsArray): unknown {
@@ -663,6 +670,36 @@ function singleElementChild(value: unknown): Element | null {
 		}
 	}
 	return element;
+}
+
+function coerceObservableHtmlValue(value: unknown): unknown {
+	if (typeof value === "string") return htmlStringToFragment(value) ?? value;
+	if (Array.isArray(value)) return value.map(coerceObservableHtmlValue);
+	return value;
+}
+
+function htmlStringToFragment(value: string): DocumentFragment | null {
+	if (!/<\/?[A-Za-z][^>]*>/.test(value)) return null;
+	const template = document.createElement("template");
+	template.innerHTML = value;
+	return template.content;
+}
+
+function installFormNamedProperties(value: unknown): void {
+	if (!(value instanceof Element || value instanceof DocumentFragment)) return;
+	const forms = value instanceof HTMLFormElement ? [value] : Array.from(value.querySelectorAll("form"));
+	for (const form of forms) installFormNamedPropertiesFor(form);
+}
+
+function installFormNamedPropertiesFor(form: HTMLFormElement): void {
+	for (const element of Array.from(form.elements)) {
+		const name = element.getAttribute("name");
+		if (!name || name in form) continue;
+		Object.defineProperty(form, name, {
+			configurable: true,
+			get: () => form.elements.namedItem(name),
+		});
+	}
 }
 
 function ObservableMutable(this: unknown, value: unknown): object {

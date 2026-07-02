@@ -575,6 +575,28 @@ describe("runtime bindings", () => {
 		expect(multiple).toBeInstanceOf(HTMLSpanElement);
 	});
 
+	test("parses legacy html string interpolations containing markup", () => {
+		const htlHtml = vi.fn((_strings: TemplateStringsArray, ...values: unknown[]) => {
+			const form = document.createElement("form");
+			for (const value of values) {
+				if (value instanceof Node) form.append(value);
+				else if (Array.isArray(value)) form.append(...value);
+				else form.append(String(value));
+			}
+			return form;
+		});
+		const html = createObservableHtml(htlHtml);
+
+		const form = html`
+			<form>${'<label><input type="checkbox" name="display" value="orbit" checked> orbit</label>'} ${"1 < 2"}</form>
+		` as HTMLFormElement;
+
+		expect(form.querySelectorAll("input[name='display']")).toHaveLength(1);
+		expect(form.elements.namedItem("display")).toBeInstanceOf(HTMLInputElement);
+		expect((form as HTMLFormElement & { display: HTMLInputElement }).display.value).toBe("orbit");
+		expect(form.textContent).toContain("1 < 2");
+	});
+
 	test("updates the Observable width builtin when the root resizes", async () => {
 		class TestResizeObserver {
 			static instances: TestResizeObserver[] = [];
