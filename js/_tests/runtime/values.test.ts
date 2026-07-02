@@ -103,6 +103,45 @@ describe("wire values", () => {
 			value: "Invalid Date",
 		});
 	});
+
+	test("serializes arrays without calling shadowed array methods", () => {
+		const value = [1, 2];
+		Object.defineProperty(value, "map", {
+			value: undefined,
+		});
+
+		expect(toWireValue(value)).toEqual([1, 2]);
+	});
+
+	test("serializes object data properties without invoking accessors", () => {
+		let getterRead = false;
+		const value = { ready: true };
+		Object.defineProperty(value, "lazy", {
+			enumerable: true,
+			get() {
+				getterRead = true;
+				throw new Error("accessor should not run during wire serialization");
+			},
+		});
+
+		expect(toWireValue(value)).toEqual({ ready: true });
+		expect(getterRead).toBe(false);
+	});
+
+	test("compares object data properties without invoking accessors", () => {
+		let getterRead = false;
+		const left = { ready: true };
+		Object.defineProperty(left, "lazy", {
+			enumerable: true,
+			get() {
+				getterRead = true;
+				throw new Error("accessor should not run during wire comparison");
+			},
+		});
+
+		expect(sameWireValue(left, { ready: true })).toBe(true);
+		expect(getterRead).toBe(false);
+	});
 });
 
 function hasWireSummary(value: unknown): boolean {

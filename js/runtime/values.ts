@@ -89,7 +89,7 @@ function toWireValueNode(value: unknown, context: WireContext, depth: number): u
 		const ref = context.seen.get(value);
 		if (ref !== undefined) return { [TYPE_KEY]: "reference", value: ref };
 		context.seen.set(value, context.nextId++);
-		return value.map((item) => toWireValueNode(item, context, depth + 1));
+		return Array.prototype.map.call(value, (item) => toWireValueNode(item, context, depth + 1)) as unknown[];
 	}
 	if (isRecord(value)) {
 		const ref = context.seen.get(value);
@@ -108,7 +108,7 @@ function toWireValueNode(value: unknown, context: WireContext, depth: number): u
 			return { [TYPE_KEY]: "set", value: Array.from(value, (item) => toWireValueNode(item, context, depth + 1)) };
 		}
 		const entries = Object.fromEntries(
-			Object.entries(value).map(([key, item]) => [key, toWireValueNode(item, context, depth + 1)]),
+			ownEnumerableDataEntries(value).map(([key, item]) => [key, toWireValueNode(item, context, depth + 1)]),
 		);
 		if (TYPE_KEY in entries) return { [TYPE_KEY]: "object", value: entries };
 		return entries;
@@ -204,14 +204,22 @@ function sameWireValueNode(left: unknown, right: unknown, context: WireCompareCo
 	}
 	if (!isRecord(left) || !isRecord(right)) return false;
 	if (seenWirePair(left, right, context)) return true;
-	const leftKeys = Object.keys(left);
-	const rightKeys = Object.keys(right);
+	const leftEntries = ownEnumerableDataEntries(left);
+	const rightEntries = new Map(ownEnumerableDataEntries(right));
+	const leftKeys = leftEntries.map(([key]) => key);
+	const rightKeys = [...rightEntries.keys()];
 	if (leftKeys.length !== rightKeys.length) return false;
-	for (const key of leftKeys) {
-		if (!Object.prototype.hasOwnProperty.call(right, key)) return false;
-		if (!sameWireValueNode(left[key], right[key], context)) return false;
+	for (const [key, leftValue] of leftEntries) {
+		if (!rightEntries.has(key)) return false;
+		if (!sameWireValueNode(leftValue, rightEntries.get(key), context)) return false;
 	}
 	return true;
+}
+
+function ownEnumerableDataEntries(value: object): Array<[string, unknown]> {
+	return Object.entries(Object.getOwnPropertyDescriptors(value)).flatMap(([key, descriptor]) =>
+		descriptor.enumerable && "value" in descriptor ? [[key, descriptor.value]] : [],
+	);
 }
 
 function seenWirePair(left: object, right: object, context: WireCompareContext): boolean {
