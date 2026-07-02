@@ -405,6 +405,55 @@ describe("widget composition lifecycle", () => {
 		controller.abort();
 	});
 
+	test("renders inspector failures as display fallbacks without blocking readback", async () => {
+		const unsafeModel = createModel({
+			role: "cell",
+			name: "unsafe",
+			_values: {},
+			_value_names: [],
+		});
+		const model = createModel({
+			role: "notebook",
+			_spec: {
+				cells: [
+					{
+						id: 1,
+						mode: "ojs",
+						value: `unsafe = {
+							const value = { ok: true };
+							Object.defineProperty(value, "constructor", {
+								get() { throw new TypeError("inspector failed"); }
+							});
+							return value;
+						}`,
+					},
+				],
+			},
+			_attachments: {},
+			_variables: {},
+			_options: {},
+			_cell_widgets: ["anywidget:unsafe"],
+		});
+		const el = document.createElement("div");
+		const controller = new AbortController();
+
+		widget.render({
+			model,
+			el,
+			signal: controller.signal,
+			host: createHost(new Map([["anywidget:unsafe", unsafeModel]])),
+		} as unknown as RenderProps<WidgetModel>);
+
+		await waitStep("inspector fallback", () =>
+			composedText(el, "Unable to inspect value: TypeError: inspector failed"),
+		);
+		expect(projectErrorText(el)).toBeUndefined();
+		expect(variableValue(unsafeModel, "unsafe")).toEqual({ ok: true });
+		expect(await waitFor(() => (unsafeModel.get("_has_rendered") === true ? true : undefined))).toBe(true);
+		expect(await waitFor(() => (model.get("_has_rendered") === true ? true : undefined))).toBe(true);
+		controller.abort();
+	});
+
 	test("full notebook render completes with display-only cells that have no readback names", async () => {
 		const displayModel = createModel({
 			role: "cell",

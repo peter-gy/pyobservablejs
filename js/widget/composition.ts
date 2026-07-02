@@ -1,6 +1,6 @@
 import type { RenderProps } from "@anywidget/types";
 import type { Cell, Notebook } from "@observablehq/notebook-kit";
-import { observe, type NotebookRuntime } from "@observablehq/notebook-kit/runtime";
+import { observe, type DisplayState, type NotebookRuntime } from "@observablehq/notebook-kit/runtime";
 import {
 	exposedVariableNames,
 	transpileNotebookCell,
@@ -47,6 +47,13 @@ type RenderCellOptions = {
 };
 type RuntimeDefinition = Parameters<NotebookRuntime["define"]>[1];
 type RuntimeObserver = Parameters<NotebookRuntime["main"]["variable"]>[0];
+type DisplayObserver = {
+	_error: boolean;
+	_node: HTMLDivElement;
+	pending(): void;
+	fulfilled(value: unknown): void;
+	rejected(error: unknown): void;
+};
 type DefinitionInput = { definition: RuntimeCellDefinition } | { error: unknown };
 
 type CellRenderTarget = {
@@ -495,7 +502,7 @@ function defineCell(
 				variables: [],
 			},
 			createRuntimeDefinition(cell, sourceDefinition, { document: runtimeDocument(runtime) }),
-			sync ? createCellObserver(sync, sourceDefinition, displayName, exposed.length > 0) : observe,
+			sync ? createCellObserver(sync, sourceDefinition, displayName, exposed.length > 0) : safeObserve,
 		);
 		if (sync) defineSyncObservers(runtime, sync, exposed);
 		if (sync) applyModelVariablesToViews(sync);
@@ -542,7 +549,7 @@ function renderPythonVariableCell(
 			variables: [],
 		},
 		definition,
-		observe,
+		safeObserve,
 	);
 }
 
@@ -569,7 +576,7 @@ function createCellObserver(
 		// Notebook Kit v2 uses output to label inspector text. Keep the runtime
 		// output for variable wiring, and clear the display copy so pyobservablejs
 		// cells render value text.
-		const observer = observe(state, { ...runtimeDefinition, output: undefined });
+		const observer = safeObserve(state, { ...runtimeDefinition, output: undefined });
 		const fulfilled = observer.fulfilled.bind(observer);
 		observer.fulfilled = (value: unknown) => {
 			const viewName = viewVariableName(definition);
@@ -586,6 +593,39 @@ function createCellObserver(
 		};
 		return observer;
 	};
+}
+
+function safeObserve(state: DisplayState, definition: RuntimeDefinition): DisplayObserver {
+	const observer = observe(state, definition) as DisplayObserver;
+	const fulfilled = observer.fulfilled.bind(observer);
+	const rejected = observer.rejected.bind(observer);
+	return {
+		...observer,
+		pending: observer.pending.bind(observer),
+		fulfilled(value: unknown) {
+			renderSafely(state, () => fulfilled(value));
+		},
+		rejected(error: unknown) {
+			renderSafely(state, () => rejected(error));
+		},
+	};
+}
+
+function renderSafely(state: DisplayState, render: () => void): void {
+	try {
+		render();
+	} catch (error) {
+		state.root.replaceChildren(createInspectFallback(error));
+	}
+}
+
+function createInspectFallback(error: unknown): HTMLDivElement {
+	const node = document.createElement("div");
+	node.className = "observablehq";
+	const value = node.appendChild(document.createElement("span"));
+	value.className = "observablehq--inspect";
+	value.textContent = `Unable to inspect value: ${error instanceof Error ? `${error.name}: ${error.message}` : String(error)}`;
+	return node;
 }
 
 function createSyncObserver(sync: CellVariableSync, name: string, onSettled: () => void): RuntimeObserver {
