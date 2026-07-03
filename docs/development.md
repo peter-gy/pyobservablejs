@@ -59,6 +59,7 @@ Run the full local gate before sending changes for review:
 ```sh
 pnpm format:check
 pnpm lint
+pnpm konsistent
 pnpm typecheck
 pnpm test:js
 uv run ruff format --check .

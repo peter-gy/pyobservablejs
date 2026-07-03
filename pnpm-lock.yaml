@@ -10,7 +10,7 @@ importers:
     dependencies:
       '@observablehq/notebook-kit':
         specifier: ^2.1.8
-        version: 2.1.8(@types/markdown-it@14.1.2)(esbuild@0.28.1)
+        version: 2.1.8(@types/markdown-it@14.1.2)(esbuild@0.28.1)(jiti@2.7.0)
       '@shikijs/core':
         specifier: ^4.3.0
         version: 4.3.0
@@ -32,10 +32,13 @@ importers:
         version: 0.4.0
       '@anywidget/vite':
         specifier: 0.3.0
-        version: 0.3.0(vite@8.1.2(esbuild@0.28.1))
+        version: 0.3.0(vite@8.1.2(esbuild@0.28.1)(jiti@2.7.0))
       jsdom:
         specifier: 29.1.1
         version: 29.1.1
+      konsistent:
+        specifier: 1.0.0-beta.1
+        version: 1.0.0-beta.1
       oxfmt:
         specifier: ^0.51.0
         version: 0.51.0
@@ -47,10 +50,10 @@ importers:
         version: 6.0.3
       vite:
         specifier: ^8.1.2
-        version: 8.1.2(esbuild@0.28.1)
+        version: 8.1.2(esbuild@0.28.1)(jiti@2.7.0)
       vitest:
         specifier: 4.1.7
-        version: 4.1.7(jsdom@29.1.1)(vite@8.1.2(esbuild@0.28.1))
+        version: 4.1.7(jsdom@29.1.1)(vite@8.1.2(esbuild@0.28.1)(jiti@2.7.0))
 
 packages:
 
@@ -333,6 +336,13 @@ packages:
 
   '@jridgewell/sourcemap-codec@1.5.5':
     resolution: {integrity: sha512-cYQ9310grqxueWbl+WuIUIaiUaDcj7WOq5fVhEljNVgRfOUhY9fy2zTvfoqWsnebh8Sl70VScFbICvJnLKB0Og==}
+
+  '@konsistent/convention@1.0.0-beta.1':
+    resolution: {integrity: sha512-MidQWenua30khP6/8CDWsy6vVBQQBFj9SgC4IKE8r3+6fRWrnBklWsT9r7ndGC/VQtlb+8WMZUIRIBhZK26k6w==}
+    engines: {node: '>=22.11.0'}
+    hasBin: true
+    peerDependencies:
+      zod: ^4
 
   '@lezer/common@1.5.2':
     resolution: {integrity: sha512-sxQE460fPZyU3sdc8lafxiPwJHBzZRy/udNFynGQky1SePYBdhkBl1kOagA9uT3pxR8K09bOrmTUqA9wb/PjSQ==}
@@ -876,6 +886,9 @@ packages:
   character-entities-legacy@3.0.0:
     resolution: {integrity: sha512-RpPp0asT/6ufRm//AJVwpViZbGM/MkjQFxJccQRHmISF/22NBtsHqAWmL+/pmkPWoIUJdWyeVleTl1wydHATVQ==}
 
+  citty@0.2.2:
+    resolution: {integrity: sha512-+6vJA3L98yv+IdfKGZHBNiGW5KHn22e/JwID0Strsz8h4S/csAu/OuICwxrg44k5MRiZHWIo8XXuJgQTriRP4w==}
+
   comma-separated-tokens@2.0.3:
     resolution: {integrity: sha512-Fu4hJdvzeylCfQPp9SGWidpzrMs7tTrlu6Vb8XGaRGck8QSNZJJp538Wrb60Lax4fPwR64ViY468OIUTbRlGZg==}
 
@@ -1001,6 +1014,10 @@ packages:
   isoformat@0.2.1:
     resolution: {integrity: sha512-tFLRAygk9NqrRPhJSnNGh7g7oaVWDwR0wKh/GM2LgmPa50Eg4UfyaCO4I8k6EqJHl1/uh2RAD6g06n5ygEnrjQ==}
 
+  jiti@2.7.0:
+    resolution: {integrity: sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ==}
+    hasBin: true
+
   jsdom@26.1.0:
     resolution: {integrity: sha512-Cvc9WUhxSMEo4McES3P7oK3QaXldCfNWp7pl2NNeiIFlCoLr3kfq9kb1fxftiwk1FLV7CvpvDfonxtzUDeSOPg==}
     engines: {node: '>=18'}
@@ -1018,6 +1035,11 @@ packages:
     peerDependenciesMeta:
       canvas:
         optional: true
+
+  konsistent@1.0.0-beta.1:
+    resolution: {integrity: sha512-1izi+r5Jqoz9gEzS/7l6tkBoHhRaDerAovjBTxlwyUzAVDAxmj6QL84H8mN5aoi9rh1eloO0s12C5M2L+o3SFg==}
+    engines: {node: '>=22.11.0'}
+    hasBin: true
 
   lightningcss-android-arm64@1.32.0:
     resolution: {integrity: sha512-YK7/ClTt4kAK0vo6w3X+Pnm0D2cf2vPHbhOXdoNti1Ga0al1P4TBZhwjATvjNwLEBCnKvjJc2jQgHXH0NEwlAg==}
@@ -1227,6 +1249,10 @@ packages:
   require-from-string@2.0.2:
     resolution: {integrity: sha512-Xf0nWe6RseziFMu+Ap9biiUbmplq6S9/p+7w7YXP/JBHhrUDDUhwa+vANyubuqfZWTveU//DYVGsDG7RKL/vEw==}
     engines: {node: '>=0.10.0'}
+
+  resolve.exports@2.0.3:
+    resolution: {integrity: sha512-OcXjMsGdhL4XnbShKpAcSqPMzQoYkYyhbEaeSko47MjRP9NfEQMhZkXL1DoFlt9LWQn4YttrdnV6X2OiyzBi+A==}
+    engines: {node: '>=10'}
 
   rolldown@1.1.4:
     resolution: {integrity: sha512-IjZYiLxZwpnhwhdBH2ugdTGVSdhCQUmLxLoqyjiL0JxYjyRst+5a0P3xfrTxJ5F638j4Mvvw5FAX5XE6eHpXbA==}
@@ -1499,6 +1525,9 @@ packages:
   xmlchars@2.2.0:
     resolution: {integrity: sha512-JZnDKK8B0RCDw84FNdDAIpZK+JuJw+s7Lz8nksI7SIuU3UXJJslUthsi+uWBUYOwPFwW7W7PRLRfUKpxjtjFCw==}
 
+  zod@4.4.3:
+    resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
+
   zwitch@2.0.4:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
 
@@ -1506,9 +1535,9 @@ snapshots:
 
   '@anywidget/types@0.4.0': {}
 
-  '@anywidget/vite@0.3.0(vite@8.1.2(esbuild@0.28.1))':
+  '@anywidget/vite@0.3.0(vite@8.1.2(esbuild@0.28.1)(jiti@2.7.0))':
     dependencies:
-      vite: 8.1.2(esbuild@0.28.1)
+      vite: 8.1.2(esbuild@0.28.1)(jiti@2.7.0)
 
   '@asamuzakjp/css-color@3.2.0':
     dependencies:
@@ -1690,6 +1719,12 @@ snapshots:
 
   '@jridgewell/sourcemap-codec@1.5.5': {}
 
+  '@konsistent/convention@1.0.0-beta.1(zod@4.4.3)':
+    dependencies:
+      citty: 0.2.2
+      jiti: 2.7.0
+      zod: 4.4.3
+
   '@lezer/common@1.5.2': {}
 
   '@lezer/css@1.3.4':
@@ -1740,7 +1775,7 @@ snapshots:
     dependencies:
       isoformat: 0.2.1
 
-  '@observablehq/notebook-kit@2.1.8(@types/markdown-it@14.1.2)(esbuild@0.28.1)':
+  '@observablehq/notebook-kit@2.1.8(@types/markdown-it@14.1.2)(esbuild@0.28.1)(jiti@2.7.0)':
     dependencies:
       '@fontsource-variable/inter': 5.2.8
       '@fontsource-variable/source-serif-4': 5.2.9
@@ -1762,7 +1797,7 @@ snapshots:
       markdown-it: 14.2.0
       markdown-it-anchor: 9.2.0(@types/markdown-it@14.1.2)(markdown-it@14.2.0)
       typescript: 5.9.3
-      vite: 8.1.2(esbuild@0.28.1)
+      vite: 8.1.2(esbuild@0.28.1)(jiti@2.7.0)
     transitivePeerDependencies:
       - '@types/markdown-it'
       - '@types/node'
@@ -2046,13 +2081,13 @@ snapshots:
       chai: 6.2.2
       tinyrainbow: 3.1.0
 
-  '@vitest/mocker@4.1.7(vite@8.1.2(esbuild@0.28.1))':
+  '@vitest/mocker@4.1.7(vite@8.1.2(esbuild@0.28.1)(jiti@2.7.0))':
     dependencies:
       '@vitest/spy': 4.1.7
       estree-walker: 3.0.3
       magic-string: 0.30.21
     optionalDependencies:
-      vite: 8.1.2(esbuild@0.28.1)
+      vite: 8.1.2(esbuild@0.28.1)(jiti@2.7.0)
 
   '@vitest/pretty-format@4.1.7':
     dependencies:
@@ -2101,6 +2136,8 @@ snapshots:
   character-entities-html4@2.1.0: {}
 
   character-entities-legacy@3.0.0: {}
+
+  citty@0.2.2: {}
 
   comma-separated-tokens@2.0.3: {}
 
@@ -2247,6 +2284,8 @@ snapshots:
 
   isoformat@0.2.1: {}
 
+  jiti@2.7.0: {}
+
   jsdom@26.1.0:
     dependencies:
       cssstyle: 4.6.0
@@ -2299,6 +2338,16 @@ snapshots:
       xml-name-validator: 5.0.0
     transitivePeerDependencies:
       - '@noble/hashes'
+
+  konsistent@1.0.0-beta.1:
+    dependencies:
+      '@konsistent/convention': 1.0.0-beta.1(zod@4.4.3)
+      citty: 0.2.2
+      picocolors: 1.1.1
+      resolve.exports: 2.0.3
+      tinyglobby: 0.2.17
+      typescript: 5.9.3
+      zod: 4.4.3
 
   lightningcss-android-arm64@1.32.0:
     optional: true
@@ -2508,6 +2557,8 @@ snapshots:
 
   require-from-string@2.0.2: {}
 
+  resolve.exports@2.0.3: {}
+
   rolldown@1.1.4:
     dependencies:
       '@oxc-project/types': 0.138.0
@@ -2641,7 +2692,7 @@ snapshots:
       '@types/unist': 3.0.3
       vfile-message: 4.0.3
 
-  vite@8.1.2(esbuild@0.28.1):
+  vite@8.1.2(esbuild@0.28.1)(jiti@2.7.0):
     dependencies:
       lightningcss: 1.32.0
       picomatch: 4.0.4
@@ -2651,11 +2702,12 @@ snapshots:
     optionalDependencies:
       esbuild: 0.28.1
       fsevents: 2.3.3
+      jiti: 2.7.0
 
-  vitest@4.1.7(jsdom@29.1.1)(vite@8.1.2(esbuild@0.28.1)):
+  vitest@4.1.7(jsdom@29.1.1)(vite@8.1.2(esbuild@0.28.1)(jiti@2.7.0)):
     dependencies:
       '@vitest/expect': 4.1.7
-      '@vitest/mocker': 4.1.7(vite@8.1.2(esbuild@0.28.1))
+      '@vitest/mocker': 4.1.7(vite@8.1.2(esbuild@0.28.1)(jiti@2.7.0))
       '@vitest/pretty-format': 4.1.7
       '@vitest/runner': 4.1.7
       '@vitest/snapshot': 4.1.7
@@ -2672,7 +2724,7 @@ snapshots:
       tinyexec: 1.2.4
       tinyglobby: 0.2.17
       tinyrainbow: 3.1.0
-      vite: 8.1.2(esbuild@0.28.1)
+      vite: 8.1.2(esbuild@0.28.1)(jiti@2.7.0)
       why-is-node-running: 2.3.0
     optionalDependencies:
       jsdom: 29.1.1
@@ -2718,5 +2770,7 @@ snapshots:
   xml-name-validator@5.0.0: {}
 
   xmlchars@2.2.0: {}
+
+  zod@4.4.3: {}
 
   zwitch@2.0.4: {}

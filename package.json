@@ -4,6 +4,7 @@
 		"build": "vite build --config vite.config.ts",
 		"format": "oxfmt -c oxfmtrc.jsonc \"**/*.{ts,tsx,js,jsx,mjs,cjs,json,jsonc,md,mdx,yml,yaml,toml,ipynb}\"",
 		"format:check": "oxfmt --check -c oxfmtrc.jsonc \"**/*.{ts,tsx,js,jsx,mjs,cjs,json,jsonc,md,mdx,yml,yaml,toml,ipynb}\"",
+		"konsistent": "konsistent",
 		"lint": "oxlint -c oxlintrc.json --deny-warnings --report-unused-disable-directives js",
 		"test:js": "vitest run",
 		"typecheck": "tsc --noEmit"
@@ -20,6 +21,7 @@
 		"@anywidget/types": "^0.4.0",
 		"@anywidget/vite": "0.3.0",
 		"jsdom": "29.1.1",
+		"konsistent": "1.0.0-beta.1",
 		"oxfmt": "^0.51.0",
 		"oxlint": "^1.72.0",
 		"typescript": "^6.0.3",

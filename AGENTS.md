@@ -8,6 +8,7 @@ check pass:
 ```sh
 pnpm format:check
 pnpm lint
+pnpm konsistent
 pnpm typecheck
 pnpm test:js
 uv run ruff format --check .
