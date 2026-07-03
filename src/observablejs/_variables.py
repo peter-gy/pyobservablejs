@@ -65,7 +65,6 @@ RESERVED_VARIABLE_NAMES = frozenset(
         "olympians",
         "penguins",
         "pizza",
-        "require",
         "svg",
         "tex",
         "topojson",
@@ -221,6 +220,8 @@ def deserialize_value(value: Any) -> Any:
     if tag == "error":
         return f"{value.get('name')}: {value.get('message')}"
     if tag == "regexp":
+        return str(value.get("value"))
+    if tag == "summary":
         return str(value.get("value"))
     if tag == "file":
         return {

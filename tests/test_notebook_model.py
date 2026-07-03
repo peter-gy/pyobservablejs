@@ -58,6 +58,7 @@ def test_html_model_preserves_source_and_exposes_cell_nodes() -> None:
     assert model.source == source
     assert model.theme == "coffee"
     assert model.spec == {}
+    assert model.runtime_compatibility == {}
     assert [node.to_spec() for node in model.nodes] == [
         {
             "id": 3,

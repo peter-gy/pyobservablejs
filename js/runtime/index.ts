@@ -6,8 +6,9 @@ import { bindRuntimeScope, cleanupRuntimeScope, createRuntimeScope } from "./sco
 import { createVariableBuiltins } from "./values";
 import {
 	createRuntimeCompatibilityBuiltins,
-	RUNTIME_COMPAT_BUILTIN_NAMES,
+	runtimeCompatibilityBuiltinNames,
 	runtimeDefinitionCompatibility,
+	type RuntimeCompatibilityOptions,
 } from "./compat";
 
 export type AttachmentInfo = {
@@ -22,6 +23,7 @@ export type NotebookOptions = {
 	baseUrl: string;
 	variables: Record<string, unknown>;
 	showSource: boolean;
+	runtimeCompatibility?: RuntimeCompatibilityOptions;
 };
 
 export type AttachmentRegistry = {
@@ -34,7 +36,12 @@ export type AttachmentRegistry = {
 
 export type { NestedSelectState, RuntimeVariablesSync, ViewTarget, ViewWriteResult } from "./values";
 export { runtimeDocument } from "./scope";
-export { createGenerators, createObservableHtml, createRuntimeCompatibilityBuiltins } from "./compat";
+export {
+	createGenerators,
+	createObservableHtml,
+	createRuntimeCompatibilityBuiltins,
+	runtimeCompatibilityBuiltinNames,
+} from "./compat";
 export {
 	createVariableBuiltins,
 	isWritableSyncedViewValue,
@@ -55,6 +62,7 @@ export type RuntimeGlobals = {
 };
 export type RuntimeDefinitionOptions = RuntimeGlobals & {
 	notebookNames?: ReadonlySet<string>;
+	runtimeCompatibility?: RuntimeCompatibilityOptions;
 };
 type RuntimeFileAttachment = ReturnType<typeof FileAttachment> & {
 	sqlite(): Promise<SQLiteDatabaseClient>;
@@ -82,9 +90,8 @@ type SQLiteGlobalConfig = {
 	locateFile?(name: string): string;
 };
 
-const RESERVED_RUNTIME_NAMES = new Set([
+const CORE_RUNTIME_NAMES = new Set([
 	...Object.keys(library),
-	...RUNTIME_COMPAT_BUILTIN_NAMES,
 	"DuckDBClient",
 	"FileAttachment",
 	"SQLite",
@@ -101,7 +108,7 @@ export function createRuntime(
 	attachmentRegistry: AttachmentRegistry,
 ): NotebookRuntime {
 	// Python variables enter OJS as Observable builtins before Notebook Kit defines cells.
-	const collisions = runtimeBuiltinCollisions(options.variables);
+	const collisions = runtimeBuiltinCollisions(options.variables, options.runtimeCompatibility);
 	if (collisions.length > 0)
 		throw new Error(`Python variables cannot override Observable runtime builtins: ${collisions.join(", ")}`);
 	const width = () => observeWidth(root, el);
@@ -117,7 +124,7 @@ export function createRuntime(
 		SQLiteDatabaseClient: () => SQLiteDatabaseClient,
 		document: () => scope.document,
 		width: width as RuntimeBuiltins["width"],
-		...createRuntimeCompatibilityBuiltins(),
+		...createRuntimeCompatibilityBuiltins(options.runtimeCompatibility),
 		...createVariableBuiltins(options.variables),
 	} as RuntimeBuiltinsWithVars;
 	const runtime = new NotebookRuntime(builtins);
@@ -126,9 +133,13 @@ export function createRuntime(
 	return runtime;
 }
 
-function runtimeBuiltinCollisions(variables: Record<string, unknown>): string[] {
+function runtimeBuiltinCollisions(
+	variables: Record<string, unknown>,
+	compatibility: RuntimeCompatibilityOptions = {},
+): string[] {
+	const reserved = new Set([...CORE_RUNTIME_NAMES, ...runtimeCompatibilityBuiltinNames(compatibility)]);
 	return Object.keys(variables)
-		.filter((name) => RESERVED_RUNTIME_NAMES.has(name))
+		.filter((name) => reserved.has(name))
 		.sort();
 }
 
@@ -541,7 +552,7 @@ export function createRuntimeDefinition(
 	definition: TranspiledDefinition,
 	options: RuntimeDefinitionOptions = {},
 ): RuntimeDefinition {
-	const { notebookNames, ...globals } = options;
+	const { notebookNames, runtimeCompatibility, ...globals } = options;
 	const body = compileRuntimeBody(definition.body, globals);
 	return {
 		id: cell.id,
@@ -553,7 +564,7 @@ export function createRuntimeDefinition(
 		autoview: definition.autoview,
 		automutable: definition.automutable,
 		display: (definition as RuntimeDefinition).display,
-		...runtimeDefinitionCompatibility(definition, notebookNames),
+		...runtimeDefinitionCompatibility(definition, notebookNames, runtimeCompatibility),
 	};
 }
 

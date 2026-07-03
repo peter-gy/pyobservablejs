@@ -48,6 +48,37 @@ describe("widget runtime variable sync", () => {
 		controller.abort();
 	});
 
+	test("rejects live variables that collide with active compatibility builtins", async () => {
+		const model = createModel({
+			role: "notebook",
+			_spec: {
+				cells: [{ id: 1, mode: "ojs", value: "answer = 42" }],
+			},
+			_attachments: {},
+			_variables: {},
+			_options: { runtime_compatibility: { require: true } },
+			_cell_widgets: ["anywidget:answer"],
+		});
+		const childModels = new Map([
+			["anywidget:answer", createModel({ role: "cell", name: "answer", _values: {}, _value_names: [] })],
+		]);
+		const controller = new AbortController();
+
+		widget.render({
+			model,
+			el: document.createElement("div"),
+			signal: controller.signal,
+			host: createHost(childModels),
+		} as unknown as RenderProps<WidgetModel>);
+
+		await waitFor(() => (variableValue(model, "answer") === 42 ? 42 : undefined));
+
+		expect(() => setVariables(model, 1, "set", { require: "shadowed" })).toThrow(
+			"Python variables cannot override Observable runtime builtins: require",
+		);
+		controller.abort();
+	});
+
 	test("keeps Python-owned hidden cells hidden", async () => {
 		const model = createModel({
 			role: "notebook",

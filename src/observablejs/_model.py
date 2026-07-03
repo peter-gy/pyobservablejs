@@ -98,6 +98,7 @@ class NotebookModel:
     nodes: tuple[NotebookNode, ...] = ()
     source: str = ""
     attachments: Mapping[str, FileAttachment] = dataclasses.field(default_factory=dict)
+    runtime_compatibility: Mapping[str, bool] = dataclasses.field(default_factory=dict)
 
     @property
     def spec(self) -> dict[str, Any]:
@@ -235,6 +236,13 @@ def notebook_model_from_observablehq_nodes(
         nodes=_validate_unique_keys(model_nodes),
         source=serialize(spec),
         attachments={**discovered, **normalized},
+        runtime_compatibility={
+            "display_view": True,
+            "generators": True,
+            "html": True,
+            "mutable": True,
+            "require": True,
+        },
     )
 
 

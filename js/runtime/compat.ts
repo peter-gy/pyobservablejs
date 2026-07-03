@@ -12,6 +12,17 @@ type NpmSpecifier = {
 	range: string;
 	path: string;
 };
+export type RuntimeCompatibilityOptions = {
+	displayView?: boolean;
+	generators?: boolean;
+	html?: boolean;
+	mutable?: boolean;
+	require?: boolean;
+};
+type RuntimeCompatibilityBuiltin = {
+	create(): unknown;
+	enabled(options: RuntimeCompatibilityOptions): boolean;
+};
 
 const SAFE_HTML_INTERPOLATION_TAGS = new Set([
 	"b",
@@ -43,24 +54,48 @@ const legacyRequire = Object.assign(createLegacyRequire(resolveLegacyRequire), {
 let htmlBuiltin: Promise<HtmlTemplateTag> | undefined;
 
 const RUNTIME_COMPAT_BUILTINS = {
-	Generators: () => createGenerators(library.Generators()),
-	Mutable: () => createMutable(library.Mutable()),
-	html: () => loadHtmlBuiltin(),
-	require: () => legacyRequire,
-} satisfies Record<string, () => unknown>;
+	Generators: {
+		create: () => createGenerators(library.Generators()),
+		enabled: (options) => options.generators === true,
+	},
+	Mutable: {
+		create: () => createMutable(library.Mutable()),
+		enabled: (options) => options.mutable === true,
+	},
+	html: {
+		create: () => loadHtmlBuiltin(),
+		enabled: (options) => options.html === true,
+	},
+	require: {
+		create: () => legacyRequire,
+		enabled: (options) => options.require === true,
+	},
+} satisfies Record<string, RuntimeCompatibilityBuiltin>;
 
 type RuntimeCompatibilityBuiltinName = keyof typeof RUNTIME_COMPAT_BUILTINS;
 
 export const RUNTIME_COMPAT_BUILTIN_NAMES = Object.keys(RUNTIME_COMPAT_BUILTINS) as RuntimeCompatibilityBuiltinName[];
 
-export function createRuntimeCompatibilityBuiltins(): Record<RuntimeCompatibilityBuiltinName, () => unknown> {
-	return { ...RUNTIME_COMPAT_BUILTINS };
+export function runtimeCompatibilityBuiltinNames(
+	options: RuntimeCompatibilityOptions = {},
+): RuntimeCompatibilityBuiltinName[] {
+	return RUNTIME_COMPAT_BUILTIN_NAMES.filter((name) => RUNTIME_COMPAT_BUILTINS[name].enabled(options));
+}
+
+export function createRuntimeCompatibilityBuiltins(
+	options: RuntimeCompatibilityOptions = {},
+): Partial<Record<RuntimeCompatibilityBuiltinName, () => unknown>> {
+	const builtins: Partial<Record<RuntimeCompatibilityBuiltinName, () => unknown>> = {};
+	for (const name of runtimeCompatibilityBuiltinNames(options)) builtins[name] = RUNTIME_COMPAT_BUILTINS[name].create;
+	return builtins;
 }
 
 export function runtimeDefinitionCompatibility(
 	definition: RuntimeCellDefinition,
 	notebookNames: ReadonlySet<string> | undefined,
+	compatibility: RuntimeCompatibilityOptions = {},
 ): { display?: false } {
+	if (compatibility.displayView !== true) return {};
 	return usesNotebookDisplayName(definition, notebookNames) ? { display: false } : {};
 }
 
@@ -118,8 +153,9 @@ function resolveLegacyRequire(specifier: unknown): string {
 	const value = String(specifier);
 	if (isProtocol(value) || isLocal(value)) return value;
 	const { name, range, path } = parseNpmSpecifier(value);
-	const suffix = (isFile(path) && !isJavaScript(path)) || isDirectory(path) ? "" : "/+esm";
-	return `https://cdn.jsdelivr.net/npm/${name}${range}${path}${suffix}`;
+	return `https://cdn.jsdelivr.net/npm/${name}${range || notebookKitDefaultRange(name)}${
+		path ? notebookKitPath(path) : notebookKitDefaultPath(name)
+	}`;
 }
 
 function parseNpmSpecifier(specifier: string): NpmSpecifier {
@@ -156,16 +192,36 @@ function isLocal(specifier: string): boolean {
 	return /^(\.\/|\.\.\/|\/)/.test(specifier);
 }
 
-function isJavaScript(specifier: string): boolean {
-	return /\.js$/i.test(specifier);
+function notebookKitPath(path: string): string {
+	return /(\.\w+|\/|\/\+esm)$/.test(path) ? path : `${path}/+esm`;
 }
 
-function isFile(specifier: string): boolean {
-	return /\.\w*$/.test(specifier);
+function notebookKitDefaultRange(name: string): string {
+	switch (name) {
+		case "@duckdb/duckdb-wasm":
+			return "@1.32.0";
+		case "apache-arrow":
+			return "@17.0.0";
+		default:
+			return "";
+	}
 }
 
-function isDirectory(specifier: string): boolean {
-	return specifier.endsWith("/");
+function notebookKitDefaultPath(name: string): string {
+	switch (name) {
+		case "mermaid":
+			return "/dist/mermaid.esm.min.mjs/+esm";
+		case "echarts":
+			return "/dist/echarts.esm.min.js/+esm";
+		case "jquery-ui":
+			return "/dist/jquery-ui.js/+esm";
+		case "deck.gl":
+			return "/dist.min.js/+esm";
+		case "react-dom":
+			return "/client/+esm";
+		default:
+			return "/+esm";
+	}
 }
 
 function loadHtmlBuiltin(): Promise<HtmlTemplateTag> {

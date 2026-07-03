@@ -45,6 +45,7 @@ type RenderCellOptions = {
 	pythonVariableNames?: Set<string>;
 	analysis?: CellAnalysis;
 	notebookNames?: ReadonlySet<string>;
+	runtimeCompatibility?: NotebookOptions["runtimeCompatibility"];
 };
 type RuntimeDefinition = Parameters<NotebookRuntime["define"]>[1];
 type RuntimeObserver = Parameters<NotebookRuntime["main"]["variable"]>[0];
@@ -67,6 +68,7 @@ type CellRenderContext = {
 	pythonVariableNames: Set<string>;
 	analysis: NotebookAnalysis;
 	notebookNames: ReadonlySet<string>;
+	runtimeCompatibility: NotebookOptions["runtimeCompatibility"];
 };
 
 type RenderComposedCellsOptions = {
@@ -245,6 +247,7 @@ export async function renderComposedCells({
 		pythonVariableNames: new Set(Object.keys(options.variables)),
 		analysis,
 		notebookNames: notebookNamesFromAnalysis(analysis),
+		runtimeCompatibility: options.runtimeCompatibility,
 	};
 	const syncValues = () => {
 		const resolved = resolvedCellModels(cellModels);
@@ -358,6 +361,7 @@ export function renderStandaloneCellProjection({
 		pythonVariableNames: new Set(Object.keys(options.variables)),
 		analysis,
 		notebookNames: notebookNamesFromAnalysis(analysis),
+		runtimeCompatibility: options.runtimeCompatibility,
 	});
 	variablesSync.applyInitialViews();
 }
@@ -449,6 +453,7 @@ function renderCellTarget(target: CellRenderTarget, context: CellRenderContext):
 		pythonVariableNames: context.pythonVariableNames,
 		analysis: context.analysis.cells[target.index],
 		notebookNames: context.notebookNames,
+		runtimeCompatibility: context.runtimeCompatibility,
 	});
 }
 
@@ -463,6 +468,7 @@ function renderCell({
 	pythonVariableNames,
 	analysis,
 	notebookNames,
+	runtimeCompatibility,
 }: RenderCellOptions): void {
 	wrapper.replaceChildren();
 	const output = createCellOutput(wrapper, cell);
@@ -475,6 +481,7 @@ function renderCell({
 		pythonVariableNames,
 		definitionInputFromAnalysis(analysis),
 		notebookNames,
+		runtimeCompatibility,
 	);
 
 	if (showSource && cell.pinned) {
@@ -491,6 +498,7 @@ function defineCell(
 	pythonVariableNames: Set<string> = new Set(),
 	definitionInput?: DefinitionInput,
 	notebookNames?: ReadonlySet<string>,
+	runtimeCompatibility?: NotebookOptions["runtimeCompatibility"],
 ): void {
 	try {
 		const definition = readDefinition(cell, definitionInput);
@@ -511,7 +519,11 @@ function defineCell(
 				expanded: [],
 				variables: [],
 			},
-			createRuntimeDefinition(cell, sourceDefinition, { document: runtimeDocument(runtime), notebookNames }),
+			createRuntimeDefinition(cell, sourceDefinition, {
+				document: runtimeDocument(runtime),
+				notebookNames,
+				runtimeCompatibility,
+			}),
 			sync ? createCellObserver(sync, sourceDefinition, displayName, exposed.length > 0) : safeObserve,
 		);
 		if (sync) defineSyncObservers(runtime, sync, exposed);

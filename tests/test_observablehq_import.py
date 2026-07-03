@@ -88,6 +88,13 @@ def test_notebook_from_observablehq_fetches_source_and_remote_attachments(
     assert set(widget.attachments) == {"data.csv", "local.csv"}
     assert widget.attachments["data.csv"]["url"] == "https://static.example/data.csv"
     assert widget.attachments["local.csv"]["url"] == "https://example.test/local.csv"
+    assert widget.options["runtime_compatibility"] == {
+        "display_view": True,
+        "generators": True,
+        "html": True,
+        "mutable": True,
+        "require": True,
+    }
     assert len(widget.cells) == 1
 
 
@@ -882,6 +889,19 @@ def test_notebook_from_observablehq_accepts_initial_variables(
     assert requests == [("https://api.observablehq.com/document/@d3/bar-chart", 1)]
     assert scripts[0]["text"].strip() == "py_answer + 1"
     assert widget.variables == {"py_answer": 7}
+
+
+@pytest.mark.parametrize("name", ["Generators", "Mutable", "html", "require"])
+def test_notebook_from_observablehq_rejects_legacy_runtime_variable_updates(
+    observablehq_response: ObservableHQResponseInstaller,
+    name: str,
+) -> None:
+    observablehq_response({"title": "Remote", "nodes": []})
+
+    widget = obs.Notebook.from_observablehq("@d3/bar-chart", timeout=1)
+
+    with pytest.raises(ValueError, match=f"Reserved Observable runtime name: {name!r}"):
+        widget.update_variables({name: "shadowed"})
 
 
 def test_notebook_from_observablehq_initial_variables_serialize_to_frontend_state(

@@ -46,6 +46,12 @@ _OBSERVABLE_WIDGET_BUNDLE = Bundle(
     dev_entry=_OBSERVABLE_WIDGET_DEV_ENTRY,
     entry_file="index.js",
 )
+_RUNTIME_COMPATIBILITY_VARIABLE_NAMES = {
+    "generators": "Generators",
+    "html": "html",
+    "mutable": "Mutable",
+    "require": "require",
+}
 
 
 class NotRenderedError(RuntimeError):
@@ -69,6 +75,22 @@ def _widgets_to_json(value: object, widget: object) -> object:
 
 def _widgets_from_json(value: object, _widget: object) -> object:
     return value
+
+
+def validate_runtime_compatibility_variables(
+    values: Mapping[str, Any],
+    runtime_compatibility: object,
+) -> None:
+    if not isinstance(runtime_compatibility, Mapping):
+        return
+    collisions = sorted(
+        name
+        for option, name in _RUNTIME_COMPATIBILITY_VARIABLE_NAMES.items()
+        if runtime_compatibility.get(option) is True and name in values
+    )
+    if collisions:
+        joined = ", ".join(repr(name) for name in collisions)
+        raise ValueError(f"Reserved Observable runtime name: {joined}")
 
 
 class _WidgetReferenceTrait(anywidget.WidgetTrait):
@@ -306,6 +328,7 @@ class Notebook(_ObservableWidget):
             attachments=model.attachments,
             variables=variables,
             show_pinned_source=show_pinned_source,
+            runtime_compatibility=model.runtime_compatibility,
             cell_keys=model.cell_keys,
             cell_widgets=_cell_widgets_for_model(model),
         )
@@ -319,14 +342,21 @@ class Notebook(_ObservableWidget):
         attachments: Mapping[str, FileAttachment],
         variables: Mapping[str, Any] | None,
         show_pinned_source: bool,
+        runtime_compatibility: Mapping[str, bool],
         cell_keys: Sequence[str],
         cell_widgets: Sequence[NotebookCell],
     ) -> None:
         self._variable_values = copy_variables(variables)
-        self._variable_update_seq = 0
         spec_dict = dict(spec)
         if not source:
             spec_dict["theme"] = theme
+        options: dict[str, Any] = {"show_source": show_pinned_source}
+        if runtime_compatibility:
+            options["runtime_compatibility"] = dict(runtime_compatibility)
+        validate_runtime_compatibility_variables(
+            self._variable_values, options.get("runtime_compatibility")
+        )
+        self._variable_update_seq = 0
         self._initializing_notebook = True
         try:
             super().__init__(
@@ -335,7 +365,7 @@ class Notebook(_ObservableWidget):
                 theme=theme,
                 _attachments=dict(attachments),
                 _variables=serialize_variables(self._variable_values),
-                _options={"show_source": show_pinned_source},
+                _options=options,
                 _cell_keys=list(cell_keys),
                 _cell_widgets=list(cell_widgets),
             )
@@ -437,6 +467,7 @@ class Notebook(_ObservableWidget):
             self._replace_variables(values, update_kind="replace")
 
     def _patch_variables(self, updates: Mapping[str, Any]) -> None:
+        self._validate_runtime_compatibility_variables(updates)
         serialized_updates = serialize_variables(updates)
         self._variable_values = copy_variables({**self._variable_values, **updates})
         self._variable_update_seq += 1
@@ -456,6 +487,7 @@ class Notebook(_ObservableWidget):
         *,
         update_kind: str = "replace",
     ) -> None:
+        self._validate_runtime_compatibility_variables(value)
         self._variable_values = copy_variables(value)
         self._variable_update_seq += 1
         self.set_trait(
@@ -467,6 +499,13 @@ class Notebook(_ObservableWidget):
             },
         )
         self.set_trait("_variables", serialize_variables(self._variable_values))
+
+    def _validate_runtime_compatibility_variables(
+        self, values: Mapping[str, Any]
+    ) -> None:
+        validate_runtime_compatibility_variables(
+            values, self._options.get("runtime_compatibility")
+        )
 
     @property
     def has_rendered(self) -> bool:

@@ -365,7 +365,7 @@ describe("widget composition lifecycle", () => {
 			},
 			_attachments: {},
 			_variables: {},
-			_options: {},
+			_options: { runtime_compatibility: { require: true } },
 			_cell_widgets: ["anywidget:geometric", "anywidget:readout"],
 		});
 		const geometricModel = createModel({

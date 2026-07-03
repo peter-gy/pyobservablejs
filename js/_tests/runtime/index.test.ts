@@ -6,6 +6,7 @@ import {
 	createFileAttachment,
 	createDuckDBClient,
 	createRuntime,
+	createRuntimeCompatibilityBuiltins,
 	createRuntimeCleanup,
 	createRuntimeDefinition,
 	createGenerators,
@@ -191,11 +192,53 @@ describe("runtime bindings", () => {
 					el,
 					{
 						...baseOptions,
-						variables: { FileAttachment: "shadowed", document: "shadowed", require: "shadowed" },
+						variables: { FileAttachment: "shadowed", document: "shadowed" },
 					},
 					registry,
 				),
-			).toThrow("Python variables cannot override Observable runtime builtins: FileAttachment, document, require");
+			).toThrow("Python variables cannot override Observable runtime builtins: FileAttachment, document");
+		} finally {
+			registry.cleanup();
+		}
+	});
+
+	test("allows Python variables named require outside legacy runtime compatibility", async () => {
+		const registry = registerAttachments({});
+		const runtime = createRuntime(
+			document.createElement("div"),
+			document.createElement("div"),
+			{
+				...baseOptions,
+				variables: { require: "python require" },
+			},
+			registry,
+		);
+
+		try {
+			runtime.main.define("requireProbe", ["require"], (require: string) => require);
+
+			await expect(runtime.main.value("requireProbe")).resolves.toBe("python require");
+		} finally {
+			createRuntimeCleanup(runtime, registry)();
+		}
+	});
+
+	test("rejects Python variables named require when legacy require is enabled", () => {
+		const registry = registerAttachments({});
+
+		try {
+			expect(() =>
+				createRuntime(
+					document.createElement("div"),
+					document.createElement("div"),
+					{
+						...baseOptions,
+						runtimeCompatibility: { require: true },
+						variables: { require: "shadowed" },
+					},
+					registry,
+				),
+			).toThrow("Python variables cannot override Observable runtime builtins: require");
 		} finally {
 			registry.cleanup();
 		}
@@ -203,7 +246,15 @@ describe("runtime bindings", () => {
 
 	test("exposes legacy Observable require in runtime builtins", async () => {
 		const registry = registerAttachments({});
-		const runtime = createRuntime(document.createElement("div"), document.createElement("div"), baseOptions, registry);
+		const runtime = createRuntime(
+			document.createElement("div"),
+			document.createElement("div"),
+			{
+				...baseOptions,
+				runtimeCompatibility: { require: true },
+			},
+			registry,
+		);
 		const defaultModule = moduleUrl("export default {value: 42};");
 		const namedModule = moduleUrl("export const value = 7;");
 
@@ -228,7 +279,15 @@ describe("runtime bindings", () => {
 
 	test("supports legacy Observable require.resolve and require.alias", async () => {
 		const registry = registerAttachments({});
-		const runtime = createRuntime(document.createElement("div"), document.createElement("div"), baseOptions, registry);
+		const runtime = createRuntime(
+			document.createElement("div"),
+			document.createElement("div"),
+			{
+				...baseOptions,
+				runtimeCompatibility: { require: true },
+			},
+			registry,
+		);
 		const aliasedModule = moduleUrl("export default {label: 'aliased'};");
 		const preloadedModule = { label: "preloaded" };
 		const preloadedFunction = () => "ready";
@@ -246,6 +305,10 @@ describe("runtime bindings", () => {
 					textPath: require.resolve("example-package/data.txt"),
 					directoryPath: require.resolve("example-package/assets/"),
 					scopedPath: require.resolve("@scope/package@1/path.js"),
+					reactDom: require.resolve("react-dom"),
+					mermaid: require.resolve("mermaid"),
+					apacheArrow: require.resolve("apache-arrow"),
+					duckdb: require.resolve("@duckdb/duckdb-wasm"),
 					protocol: require.resolve("https://cdn.example/module.js"),
 					local: require.resolve("./local.js"),
 					aliased: await alias("local"),
@@ -256,10 +319,14 @@ describe("runtime bindings", () => {
 
 			await expect(runtime.main.value("requireApiProbe")).resolves.toMatchObject({
 				d3: "https://cdn.jsdelivr.net/npm/d3@7/+esm",
-				javascriptPath: "https://cdn.jsdelivr.net/npm/geometric@2/src/line.js/+esm",
+				javascriptPath: "https://cdn.jsdelivr.net/npm/geometric@2/src/line.js",
 				textPath: "https://cdn.jsdelivr.net/npm/example-package/data.txt",
 				directoryPath: "https://cdn.jsdelivr.net/npm/example-package/assets/",
-				scopedPath: "https://cdn.jsdelivr.net/npm/@scope/package@1/path.js/+esm",
+				scopedPath: "https://cdn.jsdelivr.net/npm/@scope/package@1/path.js",
+				reactDom: "https://cdn.jsdelivr.net/npm/react-dom/client/+esm",
+				mermaid: "https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.esm.min.mjs/+esm",
+				apacheArrow: "https://cdn.jsdelivr.net/npm/apache-arrow@17.0.0/+esm",
+				duckdb: "https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.32.0/+esm",
 				protocol: "https://cdn.example/module.js",
 				local: "./local.js",
 				aliased: { label: "aliased" },
@@ -502,6 +569,19 @@ describe("runtime bindings", () => {
 		expect(dispose).toHaveBeenCalledOnce();
 	});
 
+	test("keeps Notebook Kit html builtin on default runtime compatibility", () => {
+		const builtins = createRuntimeCompatibilityBuiltins();
+
+		expect("html" in builtins).toBe(false);
+		expect("require" in builtins).toBe(false);
+	});
+
+	test("adds legacy html builtin for ObservableHQ compatibility", () => {
+		const builtins = createRuntimeCompatibilityBuiltins({ html: true });
+
+		expect("html" in builtins).toBe(true);
+	});
+
 	test("adds legacy sync iteration to input generators", async () => {
 		const generator: AsyncGenerator<string> = {
 			async next() {
@@ -530,7 +610,15 @@ describe("runtime bindings", () => {
 
 	test("exposes mutable holders to raw Observable runtime modules", async () => {
 		const registry = registerAttachments({});
-		const runtime = createRuntime(document.createElement("div"), document.createElement("div"), baseOptions, registry);
+		const runtime = createRuntime(
+			document.createElement("div"),
+			document.createElement("div"),
+			{
+				...baseOptions,
+				runtimeCompatibility: { mutable: true },
+			},
+			registry,
+		);
 
 		try {
 			runtime.main.define("initial x", [], () => 0);
@@ -921,7 +1009,7 @@ describe("runtime bindings", () => {
 						autoview: true,
 						automutable: false,
 					} as ReturnType<typeof transpile>,
-					{ notebookNames },
+					{ notebookNames, runtimeCompatibility: { displayView: true } },
 				),
 			);
 
@@ -952,7 +1040,7 @@ describe("runtime bindings", () => {
 					autoview: false,
 					automutable: false,
 				} as ReturnType<typeof transpile>,
-				{ notebookNames },
+				{ notebookNames, runtimeCompatibility: { displayView: true } },
 			);
 			expect(definition.display).toBe(false);
 			runtime.define(
@@ -984,7 +1072,7 @@ describe("runtime bindings", () => {
 				autoview: false,
 				automutable: false,
 			} as ReturnType<typeof transpile>,
-			{ notebookNames },
+			{ notebookNames, runtimeCompatibility: { displayView: true } },
 		);
 		const viewDefinition = createRuntimeDefinition(
 			{ id: 2, mode: "ojs", value: "" } as Cell,
@@ -997,11 +1085,29 @@ describe("runtime bindings", () => {
 				autoview: true,
 				automutable: false,
 			} as ReturnType<typeof transpile>,
-			{ notebookNames },
+			{ notebookNames, runtimeCompatibility: { displayView: true } },
 		);
 
 		expect(displayDefinition.display).toBeUndefined();
 		expect(viewDefinition.display).toBeUndefined();
+	});
+
+	test("keeps Notebook Kit display helpers outside legacy display compatibility", () => {
+		const definition = createRuntimeDefinition(
+			{ id: 1, mode: "ojs", value: "" } as Cell,
+			{
+				body: "function panel(display) { return display('ready'); }",
+				inputs: ["display"],
+				outputs: [],
+				output: "panel",
+				autodisplay: true,
+				autoview: false,
+				automutable: false,
+			} as ReturnType<typeof transpile>,
+			{ notebookNames: new Set(["display"]) },
+		);
+
+		expect(definition.display).toBeUndefined();
 	});
 
 	test("awaits template inputs without replacing the previous value receiver", async () => {

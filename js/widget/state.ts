@@ -14,6 +14,7 @@ import {
 	readViewValue,
 	revivePythonValue,
 	reviveSyncedValue,
+	runtimeCompatibilityBuiltinNames,
 	sameWireValue,
 	setRuntimeVariables,
 	toWireValue,
@@ -58,6 +59,13 @@ export type WidgetModel = {
 	_value_names?: string[];
 	_has_rendered?: boolean;
 	_options?: {
+		runtime_compatibility?: {
+			display_view?: boolean;
+			generators?: boolean;
+			html?: boolean;
+			mutable?: boolean;
+			require?: boolean;
+		};
 		show_source?: boolean;
 	};
 	_cell_keys?: string[];
@@ -116,6 +124,19 @@ export function readNotebookOptions(
 		baseUrl: model.get("_base_url") || document.baseURI,
 		variables: variablesOverride ?? readNotebookVariables(model),
 		showSource: wireOptions?.show_source === true,
+		runtimeCompatibility: readRuntimeCompatibilityOptions(wireOptions),
+	};
+}
+
+function readRuntimeCompatibilityOptions(options: WidgetModel["_options"]): NotebookOptions["runtimeCompatibility"] {
+	const compatibility = options?.runtime_compatibility;
+	if (compatibility === null || typeof compatibility !== "object" || Array.isArray(compatibility)) return {};
+	return {
+		displayView: compatibility.display_view === true,
+		generators: compatibility.generators === true,
+		html: compatibility.html === true,
+		mutable: compatibility.mutable === true,
+		require: compatibility.require === true,
 	};
 }
 
@@ -384,6 +405,7 @@ export function createRuntimeVariablesSync({
 		lastPatchSeq = patchSeq;
 		if (patch.kind === "set") {
 			const values = patch.values ?? {};
+			assertNoRuntimeCompatibilityCollisions(values, options.runtimeCompatibility);
 			variables = { ...variables, ...values };
 			options.variables = variables;
 			version += 1;
@@ -392,6 +414,7 @@ export function createRuntimeVariablesSync({
 		}
 		if (patch.kind === "replace") {
 			const values = patch.values ?? {};
+			assertNoRuntimeCompatibilityCollisions(values, options.runtimeCompatibility);
 			for (const [name, release] of releaseCallbacks) {
 				if (!Object.prototype.hasOwnProperty.call(values, name)) release();
 			}
@@ -429,6 +452,18 @@ export function createRuntimeVariablesSync({
 			}
 		},
 	};
+}
+
+function assertNoRuntimeCompatibilityCollisions(
+	variables: Record<string, unknown>,
+	compatibility: NotebookOptions["runtimeCompatibility"],
+): void {
+	const collisions = runtimeCompatibilityBuiltinNames(compatibility).filter((name) =>
+		Object.prototype.hasOwnProperty.call(variables, name),
+	);
+	if (collisions.length > 0) {
+		throw new Error(`Python variables cannot override Observable runtime builtins: ${collisions.sort().join(", ")}`);
+	}
 }
 
 function readVariableUpdate(model: RenderProps<WidgetModel>["model"]): NonNullable<WidgetModel["_variable_update"]> {

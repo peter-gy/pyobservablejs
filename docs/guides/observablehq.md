@@ -51,8 +51,8 @@ notebook = obs.Notebook.from_observablehq(
 ## Legacy runtime compatibility
 
 Imported ObservableHQ notebooks can depend on older Observable runtime helpers.
-The browser runtime layers these behaviors over Notebook Kit when a source
-notebook asks for them:
+The browser runtime layers these behaviors over Notebook Kit for ObservableHQ
+document imports:
 
 | Behavior                                     | Contract                                                                                                                                                 |
 | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |

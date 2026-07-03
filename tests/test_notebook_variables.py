@@ -162,6 +162,24 @@ def test_browser_bigint_values_decode_to_python_int(
     assert widget.runtime_values["huge"] == 9007199254740993
 
 
+def test_browser_summary_values_decode_to_python_string(
+    browser_value_sync: BrowserValueSync,
+) -> None:
+    widget = obs.Notebook()
+
+    browser_value_sync(
+        widget,
+        {
+            "when": {
+                "__observablejs_type__": "summary",
+                "value": "Invalid Date",
+            }
+        },
+    )
+
+    assert widget.runtime_values["when"] == "Invalid Date"
+
+
 def test_browser_values_with_wire_type_key_decode_as_user_objects(
     browser_value_sync: BrowserValueSync,
 ) -> None:
@@ -191,6 +209,23 @@ def test_browser_values_with_wire_type_key_decode_as_user_objects(
 def test_invalid_python_var_name_raises() -> None:
     with pytest.raises(ValueError, match="Invalid Observable variable name"):
         obs.Notebook(variables={"not-valid": 1})
+
+
+def test_python_variable_name_require_is_allowed() -> None:
+    widget = obs.Notebook(variables={"require": "python require"})
+
+    assert widget.variables == {"require": "python require"}
+    assert widget.get_state(["_variables"])["_variables"] == {
+        "require": "python require"
+    }
+
+
+def test_python_variable_update_name_require_is_allowed() -> None:
+    widget = obs.Notebook()
+
+    widget.update_variables(require="python require")
+
+    assert widget.variables == {"require": "python require"}
 
 
 def test_python_variables_with_wire_type_key_serialize_as_user_objects() -> None:
