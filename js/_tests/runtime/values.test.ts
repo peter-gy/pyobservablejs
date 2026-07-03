@@ -7,6 +7,7 @@ import {
 	reviveSyncedValue,
 	sameWireValue,
 	toWireValue,
+	writeViewValue,
 } from "@/runtime/values";
 
 describe("wire values", () => {
@@ -112,10 +113,28 @@ describe("wire values", () => {
 		expect(toWireValue(typed)).toEqual({ __observablejs_type__: "summary", value: "Uint8Array(detached)" });
 	});
 
-	test("serializes invalid dates without throwing", () => {
-		expect(toWireValue(new Date(Number.NaN))).toEqual({
-			__observablejs_type__: "datetime",
+	test("serializes invalid dates as non-writable summaries", () => {
+		const value = toWireValue(new Date(Number.NaN));
+
+		expect(value).toEqual({
+			__observablejs_type__: "summary",
 			value: "Invalid Date",
+		});
+		expect(isWritableSyncedViewValue(value)).toBe(false);
+	});
+
+	test("does not throw when invalid dates are replayed into date inputs", () => {
+		const input = document.createElement("input");
+		input.type = "date";
+
+		expect(writeViewValue(input, new Date(Number.NaN))).toBe("unsupported");
+		expect(input.value).toBe("");
+	});
+
+	test("serializes valid dates as datetimes", () => {
+		expect(toWireValue(new Date("2026-05-23T00:00:00.000Z"))).toEqual({
+			__observablejs_type__: "datetime",
+			value: "2026-05-23T00:00:00.000Z",
 		});
 	});
 

@@ -936,6 +936,39 @@ describe("runtime bindings", () => {
 		}
 	});
 
+	test("keeps Notebook Kit display helpers for self-defined display and view cells", () => {
+		const notebookNames = new Set(["display", "view"]);
+		const displayDefinition = createRuntimeDefinition(
+			{ id: 1, mode: "ojs", value: "" } as Cell,
+			{
+				body: "function display(display) { return display('ready'); }",
+				inputs: ["display"],
+				outputs: [],
+				output: "display",
+				autodisplay: true,
+				autoview: false,
+				automutable: false,
+			} as ReturnType<typeof transpile>,
+			{ notebookNames },
+		);
+		const viewDefinition = createRuntimeDefinition(
+			{ id: 2, mode: "ojs", value: "" } as Cell,
+			{
+				body: "function viewof$view(view) { return view`<button>ready</button>`; }",
+				inputs: ["view"],
+				outputs: [],
+				output: "viewof$view",
+				autodisplay: true,
+				autoview: true,
+				automutable: false,
+			} as ReturnType<typeof transpile>,
+			{ notebookNames },
+		);
+
+		expect(displayDefinition.display).toBeUndefined();
+		expect(viewDefinition.display).toBeUndefined();
+	});
+
 	test("awaits template inputs without replacing the previous value receiver", async () => {
 		const definition = createRuntimeDefinition(
 			{ id: 1, mode: "md", value: "" } as Cell,

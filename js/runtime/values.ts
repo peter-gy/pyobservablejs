@@ -59,7 +59,7 @@ function toWireValueNode(value: unknown, context: WireContext, depth: number): u
 		return { [TYPE_KEY]: "function", value: value.name || "anonymous" };
 	}
 	if (value instanceof Date) {
-		if (Number.isNaN(value.getTime())) return { [TYPE_KEY]: "datetime", value: "Invalid Date" };
+		if (!isValidDate(value)) return { [TYPE_KEY]: "summary", value: "Invalid Date" };
 		return { [TYPE_KEY]: "datetime", value: value.toISOString() };
 	}
 	if (value instanceof Element) {
@@ -355,9 +355,9 @@ export function writeViewValue(view: ViewTarget, value: unknown, nestedState?: N
 			view.checked = Boolean(value);
 			view.value = String(value);
 			view.dispatchEvent(new Event("click", { bubbles: true }));
-		} else if (view.type === "date" && value instanceof Date) {
+		} else if (view.type === "date" && isValidDate(value)) {
 			view.value = value.toISOString().slice(0, 10);
-		} else if (view.type === "datetime-local" && value instanceof Date) {
+		} else if (view.type === "datetime-local" && isValidDate(value)) {
 			view.value = value.toISOString().slice(0, 16);
 		} else {
 			view.value = value == null ? "" : String(value);
@@ -432,8 +432,12 @@ function dispatchSelectEvents(select: HTMLSelectElement): void {
 function expectedWireValue(view: ViewTarget, value: unknown): unknown {
 	if (view instanceof HTMLInputElement) {
 		if (view.type === "checkbox") return toWireValue(Boolean(value));
-		if (view.type === "date" && value instanceof Date) return toWireValue(value.toISOString().slice(0, 10));
-		if (view.type === "datetime-local" && value instanceof Date) return toWireValue(value.toISOString().slice(0, 16));
+		if (view.type === "date" && isValidDate(value)) return toWireValue(value.toISOString().slice(0, 10));
+		if (view.type === "datetime-local" && isValidDate(value)) return toWireValue(value.toISOString().slice(0, 16));
 	}
 	return toWireValue(value);
+}
+
+function isValidDate(value: unknown): value is Date {
+	return value instanceof Date && Number.isFinite(value.getTime());
 }

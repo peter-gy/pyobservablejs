@@ -1,5 +1,5 @@
 import { library } from "@observablehq/notebook-kit/runtime";
-import type { RuntimeCellDefinition } from "./graph";
+import { unprefix, type RuntimeCellDefinition } from "./graph";
 import { observe } from "./observe";
 
 type HtmlTemplateTag = (strings: TemplateStringsArray, ...values: unknown[]) => unknown;
@@ -70,7 +70,24 @@ function usesNotebookDisplayName(
 	notebookNames: ReadonlySet<string> | undefined,
 ): boolean {
 	if (!notebookNames) return false;
-	return (definition.inputs ?? []).some((name) => (name === "display" || name === "view") && notebookNames.has(name));
+	const ownNames = definitionNames(definition);
+	return (definition.inputs ?? []).some(
+		(name) => (name === "display" || name === "view") && notebookNames.has(name) && !ownNames.has(name),
+	);
+}
+
+function definitionNames(definition: RuntimeCellDefinition): Set<string> {
+	const names = new Set(definition.outputs ?? []);
+	if (definition.output) {
+		names.add(definition.output);
+		if (definition.autoview) names.add(unprefix(definition.output, "viewof$"));
+		if (definition.automutable) {
+			const name = unprefix(definition.output, "mutable ");
+			names.add(name);
+			names.add(`mutable$${name}`);
+		}
+	}
+	return names;
 }
 
 function createLegacyRequire(resolve: (specifier: unknown) => string): LegacyRequire {
