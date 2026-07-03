@@ -27,7 +27,7 @@ const baseOptions: NotebookOptions = {
 type LegacyRequire = {
 	(...specifiers: unknown[]): Promise<unknown>;
 	resolve(specifier: unknown): string;
-	alias(aliases: Record<string, string>): LegacyRequire;
+	alias(aliases: Record<string, unknown>): LegacyRequire;
 };
 
 describe("runtime bindings", () => {
@@ -230,10 +230,16 @@ describe("runtime bindings", () => {
 		const registry = registerAttachments({});
 		const runtime = createRuntime(document.createElement("div"), document.createElement("div"), baseOptions, registry);
 		const aliasedModule = moduleUrl("export default {label: 'aliased'};");
+		const preloadedModule = { label: "preloaded" };
+		const preloadedFunction = () => "ready";
 
 		try {
 			runtime.main.define("requireApiProbe", ["require"], async (require: LegacyRequire) => {
-				const alias = require.alias({ local: aliasedModule });
+				const alias = require.alias({
+					local: aliasedModule,
+					preloadedModule,
+					preloadedFunction,
+				});
 				return {
 					d3: require.resolve("d3@7"),
 					javascriptPath: require.resolve("geometric@2/src/line.js"),
@@ -243,6 +249,8 @@ describe("runtime bindings", () => {
 					protocol: require.resolve("https://cdn.example/module.js"),
 					local: require.resolve("./local.js"),
 					aliased: await alias("local"),
+					preloadedModule: (await alias("preloadedModule")) === preloadedModule,
+					preloadedFunction: (await alias("preloadedFunction")) === preloadedFunction,
 				};
 			});
 
@@ -255,6 +263,8 @@ describe("runtime bindings", () => {
 				protocol: "https://cdn.example/module.js",
 				local: "./local.js",
 				aliased: { label: "aliased" },
+				preloadedModule: true,
+				preloadedFunction: true,
 			});
 		} finally {
 			createRuntimeCleanup(runtime, registry)();
@@ -492,7 +502,7 @@ describe("runtime bindings", () => {
 		expect(dispose).toHaveBeenCalledOnce();
 	});
 
-	test("keeps input generators in the runtime native shape", async () => {
+	test("adds legacy sync iteration to input generators", async () => {
 		const generator: AsyncGenerator<string> = {
 			async next() {
 				return { done: false, value: "ready" };
@@ -512,9 +522,10 @@ describe("runtime bindings", () => {
 
 		const value = Generators.input("view");
 
-		expect(value).toBe(generator);
-		expect(Symbol.iterator in Object(value)).toBe(false);
+		expect(Symbol.iterator in Object(value)).toBe(true);
 		await expect(value.next()).resolves.toEqual({ done: false, value: "ready" });
+		const iterator = (value as AsyncGenerator<string> & Iterable<Promise<string | undefined>>)[Symbol.iterator]();
+		await expect(iterator.next().value).resolves.toBe("ready");
 	});
 
 	test("exposes mutable holders to raw Observable runtime modules", async () => {

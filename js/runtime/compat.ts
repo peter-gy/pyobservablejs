@@ -6,7 +6,7 @@ type HtmlTemplateTag = (strings: TemplateStringsArray, ...values: unknown[]) => 
 type LegacyRequire = {
 	(...specifiers: unknown[]): Promise<unknown>;
 	resolve(specifier: unknown): string;
-	alias(aliases: Record<string, string>): LegacyRequire;
+	alias(aliases: Record<string, unknown>): LegacyRequire;
 };
 type NpmSpecifier = {
 	name: string;
@@ -90,18 +90,29 @@ function definitionNames(definition: RuntimeCellDefinition): Set<string> {
 	return names;
 }
 
-function createLegacyRequire(resolve: (specifier: unknown) => string): LegacyRequire {
+function createLegacyRequire(resolve: (specifier: unknown) => unknown): LegacyRequire {
 	const require = (async (...specifiers: unknown[]) => {
-		if (specifiers.length === 1) return import(/* @vite-ignore */ resolve(specifiers[0])).then(objectifyModule);
+		if (specifiers.length === 1) return loadRequiredModule(resolve(specifiers[0]));
 		return Promise.all(specifiers.map((specifier) => require(specifier))).then(mergeModules);
 	}) as LegacyRequire;
-	require.resolve = resolve;
+	require.resolve = (specifier) => {
+		const resolved = resolve(specifier);
+		return typeof resolved === "string" ? resolveLegacyRequire(resolved) : String(specifier);
+	};
 	require.alias = legacyRequireAlias;
 	return require;
 }
 
-function legacyRequireAlias(aliases: Record<string, string>): LegacyRequire {
-	return createLegacyRequire((specifier) => resolveLegacyRequire(aliases[String(specifier)] ?? specifier));
+function legacyRequireAlias(aliases: Record<string, unknown>): LegacyRequire {
+	return createLegacyRequire((specifier) => {
+		const key = String(specifier);
+		return Object.prototype.hasOwnProperty.call(aliases, key) ? aliases[key] : resolveLegacyRequire(specifier);
+	});
+}
+
+function loadRequiredModule(resolved: unknown): Promise<unknown> {
+	if (typeof resolved === "string") return import(/* @vite-ignore */ resolved).then(objectifyModule);
+	return Promise.resolve(resolved);
 }
 
 function resolveLegacyRequire(specifier: unknown): string {
@@ -277,7 +288,7 @@ export function createGenerators<T extends object>(Generators: T): T {
 	return new Proxy(Generators, {
 		get(target, property, receiver) {
 			const value = Reflect.get(target, property, receiver);
-			if ((property === "observe" || property === "queue") && typeof value === "function") {
+			if ((property === "observe" || property === "queue" || property === "input") && typeof value === "function") {
 				return (...args: unknown[]) => syncIterableAsyncGenerator(value.apply(target, args));
 			}
 			return value;
@@ -288,6 +299,9 @@ export function createGenerators<T extends object>(Generators: T): T {
 function syncIterableAsyncGenerator<T>(value: T): T {
 	if (!isAsyncGenerator(value) || Symbol.iterator in value) return value;
 	return new Proxy(value, {
+		has(target, property) {
+			return property === Symbol.iterator || property in Object(target);
+		},
 		get(target, property, receiver) {
 			if (property === Symbol.iterator) return () => syncIteratorFromAsyncGenerator(target);
 			return Reflect.get(target, property, receiver);
