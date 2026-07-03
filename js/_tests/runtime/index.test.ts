@@ -534,16 +534,26 @@ describe("runtime bindings", () => {
 
 		try {
 			runtime.main.define("initial x", [], () => 0);
-			runtime.main
-				.variable(true)
-				.define("mutable x", ["Mutable", "initial x"], (Mutable: new (value: number) => object, x: number) => {
-					return new Mutable(x);
-				});
-			runtime.main
-				.variable(true)
-				.define("x", ["mutable x"], (mutable: { generator: AsyncGenerator<number> }) => mutable.generator);
+			runtime.main.define(
+				"mutable probe",
+				["Mutable", "initial x"],
+				(Mutable: new (value: number) => object, x: number) => ({
+					mutable: new Mutable(x),
+				}),
+			);
+			runtime.main.variable(true).define("x", ["mutable probe"], ({ mutable }: { mutable: { generator: unknown } }) => {
+				return mutable.generator;
+			});
 
-			const mutable = (await runtime.main.value("mutable x")) as { value: number };
+			const { mutable } = (await runtime.main.value("mutable probe")) as {
+				mutable: {
+					value: number;
+					next(): Promise<IteratorResult<number>>;
+					generator?: unknown;
+				};
+			};
+			expect(typeof mutable.next).toBe("function");
+			expect(mutable.generator).toBe(mutable);
 			expect(mutable.value).toBe(0);
 
 			mutable.value = 5;
@@ -584,6 +594,20 @@ describe("runtime bindings", () => {
 		expect(single).toBeInstanceOf(HTMLFormElement);
 		expect((single as HTMLFormElement).elements.namedItem("input")).toBeInstanceOf(HTMLInputElement);
 		expect(multiple).toBeInstanceOf(HTMLSpanElement);
+	});
+
+	test("preserves authored span wrappers in legacy html templates", () => {
+		const htlHtml = vi.fn((strings: TemplateStringsArray) => {
+			const template = document.createElement("template");
+			template.innerHTML = strings.join("");
+			return template.content.firstElementChild!;
+		});
+		const html = createObservableHtml(htlHtml);
+
+		const node = html` <span><button>Run</button></span> `;
+
+		expect(node).toBeInstanceOf(HTMLSpanElement);
+		expect((node as HTMLSpanElement).querySelector("button")?.textContent).toBe("Run");
 	});
 
 	test("parses legacy html string interpolations containing markup", () => {

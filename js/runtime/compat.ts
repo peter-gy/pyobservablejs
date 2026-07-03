@@ -1,6 +1,5 @@
 import { library } from "@observablehq/notebook-kit/runtime";
 import { unprefix, type RuntimeCellDefinition } from "./graph";
-import { observe } from "./observe";
 
 type HtmlTemplateTag = (strings: TemplateStringsArray, ...values: unknown[]) => unknown;
 type LegacyRequire = {
@@ -45,7 +44,7 @@ let htmlBuiltin: Promise<HtmlTemplateTag> | undefined;
 
 const RUNTIME_COMPAT_BUILTINS = {
 	Generators: () => createGenerators(library.Generators()),
-	Mutable: () => ObservableMutable,
+	Mutable: () => createMutable(library.Mutable()),
 	html: () => loadHtmlBuiltin(),
 	require: () => legacyRequire,
 } satisfies Record<string, () => unknown>;
@@ -191,8 +190,17 @@ function normalizeObservableHtmlResult(value: unknown, strings: TemplateStringsA
 	const element = singleElementChild(value);
 	if (!element) return value;
 	if (value instanceof DocumentFragment) return element;
-	if (value instanceof HTMLElement && value.localName === "span" && value.attributes.length === 0) return element;
+	if (isSyntheticHtmlSpanWrapper(value, strings)) return element;
 	return value;
+}
+
+function isSyntheticHtmlSpanWrapper(value: unknown, strings: TemplateStringsArray): boolean {
+	return (
+		value instanceof HTMLElement &&
+		value.localName === "span" &&
+		value.attributes.length === 0 &&
+		strings.every((part) => part.trim() === "")
+	);
 }
 
 function hasBoundaryWhitespace(strings: TemplateStringsArray): boolean {
@@ -263,25 +271,26 @@ function installFormNamedPropertiesFor(form: HTMLFormElement): void {
 	}
 }
 
-function ObservableMutable(this: unknown, value: unknown): object {
-	let change: ((value: unknown) => unknown) | undefined;
-	const generator = observe((notify) => {
-		change = notify;
-		if (value !== undefined) notify(value);
-	});
-	return Object.defineProperties(
-		{},
-		{
-			generator: { value: generator },
-			value: {
-				get: () => value,
-				set: (next) => {
-					value = next;
-					change?.(value);
-				},
-			},
+function createMutable(Mutable: unknown): unknown {
+	if (typeof Mutable !== "function") return Mutable;
+	return new Proxy(Mutable, {
+		construct(target, args, newTarget) {
+			return addLegacyMutableGenerator(Reflect.construct(target, args, newTarget)) as object;
 		},
-	);
+		apply(target, thisArg, args) {
+			return addLegacyMutableGenerator(Reflect.apply(target, thisArg, args));
+		},
+	});
+}
+
+function addLegacyMutableGenerator<T>(value: T): T {
+	if (typeof value === "object" && value !== null && !("generator" in value)) {
+		Object.defineProperty(value, "generator", {
+			configurable: true,
+			value,
+		});
+	}
+	return value;
 }
 
 export function createGenerators<T extends object>(Generators: T): T {

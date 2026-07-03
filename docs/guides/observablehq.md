@@ -57,7 +57,7 @@ notebook asks for them:
 | Behavior                                     | Contract                                                                                                                                                 |
 | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `require`                                    | Resolves npm package specifiers through jsDelivr, supports `require.resolve`, `require.alias`, preloaded aliases, multiple loads, and default promotion. |
-| `Mutable`                                    | Creates Observable mutable holders with a `.value` setter and a `generator` output.                                                                      |
+| `Mutable`                                    | Keeps Notebook Kit's async mutable generator with a `.value` setter and adds a `generator` alias for older code.                                         |
 | `Generators.observe`, `.queue`, and `.input` | Keep Notebook Kit's async generator shape and expose a sync iterator for older consumers.                                                                |
 | `html`                                       | Accepts simple form and text markup in legacy string interpolations. Event handlers, URL attributes, inline styles, and other tags stay as text.         |
 | notebook-defined `display` and `view`        | Lets cells call variables named `display` or `view` when the notebook defines those variables.                                                           |
