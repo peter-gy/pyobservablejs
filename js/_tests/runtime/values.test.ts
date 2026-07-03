@@ -113,6 +113,22 @@ describe("wire values", () => {
 		expect(toWireValue(value)).toEqual([1, 2]);
 	});
 
+	test("serializes array subclasses without calling species constructors", () => {
+		class RuntimeArray extends Array<number> {}
+		Object.defineProperty(RuntimeArray, Symbol.species, {
+			get: () =>
+				class {
+					constructor() {
+						throw new Error("species constructor should not run during wire serialization");
+					}
+				},
+		});
+		const value = new RuntimeArray();
+		value.push(1, 2);
+
+		expect(toWireValue(value)).toEqual([1, 2]);
+	});
+
 	test("serializes object data properties without invoking accessors", () => {
 		let getterRead = false;
 		const value = { ready: true };

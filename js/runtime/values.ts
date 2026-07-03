@@ -89,7 +89,11 @@ function toWireValueNode(value: unknown, context: WireContext, depth: number): u
 		const ref = context.seen.get(value);
 		if (ref !== undefined) return { [TYPE_KEY]: "reference", value: ref };
 		context.seen.set(value, context.nextId++);
-		return Array.prototype.map.call(value, (item) => toWireValueNode(item, context, depth + 1)) as unknown[];
+		const items: unknown[] = [];
+		for (let index = 0; index < value.length; index++) {
+			items.push(toWireValueNode(value[index], context, depth + 1));
+		}
+		return items;
 	}
 	if (isRecord(value)) {
 		const ref = context.seen.get(value);
