@@ -1,8 +1,14 @@
 import type { Cell } from "@observablehq/notebook-kit";
 import { FileAttachment, NotebookRuntime, library, registerFile } from "@observablehq/notebook-kit/runtime";
 import { exposedVariableNames, unprefix, type RuntimeCellDefinition } from "./graph";
+import { observe } from "./observe";
 import { bindRuntimeScope, cleanupRuntimeScope, createRuntimeScope } from "./scope";
 import { createVariableBuiltins } from "./values";
+import {
+	createRuntimeCompatibilityBuiltins,
+	RUNTIME_COMPAT_BUILTIN_NAMES,
+	runtimeDefinitionCompatibility,
+} from "./compat";
 
 export type AttachmentInfo = {
 	url: string;
@@ -28,6 +34,7 @@ export type AttachmentRegistry = {
 
 export type { NestedSelectState, RuntimeVariablesSync, ViewTarget, ViewWriteResult } from "./values";
 export { runtimeDocument } from "./scope";
+export { createGenerators, createObservableHtml, createRuntimeCompatibilityBuiltins } from "./compat";
 export {
 	createVariableBuiltins,
 	isWritableSyncedViewValue,
@@ -48,17 +55,6 @@ export type RuntimeGlobals = {
 };
 export type RuntimeDefinitionOptions = RuntimeGlobals & {
 	notebookNames?: ReadonlySet<string>;
-};
-type HtmlTemplateTag = (strings: TemplateStringsArray, ...values: unknown[]) => unknown;
-type LegacyRequire = {
-	(...specifiers: unknown[]): Promise<unknown>;
-	resolve(specifier: unknown): string;
-	alias(aliases: Record<string, string>): LegacyRequire;
-};
-type NpmSpecifier = {
-	name: string;
-	range: string;
-	path: string;
 };
 type RuntimeFileAttachment = ReturnType<typeof FileAttachment> & {
 	sqlite(): Promise<SQLiteDatabaseClient>;
@@ -88,19 +84,15 @@ type SQLiteGlobalConfig = {
 
 const RESERVED_RUNTIME_NAMES = new Set([
 	...Object.keys(library),
+	...RUNTIME_COMPAT_BUILTIN_NAMES,
 	"DuckDBClient",
 	"FileAttachment",
-	"Generators",
 	"SQLite",
 	"SQLiteDatabaseClient",
 	"document",
-	"require",
 	"width",
 ]);
-const legacyRequireModuleCache = new WeakMap<object, unknown>();
-const legacyRequire = Object.assign(createLegacyRequire(resolveLegacyRequire), { alias: legacyRequireAlias });
 let sqliteModule: Promise<SqlJsModule> | undefined;
-let htmlBuiltin: Promise<HtmlTemplateTag> | undefined;
 
 export function createRuntime(
 	root: HTMLElement,
@@ -121,14 +113,11 @@ export function createRuntime(
 				createDuckDBClient(DuckDBClient as object, attachmentRegistry),
 			),
 		FileAttachment: () => createFileAttachment(options.baseUrl, attachmentRegistry),
-		Generators: () => createGenerators(library.Generators()),
-		html: () => loadHtmlBuiltin(),
-		Mutable: () => ObservableMutable,
 		SQLite: () => loadSQLiteModule(),
 		SQLiteDatabaseClient: () => SQLiteDatabaseClient,
 		document: () => scope.document,
-		require: () => legacyRequire,
 		width: width as RuntimeBuiltins["width"],
+		...createRuntimeCompatibilityBuiltins(),
 		...createVariableBuiltins(options.variables),
 	} as RuntimeBuiltinsWithVars;
 	const runtime = new NotebookRuntime(builtins);
@@ -174,126 +163,8 @@ function observeWidth(root: HTMLElement, fallback: HTMLElement): AsyncGenerator<
 	});
 }
 
-function observe<T>(
-	initialize: (notify: (value: T) => T) => (() => void) | undefined,
-): AsyncGenerator<T, void, unknown> {
-	let resolve: ((value: T) => void) | undefined;
-	let reject: ((error: unknown) => void) | undefined;
-	let value: T;
-	let stale = false;
-	const dispose = initialize((next) => {
-		value = next;
-		if (resolve) {
-			resolve(next);
-			resolve = undefined;
-			reject = undefined;
-		} else {
-			stale = true;
-		}
-		return next;
-	});
-	return {
-		async next() {
-			return {
-				done: false,
-				value: await (stale
-					? ((stale = false), value)
-					: new Promise<T>((res, rej) => {
-							resolve = res;
-							reject = rej;
-						})),
-			};
-		},
-		async return() {
-			reject?.(new Error("Generator returned"));
-			resolve = undefined;
-			reject = undefined;
-			dispose?.();
-			return { done: true, value: undefined };
-		},
-		async throw(error) {
-			reject?.(error);
-			resolve = undefined;
-			reject = undefined;
-			dispose?.();
-			return { done: true, value: undefined };
-		},
-		[Symbol.asyncIterator]() {
-			return this;
-		},
-	};
-}
-
 function currentWidth(root: HTMLElement, fallback: HTMLElement): number {
 	return root.getBoundingClientRect().width || fallback.clientWidth || 928;
-}
-
-function createLegacyRequire(resolve: (specifier: unknown) => string): LegacyRequire {
-	const require = (async (...specifiers: unknown[]) => {
-		if (specifiers.length === 1) return import(/* @vite-ignore */ resolve(specifiers[0])).then(objectifyModule);
-		return Promise.all(specifiers.map((specifier) => require(specifier))).then(mergeModules);
-	}) as LegacyRequire;
-	require.resolve = resolve;
-	require.alias = legacyRequireAlias;
-	return require;
-}
-
-function legacyRequireAlias(aliases: Record<string, string>): LegacyRequire {
-	return createLegacyRequire((specifier) => resolveLegacyRequire(aliases[String(specifier)] ?? specifier));
-}
-
-function resolveLegacyRequire(specifier: unknown): string {
-	const value = String(specifier);
-	if (isProtocol(value) || isLocal(value)) return value;
-	const { name, range, path } = parseNpmSpecifier(value);
-	const suffix = (isFile(path) && !isJavaScript(path)) || isDirectory(path) ? "" : "/+esm";
-	return `https://cdn.jsdelivr.net/npm/${name}${range}${path}${suffix}`;
-}
-
-function parseNpmSpecifier(specifier: string): NpmSpecifier {
-	const parts = specifier.split("/");
-	const namerange = specifier.startsWith("@") ? [parts.shift()!, parts.shift()!].join("/") : parts.shift()!;
-	const ranged = namerange.indexOf("@", 1);
-	const name = ranged > 0 ? namerange.slice(0, ranged) : namerange;
-	const range = ranged > 0 ? namerange.slice(ranged) : "";
-	const path = parts.length > 0 ? `/${parts.join("/")}` : "";
-	return { name, range, path };
-}
-
-function objectifyModule(module: object): unknown {
-	if (legacyRequireModuleCache.has(module)) return legacyRequireModuleCache.get(module);
-	const object = defaultifyModule(module);
-	legacyRequireModuleCache.set(module, object);
-	return object;
-}
-
-function defaultifyModule(module: object): unknown {
-	for (const key in module) if (key !== "default") return { ...module };
-	return "default" in module ? module.default : { ...module };
-}
-
-function mergeModules(modules: unknown[]): unknown {
-	return Object.assign({}, ...modules);
-}
-
-function isProtocol(specifier: string): boolean {
-	return /^\w+:/.test(specifier);
-}
-
-function isLocal(specifier: string): boolean {
-	return /^(\.\/|\.\.\/|\/)/.test(specifier);
-}
-
-function isJavaScript(specifier: string): boolean {
-	return /\.js$/i.test(specifier);
-}
-
-function isFile(specifier: string): boolean {
-	return /\.\w*$/.test(specifier);
-}
-
-function isDirectory(specifier: string): boolean {
-	return specifier.endsWith("/");
 }
 
 type RedefinableModule = NotebookRuntime["main"] & {
@@ -515,52 +386,6 @@ export function createDuckDBClient<T extends object>(DuckDBClient: T, registry: 
 	});
 }
 
-export function createGenerators<T extends object>(Generators: T): T {
-	return new Proxy(Generators, {
-		get(target, property, receiver) {
-			const value = Reflect.get(target, property, receiver);
-			if ((property === "observe" || property === "queue") && typeof value === "function") {
-				return (...args: unknown[]) => syncIterableAsyncGenerator(value.apply(target, args));
-			}
-			return value;
-		},
-	});
-}
-
-function syncIterableAsyncGenerator<T>(value: T): T {
-	if (!isAsyncGenerator(value) || Symbol.iterator in value) return value;
-	return new Proxy(value, {
-		get(target, property, receiver) {
-			if (property === Symbol.iterator) return () => syncIteratorFromAsyncGenerator(target);
-			return Reflect.get(target, property, receiver);
-		},
-	});
-}
-
-function syncIteratorFromAsyncGenerator<T>(generator: AsyncGenerator<T>): Iterator<Promise<T | undefined>> {
-	return {
-		next() {
-			return {
-				done: false,
-				value: generator.next().then((result) => result.value),
-			};
-		},
-		return() {
-			void generator.return(undefined);
-			return { done: true, value: undefined };
-		},
-	};
-}
-
-function isAsyncGenerator(value: unknown): value is AsyncGenerator<unknown> {
-	return (
-		typeof value === "object" &&
-		value !== null &&
-		typeof (value as AsyncGenerator<unknown>).next === "function" &&
-		typeof (value as AsyncGenerator<unknown>)[Symbol.asyncIterator] === "function"
-	);
-}
-
 function wrapDuckDBArgs(args: unknown[], registry: AttachmentRegistry): unknown[] {
 	if (args.length === 0) return args;
 	const [sources, ...rest] = args;
@@ -624,105 +449,6 @@ function isFileAttachmentLike(value: unknown): value is ReturnType<typeof FileAt
 		typeof value.name === "string" &&
 		typeof value.url === "function" &&
 		typeof value.blob === "function"
-	);
-}
-
-function loadHtmlBuiltin(): Promise<HtmlTemplateTag> {
-	return (htmlBuiltin ??= Promise.resolve((library.html as () => unknown)()).then((html) =>
-		createObservableHtml(html as HtmlTemplateTag),
-	));
-}
-
-export function createObservableHtml(html: HtmlTemplateTag): HtmlTemplateTag {
-	return (strings, ...values) =>
-		finalizeObservableHtmlResult(html(strings, ...values.map(coerceObservableHtmlValue)), strings);
-}
-
-function finalizeObservableHtmlResult(value: unknown, strings: TemplateStringsArray): unknown {
-	const normalized = normalizeObservableHtmlResult(value, strings);
-	installFormNamedProperties(normalized);
-	return normalized;
-}
-
-function normalizeObservableHtmlResult(value: unknown, strings: TemplateStringsArray): unknown {
-	if (!hasBoundaryWhitespace(strings)) return value;
-	const element = singleElementChild(value);
-	if (!element) return value;
-	if (value instanceof DocumentFragment) return element;
-	if (value instanceof HTMLElement && value.localName === "span" && value.attributes.length === 0) return element;
-	return value;
-}
-
-function hasBoundaryWhitespace(strings: TemplateStringsArray): boolean {
-	const first = strings[0] ?? "";
-	const last = strings[strings.length - 1] ?? "";
-	return first !== first.trimStart() || last !== last.trimEnd();
-}
-
-function singleElementChild(value: unknown): Element | null {
-	if (!(value instanceof DocumentFragment || value instanceof HTMLElement)) return null;
-	let element: Element | null = null;
-	for (const child of value.childNodes) {
-		if (child.nodeType === Node.ELEMENT_NODE) {
-			if (element) return null;
-			element = child as Element;
-		} else if (child.nodeType === Node.TEXT_NODE) {
-			if (/\S/.test(child.textContent ?? "")) return null;
-		} else {
-			return null;
-		}
-	}
-	return element;
-}
-
-function coerceObservableHtmlValue(value: unknown): unknown {
-	if (typeof value === "string") return htmlStringToFragment(value) ?? value;
-	if (Array.isArray(value)) return value.map(coerceObservableHtmlValue);
-	return value;
-}
-
-function htmlStringToFragment(value: string): DocumentFragment | null {
-	if (!/<\/?[A-Za-z][^>]*>/.test(value)) return null;
-	const template = document.createElement("template");
-	template.innerHTML = value;
-	return template.content;
-}
-
-function installFormNamedProperties(value: unknown): void {
-	if (!(value instanceof Element || value instanceof DocumentFragment)) return;
-	const forms = value instanceof HTMLFormElement ? [value] : Array.from(value.querySelectorAll("form"));
-	for (const form of forms) installFormNamedPropertiesFor(form);
-}
-
-function installFormNamedPropertiesFor(form: HTMLFormElement): void {
-	for (const element of Array.from(form.elements)) {
-		const name = element.getAttribute("name");
-		if (!name || name in form) continue;
-		Object.defineProperty(form, name, {
-			configurable: true,
-			get: () => form.elements.namedItem(name),
-		});
-	}
-}
-
-function ObservableMutable(this: unknown, value: unknown): object {
-	let change: ((value: unknown) => unknown) | undefined;
-	const generator = observe((notify) => {
-		change = notify;
-		if (value !== undefined) notify(value);
-	});
-	return Object.defineProperties(
-		{},
-		{
-			generator: { value: generator },
-			value: {
-				get: () => value,
-				set: (next) => {
-					value = next;
-					change?.(value);
-				},
-			},
-		},
 	);
 }
 
@@ -826,16 +552,9 @@ export function createRuntimeDefinition(
 		autodisplay: definition.autodisplay,
 		autoview: definition.autoview,
 		automutable: definition.automutable,
-		display: usesNotebookDisplayName(definition, notebookNames) ? false : (definition as RuntimeDefinition).display,
+		display: (definition as RuntimeDefinition).display,
+		...runtimeDefinitionCompatibility(definition, notebookNames),
 	};
-}
-
-function usesNotebookDisplayName(
-	definition: TranspiledDefinition,
-	notebookNames: ReadonlySet<string> | undefined,
-): boolean {
-	if (!notebookNames) return false;
-	return (definition.inputs ?? []).some((name) => (name === "display" || name === "view") && notebookNames.has(name));
 }
 
 function compileRuntimeBody(source: TranspiledDefinition["body"], globals: RuntimeGlobals): RuntimeBody {

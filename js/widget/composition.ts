@@ -48,13 +48,7 @@ type RenderCellOptions = {
 };
 type RuntimeDefinition = Parameters<NotebookRuntime["define"]>[1];
 type RuntimeObserver = Parameters<NotebookRuntime["main"]["variable"]>[0];
-type DisplayObserver = {
-	_error: boolean;
-	_node: HTMLDivElement;
-	pending(): void;
-	fulfilled(value: unknown): void;
-	rejected(error: unknown): void;
-};
+type DisplayObserver = ReturnType<typeof observe>;
 type DefinitionInput = { definition: RuntimeCellDefinition } | { error: unknown };
 
 type CellRenderTarget = {

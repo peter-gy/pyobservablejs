@@ -48,6 +48,20 @@ notebook = obs.Notebook.from_observablehq(
 )
 ```
 
+## Legacy runtime compatibility
+
+Imported ObservableHQ notebooks can depend on older Observable runtime helpers.
+The browser runtime layers these behaviors over Notebook Kit when a source
+notebook asks for them:
+
+| Behavior                              | Contract                                                                                                                                         |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `require`                             | Resolves npm package specifiers through jsDelivr, supports `require.resolve`, `require.alias`, multiple module loads, and default promotion.     |
+| `Mutable`                             | Creates Observable mutable holders with a `.value` setter and a `generator` output.                                                              |
+| `Generators.observe` and `.queue`     | Keep Notebook Kit's async generator shape and expose a sync iterator for older consumers.                                                        |
+| `html`                                | Accepts simple form and text markup in legacy string interpolations. Event handlers, URL attributes, inline styles, and other tags stay as text. |
+| notebook-defined `display` and `view` | Lets cells call variables named `display` or `view` when the notebook defines those variables.                                                   |
+
 ## Errors
 
 Invalid specifiers, non-JSON responses, unsupported document API shapes, and

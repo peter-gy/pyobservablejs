@@ -597,6 +597,25 @@ describe("runtime bindings", () => {
 		expect(form.textContent).toContain("1 < 2");
 	});
 
+	test("keeps unsafe legacy html string interpolations as text", () => {
+		const htlHtml = vi.fn((_strings: TemplateStringsArray, ...values: unknown[]) => {
+			const form = document.createElement("form");
+			for (const value of values) {
+				if (value instanceof Node) form.append(value);
+				else if (Array.isArray(value)) form.append(...value);
+				else form.append(String(value));
+			}
+			return form;
+		});
+		const html = createObservableHtml(htlHtml);
+
+		const form = html` <form>${'<img src="x" onerror="alert(1)"><label>orbit</label>'}</form> ` as HTMLFormElement;
+
+		expect(form.querySelector("img")).toBeNull();
+		expect(form.textContent).toContain('<img src="x"');
+		expect(form.textContent).toContain("<label>orbit</label>");
+	});
+
 	test("updates the Observable width builtin when the root resizes", async () => {
 		class TestResizeObserver {
 			static instances: TestResizeObserver[] = [];
@@ -873,6 +892,45 @@ describe("runtime bindings", () => {
 
 			await expect(runtime.main.value("panel")).resolves.toBe(42);
 			expect(view).toHaveBeenCalledOnce();
+		} finally {
+			createRuntimeCleanup(runtime, registry)();
+		}
+	});
+
+	test("resolves notebook-defined display functions before Notebook Kit display helpers", async () => {
+		const registry = registerAttachments({});
+		const root = document.createElement("div");
+		const runtime = createRuntime(root, document.createElement("div"), baseOptions, registry);
+		const notebookNames = new Set(["display"]);
+		const display = vi.fn((value: string) => `notebook display: ${value}`);
+
+		try {
+			runtime.main.define("display", [], () => display);
+			const definition = createRuntimeDefinition(
+				{ id: 1, mode: "ojs", value: "" } as Cell,
+				{
+					body: "function panel(display) { return display('ready'); }",
+					inputs: ["display"],
+					outputs: [],
+					output: "panel",
+					autodisplay: true,
+					autoview: false,
+					automutable: false,
+				} as ReturnType<typeof transpile>,
+				{ notebookNames },
+			);
+			expect(definition.display).toBe(false);
+			runtime.define(
+				{
+					root,
+					expanded: [],
+					variables: [],
+				},
+				definition,
+			);
+
+			await expect(runtime.main.value("panel")).resolves.toBe("notebook display: ready");
+			expect(display).toHaveBeenCalledOnce();
 		} finally {
 			createRuntimeCleanup(runtime, registry)();
 		}

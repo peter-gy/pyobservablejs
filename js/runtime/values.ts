@@ -125,7 +125,7 @@ function summarizeWireValue(value: unknown): Record<string, string> {
 	if (value instanceof Map) return { [TYPE_KEY]: "summary", value: `Map(${value.size})` };
 	if (value instanceof Set) return { [TYPE_KEY]: "summary", value: `Set(${value.size})` };
 	if (value !== null && typeof value === "object") {
-		return { [TYPE_KEY]: "summary", value: value.constructor?.name || "Object" };
+		return { [TYPE_KEY]: "summary", value: constructorName(value, "Object") };
 	}
 	return { [TYPE_KEY]: "summary", value: typeof value };
 }
@@ -143,12 +143,19 @@ function arrayBufferViewWireValue(value: ArrayBufferView): Record<string, unknow
 		const bytes = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
 		return {
 			[TYPE_KEY]: "typedarray",
-			name: value.constructor.name,
+			name: constructorName(value, "ArrayBufferView"),
 			value: bytesToBase64(bytes),
 		};
 	} catch {
-		return { [TYPE_KEY]: "summary", value: `${value.constructor.name}(detached)` };
+		return { [TYPE_KEY]: "summary", value: `${constructorName(value, "ArrayBufferView")}(detached)` };
 	}
+}
+
+function constructorName(value: object, fallback: string): string {
+	const prototype = Object.getPrototypeOf(value);
+	const descriptor = prototype && Object.getOwnPropertyDescriptor(prototype, "constructor");
+	const constructor = descriptor && "value" in descriptor ? descriptor.value : undefined;
+	return typeof constructor === "function" && constructor.name ? constructor.name : fallback;
 }
 
 export function reviveSyncedValue(value: unknown): unknown {

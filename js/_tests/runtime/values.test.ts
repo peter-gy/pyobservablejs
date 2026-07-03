@@ -87,6 +87,21 @@ describe("wire values", () => {
 		expect(hasWireSummary(toWireValue(value))).toBe(true);
 	});
 
+	test("summarizes deep objects without invoking constructor accessors", () => {
+		let constructorRead = false;
+		let value: Record<string, unknown> = { leaf: true };
+		Object.defineProperty(value, "constructor", {
+			get() {
+				constructorRead = true;
+				throw new Error("constructor accessor should not run during wire summarization");
+			},
+		});
+		for (let index = 0; index < 100; index++) value = { next: value };
+
+		expect(hasWireSummary(toWireValue(value))).toBe(true);
+		expect(constructorRead).toBe(false);
+	});
+
 	test("summarizes detached binary buffers", () => {
 		const buffer = new ArrayBuffer(8);
 		const typed = new Uint8Array([1, 2, 3]);
@@ -157,6 +172,17 @@ describe("wire values", () => {
 
 		expect(sameWireValue(left, { ready: true })).toBe(true);
 		expect(getterRead).toBe(false);
+	});
+
+	test("compares cyclic wire values without stringifying them", () => {
+		const left: Record<string, unknown> = { ready: true };
+		left.self = left;
+		const right: Record<string, unknown> = { ready: true };
+		right.self = right;
+
+		expect(sameWireValue(left, right)).toBe(true);
+		right.ready = false;
+		expect(sameWireValue(left, right)).toBe(false);
 	});
 });
 
