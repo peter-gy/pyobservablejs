@@ -1,4 +1,4 @@
-import { defineConfig } from "vitest/config";
+import { defineConfig } from "vite";
 import anywidgetBundle from "./js/anywidget-bundle/vite";
 
 const fromRoot = (path: string) => new URL(path, import.meta.url).pathname;
@@ -15,12 +15,4 @@ export default defineConfig({
 			outDir: "src/observablejs/static",
 		}),
 	],
-	test: {
-		css: true,
-		deps: {
-			web: {
-				transformCss: true,
-			},
-		},
-	},
 });

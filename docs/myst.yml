@@ -26,31 +26,27 @@ project:
         - file: examples/python-data-plot.md
         - file: examples/reactive-inputs.md
         - file: examples/html-notebook-files.md
-    - title: Guides
+    - title: Learn
       children:
         - file: guides/index.md
+        - file: guides/notebook-runtime.md
+        - file: guides/author-cells.md
         - file: guides/python-variables.md
         - file: guides/cell-values.md
         - file: guides/source-html.md
-        - file: guides/author-cells.md
+        - file: guides/notebook-frontends.md
         - file: guides/observablehq.md
         - file: guides/themes.md
-        - file: guides/notebook-frontends.md
     - title: Reference
       children:
         - file: reference/index.md
         - file: reference/notebook.md
         - file: reference/cells.md
         - file: reference/variables.md
+        - file: reference/file-attachments.md
         - file: reference/source-notebooks.md
         - file: reference/values-and-graph.md
         - file: reference/notebook-themes.md
-    - title: Development
-      children:
-        - file: development.md
-        - file: internals/architecture.md
-        - file: internals/widget-composition.md
-        - file: internals/docs-build.md
 site:
   template: book-theme
   title: pyobservablejs

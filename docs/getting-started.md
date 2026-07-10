@@ -5,24 +5,29 @@ description: Build and display a pyobservablejs notebook.
 
 # Getting started
 
-`pyobservablejs` supports Python 3.11 or newer. Install it in the same
-environment as the notebook frontend you plan to use.
+Install `pyobservablejs` with a notebook frontend. Python 3.11 or newer is
+required.
 
 ```sh
 pip install pyobservablejs jupyterlab
 jupyter lab
 ```
 
-For marimo:
+For marimo, install and start an editable notebook:
 
 ```sh
 pip install pyobservablejs marimo
 marimo edit first.py
 ```
 
-The first notebook below passes Python records into Observable JavaScript, then
-renders an Observable Plot chart. Move the metric control to change the chart in
-the browser.
+## Build a live notebook
+
+This notebook combines a Notebook Kit input with an Observable Plot chart. Try
+choosing a species. The grouped counts recompute in the browser. `penguins` is a
+sample dataset provided by Notebook Kit.
+
+The browser loads `Inputs`, `Plot`, and `penguins` from jsDelivr. It needs
+network access and a content security policy that permits the CDN requests.
 
 ```{marimo-config}
 :pyproject:
@@ -38,61 +43,68 @@ the browser.
 
 import marimo as mo
 import observablejs as obs
+```
 
-weekly_metrics = [
-    {"week": "2026-05-04", "done": 12, "blocked": 3},
-    {"week": "2026-05-11", "done": 15, "blocked": 2},
-    {"week": "2026-05-18", "done": 9, "blocked": 5},
-    {"week": "2026-05-25", "done": 18, "blocked": 1},
-]
+```{marimo} python
+:echo: true
 
 notebook = obs.Notebook(
-    obs.md("# Weekly work"),
-    obs.ojs(
-        'viewof metric = Inputs.radio(["done", "blocked"], {value: "done"})',
-        key="metric_control",
-    ),
-    obs.ojs(
+    obs.md("## Penguins by island"),
+    obs.js(
         """
-        Plot.plot({
-          height: 240,
-          marginLeft: 48,
-          y: {grid: true},
-          marks: [
-            Plot.lineY(weeklyMetrics, {x: "week", y: metric, tip: true}),
-            Plot.dot(weeklyMetrics, {x: "week", y: metric, fill: "currentColor"})
-          ]
+        const species = view(Inputs.select(
+          ["All", ...new Set(penguins.map((d) => d.species))],
+          {label: "Species", value: "All"}
+        ));
+        """,
+        key="species_control",
+    ),
+    obs.js(
+        """
+        Plot.barY(
+          species === "All"
+            ? penguins
+            : penguins.filter((d) => d.species === species),
+          Plot.groupX(
+            {y: "count"},
+            {x: "island", fill: "species", tip: true}
+          )
+        ).plot({
+          height: 280,
+          color: {legend: true},
+          x: {label: "Island"},
+          y: {grid: true, label: "Penguins"}
         })
         """,
-        key="trend",
+        key="island_counts",
     ),
-    variables={"weeklyMetrics": weekly_metrics},
 )
+```
+
+```{marimo} python
+:echo: true
 
 mo.ui.anywidget(notebook)
 ```
 
-The output shows the `Weekly work` title, a `done` or `blocked` metric radio
-control, and a Plot chart. Changing the metric recomputes the chart in the
-browser.
+The full sample contains three species across three islands. Choosing a species
+narrows both the bars and the legend.
 
-## What the code does
+## Follow the graph
 
-`obs.Notebook(...)` creates a Notebook Kit document. `obs.ojs(...)` cells run as
-Observable JavaScript. The `variables` mapping makes `weeklyMetrics` available
-to OJS as a normal variable.
+`obs.Notebook(...)` creates the document. `obs.js(...)` adds standard JavaScript
+cells. A top-level variable such as `species` can be referenced by another cell.
 
-Changing `metric` recomputes the dependent OJS cells in the browser, so the
-chart updates without a Python callback.
+`view(...)` displays the select input and yields its current value. Changing the
+selection invalidates the Plot cell, which runs again with the new value.
 
-The example uses `mo.ui.anywidget(notebook)` for marimo. In Jupyter, display
-`notebook` directly as the final expression.
+In marimo, display `mo.ui.anywidget(notebook)`. In Jupyter, put `notebook` as the
+final expression in a cell.
 
 ## Next steps
 
-- Use [Python variables](guides/python-variables.md) when Python controls should
-  update a displayed notebook.
-- Use [source HTML](guides/source-html.md) when you already have Notebook Kit
-  HTML.
-- Use [cell values](guides/cell-values.md) when Python needs values computed by
-  the browser runtime.
+- [Python data to Plot](examples/python-data-plot.md) passes records from Python.
+- [Observable cells and reactivity](guides/author-cells.md) explains `obs.js`,
+  `obs.ojs`, and cell dependencies.
+- [Python variables](guides/python-variables.md) updates a mounted widget from a
+  marimo control.

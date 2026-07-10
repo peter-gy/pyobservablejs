@@ -1,15 +1,40 @@
 ---
-title: Examples
-description: Runnable pyobservablejs examples with source and output.
+title: Example gallery
+description: Live pyobservablejs workflows with source and output.
 ---
 
-# Examples
+# Example gallery
 
-Each example page includes the Python source and a rendered widget.
+Each example includes source, a rendered widget, and links to the relevant API
+reference.
 
-- [Python data plot](python-data-plot.md) passes Python records to Observable
-  Plot.
-- [Reactive inputs](reactive-inputs.md) lets Observable inputs drive chart
-  updates.
-- [HTML notebook files](html-notebook-files.md) loads Notebook Kit HTML with a
-  local `FileAttachment`.
+::::{grid} 1 1 2 2
+
+:::{card} Python data to Plot
+:link: python-data-plot.md
+
+Pass Palmer Penguins records through `variables` and render them with Plot.
+:::
+
+:::{card} Filter in Observable
+:link: reactive-inputs.md
+
+Connect a Notebook Kit select input to a cars scatter plot.
+:::
+
+:::{card} Load notebook HTML
+:link: html-notebook-files.md
+
+Render an existing Notebook Kit document through `Notebook.from_html`.
+:::
+
+:::{card} Update from Python
+:link: ../guides/python-variables.md
+
+Use a marimo slider to update a mounted Observable chart.
+:::
+
+::::
+
+The [getting started tutorial](../getting-started.md) introduces the shared
+runtime model behind these examples.

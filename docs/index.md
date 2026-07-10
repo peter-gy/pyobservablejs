@@ -5,48 +5,93 @@ description: Observable JavaScript notebooks from Python.
 
 # pyobservablejs
 
-`pyobservablejs` renders Observable JavaScript notebooks from Python. A
-`Notebook` holds Observable cells, Python-owned variables, file attachments, and
-theme settings. Jupyter and marimo display it as an anywidget. The browser runs
-the Observable graph.
+`pyobservablejs` renders Observable JavaScript notebooks in Jupyter and marimo.
+Python owns the notebook model. Notebook Kit runs its reactive graph in the
+browser.
 
-```python
+The example uses Notebook Kit's built-in Palmer Penguins sample. Hover a dot to
+inspect a measurement.
+
+```{marimo-config}
+:pyproject:
+
+  requires-python = ">=3.11"
+  dependencies = [
+      "pyobservablejs",
+  ]
+```
+
+```{marimo} python
+:echo: true
+
+import marimo as mo
 import observablejs as obs
 
 notebook = obs.Notebook(
-    obs.md("# Letter frequencies"),
-    obs.ojs('viewof floor = Inputs.range([0, 0.12], {value: 0.04, step: 0.01})'),
-    obs.ojs("""
-    Plot.plot({
-      height: 240,
-      y: {grid: true},
-      marks: [
-        Plot.ruleY([floor]),
-        Plot.barY(letters, {x: "letter", y: "frequency", tip: true})
-      ]
-    })
-    """),
-    variables={
-        "letters": [
-            {"letter": "A", "frequency": 0.0812},
-            {"letter": "B", "frequency": 0.0149},
-            {"letter": "C", "frequency": 0.0271},
-        ]
-    },
+    obs.js(
+        """
+        Plot.dot(penguins, {
+          x: "culmen_length_mm",
+          y: "culmen_depth_mm",
+          fill: "species",
+          r: 4,
+          tip: true
+        }).plot({
+          height: 320,
+          color: {legend: true},
+          x: {grid: true, label: "Bill length (mm)"},
+          y: {grid: true, label: "Bill depth (mm)"}
+        })
+        """
+    ),
 )
+
+mo.ui.anywidget(notebook)
 ```
 
-In a notebook frontend, display `notebook`. In marimo, display
-`mo.ui.anywidget(notebook)`.
+Adelie, Chinstrap, and Gentoo penguins form visibly different bill profiles.
 
-## Choose a path
+Install the package in the same environment as your notebook frontend.
 
-- [Getting started](getting-started.md) builds one live notebook and updates it
-  with an Observable input.
-- [Examples](examples/index.md) are runnable pages with visible source and
-  rendered output.
-- [Guides](guides/index.md) cover authored cells, Python variables, cell values,
-  source HTML, ObservableHQ imports, themes, and frontend hosting.
-- [Reference](reference/index.md) gives the supported Python API contracts.
-- [Development](development.md) covers local setup, docs builds, and runtime
-  internals for contributors.
+```sh
+pip install pyobservablejs jupyterlab
+```
+
+The distribution is named `pyobservablejs`. Python code imports it as
+`observablejs`.
+
+`Notebook` accepts JavaScript, Observable JavaScript, Markdown, and HTML cells.
+It also accepts Python variables and local file attachments.
+
+## Start with a workflow
+
+::::{grid} 1 1 2 2
+
+:::{card} Build your first notebook
+:link: getting-started.md
+
+Create a reactive Plot chart and display it in Jupyter or marimo.
+:::
+
+:::{card} Pass Python data
+:link: examples/python-data-plot.md
+
+Serialize Python records into a Notebook Kit cell.
+:::
+
+:::{card} React in the browser
+:link: examples/reactive-inputs.md
+
+Connect an Observable input to a dependent chart.
+:::
+
+:::{card} Update from Python
+:link: guides/python-variables.md
+
+Drive a mounted widget from a marimo control.
+:::
+
+::::
+
+Use the [examples](examples/index.md) for complete workflows and the
+[reference](reference/index.md) for signatures, defaults, and lifecycle rules.

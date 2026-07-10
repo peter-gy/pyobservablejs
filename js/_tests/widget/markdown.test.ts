@@ -1,11 +1,8 @@
 // @vitest-environment jsdom
 
-import type { RenderProps } from "@anywidget/types";
 import { describe, test } from "vitest";
-import { SELECTORS } from "@/widget/dom";
-import type { WidgetModel } from "@/widget/state";
 import widget from "@/widget/app";
-import { createHost, createModel, waitFor } from "@/_tests/testing";
+import { alertText, composedText, createHost, createModel, renderProps, waitFor } from "@/_tests/testing";
 
 describe("widget markdown rendering", () => {
 	test("renders Python-authored Notebook Kit markdown cells", async () => {
@@ -25,15 +22,10 @@ describe("widget markdown rendering", () => {
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render({
-			model,
-			el,
-			signal: controller.signal,
-			host: createHost(childModels),
-		} as unknown as RenderProps<WidgetModel>);
+		widget.render(renderProps(model, el, controller.signal, createHost(childModels)));
 
 		await waitFor(() => {
-			const error = el.querySelector(SELECTORS.error)?.textContent;
+			const error = alertText(el);
 			if (error) throw new Error(error);
 			return Array.from(el.querySelectorAll("h1")).find(
 				(item) => item.textContent === "Python rows drive an Observable Plot bar chart",
@@ -46,7 +38,7 @@ describe("widget markdown rendering", () => {
 	test("renders source-backed OJS markdown through the Notebook Kit md builtin", async () => {
 		const source =
 			"<notebook>\n" +
-			'  <script id="1" type="application/vnd.observable.javascript">md`**1. Import the library**`</script>\n' +
+			'  <script id="1" type="application/vnd.observable.javascript">md`**Rendered text**`</script>\n' +
 			"</notebook>";
 		const model = createModel({
 			role: "notebook",
@@ -62,55 +54,12 @@ describe("widget markdown rendering", () => {
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render({
-			model,
-			el,
-			signal: controller.signal,
-			host: createHost(childModels),
-		} as unknown as RenderProps<WidgetModel>);
+		widget.render(renderProps(model, el, controller.signal, createHost(childModels)));
 
 		await waitFor(() => {
-			const error = el.querySelector(SELECTORS.error)?.textContent;
+			const error = alertText(el);
 			if (error) throw new Error(error);
-			return onlyStrongText(el, "1. Import the library");
-		});
-
-		controller.abort();
-	});
-
-	test("keeps spaced strong delimiters literal under Notebook Kit markdown", async () => {
-		const source =
-			"<notebook>\n" +
-			'  <script id="1" type="application/vnd.observable.javascript">md`** 1. Import the library**`</script>\n' +
-			"</notebook>";
-		const model = createModel({
-			role: "notebook",
-			_source: source,
-			_attachments: {},
-			_variables: {},
-			_options: {},
-			_cell_widgets: ["anywidget:source-ojs-markdown"],
-		});
-		const childModels = new Map([
-			[
-				"anywidget:source-ojs-markdown",
-				createModel({ role: "cell", name: "sourceOjsMarkdown", _values: {}, _value_names: [] }),
-			],
-		]);
-		const el = document.createElement("div");
-		const controller = new AbortController();
-
-		widget.render({
-			model,
-			el,
-			signal: controller.signal,
-			host: createHost(childModels),
-		} as unknown as RenderProps<WidgetModel>);
-
-		await waitFor(() => {
-			const error = el.querySelector(SELECTORS.error)?.textContent;
-			if (error) throw new Error(error);
-			return onlyComposedInspectorString(el, "** 1. Import the library**");
+			return onlyStrongText(el, "Rendered text");
 		});
 
 		controller.abort();
@@ -137,53 +86,12 @@ describe("widget markdown rendering", () => {
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render({
-			model,
-			el,
-			signal: controller.signal,
-			host: createHost(childModels),
-		} as unknown as RenderProps<WidgetModel>);
+		widget.render(renderProps(model, el, controller.signal, createHost(childModels)));
 
 		await waitFor(() => {
-			const error = el.querySelector(SELECTORS.error)?.textContent;
+			const error = alertText(el);
 			if (error) throw new Error(error);
 			return onlyComposedInspectorString(el, "CUSTOM:** custom**");
-		});
-
-		controller.abort();
-	});
-
-	test("keeps source-backed Notebook Kit JavaScript markdown delimiters literal", async () => {
-		const source =
-			"<notebook>\n" + '  <script id="1" type="module">md`** 1. Import the library**`</script>\n' + "</notebook>";
-		const model = createModel({
-			role: "notebook",
-			_source: source,
-			_attachments: {},
-			_variables: {},
-			_options: {},
-			_cell_widgets: ["anywidget:module-markdown"],
-		});
-		const childModels = new Map([
-			[
-				"anywidget:module-markdown",
-				createModel({ role: "cell", name: "moduleMarkdown", _values: {}, _value_names: [] }),
-			],
-		]);
-		const el = document.createElement("div");
-		const controller = new AbortController();
-
-		widget.render({
-			model,
-			el,
-			signal: controller.signal,
-			host: createHost(childModels),
-		} as unknown as RenderProps<WidgetModel>);
-
-		await waitFor(() => {
-			const error = el.querySelector(SELECTORS.error)?.textContent;
-			if (error) throw new Error(error);
-			return onlyComposedInspectorString(el, "** 1. Import the library**");
 		});
 
 		controller.abort();
@@ -191,43 +99,12 @@ describe("widget markdown rendering", () => {
 });
 
 function onlyStrongText(el: HTMLElement, text: string): HTMLElement | undefined {
-	return onlyOutputMatch(el, `strong element with ${text}`, (cell) => {
-		const matches = Array.from(cell.querySelectorAll<HTMLElement>("strong")).filter(
-			(item) => item.textContent === text,
-		);
-		if (matches.length === 0) return undefined;
-		if (matches.length > 1) throw new Error(`Expected one strong element with ${text}, found ${matches.length}`);
-		return matches[0];
-	});
+	const matches = Array.from(el.querySelectorAll<HTMLElement>("strong")).filter((item) => item.textContent === text);
+	if (matches.length === 0) return undefined;
+	if (matches.length > 1) throw new Error(`Expected one strong element with ${text}, found ${matches.length}`);
+	return matches[0];
 }
 
 function onlyComposedInspectorString(el: HTMLElement, value: string): HTMLElement | undefined {
-	return onlyComposedText(el, value) ?? onlyComposedText(el, `"${value}"`);
-}
-
-function onlyComposedText(el: HTMLElement, value: string): HTMLElement | undefined {
-	const matches = Array.from(el.querySelectorAll<HTMLElement>(SELECTORS.composedCell)).filter((cell) => {
-		const text = cell.textContent?.trim() ?? "";
-		return text === value;
-	});
-	if (matches.length === 0) return undefined;
-	if (matches.length > 1) throw new Error(`Expected one composed cell with ${value}, found ${matches.length}`);
-	return matches[0]!;
-}
-
-function onlyOutputMatch(
-	el: HTMLElement,
-	label: string,
-	read: (cell: HTMLElement) => HTMLElement | undefined,
-): HTMLElement | undefined {
-	const matches = outputCells(el)
-		.map((cell) => read(cell))
-		.filter((item): item is HTMLElement => item !== undefined);
-	if (matches.length === 0) return undefined;
-	if (matches.length > 1) throw new Error(`Expected one ${label}, found ${matches.length}`);
-	return matches[0]!;
-}
-
-function outputCells(el: HTMLElement): HTMLElement[] {
-	return Array.from(el.querySelectorAll<HTMLElement>(SELECTORS.composedCell));
+	return composedText(el, value) ?? composedText(el, `"${value}"`);
 }

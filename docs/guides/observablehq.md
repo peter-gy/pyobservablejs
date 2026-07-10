@@ -9,6 +9,10 @@ description: Fetch public ObservableHQ notebooks and override variables.
 document API and returns a `Notebook` you can display like any Python-authored
 notebook.
 
+The constructor performs a network request. For reproducible builds and tests,
+store the document data separately and pass it to
+[`Notebook.from_observablehq_document(...)`](../reference/source-notebooks.md#notebook-from-observablehq-document).
+
 ```python
 import observablejs as obs
 
@@ -48,20 +52,6 @@ notebook = obs.Notebook.from_observablehq(
 )
 ```
 
-## Legacy runtime compatibility
-
-Imported ObservableHQ notebooks can depend on older Observable runtime helpers.
-The browser runtime layers these behaviors over Notebook Kit for ObservableHQ
-document imports:
-
-| Behavior                                     | Contract                                                                                                                                                 |
-| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `require`                                    | Resolves npm package specifiers through jsDelivr, supports `require.resolve`, `require.alias`, preloaded aliases, multiple loads, and default promotion. |
-| `Mutable`                                    | Keeps Notebook Kit's async mutable generator with a `.value` setter and adds a `generator` alias for older code.                                         |
-| `Generators.observe`, `.queue`, and `.input` | Keep Notebook Kit's async generator shape and expose a sync iterator for older consumers.                                                                |
-| `html`                                       | Accepts simple form and text markup in legacy string interpolations. Event handlers, URL attributes, inline styles, and other tags stay as text.         |
-| notebook-defined `display` and `view`        | Lets cells call variables named `display` or `view` when the notebook defines those variables.                                                           |
-
 ## Errors
 
 Invalid specifiers, non-JSON responses, unsupported document API shapes, and
@@ -72,5 +62,5 @@ conversion failures raise `ValueError`. HTTP and network failures raise
 notebook = obs.Notebook.from_observablehq("@d3/bar-chart", timeout=10)
 ```
 
-Keep remote imports out of reproducible docs builds and tests unless the network
-request is mocked.
+See [Source notebooks](../reference/source-notebooks.md) for document-shaped
+constructors and imported runtime compatibility.

@@ -1,87 +1,122 @@
 ---
-title: Author cells
-description: Create Observable, JavaScript, Markdown, and HTML cells from Python.
+title: Observable cells and reactivity
+description: Author Notebook Kit cells and connect them through the reactive graph.
 ---
 
-# Author cells
+# Observable cells and reactivity
 
-`obs.Notebook` accepts cells created by `obs.ojs`, `obs.js`, `obs.md`, and
-`obs.html`. Each helper names the source mode at the call site.
+`obs.js` creates a standard JavaScript cell. Use top-level declarations to
+share values with other cells. Try moving the exponent control. The readout
+recomputes in the browser.
 
-```python
+```{marimo-config}
+:pyproject:
+
+  requires-python = ">=3.11"
+  dependencies = [
+      "pyobservablejs",
+  ]
+```
+
+```{marimo} python
+:echo: true
+
+import marimo as mo
 import observablejs as obs
 
 notebook = obs.Notebook(
-    obs.md("# Revenue"),
-    obs.ojs("total = rows.reduce((sum, d) => sum + d.revenue, 0)", key="total"),
-    obs.ojs("md`Total revenue: **${total}**`", key="readout"),
-    variables={"rows": [{"revenue": 42}, {"revenue": 31}]},
+    obs.js(
+        """
+        const exponent = view(Inputs.range(
+          [1, 8],
+          {label: "Exponent", step: 1, value: 2}
+        ));
+        """,
+        key="exponent_control",
+    ),
+    obs.js(
+        'html`<p>Two to the power of ${exponent} is <strong>${2 ** exponent}</strong>.</p>`',
+        key="readout",
+    ),
 )
+
+mo.ui.anywidget(notebook)
 ```
 
-## Helper functions
+The first cell defines `exponent`. The readout references it, so Notebook Kit
+runs that cell again when the input changes. Notebook Kit schedules cells from
+their dependencies, independent of source order.
 
-### `obs.ojs(source, ...)`
+## JavaScript cells
 
-Creates an Observable JavaScript cell. Use it for reactive definitions,
-`viewof` inputs, Plot charts, and Notebook Kit standard library calls.
+An expression cell displays its value implicitly.
 
 ```python
-obs.ojs(
-    'viewof region = Inputs.select(["west", "east"], {label: "region"})',
-    key="region_control",
-)
+obs.js("Plot.lineY(aapl, {x: 'Date', y: 'Close'}).plot()")
 ```
 
-### `obs.js(source, ...)`
-
-Creates a JavaScript module cell. Use it for standard JavaScript where
-Observable cell syntax is not desired.
+A program cell contains declarations or statements. Call `display(...)` when a
+program cell should render an additional value.
 
 ```python
 obs.js(
     """
-    const formatter = new Intl.NumberFormat("en-US")
-    export {formatter}
-    """,
-    key="formatters",
+    const formatter = new Intl.NumberFormat("en-US");
+    display(formatter.format(42000));
+    """
 )
 ```
 
-### `obs.md(source, ...)`
-
-Creates a Markdown cell.
+`view(...)` displays an input and defines a reactive value from its events.
 
 ```python
-obs.md("## Filtered records")
+obs.js(
+    'const radius = view(Inputs.range([2, 12], {value: 5, label: "Radius"}));'
+)
 ```
 
-### `obs.html(source, ...)`
+## Observable JavaScript cells
 
-Creates an HTML cell.
+`obs.ojs` creates a classic Observable JavaScript cell. Use it for existing OJS
+source, `viewof` declarations, and imported Observable notebook code.
 
 ```python
-obs.html("<p><strong>Status:</strong> loaded</p>")
+obs.ojs(
+    'viewof radius = Inputs.range([2, 12], {value: 5, label: "Radius"})'
+)
+```
+
+Both cell modes participate in the same Notebook Kit graph.
+
+## Markdown and HTML cells
+
+`obs.md` renders Markdown. `obs.html` renders HTML.
+
+```python
+notebook = obs.Notebook(
+    obs.md("## Filtered records"),
+    obs.html("<p><strong>Status:</strong> loaded</p>"),
+)
 ```
 
 ## Cell options
 
-Every helper accepts the same keyword arguments.
+Every helper accepts the same options.
 
 ```python
-obs.ojs(
-    "hiddenTotal = rows.length",
-    key="hidden_total",
+obs.js(
+    "const filtered = rows.filter((d) => d.value >= threshold);",
+    key="filtered_rows",
     display=False,
     pinned=True,
-    output="hiddenTotal",
+    output="filtered",
 )
 ```
 
-`name` names the Python `NotebookCell` handle. The Observable variables are
-still defined by the source code. `display=False` hides the cell output.
-`pinned=True` marks the cell for the source panel when
-`show_pinned_source=True`. `raw=True` preserves leading and trailing newlines.
+`key` names the Python `NotebookCell` handle. `display=False` hides the cell
+output while keeping its values in the graph. `pinned=True` exposes the source
+when the notebook enables `show_pinned_source`. `raw=True` preserves leading
+and trailing newlines.
 
-Existing `Cell` objects cannot be overridden by another helper call. Create a
-new helper call instead.
+See [Cells](../reference/cells.md) for the complete signature and error
+behavior.

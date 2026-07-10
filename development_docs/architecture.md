@@ -1,13 +1,11 @@
----
-title: Architecture
-description: Browser-first runtime architecture for pyobservablejs.
----
-
 # Architecture
 
 `pyobservablejs` is browser-first. Python owns the notebook model. The browser
 evaluates Observable JavaScript through Notebook Kit and synchronizes values
 back through anywidget traits.
+
+The installed wheel includes the browser runtime used by Jupyter and marimo
+frontends.
 
 ```text
 Python Notebook
@@ -40,7 +38,8 @@ Python NotebookCell and NotebookGraph views
    runtime.
 5. The browser renders cell outputs and syncs graph metadata.
 6. Runtime values sync to `NotebookCell.values` and `Notebook.runtime_values`.
-7. Teardown disposes the browser runtime and child views owned by that render.
+7. Teardown disposes the browser runtime, model listeners, and cell DOM owned by
+   that render.
 
 ## Variable updates
 
@@ -57,5 +56,5 @@ Observable inputs.
 `from_html` keeps Notebook Kit HTML as source. Portable mode embeds local
 attachments and rewrites local imports before the source reaches the browser.
 
-`from_observablehq` fetches public notebooks and converts document API cells into
-Notebook Kit HTML before using the same source-backed rendering path.
+`from_observablehq` fetches public notebooks and converts document API cells
+into Notebook Kit HTML before using the same source-backed rendering path.

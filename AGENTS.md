@@ -1,58 +1,79 @@
 # pyobservablejs
 
-## Mandatory Handoff Gates
+`pyobservablejs` is a browser-first Python interface to Observable Notebook Kit.
+Python owns notebook models, serialization, attachments, and synchronized state.
+The TypeScript frontend owns Notebook Kit evaluation and rendering. Preserve
+that split. Favor lifecycle correctness, portable artifacts, and stable user
+contracts over shortcuts at either runtime boundary.
 
-Before handing off any repository change, run the full local gate and make every
-check pass:
+The distribution is named `pyobservablejs`. Python imports it as `observablejs`.
+
+## Architecture boundaries
+
+- `src/observablejs/` owns the public Python API, traitlets, serialization, and
+  browser readback.
+- `js/runtime/` owns Notebook Kit analysis and execution. Keep it independent of
+  anywidget model details.
+- `js/widget/` adapts the runtime to anywidget model resolution, rendering,
+  variable synchronization, and teardown.
+- `js/anywidget-bundle/` and `src/observablejs/_anywidget_bundle/` form the
+  private build and module-transport boundary. Keep manifest rules, path
+  validation, protocol envelopes, and lifecycle behavior aligned across both
+  languages.
+- `docs/` contains the published Jupyter Book. `scripts/docs.py` builds a fresh
+  wheel, executes interactive pages, and publishes that wheel with the static
+  site.
+- `development_docs/` contains plain Markdown for contributors and coding
+  agents. It is outside the published documentation build.
+
+Python and the frontend communicate through traitlets and anywidget mechanisms.
+Do not use marimo internals as a transport or lifecycle escape hatch. Change
+TypeScript and Python contracts together when a trait, wire value, manifest, or
+message shape crosses the boundary.
+
+Read [Architecture](development_docs/architecture.md) before changing runtime
+ownership. Use [Development](development_docs/development.md) for setup, focused
+workflows, and browser checks.
+
+## Source and generated files
+
+Use `pnpm` and `uv` for dependency and lockfile changes. Prefer package-provided
+types. Keep unavoidable local declarations under `js/types/`.
+
+`src/observablejs/static/`, `dist/`, `docs/_build/`, and
+`docs/.jupyter-book-marimo/` are generated. Change their sources and rebuild.
+Do not hand-edit or package local build churn.
+
+## Mandatory handoff gate
+
+Run the complete local gate before handing off a repository change:
 
 ```sh
-pnpm format:check
-pnpm lint
-pnpm konsistent
-pnpm typecheck
-pnpm test:js
-uv run ruff format --check .
-uv run ruff check
-uv run ty check
-uv run pytest -q
-pnpm build
-uv run python scripts/docs.py build
-git diff --check
+make check
 ```
 
-Do not suppress lint, type, or test failures to make the gate pass. Fix the
-underlying issue, keep the diff focused, and remove generated notebook/server
-churn before handoff.
+The `Makefile` target is the canonical full gate. Fix underlying failures. Do
+not suppress lint, type, or test errors. Inspect the final diff for unrelated
+edits, stale generated files, listener cleanup, cross-language drift, and
+accidental private-runtime coupling.
 
-## Code QA
+## Verification by boundary
 
-Always inspect the final diff before handoff. Check for behavior regressions,
-unrelated refactors, stale generated files, missing tests, listener cleanup
-issues, and accidental use of private runtime internals. The Python side should
-communicate with the frontend through traitlets and anywidget mechanisms; do not
-use marimo internals as an escape hatch.
+- Test Python behavior through the public `observablejs` API and serialized
+  widget state.
+- Test TypeScript behavior through runtime, widget, Vite, or DOM contracts that
+  consumers depend on. Wait on observable state, not elapsed time.
+- Validate visual behavior, notebook rendering, frontend integration, and docs
+  pages with `$agent-browser`. Follow
+  [Browser checks](development_docs/development.md#browser-checks), then stop
+  every browser session and local server.
+- Validate `scripts/docs.py` through a fresh wheel-backed build and a served
+  interactive page. For deployment-path changes, exercise both `/` and
+  `BASE_URL=/pyobservablejs` and confirm the wheel request stays on the served
+  origin.
 
-## Browser Deep Checks
-
-Use the `$agent-browser` skill explicitly for browser-level verification when
-touching the widget frontend, notebook rendering, Observable runtime behavior,
-Jupyter/marimo integration, docs site rendering, or any user-visible UI.
-
-For notebook/runtime changes, the default deep check is:
-
-```sh
-uv run jupyter lab --no-browser --port 27273 --ServerApp.token='' --ServerApp.password=''
-uv run python scripts/docs.py serve
-```
-
-Then verify with `agent-browser` that:
-
-- `example.ipynb` can restart/run-all in JupyterLab and renders the Observable
-  title plus Plot output.
-- the docs pages with `{marimo}` blocks render their pyobservablejs widgets.
-- `tutorials/python-variables` updates the Observable Plot when the Python
-  slider changes without remounting the widget output.
-
-Use `agent-browser console`, `agent-browser errors`, DOM/shadow-DOM inspection,
-and screenshots where useful. Stop local servers and browser sessions before
-handoff.
+Published docs explain Notebook authoring, frontend use, runtime values, and
+source imports. Keep contributor workflows and implementation notes in
+`development_docs/`. Comments should explain lifecycle ordering, invariants,
+cross-runtime parity, generated-artifact constraints, or bailout reasons. Delete
+comments that restate the code.

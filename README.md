@@ -5,146 +5,122 @@
 [![Python versions](https://img.shields.io/pypi/pyversions/pyobservablejs.svg)](https://pypi.org/project/pyobservablejs/)
 [![License](https://img.shields.io/pypi/l/pyobservablejs.svg)](https://github.com/peter-gy/pyobservablejs/blob/main/LICENSE)
 
-Observable JavaScript notebooks as Python widgets.
+`pyobservablejs` renders Observable JavaScript notebooks in Jupyter and marimo.
+Python owns the notebook model. Observable Notebook Kit runs its reactive graph
+in the browser.
 
-`pyobservablejs` renders Observable JavaScript cells from Python and runs them with
-Observable Notebook Kit in the browser. Python owns the notebook model, synced
-OJS variables, and cell widgets. TypeScript owns Notebook Kit evaluation,
-rendering, and runtime metadata.
+```sh
+pip install pyobservablejs jupyterlab
+```
+
+Python 3.11 or newer is required.
+
+The distribution is named `pyobservablejs`. Python code imports it as
+`observablejs`.
+
+Notebook Kit provides the `Plot` library and the `penguins` sample used below.
+The browser loads both from jsDelivr, so it needs network access and a content
+security policy that permits the CDN requests.
 
 ```python
 import observablejs as obs
 
-rows = [
-    {"letter": "A", "frequency": 0.0812},
-    {"letter": "B", "frequency": 0.0149},
-    {"letter": "C", "frequency": 0.0271},
-    {"letter": "D", "frequency": 0.0432},
-    {"letter": "E", "frequency": 0.1202},
-]
-
-obs.Notebook(
-    obs.md("# Letter frequencies"),
-    obs.ojs("""
-    Plot.plot({
-      height: 260,
-      marginLeft: 48,
-      y: {grid: true, label: "frequency"},
-      marks: [
-        Plot.ruleY([floor]),
-        Plot.barY(rows, {x: "letter", y: "frequency", tip: true})
-      ]
-    })
-    """),
-    variables={"rows": rows, "floor": 0.04},
-)
-```
-
-## Install
-
-```sh
-pip install pyobservablejs
-```
-
-or:
-
-```sh
-uv add pyobservablejs
-```
-
-`pyobservablejs` supports Python 3.11 or newer.
-
-## Notebook Model
-
-- `obs.Notebook(...)` builds a Notebook Kit notebook from Python-authored cells.
-- `variables={...}` sets OJS variables. A matching notebook variable is overridden.
-- `notebook.update_variables(...)` pushes Python-side changes into the live OJS
-  runtime.
-- `key="..."` gives Python a stable handle for a cell.
-- `notebook.runtime_values` and `notebook.cell_by_key("key").values` read
-  browser-synchronized outputs after rendering.
-- `notebook.graph` exposes Notebook Kit-derived cell definitions, references, and
-  dependency edges.
-
-Cell helpers keep the source mode explicit:
-
-| Helper          | Source mode           |
-| --------------- | --------------------- |
-| `obs.ojs(...)`  | Observable JavaScript |
-| `obs.js(...)`   | ES module JavaScript  |
-| `obs.md(...)`   | Markdown              |
-| `obs.html(...)` | HTML                  |
-
-```python
 notebook = obs.Notebook(
-    obs.md("# Inputs"),
-    obs.ojs('viewof gain = Inputs.range([0, 11], {value: 5})', key="gain"),
-    obs.ojs("double = gain * 2", key="double"),
+    obs.js(
+        """
+        Plot.dot(penguins, {
+          x: "culmen_length_mm",
+          y: "culmen_depth_mm",
+          fill: "species",
+          tip: true
+        }).plot({
+          height: 320,
+          color: {legend: true},
+          x: {grid: true, label: "Bill length (mm)"},
+          y: {grid: true, label: "Bill depth (mm)"}
+        })
+        """
+    )
 )
 
 notebook
 ```
 
-After the parent notebook has rendered in the browser, read the synced value
-from a later Python cell:
+In marimo, display the same model as an anywidget.
 
 ```python
-notebook.cell_by_key("gain").value("gain")
-notebook.value("double")
+import marimo as mo
+
+mo.ui.anywidget(notebook)
 ```
 
-## Source Notebooks
+## Notebook model
 
-Load Notebook Kit HTML from a file:
+`Notebook` accepts JavaScript, Observable JavaScript, Markdown, and HTML cells.
+
+| Helper          | Cell source                      |
+| --------------- | -------------------------------- |
+| `obs.js(...)`   | Standard Notebook Kit JavaScript |
+| `obs.ojs(...)`  | Classic Observable JavaScript    |
+| `obs.md(...)`   | Markdown                         |
+| `obs.html(...)` | HTML                             |
+
+Top-level JavaScript declarations form a reactive graph across cells. Use
+`view(...)` for browser-owned inputs.
+
+Python values cross into that graph through `variables`.
 
 ```python
-from pathlib import Path
+notebook = obs.Notebook(
+    obs.js('html`<p>Threshold: <strong>${threshold}</strong></p>`'),
+    variables={"threshold": 0.75},
+)
 
-path = Path("chart.html")
-notebook = obs.Notebook.from_html_file(path)
+notebook.update_variables(threshold=0.9)
 ```
 
-For file-backed notebooks, set `embed_file_attachments=True` to embed local
-`FileAttachment(...)` references. Set `rewrite_imports=True` to inline relative
-JavaScript imports discovered in Notebook Kit script cells.
+After the browser renders the widget, `notebook.runtime_values`,
+`notebook.value(name)`, and `notebook.graph` expose synchronized values and
+dependency metadata.
 
-Load a public ObservableHQ notebook by URL, slug, or id:
+## Existing notebooks
+
+Load a Notebook Kit HTML file:
 
 ```python
-notebook = obs.Notebook.from_observablehq("https://observablehq.com/@mbostock/saving-svg")
+notebook = obs.Notebook.from_html_file(
+    "chart.html",
+    embed_file_attachments=True,
+    rewrite_imports=True,
+)
 ```
 
-Remote `FileAttachment(...)` entries are registered as URL-backed attachments,
-so Plot notebooks and examples with uploaded files can render in the widget.
-Pass `variables={...}` to override variables in a loaded notebook with Python values.
-
-Use already-fetched ObservableHQ data with the constructor that matches the
-input shape:
+Load a public ObservableHQ notebook:
 
 ```python
-document = json.loads(path.read_text())
-notebook = obs.Notebook.from_observablehq_document(document)
-
-page_data = json.loads(page_path.read_text())
-notebook = obs.Notebook.from_observablehq_page_data(page_data)
-
-notebook = obs.Notebook.from_observablehq_nodes(nodes, observable_files=files, title="Imported")
+notebook = obs.Notebook.from_observablehq("@d3/bar-chart")
 ```
 
 ## Documentation
 
-- [Getting started](docs/getting-started.md)
-- [Examples](docs/examples/index.md)
-- [Guides](docs/guides/index.md)
-- [Reference](docs/reference/index.md)
-- [Architecture](docs/internals/architecture.md)
-- [Widget composition](docs/internals/widget-composition.md)
-- [Development](docs/development.md)
+User guide:
 
-## Built On
+- [Getting started](https://peter-gy.github.io/pyobservablejs/getting-started/)
+- [Examples](https://peter-gy.github.io/pyobservablejs/examples/)
+- [Learn](https://peter-gy.github.io/pyobservablejs/guides/)
+- [Notebook runtime](https://peter-gy.github.io/pyobservablejs/guides/notebook-runtime/)
+- [API reference](https://peter-gy.github.io/pyobservablejs/reference/)
 
-- [anywidget](https://anywidget.dev) and traitlets for widget composition and
-  synced state
+Contributor documentation:
+
+- [Development](development_docs/development.md)
+- [Architecture](development_docs/architecture.md)
+- [Documentation build](development_docs/docs-build.md)
+
+## Built on
+
+- [anywidget](https://anywidget.dev) and traitlets for widget lifecycle, model
+  resolution, and synchronized state
 - [Observable Notebook Kit](https://github.com/observablehq/notebook-kit) and
   [@observablehq/runtime](https://github.com/observablehq/runtime) for cell
   transpilation and browser execution
@@ -152,18 +128,14 @@ notebook = obs.Notebook.from_observablehq_nodes(nodes, observable_files=files, t
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for local setup, docs preview, and the
-check commands used before sending changes for review.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for local setup and the checks required
+before review.
 
 ## Acknowledgements
 
-`pyobservablejs` builds on [Observable Notebook Kit](https://github.com/observablehq/notebook-kit)
-and [@observablehq/runtime](https://github.com/observablehq/runtime).
 [`pyobsplot`](https://github.com/juba/pyobsplot) informed the Python-to-OJS
-variable API.
-
-Thanks to [@manzt](https://github.com/manzt) (Trevor Manz) for the composable
-anywidgets demo that helped shape the widget design.
+variable API. Thanks to [Trevor Manz](https://github.com/manzt) for the
+composable anywidgets demo that helped shape the widget design.
 
 ## License
 

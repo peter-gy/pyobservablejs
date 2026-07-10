@@ -7,8 +7,8 @@ import {
 	reviveSyncedValue,
 	sameWireValue,
 	toWireValue,
-	writeViewValue,
 } from "@/runtime/values";
+import { writeViewValue } from "@/runtime/views";
 
 describe("wire values", () => {
 	test("round trips synced numbers, dates, maps, and sets", () => {

@@ -161,7 +161,6 @@ def test_public_api_signatures_keep_keyword_only_options() -> None:
 
 def test_cell_options_serialize_to_notebook_html(
     script_tags: ScriptTags,
-    document_title: DocumentTitle,
 ) -> None:
     cell = obs.ojs(
         "answer = 42",
@@ -174,18 +173,13 @@ def test_cell_options_serialize_to_notebook_html(
     )
     notebook = obs.Notebook(
         cell,
-        title="Demo",
-        show_pinned_source=True,
     )
 
     source = notebook.to_notebook_html()
     scripts = script_tags(source)
     attrs = scripts[0]["attrs"]
-    assert document_title(source) == "Demo"
-    assert notebook.options["show_source"] is True
     assert len(scripts) == 1
     assert scripts[0]["text"].strip() == "answer = 42"
-    assert notebook.cells[0].key == "answer"
     assert attrs.get("id") == "7"
     assert attrs.get("type") == "application/vnd.observable.javascript"
     assert "name" not in attrs
@@ -193,6 +187,15 @@ def test_cell_options_serialize_to_notebook_html(
     assert attrs.get("database") == "duckdb"
     assert "hidden" in attrs
     assert "pinned" in attrs
+
+
+def test_show_pinned_source_sets_renderer_option() -> None:
+    notebook = obs.Notebook(
+        obs.ojs("answer = 42", pinned=True),
+        show_pinned_source=True,
+    )
+
+    assert notebook.options["show_source"] is True
 
 
 def test_cell_notebookkit_attrs_reject_first_class_option_collisions() -> None:

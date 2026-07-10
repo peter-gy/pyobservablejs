@@ -1,5 +1,5 @@
 import type { Cell, Notebook } from "@observablehq/notebook-kit";
-import type { HighlighterCore, ThemedToken } from "@shikijs/types";
+import type { HighlighterCore, ThemedToken } from "@shikijs/core";
 import { applyNotebookTheme } from "./themes";
 
 export const CLASS_NAMES = {
@@ -24,16 +24,6 @@ export const DATA_ATTRIBUTES = {
 	composed: "data-pyobservablejs-composed",
 	cellRef: "data-pyobservablejs-cell-ref",
 	sourceHighlight: "data-pyobservablejs-source-highlight",
-} as const;
-
-export const SELECTORS = {
-	composedCell: `[${DATA_ATTRIBUTES.composed}='true']`,
-	error: `.${CLASS_NAMES.error}`,
-	sourcePanel: `.${CLASS_NAMES.sourcePanel}`,
-	sourceLabel: `.${CLASS_NAMES.sourceLabel}`,
-	source: `.${CLASS_NAMES.source}`,
-	sourceLine: `.${CLASS_NAMES.sourceLine}`,
-	sourceToken: `.${CLASS_NAMES.sourceToken}`,
 } as const;
 
 export const CSS_VARIABLES = {
@@ -117,6 +107,7 @@ export function createCellOutput(wrapper: HTMLElement, cell: Cell): HTMLDivEleme
 export function createTopLevelError(error: unknown): HTMLElement {
 	const pre = document.createElement("pre");
 	pre.className = CLASS_NAMES.error;
+	pre.setAttribute("role", "alert");
 	pre.textContent = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
 	return pre;
 }

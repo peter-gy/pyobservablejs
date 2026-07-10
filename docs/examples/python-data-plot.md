@@ -1,12 +1,14 @@
 ---
-title: Python data plot
-description: Pass Python records to Observable Plot.
+title: Python data to Plot
+description: Pass Palmer Penguins records from Python to Observable Plot.
 ---
 
-# Python data plot
+# Python data to Plot
 
-Python data arrives in OJS as a normal variable. This example uses Python
-records and an Observable Plot bar chart.
+Python records arrive in Notebook Kit as normal JavaScript values. This example
+passes Palmer Penguins species counts to an Observable Plot chart.
+
+Hover a bar to inspect the count for one species.
 
 ```{marimo-config}
 :pyproject:
@@ -18,53 +20,84 @@ records and an Observable Plot bar chart.
 ```
 
 ```{marimo} python
-:echo: true
+:echo: false
 
 import marimo as mo
 import observablejs as obs
 
-incidents = [
-    {"service": "api", "severity": "high", "count": 7},
-    {"service": "api", "severity": "low", "count": 18},
-    {"service": "worker", "severity": "high", "count": 4},
-    {"service": "worker", "severity": "low", "count": 11},
-    {"service": "docs", "severity": "high", "count": 2},
-    {"service": "docs", "severity": "low", "count": 6},
+penguin_counts = [
+    {"species": "Adelie", "count": 152},
+    {"species": "Chinstrap", "count": 68},
+    {"species": "Gentoo", "count": 124},
 ]
 
 notebook = obs.Notebook(
-    obs.md("# Incidents by service"),
-    obs.ojs(
+    obs.js(
         """
-        Plot.plot({
-          height: 260,
-          marginLeft: 56,
+        Plot.barX(penguinCounts, {
+          x: "count",
+          y: "species",
+          fill: "species",
+          tip: true
+        }).plot({
+          height: 240,
+          marginLeft: 76,
           color: {legend: true},
-          y: {grid: true},
-          marks: [
-            Plot.barY(incidents, {
-              x: "service",
-              y: "count",
-              fill: "severity",
-              tip: true
-            })
-          ]
+          x: {grid: true, label: "Penguins"},
+          y: {label: null}
         })
         """,
-        key="chart",
     ),
-    variables={"incidents": incidents},
+    variables={"penguinCounts": penguin_counts},
 )
 
 mo.ui.anywidget(notebook)
 ```
 
-The chart groups service counts by severity. Hover a bar to see the exact count.
+Adelie is the largest species group in the dataset.
 
-The Python variable is named `incidents`. The OJS cell reads `incidents` without
-an import or callback.
+The `variables` mapping serializes `penguin_counts` as `penguinCounts`. The
+JavaScript cell reads it directly.
+
+The counts come from the [Palmer Penguins
+dataset](https://allisonhorst.github.io/palmerpenguins/).
+
+## Source
+
+```python
+import marimo as mo
+import observablejs as obs
+
+penguin_counts = [
+    {"species": "Adelie", "count": 152},
+    {"species": "Chinstrap", "count": 68},
+    {"species": "Gentoo", "count": 124},
+]
+
+notebook = obs.Notebook(
+    obs.js(
+        """
+        Plot.barX(penguinCounts, {
+          x: "count",
+          y: "species",
+          fill: "species",
+          tip: true
+        }).plot({
+          height: 240,
+          marginLeft: 76,
+          color: {legend: true},
+          x: {grid: true, label: "Penguins"},
+          y: {label: null}
+        })
+        """
+    ),
+    variables={"penguinCounts": penguin_counts},
+)
+
+mo.ui.anywidget(notebook)
+```
 
 ## Continue
 
 - [Variables](../reference/variables.md) lists the supported Python value types.
-- [Cells](../reference/cells.md) covers the helper options used by the example.
+- [Python variables](../guides/python-variables.md) updates values after render.

@@ -3,6 +3,14 @@
 import { toNotebook } from "@observablehq/notebook-kit";
 import { describe, expect, test } from "vitest";
 import {
+	createRuntime,
+	createRuntimeCleanup,
+	createRuntimeDefinition,
+	registerAttachments,
+	runtimeDocument,
+} from "@/runtime";
+import { defineCompiledRuntimeCell } from "@/runtime/execution";
+import {
 	analyzeNotebook,
 	createNotebookGraph,
 	createNotebookGraphFromAnalysis,
@@ -156,11 +164,74 @@ export default define;
 		expectMembers(graph.cells[1]?.references, ["@variable", "renderSnippetOverride"]);
 		expect(definition.inputs).toEqual(["@variable", "renderSnippetOverride"]);
 		expect(definition.outputs).toEqual(["Q", "showAll", "viewof$showAll", "themeStyles"]);
-		expect(String(definition.body)).toContain(
-			'derive([{name: "renderSnippetOverride", alias: "renderSnippet"}], __variable._module)',
-		);
-		expect(String(definition.body)).toContain('outputs.get("Q")?.import("Q", module)');
-		expect(String(definition.body)).toContain('outputs.get("viewof$showAll")?.import("viewof showAll"');
+
+		const root = document.createElement("div");
+		const registry = registerAttachments({});
+		const runtime = createRuntime(root, root, { attachments: {}, baseUrl: document.baseURI, variables: {} }, registry);
+		try {
+			const definitions = await Promise.all(
+				analysis.cells.map(async (cell) => {
+					if (!cell.definition) throw cell.error;
+					const definition = createRuntimeDefinition(cell.cell, cell.definition, {
+						document: runtimeDocument(runtime),
+					});
+					if (typeof cell.definition.body === "string") {
+						const url = `data:text/javascript;charset=utf-8,export default (${encodeURIComponent(cell.definition.body)})`;
+						definition.body = (await import(/* @vite-ignore */ url)).default;
+					}
+					return definition;
+				}),
+			);
+			for (const definition of definitions) {
+				defineCompiledRuntimeCell(runtime, document.createElement("div"), definition);
+			}
+			await expect(runtime.main.value("Q")).resolves.toBe("Q:override");
+			await expect(runtime.main.value("showAll")).resolves.toBe(true);
+			await expect(runtime.main.value("themeStyles")).resolves.toBe("styles");
+		} finally {
+			createRuntimeCleanup(runtime, registry)();
+		}
+	});
+
+	test("tracks view and mutable import-with injections", () => {
+		for (const [source, injectedName, value] of [
+			["filter = true", "filter", 'import {Q} with {viewof filter} from "./module.js"'],
+			["mutable count = 1", "count", 'import {Q} with {mutable count as current} from "./module.js"'],
+		]) {
+			const graph = createNotebookGraph(
+				toNotebook({
+					cells: [
+						{ id: 1, mode: "ojs", value: source },
+						{ id: 2, mode: "ojs", value },
+					],
+				}),
+			);
+
+			expectMembers(graph.cells[1]?.references, ["@variable", injectedName]);
+			expect(graph.edges).toContainEqual({ from: 1, to: 2, variable: injectedName });
+		}
+	});
+
+	test("tracks formatted import-with injection dependencies", () => {
+		const notebook = toNotebook({
+			cells: [
+				{ id: 1, mode: "ojs", value: 'injected = "override"' },
+				{
+					id: 2,
+					mode: "ojs",
+					value: `import {Q}
+	/* bridge */ with\t/* injected */ {
+		injected as dependency
+	}
+from "./module.js"`,
+				},
+			],
+		});
+
+		const graph = createNotebookGraph(notebook);
+
+		expectMembers(graph.cells[1]?.references, ["@variable", "injected"]);
+		expect(graph.edges).toContainEqual({ from: 1, to: 2, variable: "injected" });
 	});
 
 	test("keeps graph entries for cells with transpile errors", () => {
@@ -172,8 +243,7 @@ export default define;
 
 		expect(graph.cells[0]?.id).toBe(1);
 		expect(graph.cells[0]?.defines).toEqual([]);
-		expect(graph.cells[0]?.error).toEqual(expect.any(String));
-		expect(graph.cells[0]?.error).not.toBe("");
+		expect(graph.cells[0]?.error).toMatch(/^SyntaxError: /);
 	});
 });
 

@@ -48,7 +48,7 @@ cache-keys = [
 	{ file = "package.json" },
 	{ file = "pnpm-lock.yaml" },
 	{ file = "pnpm-workspace.yaml" },
-	{ file = "vite.config.ts" },
+	{ file = "vite.config.mts" },
 	{ file = "src/observablejs/**/*.py" },
 	{ file = "js/**/*.ts" },
 	{ file = "js/**/*.mjs" },
@@ -65,31 +65,23 @@ packages = ["src/observablejs"]
 
 [tool.hatch.build.targets.sdist.force-include]
 "CITATION.cff" = "CITATION.cff"
-"js/anywidget-bundle/runtime.ts" = "js/anywidget-bundle/runtime.ts"
-"js/anywidget-bundle/vite.ts" = "js/anywidget-bundle/vite.ts"
-"js/runtime/compat.ts" = "js/runtime/compat.ts"
-"js/runtime/graph.ts" = "js/runtime/graph.ts"
-"js/runtime/index.ts" = "js/runtime/index.ts"
-"js/runtime/observe.ts" = "js/runtime/observe.ts"
-"js/runtime/scope.ts" = "js/runtime/scope.ts"
-"js/runtime/values.ts" = "js/runtime/values.ts"
-"js/widget/app.ts" = "js/widget/app.ts"
-"js/widget/composition.ts" = "js/widget/composition.ts"
-"js/widget/dom.css" = "js/widget/dom.css"
-"js/widget/dom.ts" = "js/widget/dom.ts"
-"js/widget/entry.ts" = "js/widget/entry.ts"
-"js/widget/index.ts" = "js/widget/index.ts"
-"js/widget/state.ts" = "js/widget/state.ts"
-"js/widget/themes.ts" = "js/widget/themes.ts"
-"js/widget/widget.css" = "js/widget/widget.css"
+"js/anywidget-bundle" = "js/anywidget-bundle"
+"js/runtime" = "js/runtime"
+"js/types" = "js/types"
+"js/widget" = "js/widget"
 "package.json" = "package.json"
 "pnpm-lock.yaml" = "pnpm-lock.yaml"
 "pnpm-workspace.yaml" = "pnpm-workspace.yaml"
-"vite.config.ts" = "vite.config.ts"
+"vite.config.mts" = "vite.config.mts"
 
 [tool.hatch.build.hooks.jupyter-builder]
 build-function = "hatch_jupyter_builder.npm_builder"
-ensured-targets = ["src/observablejs/static/index.js", "src/observablejs/static/widget.css"]
+ensured-targets = [
+	"src/observablejs/static/index.js",
+	"src/observablejs/static/anywidget.json",
+	"src/observablejs/static/chunks/app.js",
+	"src/observablejs/static/widget.css",
+]
 dependencies = ["hatch-jupyter-builder>=0.5.0"]
 
 [tool.hatch.build.hooks.jupyter-builder.build-kwargs]

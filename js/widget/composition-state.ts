@@ -1,5 +1,5 @@
 import type { RenderProps } from "@anywidget/types";
-import type { WidgetModel } from "./state";
+import type { WidgetModel } from "./model";
 
 type AnyWidgetModel = RenderProps<WidgetModel>["model"];
 

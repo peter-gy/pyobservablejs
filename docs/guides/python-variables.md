@@ -1,13 +1,16 @@
 ---
-title: Python variables
-description: Pass Python values into Observable JavaScript and update them live.
+title: Update from Python
+description: Update a mounted Observable chart from a Python control.
 ---
 
-# Python variables
+# Update from Python
 
-`variables` makes Python values available to Observable JavaScript by name. Use
-`update_variables` when a live Python control changes a value and the displayed
-widget should stay mounted.
+`variables` gives Python ownership of named values in the Observable graph.
+`update_variables` changes those values while the displayed widget stays
+mounted.
+
+Try moving the minimum body mass slider. The chart filters the built-in Palmer
+Penguins sample.
 
 ```{marimo-config}
 :pyproject:
@@ -24,97 +27,84 @@ widget should stay mounted.
 import marimo as mo
 import observablejs as obs
 
-minimum = mo.ui.slider(
-    start=0,
-    stop=24,
-    step=1,
-    value=10,
-    label="minimum done",
+minimum_mass = mo.ui.slider(
+    start=3000,
+    stop=6000,
+    step=250,
+    value=4000,
+    label="Minimum body mass (g)",
 )
 ```
 
 ```{marimo} python
 :echo: true
 
-rows = [
-    {"team": "alpha", "done": 18, "blocked": 2},
-    {"team": "beta", "done": 13, "blocked": 5},
-    {"team": "gamma", "done": 21, "blocked": 1},
-    {"team": "delta", "done": 8, "blocked": 7},
-]
-
 notebook = obs.Notebook(
-    obs.ojs(
+    obs.js(
         """
-        filteredRows = rows.filter((d) => d.done >= minimumDone)
+        const selectedPenguins = penguins.filter(
+          (d) => d.body_mass_g >= minimumMass
+        );
         """,
-        key="filtered_rows",
+        key="selected_penguins",
         display=False,
     ),
-    obs.ojs(
+    obs.js(
         """
-        Plot.plot({
+        Plot.barX(
+          selectedPenguins,
+          Plot.groupY(
+            {x: "count"},
+            {y: "species", fill: "species", tip: true}
+          )
+        ).plot({
           height: 240,
-          marginLeft: 52,
-          y: {grid: true},
-          marks: [
-            Plot.barY(filteredRows, {x: "team", y: "done", tip: true})
-          ]
+          marginLeft: 76,
+          color: {legend: true},
+          x: {grid: true, label: "Penguins at or above the threshold"},
+          y: {label: null}
         })
         """,
         key="chart",
     ),
-    variables={"rows": rows, "minimumDone": 10},
+    variables={"minimumMass": 4000},
 )
-view = mo.ui.anywidget(notebook)
+
+widget = mo.ui.anywidget(notebook)
 ```
 
 ```{marimo} python
 :echo: true
 
-notebook.update_variables(minimumDone=minimum.value)
-mo.vstack([minimum, view])
+notebook.update_variables(minimumMass=minimum_mass.value)
+mo.vstack([minimum_mass, widget])
 ```
 
-Move `minimum done` from 10 to 18. The chart drops rows below the threshold
-without remounting the widget.
+The final cell updates one Python-owned variable and returns the existing
+`widget`. Notebook Kit invalidates the two JavaScript cells that depend on
+`minimumMass`.
 
-`update_variables` merges the supplied names into the current variable
-environment.
+## Update, replace, or release
+
+`update_variables` merges values into the current environment.
 
 ```python
-notebook.update_variables(minimumDone=12)
-notebook.update_variables({"rows": rows}, minimumDone=6)
+notebook.update_variables({"minimumMass": 3500})
+notebook.update_variables(minimumMass=4500)
 ```
 
-Use `replace_variables` when Python should replace the whole environment.
-Names omitted from the replacement are released back to the Observable runtime.
+`replace_variables` replaces the Python-owned environment. Names omitted from
+the mapping return to the Observable runtime.
 
 ```python
-notebook.replace_variables({"rows": rows})
+notebook.replace_variables({"minimumMass": 4000})
 ```
 
-Use `reset_variables` when only a few Python-owned names should be released.
+`reset_variables` releases selected names.
 
 ```python
-notebook.reset_variables("minimumDone")
+notebook.reset_variables("minimumMass")
 ```
 
-## Supported values
-
-Variable names must be JavaScript identifiers. Values are serialized before
-they cross the widget boundary.
-
-| Python value                          | Observable value     |
-| ------------------------------------- | -------------------- |
-| `dict`, `list`, `tuple`, `range`      | Objects and arrays   |
-| `int`, `float`, `bool`, `str`, `None` | JSON-like primitives |
-| Large `int` values                    | `BigInt`             |
-| `datetime.date`, `datetime.datetime`  | `Date`               |
-| `bytes`, `bytearray`, `memoryview`    | Byte arrays          |
-| pandas and Polars dataframes          | Row records          |
-| pandas and Polars series              | Arrays               |
-| NumPy arrays and scalars              | Lists and scalars    |
-
-Large tables travel through traitlets. For repeated high-volume updates, prefer
-loading a file with `FileAttachment` and updating small filter variables.
+See [Variables](../reference/variables.md) for serialization rules and supported
+Python values.

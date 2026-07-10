@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import observablejs as obs
+from helpers import DocumentTitle, ScriptTags
 
 from observablejs._model import (
     NotebookModel,
@@ -10,7 +11,9 @@ from observablejs._model import (
 )
 
 
-def test_notebook_model_serializes_python_authored_nodes() -> None:
+def test_notebook_model_serializes_python_authored_nodes(
+    script_tags: ScriptTags,
+) -> None:
     node = NotebookNode(
         id=7,
         value="answer = 42",
@@ -34,8 +37,11 @@ def test_notebook_model_serializes_python_authored_nodes() -> None:
             }
         ],
     }
-    assert '<script id="7"' in model.to_notebook_html()
-    assert 'name="answer"' not in model.to_notebook_html()
+    [script] = script_tags(model.to_notebook_html())
+    assert script["attrs"].get("id") == "7"
+    assert script["attrs"].get("type") == "application/vnd.observable.javascript"
+    assert "name" not in script["attrs"]
+    assert script["text"].strip() == "answer = 42"
 
 
 def test_html_model_preserves_source_and_exposes_cell_nodes() -> None:
@@ -69,7 +75,9 @@ def test_html_model_preserves_source_and_exposes_cell_nodes() -> None:
     ]
 
 
-def test_observablehq_detail_data_model_accepts_nested_nodes_and_files() -> None:
+def test_observablehq_detail_data_model_accepts_nested_nodes_and_files(
+    script_tags: ScriptTags,
+) -> None:
     data = {
         "pageProps": {
             "initialNotebook": {
@@ -112,10 +120,15 @@ def test_observablehq_detail_data_model_accepts_nested_nodes_and_files() -> None
     }
     assert [node.mode for node in model.nodes] == ["md", "ojs"]
     assert model.nodes[1].pinned is True
-    assert 'type="application/vnd.observable.javascript"' in model.source
+    assert script_tags(model.source)[1]["attrs"].get("type") == (
+        "application/vnd.observable.javascript"
+    )
 
 
-def test_notebook_accepts_raw_observablehq_nodes_with_files() -> None:
+def test_notebook_accepts_raw_observablehq_nodes_with_files(
+    document_title: DocumentTitle,
+    script_tags: ScriptTags,
+) -> None:
     nodes = [
         {"id": 1, "mode": "js", "value": "answer = 42", "pinned": True},
     ]
@@ -139,7 +152,8 @@ def test_notebook_accepts_raw_observablehq_nodes_with_files() -> None:
         "url": "https://static.example/rows.csv",
         "mimeType": "text/csv",
     }
-    assert notebook.cells[0].key == ""
-    assert notebook.cells[0].name == ""
-    assert "<title>Raw nodes</title>" in notebook.to_notebook_html()
-    assert 'type="application/vnd.observable.javascript"' in notebook.to_notebook_html()
+    source = notebook.to_notebook_html()
+    assert document_title(source) == "Raw nodes"
+    [script] = script_tags(source)
+    assert script["attrs"].get("type") == "application/vnd.observable.javascript"
+    assert script["text"].strip() == "answer = 42"

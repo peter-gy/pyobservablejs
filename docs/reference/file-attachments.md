@@ -1,0 +1,143 @@
+---
+title: File attachments
+description: files mappings, local path resolution, FileAttachment access, and source HTML discovery.
+---
+
+# File attachments
+
+`files` registers named inputs for Observable's `FileAttachment` builtin. Local
+files are read during `Notebook` construction and sent to the browser as data
+URLs.
+
+```python
+from pathlib import Path
+
+import observablejs as obs
+
+data_dir = Path("data")
+data_dir.mkdir(exist_ok=True)
+(data_dir / "rows.csv").write_text(
+    "date,value\n2026-07-09,12\n2026-07-10,18\n",
+    encoding="utf-8",
+)
+
+notebook = obs.Notebook(
+    obs.ojs(
+        'rows = FileAttachment("rows.csv").csv({typed: true})',
+        key="rows",
+    ),
+    obs.ojs("Plot.plot({x: {type: \"utc\"}, marks: [Plot.lineY(rows, {x: \"date\", y: \"value\"})]})"),
+    files={"rows.csv": "rows.csv"},
+    base_path=data_dir,
+)
+```
+
+The mapping key is the name used by `FileAttachment`. In the example,
+`typed: true` asks the CSV reader to convert values such as numbers and dates.
+
+## Accepted `files` values
+
+```python
+obs.Notebook(..., files={name: value}, base_path=None)
+```
+
+Each value can be one of these forms:
+
+| Value                                            | Resulting attachment record                                                     |
+| ------------------------------------------------ | ------------------------------------------------------------------------------- |
+| Local `str` or `pathlib.Path`                    | A data URL plus inferred `mimeType` and byte `size`.                            |
+| URL string such as `https:`, `data:`, or `blob:` | The URL plus a `mimeType` inferred from the mapping key.                        |
+| Mapping                                          | A copied record with `url` and optional `mimeType`, `lastModified`, and `size`. |
+
+`FileAttachment` records use camelCase field names.
+
+```python
+notebook = obs.Notebook(
+    obs.ojs('metadata = FileAttachment("metadata.json").json()'),
+    files={
+        "metadata.json": {
+            "url": "https://example.test/metadata.json",
+            "mimeType": "application/json",
+        }
+    },
+)
+```
+
+## Path and base resolution
+
+Local paths are expanded with `Path.expanduser()` and resolved to absolute
+paths during construction.
+
+| Call                                      | Base for a relative `files` value              |
+| ----------------------------------------- | ---------------------------------------------- |
+| `Notebook(..., base_path=path)`           | `path`                                         |
+| `Notebook(..., base_path=None)`           | Current working directory at construction time |
+| `Notebook.from_html(..., base_path=path)` | `path`                                         |
+| `Notebook.from_html_file(path, ...)`      | Parent directory of the HTML file              |
+
+The local file bytes are captured when the notebook is created. The registered
+data URL remains that construction-time snapshot across later file and current
+working directory changes.
+
+An explicit local path raises `FileNotFoundError` when it is missing. File read
+and metadata failures raise the corresponding `OSError` subclass.
+
+## Attachment records
+
+`notebook.attachments` returns a new outer dictionary containing the registered
+records. For a local file, the record has this shape:
+
+```python
+{
+    "rows.csv": {
+        "url": "data:text/csv;base64,...",
+        "mimeType": "text/csv",
+        "size": 39,
+    }
+}
+```
+
+The MIME type comes from the attachment name. `.arrow` and `.parquet` use
+Apache Arrow and Apache Parquet media types. Unknown suffixes use
+`application/octet-stream`.
+
+Names absent from `notebook.attachments` resolve against `notebook.base_url`.
+Constructors set that value to `""`, which selects the browser document base
+URI.
+
+## Source HTML discovery
+
+`Notebook.from_html` can discover local attachment calls in Notebook Kit HTML:
+
+```python
+notebook = obs.Notebook.from_html(
+    source,
+    base_path="notebooks/report",
+    embed_file_attachments=True,
+)
+```
+
+`embed_file_attachments=True` registers existing local files referenced by
+literal `FileAttachment("name")` calls inside JavaScript notebook cells. Static
+template literals such as ``FileAttachment(`rows.csv`)`` and imported aliases
+from `observablehq:stdlib` are also recognized. Calls in comments, strings,
+regular-expression literals, Markdown cells, and scripts outside the
+`<notebook>` element stay outside discovery.
+
+Discovery populates `notebook.attachments` with data URLs and keeps each
+`FileAttachment` call in `notebook.source`. Explicit `files` entries take
+precedence when they use the same name. Each discovered name whose resolved
+path is an existing file becomes a record. Remaining names use browser URL
+resolution.
+
+`base_path` is required when `embed_file_attachments=True`. The
+`Notebook.from_html_file` constructor supplies the HTML file's parent directory.
+See [Source notebooks](source-notebooks.md) for the complete source constructor
+contracts and relative JavaScript import rewriting.
+
+## Serialized HTML boundary
+
+`notebook.to_notebook_html()` returns the Notebook Kit document text, not its
+attachment records. When that text is consumed independently, its environment
+must provide the URLs used by `FileAttachment`, or the source must use URLs that
+remain reachable there.

@@ -39,12 +39,9 @@ _WIDGET_TRAIT = anywidget.WidgetTrait()
 _WIDGET_TO_JSON = _WIDGET_TRAIT.metadata["to_json"]
 _OBSERVABLE_WIDGET_STATIC_DIR = pathlib.Path(__file__).parent / "static"
 _OBSERVABLE_WIDGET_DEV_SERVER_ENV = "OBSERVABLEJS_VITE_DEV_SERVER"
-_OBSERVABLE_WIDGET_DEV_ENTRY = "js/widget/dev.ts?anywidget"
 _OBSERVABLE_WIDGET_BUNDLE = Bundle(
     static_dir=_OBSERVABLE_WIDGET_STATIC_DIR,
     dev_server_env=_OBSERVABLE_WIDGET_DEV_SERVER_ENV,
-    dev_entry=_OBSERVABLE_WIDGET_DEV_ENTRY,
-    entry_file="index.js",
 )
 _RUNTIME_COMPATIBILITY_VARIABLE_NAMES = {
     "generators": "Generators",

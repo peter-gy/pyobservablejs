@@ -1,17 +1,17 @@
 import type { RenderProps } from "@anywidget/types";
 import type { Notebook } from "@observablehq/notebook-kit";
 import type { NotebookRuntime } from "@observablehq/notebook-kit/runtime";
-import { notebookViewNamesFromAnalysis, type NotebookAnalysis } from "@/runtime/graph";
 import {
-	createRuntime,
-	createRuntimeCleanup,
-	registerAttachments,
+	createRuntimeSession,
+	notebookViewNamesFromAnalysis,
+	type NotebookAnalysis,
 	type NotebookOptions,
 	type RuntimeVariablesSync,
 } from "@/runtime";
 import { createNotebookRoot, prepareWidgetShell } from "./dom";
-import { createRuntimeVariablesSync, readNotebookOptions, writeProgrammaticViewValue, type WidgetModel } from "./state";
+import { readNotebookOptions, type WidgetModel } from "./model";
 import { installNotebookThemeStyles } from "./themes";
+import { createRuntimeVariablesSync, writeProgrammaticViewValue } from "./variable-sync";
 
 type AnyWidgetModel = RenderProps<WidgetModel>["model"];
 
@@ -30,6 +30,7 @@ export type NotebookRuntimeSession = {
 	runtime: NotebookRuntime;
 	options: NotebookOptions;
 	variablesSync: RuntimeVariablesSync;
+	signal: AbortSignal;
 	cleanup(): void;
 };
 
@@ -47,26 +48,34 @@ export function openNotebookRuntimeSession({
 	installNotebookThemeStyles(ownerRoot instanceof ShadowRoot ? ownerRoot : el.ownerDocument);
 	if (signal.aborted) return undefined;
 
+	const controller = new AbortController();
+	const sessionSignal = AbortSignal.any([signal, controller.signal]);
 	const root = createNotebookRoot(el, notebook.theme);
 	const options = readNotebookOptions(model, variablesOverride);
-	const attachmentRegistry = registerAttachments(options.attachments);
-	let runtime: NotebookRuntime;
+	const core = createRuntimeSession(root, el, options);
+	const runtime = core.runtime;
+	let disposed = false;
+	const cleanup = () => {
+		if (disposed) return;
+		disposed = true;
+		signal.removeEventListener("abort", cleanup);
+		controller.abort();
+		core.dispose();
+	};
 	try {
-		runtime = createRuntime(root, el, options, attachmentRegistry);
+		const variablesSync = createRuntimeVariablesSync({
+			model,
+			runtime,
+			options,
+			viewNames: notebookViewNamesFromAnalysis(analysis),
+			signal: sessionSignal,
+			onReset: onInputReset,
+			writeViewValue: writeProgrammaticViewValue,
+		});
+		signal.addEventListener("abort", cleanup, { once: true });
+		return { root, runtime, options, variablesSync, signal: sessionSignal, cleanup };
 	} catch (error) {
-		attachmentRegistry.cleanup();
+		cleanup();
 		throw error;
 	}
-	const cleanup = createRuntimeCleanup(runtime, attachmentRegistry);
-	const variablesSync = createRuntimeVariablesSync({
-		model,
-		runtime,
-		options,
-		viewNames: notebookViewNamesFromAnalysis(analysis),
-		signal,
-		onReset: onInputReset,
-		writeViewValue: writeProgrammaticViewValue,
-	});
-	signal.addEventListener("abort", cleanup, { once: true });
-	return { root, runtime, options, variablesSync, cleanup };
 }

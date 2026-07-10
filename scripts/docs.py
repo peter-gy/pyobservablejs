@@ -4,381 +4,343 @@ import argparse
 from collections.abc import Iterator
 from contextlib import contextmanager
 import hashlib
-import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import shutil
 import subprocess
-import time
-from urllib.request import urlopen
+import sys
+from tempfile import TemporaryDirectory
+from urllib.parse import urlsplit
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DOCS_DIR = PROJECT_ROOT / "docs"
 DOCS_WHEEL_DIR = PROJECT_ROOT / "dist" / "docs"
 DOCS_BUILD_DIR = DOCS_DIR / "_build"
+DOCS_HTML_DIR = DOCS_BUILD_DIR / "html"
 DOCS_GENERATED_DIR = DOCS_DIR / ".jupyter-book-marimo"
-DOCS_SITE_PUBLIC_DIR = DOCS_BUILD_DIR / "site" / "public"
-DOCS_PLUGIN = "jupyter-book-marimo"
+DOCS_SITE_DIR = DOCS_DIR / "_site"
+GENERATED_DOCS_DIRS = (DOCS_BUILD_DIR, DOCS_GENERATED_DIR, DOCS_SITE_DIR)
 
 DEFAULT_PORT = 27331
-PUBLIC_WHEEL_PATH = "pkg/py/pyobservablejs"
-PUBLIC_WHEEL_BASE = f"/{PUBLIC_WHEEL_PATH}"
+PREVIEW_HOST = "127.0.0.1"
+PUBLIC_WHEEL_PATH = PurePosixPath("public/wheels")
+BASE_URL_SEGMENT = re.compile(r"[A-Za-z0-9._~-]+")
 
-SOURCE_DEPENDENCY_PATTERN = re.compile(
-    r'(?P<open>\\?")pyobservablejs(?: @ [^"\\]*pyobservablejs-[^"\\]+\.whl(?:#[^"\\]*)?)?(?P<close>\\?")'
+MARIMO_CONFIG = "{marimo-config}"
+SOURCE_DEPENDENCY = '"pyobservablejs",'
+SITE_TEXT_SUFFIXES = {".html", ".js", ".json", ".md", ".mjs"}
+# Marimo preinstalls direct references with URL schemes. Resolve the origin in
+# its generated bridge, after the browser knows where the static site is served.
+BRIDGE_NOTEBOOK_CODE_ASSIGNMENT = (
+    '  const notebookCode = getModelString(model, "notebookCode") || '
+    "decodeMarimoCode(head) || decodeMarimoCode(body);\n"
 )
-WHEEL_DEPENDENCY_PATTERN = re.compile(
-    r'(?P<open>\\?")pyobservablejs @ [^"\\]*pyobservablejs-[^"\\]+\.whl(?:#[^"\\]*)?(?P<close>\\?")'
+BRIDGE_NOTEBOOK_CODE_REPLACEMENT = """\
+  const notebookCode = resolveSameOriginRequirements(
+    getModelString(model, "notebookCode") || decodeMarimoCode(head) || decodeMarimoCode(body)
+  );
+"""
+BRIDGE_MODEL_READER = "var readOutputModel = (model) => {\n"
+BRIDGE_MOLAB_NOTEBOOK_CODE_ASSIGNMENT = (
+    '    molabNotebookCode: getModelString(model, "molabNotebookCode"),\n'
 )
-DEPENDENCY_VALUE_PATTERN = re.compile(
-    r'pyobservablejs @ [^"\\]*pyobservablejs-[^"\\]+\.whl(?:#[^"\\]*)?'
-)
+BRIDGE_MOLAB_NOTEBOOK_CODE_REPLACEMENT = '    molabNotebookCode: resolveSameOriginRequirements(getModelString(model, "molabNotebookCode")),\n'
+BRIDGE_REQUIREMENT_RESOLVER = r"""var resolveSameOriginRequirements = (code) => {
+  if (!code) return code;
+  return code.replace(
+    /^(\s*#\s*"[^"\n]+\s@\s)(\/[^"\n]+)(",?\s*)$/gm,
+    (_match, prefix, path, suffix) => `${prefix}${globalThis.location.origin}${path}${suffix}`
+  );
+};
+"""
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Build and preview pyobservablejs docs."
+        description="Build or preview the pyobservablejs docs."
     )
     subcommands = parser.add_subparsers(dest="command", required=True)
 
-    build = subcommands.add_parser(
-        "build", help="Build the deployable Jupyter Book site."
-    )
+    build = subcommands.add_parser("build", help="Build deployable static HTML.")
     build.set_defaults(func=build_command)
 
-    serve = subcommands.add_parser("serve", help="Build and serve the docs locally.")
+    serve = subcommands.add_parser("serve", help="Build and serve static HTML.")
     serve.add_argument("--port", type=int, default=DEFAULT_PORT)
     serve.set_defaults(func=serve_command)
-
-    wheel = subcommands.add_parser("wheel", help="Build only the docs wheel.")
-    wheel.set_defaults(func=wheel_command)
 
     args = parser.parse_args()
     args.func(args)
 
 
-def build_command(args: argparse.Namespace) -> None:
-    wheel = build_wheel()
-    build_site(wheel, PUBLIC_WHEEL_BASE)
+def build_command(_args: argparse.Namespace) -> None:
+    build_docs()
 
 
 def serve_command(args: argparse.Namespace) -> None:
+    base_url = configured_base_url()
+    build_docs(base_url=base_url)
+    with docs_serve_root(base_url) as serve_root:
+        preview_url = f"http://{PREVIEW_HOST}:{args.port}{base_url}/"
+        print(f"serving {preview_url}", flush=True)
+        run(
+            [
+                sys.executable,
+                "-m",
+                "http.server",
+                "--bind",
+                PREVIEW_HOST,
+                "--directory",
+                str(serve_root),
+                str(args.port),
+            ]
+        )
+
+
+def build_docs(*, base_url: str | None = None) -> Path:
+    base_url = configured_base_url(base_url)
     wheel = build_wheel()
-    build_site(wheel, PUBLIC_WHEEL_BASE)
-    serve_site(wheel, port=args.port)
+    local_requirement = requirement(relative_reference(wheel))
+    check_docs_plugin()
 
+    with source_build_references(local_requirement):
+        for directory in GENERATED_DOCS_DIRS:
+            remove_tree(directory)
+        env = os.environ.copy()
+        env["BASE_URL"] = base_url
+        run(
+            ["uv", "run", "jupyter", "book", "build", "--html", "--strict"],
+            cwd=DOCS_DIR,
+            env=env,
+        )
 
-def wheel_command(_args: argparse.Namespace) -> None:
-    build_wheel()
+    install_same_origin_requirement_resolver()
+    publish_wheel(wheel, local_requirement, base_url)
+    assert_source_dependencies()
+    return wheel
 
 
 def build_wheel() -> Path:
-    shutil.rmtree(DOCS_WHEEL_DIR, ignore_errors=True)
+    remove_tree(DOCS_WHEEL_DIR)
     DOCS_WHEEL_DIR.mkdir(parents=True, exist_ok=True)
     run(["uv", "build", "--wheel", "--out-dir", str(DOCS_WHEEL_DIR)])
     return single_wheel(DOCS_WHEEL_DIR)
 
 
-def build_site(wheel: Path, public_base: str) -> None:
-    check_docs_plugin()
-    with source_build_references(wheel):
-        shutil.rmtree(DOCS_BUILD_DIR, ignore_errors=True)
-        shutil.rmtree(DOCS_GENERATED_DIR, ignore_errors=True)
-        run(
-            ["uv", "run", "jupyter", "book", "build", "--site", "--strict"],
-            cwd=DOCS_DIR,
+@contextmanager
+def source_build_references(local_requirement: str) -> Iterator[None]:
+    paths = interactive_docs()
+    originals = {path: path.read_bytes() for path in paths}
+    replacement = f'"{local_requirement}",'.encode()
+    try:
+        for path, source in originals.items():
+            updated = source.replace(SOURCE_DEPENDENCY.encode(), replacement)
+            if updated == source:
+                raise SystemExit(f"Expected pyobservablejs dependency in {path}")
+            path.write_bytes(updated)
+        yield
+    finally:
+        for path, source in originals.items():
+            path.write_bytes(source)
+
+
+def interactive_docs() -> list[Path]:
+    paths: list[Path] = []
+    for path in sorted(DOCS_DIR.rglob("*.md")):
+        if any(directory in path.parents for directory in GENERATED_DOCS_DIRS):
+            continue
+        source = path.read_text(encoding="utf-8")
+        if MARIMO_CONFIG not in source:
+            continue
+        count = source.count(SOURCE_DEPENDENCY)
+        if count != 1:
+            raise SystemExit(
+                f"Expected one pyobservablejs dependency in {path}, found {count}"
+            )
+        paths.append(path)
+    if not paths:
+        raise SystemExit("Expected at least one docs page with marimo configuration")
+    return paths
+
+
+def publish_wheel(wheel: Path, local_requirement: str, base_url: str) -> Path:
+    digest = wheel_sha256(wheel)
+    destination = DOCS_HTML_DIR.joinpath(
+        *PUBLIC_WHEEL_PATH.parts,
+        digest,
+        wheel.name,
+    )
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(wheel, destination)
+
+    public_reference = (
+        f"{base_url}/{PUBLIC_WHEEL_PATH.as_posix()}/"
+        f"{digest}/{wheel.name}#sha256={digest}"
+    )
+    public_requirement = requirement(public_reference)
+    replacement_count = rewrite_site_dependency(
+        local_requirement,
+        public_requirement,
+    )
+    if destination.read_bytes() != wheel.read_bytes():
+        raise SystemExit(f"Published wheel differs from {wheel}")
+    assert_site_dependencies(local_requirement, public_requirement)
+    print(f"published {destination} ({replacement_count} references)")
+    return destination
+
+
+def rewrite_site_dependency(old: str, new: str) -> int:
+    replacement_count = rewrite_site_text(old, new)
+    if not replacement_count:
+        raise SystemExit("Expected generated docs with a local wheel dependency")
+    return replacement_count
+
+
+def rewrite_site_text(old: str, new: str) -> int:
+    replacement_count = 0
+    for path in site_text_files():
+        source = path.read_text(encoding="utf-8")
+        count = source.count(old)
+        if not count:
+            continue
+        path.write_text(source.replace(old, new), encoding="utf-8")
+        replacement_count += count
+    return replacement_count
+
+
+def install_same_origin_requirement_resolver() -> None:
+    bridges = sorted(DOCS_HTML_DIR.glob("build/container-widget-*.mjs"))
+    if len(bridges) != 1:
+        raise SystemExit(f"Expected one generated marimo bridge, found {len(bridges)}")
+
+    bridge = bridges[0]
+    source = bridge.read_text(encoding="utf-8")
+    if source.count(BRIDGE_NOTEBOOK_CODE_ASSIGNMENT) != 1:
+        raise SystemExit("Generated marimo bridge has an unexpected notebook model")
+    if source.count(BRIDGE_MODEL_READER) != 1:
+        raise SystemExit("Generated marimo bridge has an unexpected model reader")
+    if source.count(BRIDGE_MOLAB_NOTEBOOK_CODE_ASSIGNMENT) != 1:
+        raise SystemExit("Generated marimo bridge has an unexpected molab model")
+
+    updated = (
+        source.replace(
+            BRIDGE_NOTEBOOK_CODE_ASSIGNMENT,
+            BRIDGE_NOTEBOOK_CODE_REPLACEMENT,
         )
-    publish_wheel(wheel, public_base)
-    assert_source_package_references()
-
-
-def serve_site(wheel: Path, port: int) -> None:
-    preview_base = f"http://localhost:{port}/{PUBLIC_WHEEL_PATH}"
-    exit_code = 0
-    last_signature: tuple[tuple[str, int, int], ...] | None = None
-    with source_build_references(wheel):
-        process = subprocess.Popen(
-            ["uv", "run", "jupyter", "book", "start", "--port", str(port)],
-            cwd=DOCS_DIR,
+        .replace(
+            BRIDGE_MOLAB_NOTEBOOK_CODE_ASSIGNMENT,
+            BRIDGE_MOLAB_NOTEBOOK_CODE_REPLACEMENT,
         )
-        try:
-            wait_for_server(f"http://localhost:{port}", process)
-            while process.poll() is None:
-                signature = generated_signature()
-                if signature != last_signature:
-                    publish_wheel(wheel, preview_base)
-                    last_signature = generated_signature()
-                time.sleep(1)
-            exit_code = process.returncode or 0
-        except KeyboardInterrupt:
-            exit_code = 130
-        finally:
-            stop_process(process)
-    publish_wheel(wheel, PUBLIC_WHEEL_BASE)
-    if exit_code:
-        raise SystemExit(exit_code)
+        .replace(
+            BRIDGE_MODEL_READER,
+            f"{BRIDGE_REQUIREMENT_RESOLVER}{BRIDGE_MODEL_READER}",
+        )
+    )
+    digest = hashlib.sha256(updated.encode()).hexdigest()[:32]
+    destination = bridge.with_name(f"container-widget-{digest}.mjs")
+    destination.write_text(updated, encoding="utf-8")
+    run(["node", "--check", str(destination)])
+    replacement_count = rewrite_site_text(bridge.name, destination.name)
+    if not replacement_count:
+        destination.unlink()
+        raise SystemExit("Generated docs do not reference the marimo bridge")
+    if bridge != destination:
+        bridge.unlink()
+    print(f"prepared {destination} ({replacement_count} references)")
 
 
-def publish_wheel(wheel: Path, public_base: str) -> None:
-    destination = copy_to_public(wheel, DOCS_SITE_PUBLIC_DIR, PUBLIC_WHEEL_PATH)
-    print(f"copied {destination}")
-    reference = deployed_reference(wheel, public_base)
-    sync_generated_reference(wheel, reference)
-    assert_site_wheel_references(wheel, reference)
+def assert_source_dependencies() -> None:
+    for path in interactive_docs():
+        source = path.read_text(encoding="utf-8")
+        if "pyobservablejs @" in source:
+            raise SystemExit(f"Source docs must keep the package dependency: {path}")
+
+
+def assert_site_dependencies(local: str, public: str) -> None:
+    public_count = 0
+    local_failures: list[str] = []
+    unexpected_failures: list[str] = []
+    for path in site_text_files():
+        source = path.read_text(encoding="utf-8")
+        if local in source or "../dist/docs/" in source:
+            local_failures.append(str(path))
+        if source.count("pyobservablejs @ ") != source.count(public):
+            unexpected_failures.append(str(path))
+        public_count += source.count(public)
+    if local_failures:
+        details = "\n".join(local_failures[:20])
+        raise SystemExit(f"Generated docs contain local wheel references:\n{details}")
+    if unexpected_failures:
+        details = "\n".join(unexpected_failures[:20])
+        raise SystemExit(
+            f"Generated docs contain unexpected wheel references:\n{details}"
+        )
+    if not public_count:
+        raise SystemExit("Generated docs lack the published wheel dependency")
+
+
+def configured_base_url(value: str | None = None) -> str:
+    raw = os.environ.get("BASE_URL", "") if value is None else value
+    parsed = urlsplit(raw)
+    if (
+        raw != raw.strip()
+        or parsed.scheme
+        or parsed.netloc
+        or parsed.query
+        or parsed.fragment
+        or "\\" in raw
+        or "%" in raw
+    ):
+        raise SystemExit(
+            "BASE_URL must be a plain absolute URL path without a host, query, or fragment"
+        )
+    if raw in {"", "/"}:
+        return ""
+    if not raw.startswith("/") or raw.startswith("//"):
+        raise SystemExit("BASE_URL must start with one slash")
+
+    base_url = raw.rstrip("/")
+    segments = base_url[1:].split("/")
+    if any(
+        part in {"", ".", ".."} or BASE_URL_SEGMENT.fullmatch(part) is None
+        for part in segments
+    ):
+        raise SystemExit("BASE_URL must contain URL-safe, non-empty path segments")
+    return base_url
 
 
 @contextmanager
-def source_build_references(wheel: Path) -> Iterator[None]:
-    sync_source_reference(requirement(wheel, relative_reference(wheel)))
-    try:
-        yield
-    finally:
-        restore_source_reference()
+def docs_serve_root(base_url: str) -> Iterator[Path]:
+    if not base_url:
+        yield DOCS_HTML_DIR
+        return
+
+    with TemporaryDirectory(prefix="pyobservablejs-docs-") as temporary_directory:
+        serve_root = Path(temporary_directory)
+        mount = serve_root.joinpath(*base_url.removeprefix("/").split("/"))
+        mount.parent.mkdir(parents=True, exist_ok=True)
+        mount.symlink_to(DOCS_HTML_DIR, target_is_directory=True)
+        yield serve_root
 
 
-def sync_source_reference(value: str) -> None:
-    sync_expected_files(
-        source_reference_counts(), value, pattern=SOURCE_DEPENDENCY_PATTERN
-    )
+def site_text_files() -> list[Path]:
+    if not DOCS_HTML_DIR.is_dir():
+        raise SystemExit(f"Expected static docs directory: {DOCS_HTML_DIR}")
+    return [
+        path
+        for path in DOCS_HTML_DIR.rglob("*")
+        if path.is_file() and path.suffix in SITE_TEXT_SUFFIXES
+    ]
 
 
-def restore_source_reference() -> None:
-    sync_source_reference("pyobservablejs")
-
-
-def source_reference_counts() -> dict[Path, int]:
-    counts: dict[Path, int] = {}
-    for path in sorted(DOCS_DIR.rglob("*.md")):
-        if is_docs_generated_path(path):
-            continue
-        count = len(SOURCE_DEPENDENCY_PATTERN.findall(path.read_text(encoding="utf-8")))
-        if count:
-            counts[path] = count
-    return counts
-
-
-def generated_content_reference_counts() -> dict[Path, int]:
-    content_dir = DOCS_BUILD_DIR / "site" / "content"
-    if not content_dir.is_dir():
-        raise SystemExit(f"Expected generated docs content directory: {content_dir}")
-    counts: dict[Path, int] = {}
-    for path in sorted(content_dir.glob("*.json")):
-        count = len(WHEEL_DEPENDENCY_PATTERN.findall(path.read_text(encoding="utf-8")))
-        if count:
-            counts[path] = count
-    if not counts:
-        raise SystemExit(
-            "Expected generated docs content with pyobservablejs wheel references"
-        )
-    return counts
-
-
-def generated_reference_counts() -> dict[Path, int]:
-    site_dir = DOCS_BUILD_DIR / "site"
-    if not site_dir.is_dir():
-        raise SystemExit(f"Expected docs site directory: {site_dir}")
-    counts: dict[Path, int] = {}
-    for path in site_text_files(site_dir):
-        count = len(WHEEL_DEPENDENCY_PATTERN.findall(path.read_text(encoding="utf-8")))
-        if count:
-            counts[path] = count
-    if not counts:
-        raise SystemExit("Expected generated docs with pyobservablejs wheel references")
-    return counts
-
-
-def is_docs_generated_path(path: Path) -> bool:
-    parts = set(path.relative_to(DOCS_DIR).parts)
-    return bool(parts & {"_build", "_site", ".jupyter-book-marimo"})
-
-
-def assert_source_package_references() -> None:
-    failures: list[str] = []
-    for path, expected_count in source_reference_counts().items():
-        if not path.is_file():
-            failures.append(f"Expected docs dependency file: {path}")
-            continue
-        text = path.read_text(encoding="utf-8")
-        matches = SOURCE_DEPENDENCY_PATTERN.findall(text)
-        if len(matches) != expected_count:
-            failures.append(
-                f"Expected {expected_count} pyobservablejs dependency in "
-                f"{path}, found {len(matches)}"
-            )
-        if DEPENDENCY_VALUE_PATTERN.search(text):
-            failures.append(f"{path}: source dependency must stay as pyobservablejs")
-    if failures:
-        details = "\n".join(failures[:20])
-        raise SystemExit(f"Invalid source docs dependency reference(s):\n{details}")
-
-
-def sync_generated_reference(wheel: Path, reference: str) -> None:
-    value = requirement(wheel, reference)
-    sync_expected_files(
-        generated_reference_counts(), value, pattern=WHEEL_DEPENDENCY_PATTERN
-    )
-    sync_public_exports(value, generated_content_reference_counts())
-
-
-def requirement(wheel: Path, reference: str) -> str:
-    if not wheel.is_file():
-        raise SystemExit(f"Wheel does not exist: {wheel}")
-    if wheel.suffix != ".whl":
-        raise SystemExit(f"Expected a wheel file: {wheel}")
+def requirement(reference: str) -> str:
     return f"pyobservablejs @ {reference}"
 
 
 def relative_reference(wheel: Path) -> str:
     reference_path = os.path.relpath(wheel.resolve(), DOCS_DIR.resolve())
     return Path(reference_path).as_posix()
-
-
-def deployed_reference(wheel: Path, public_base: str) -> str:
-    digest = wheel_sha256(wheel)
-    return f"{public_base.rstrip('/')}/{digest}/{wheel.name}#sha256={digest}"
-
-
-def sync_expected_files(
-    reference_counts: dict[Path, int],
-    requirement: str,
-    *,
-    pattern: re.Pattern[str],
-) -> None:
-    for path, expected_count in reference_counts.items():
-        if sync_file(path, requirement, expected_count=expected_count, pattern=pattern):
-            print(f"updated {path}")
-
-
-def sync_public_exports(requirement: str, reference_counts: dict[Path, int]) -> None:
-    expected_paths = current_public_export_paths(reference_counts)
-    remove_stale_public_exports(expected_paths)
-    for path in sorted(expected_paths):
-        if sync_file(
-            path, requirement, expected_count=1, pattern=WHEEL_DEPENDENCY_PATTERN
-        ):
-            print(f"updated {path}")
-
-
-def current_public_export_paths(reference_counts: dict[Path, int]) -> set[Path]:
-    public_dir = DOCS_BUILD_DIR / "site" / "public"
-    paths: set[Path] = set()
-    for content_path in reference_counts:
-        if not content_path.is_file():
-            raise SystemExit(f"Expected generated content file: {content_path}")
-        data = json.loads(content_path.read_text(encoding="utf-8"))
-        exports = data.get("frontmatter", {}).get("exports", [])
-        urls = [
-            item.get("url")
-            for item in exports
-            if isinstance(item, dict)
-            and item.get("format") == "md"
-            and isinstance(item.get("url"), str)
-        ]
-        if len(urls) != 1:
-            raise SystemExit(
-                f"Expected one markdown public export in {content_path}, found "
-                f"{len(urls)}"
-            )
-        path = public_dir / urls[0].lstrip("/")
-        if not path.is_file():
-            raise SystemExit(f"Expected generated public export: {path}")
-        paths.add(path)
-    return paths
-
-
-def remove_stale_public_exports(expected_paths: set[Path]) -> None:
-    public_dir = DOCS_BUILD_DIR / "site" / "public"
-    for path in sorted(public_dir.glob("*.md")):
-        if path in expected_paths:
-            continue
-        if WHEEL_DEPENDENCY_PATTERN.search(path.read_text(encoding="utf-8")):
-            path.unlink()
-            print(f"removed stale {path}")
-
-
-def sync_file(
-    path: Path,
-    requirement: str,
-    *,
-    expected_count: int,
-    pattern: re.Pattern[str],
-) -> bool:
-    if not path.is_file():
-        raise SystemExit(f"Expected docs wheel reference file: {path}")
-    source = path.read_text(encoding="utf-8")
-    match_count = len(pattern.findall(source))
-    if match_count != expected_count:
-        raise SystemExit(
-            f"Expected {expected_count} pyobservablejs wheel reference(s) in "
-            f"{path}, found {match_count}"
-        )
-    updated = pattern.sub(
-        lambda match: f"{match.group('open')}{requirement}{match.group('close')}",
-        source,
-    )
-    if updated == source:
-        return False
-    path.write_text(updated, encoding="utf-8")
-    return True
-
-
-def copy_to_public(wheel: Path, public_dir: Path, public_path: str) -> Path:
-    digest = wheel_sha256(wheel)
-    destination_dir = public_dir / public_path.strip("/") / digest
-    destination_dir.mkdir(parents=True, exist_ok=True)
-    destination = destination_dir / wheel.name
-    shutil.copy2(wheel, destination)
-    return destination
-
-
-def assert_site_wheel_references(wheel: Path, reference: str) -> None:
-    site_dir = DOCS_BUILD_DIR / "site"
-    expected = requirement(wheel, reference)
-    failures: list[str] = []
-    for path in site_text_files(site_dir):
-        text = path.read_text(encoding="utf-8")
-        if "../dist/docs/" in text:
-            failures.append(f"{path}: contains ../dist/docs/")
-        if "file://" in text:
-            failures.append(f"{path}: contains file://")
-        for match in DEPENDENCY_VALUE_PATTERN.finditer(text):
-            value = match.group(0)
-            if value != expected:
-                failures.append(f"{path}: {value}")
-            elif "#sha256=" not in value:
-                failures.append(f"{path}: wheel reference lacks sha256")
-    if failures:
-        details = "\n".join(failures[:20])
-        raise SystemExit(f"Invalid generated docs wheel reference(s):\n{details}")
-
-
-def site_text_files(site_dir: Path) -> list[Path]:
-    if not site_dir.is_dir():
-        raise SystemExit(f"Expected docs site directory: {site_dir}")
-    paths: list[Path] = []
-    for path in site_dir.rglob("*"):
-        if path.is_file() and path.suffix in {".html", ".js", ".json", ".md"}:
-            paths.append(path)
-    return paths
-
-
-def generated_signature() -> tuple[tuple[str, int, int], ...]:
-    paths: list[Path] = []
-    for path in generated_content_reference_counts():
-        if path.exists():
-            paths.append(path)
-    public_dir = DOCS_BUILD_DIR / "site" / "public"
-    if public_dir.is_dir():
-        for path in public_dir.glob("*.md"):
-            if WHEEL_DEPENDENCY_PATTERN.search(path.read_text(encoding="utf-8")):
-                paths.append(path)
-    signature: list[tuple[str, int, int]] = []
-    for path in sorted(set(paths)):
-        stat = path.stat()
-        signature.append((str(path), stat.st_mtime_ns, stat.st_size))
-    return tuple(signature)
 
 
 def single_wheel(directory: Path) -> Path:
@@ -390,6 +352,12 @@ def single_wheel(directory: Path) -> Path:
     return wheels[0]
 
 
+def remove_tree(path: Path) -> None:
+    if not path.exists() and not path.is_symlink():
+        return
+    shutil.rmtree(path)
+
+
 def wheel_sha256(wheel: Path) -> str:
     hasher = hashlib.sha256()
     with wheel.open("rb") as handle:
@@ -399,41 +367,21 @@ def wheel_sha256(wheel: Path) -> str:
 
 
 def check_docs_plugin() -> None:
-    if shutil.which(DOCS_PLUGIN) is None:
+    if shutil.which("jupyter-book-marimo") is None:
         raise SystemExit(
-            f"Jupyter Book marimo plugin is missing: {DOCS_PLUGIN}. "
+            "Jupyter Book marimo plugin is missing. "
             "Run `uv sync --group dev` before building docs."
         )
 
 
-def wait_for_server(url: str, process: subprocess.Popen[bytes]) -> None:
-    deadline = time.monotonic() + 120
-    while time.monotonic() < deadline:
-        if process.poll() is not None:
-            raise SystemExit(process.returncode or 1)
-        try:
-            with urlopen(url, timeout=1):
-                return
-        except OSError:
-            time.sleep(1)
-    stop_process(process)
-    raise SystemExit(f"Timed out waiting for {url}")
-
-
-def stop_process(process: subprocess.Popen[bytes]) -> None:
-    if process.poll() is not None:
-        return
-    process.terminate()
-    try:
-        process.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        process.kill()
-        process.wait()
-
-
-def run(command: list[str], *, cwd: Path = PROJECT_ROOT) -> None:
+def run(
+    command: list[str],
+    *,
+    cwd: Path = PROJECT_ROOT,
+    env: dict[str, str] | None = None,
+) -> None:
     print("+", " ".join(command), flush=True)
-    subprocess.run(command, cwd=cwd, check=True)
+    subprocess.run(command, cwd=cwd, env=env, check=True)
 
 
 if __name__ == "__main__":
@@ -441,3 +389,5 @@ if __name__ == "__main__":
         main()
     except subprocess.CalledProcessError as error:
         raise SystemExit(error.returncode) from None
+    except KeyboardInterrupt:
+        raise SystemExit(130) from None

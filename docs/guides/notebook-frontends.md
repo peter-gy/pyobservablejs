@@ -13,9 +13,9 @@ marimo, wrap it with `mo.ui.anywidget`.
 | JupyterLab | `pip install pyobservablejs jupyterlab` | `jupyter lab`          | `notebook`                  |
 | marimo     | `pip install pyobservablejs marimo`     | `marimo edit first.py` | `mo.ui.anywidget(notebook)` |
 
-Other anywidget frontends may work when they support anywidget model display and
-can resolve child widget models. Child resolution is required before
-`NotebookCell` values and graph metadata are available.
+Other anywidget frontends may work when they can display the `Notebook` and
+resolve its child `NotebookCell` models. That support is required for direct
+cell display and synchronized per-cell values.
 
 ## Jupyter
 
@@ -24,7 +24,7 @@ Display the notebook object as the last expression in a cell.
 ```python
 import observablejs as obs
 
-notebook = obs.Notebook(obs.ojs("md`Hello from Observable`"))
+notebook = obs.Notebook(obs.js('html`<p>Hello from Observable</p>`'))
 notebook
 ```
 
@@ -43,7 +43,7 @@ Wrap the notebook in `mo.ui.anywidget`.
 import marimo as mo
 import observablejs as obs
 
-notebook = obs.Notebook(obs.ojs("md`Hello from Observable`"))
+notebook = obs.Notebook(obs.js('html`<p>Hello from Observable</p>`'))
 view = mo.ui.anywidget(notebook)
 view
 ```
@@ -55,7 +55,7 @@ once, then call `update_variables` from a dependent cell.
 slider = mo.ui.slider(0, 10, value=5)
 
 notebook = obs.Notebook(
-    obs.ojs("md`value is ${value}`"),
+    obs.js('html`<p>Value is <strong>${value}</strong>.</p>`'),
     variables={"value": slider.value},
 )
 view = mo.ui.anywidget(notebook)
@@ -69,14 +69,13 @@ mo.vstack([slider, view])
 ## Direct cell display
 
 A `NotebookCell` can be displayed after it has been created by a parent
-`Notebook`. The child model carries a synced parent notebook reference and its
-cell index. The frontend resolves that parent model, builds a projected runtime
-from the parent notebook, and shows the selected cell.
+`Notebook`. The standalone view evaluates the selected cell and its dependencies
+in the parent notebook context.
 
 ```python
 notebook = obs.Notebook(
-    obs.ojs("answer = 42", key="answer"),
-    obs.ojs("md`answer is ${answer}`", key="readout"),
+    obs.js("const answer = 42;", key="answer"),
+    obs.js('html`<p>Answer is ${answer}.</p>`', key="readout"),
 )
 
 mo.ui.anywidget(notebook.cell_by_key("readout"))

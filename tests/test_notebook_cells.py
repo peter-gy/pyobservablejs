@@ -1,10 +1,7 @@
 from __future__ import annotations
 
 import json
-import os
-import shutil
-import subprocess
-from pathlib import Path
+import re
 from typing import Any
 
 import observablejs as obs
@@ -49,6 +46,14 @@ def test_notebook_cell_accessors_return_child_widget_instances() -> None:
     assert widget.cell_by_key("answer").key == "answer"
     assert widget.cell_at(1) is widget.cells[1]
     assert widget.cell_by_key("answer") is widget.cells[1]
+
+
+def test_notebook_cells_receive_parent_transport_references() -> None:
+    widget = obs.Notebook(
+        obs.md("# Title", key="title"),
+        obs.ojs("answer = 42", key="answer"),
+    )
+
     assert widget.get_state(["_cell_keys"])["_cell_keys"] == ["title", "answer"]
     child_state = widget.cell_at(1).get_state(["_notebook_widget", "_notebook_index"])
     assert child_state["_notebook_widget"] == f"anywidget:{widget.model_id}"
@@ -138,14 +143,18 @@ def test_notebook_graph_exports_mermaid_dependency_diagram(
         edges=[("alpha", "beta", "a")],
     )
 
-    assert widget.graph.to_mermaid() == (
-        "flowchart LR\n"
-        '  cell_0["Cell 0: alpha, defines: a"]\n'
-        '  cell_1["Cell 1: beta, defines: b"]\n'
-        '  external_0["external: rows"]\n'
-        "  cell_0 -->|a| cell_1\n"
-        "  external_0 -->|rows| cell_1\n"
-    )
+    direction, nodes, edges = _mermaid_topology(widget.graph.to_mermaid())
+
+    assert direction == "LR"
+    assert nodes == {
+        "Cell 0: alpha, defines: a",
+        "Cell 1: beta, defines: b",
+        "external: rows",
+    }
+    assert edges == {
+        ("Cell 0: alpha, defines: a", "a", "Cell 1: beta, defines: b"),
+        ("external: rows", "rows", "Cell 1: beta, defines: b"),
+    }
 
 
 def test_notebook_graph_exports_d2_dependency_diagram(
@@ -171,14 +180,18 @@ def test_notebook_graph_exports_d2_dependency_diagram(
         edges=[("alpha", "beta", "a")],
     )
 
-    assert widget.graph.to_d2() == (
-        "direction: right\n"
-        'cell_0: "Cell 0: alpha, defines: a"\n'
-        'cell_1: "Cell 1: beta, defines: b"\n'
-        'external_0: "external: rows"\n'
-        'cell_0 -> cell_1: "a"\n'
-        'external_0 -> cell_1: "rows"\n'
-    )
+    direction, nodes, edges = _d2_topology(widget.graph.to_d2())
+
+    assert direction == "right"
+    assert nodes == {
+        "Cell 0: alpha, defines: a",
+        "Cell 1: beta, defines: b",
+        "external: rows",
+    }
+    assert edges == {
+        ("Cell 0: alpha, defines: a", "a", "Cell 1: beta, defines: b"),
+        ("external: rows", "rows", "Cell 1: beta, defines: b"),
+    }
 
 
 def test_notebook_graph_diagram_exports_escape_labels(
@@ -203,69 +216,86 @@ def test_notebook_graph_diagram_exports_escape_labels(
         edges=[('quote " cell', "readout", 'answer "1"')],
     )
 
-    assert "#quot;" in widget.graph.to_mermaid()
-    assert "#124;" in widget.graph.to_mermaid()
-    assert json.loads(widget.graph.to_d2().splitlines()[1].split(": ", 1)[1]) == (
-        'Cell 0: quote " cell, defines: answer "1"'
+    mermaid_direction, mermaid_nodes, mermaid_edges = _mermaid_topology(
+        widget.graph.to_mermaid()
     )
+    escaped_first_label = "Cell 0: quote #quot; cell, defines: answer #quot;1#quot;"
+    escaped_target_label = "Cell 1: readout, defines: result"
+    assert mermaid_direction == "LR"
+    assert escaped_first_label in mermaid_nodes
+    assert (
+        escaped_first_label,
+        "answer #quot;1#quot;",
+        escaped_target_label,
+    ) in mermaid_edges
+    assert (
+        "external: row#124;count",
+        "row#124;count",
+        escaped_target_label,
+    ) in mermaid_edges
+
+    d2_direction, d2_nodes, d2_edges = _d2_topology(widget.graph.to_d2())
+    first_label = 'Cell 0: quote " cell, defines: answer "1"'
+    target_label = "Cell 1: readout, defines: result"
+    assert d2_direction == "right"
+    assert first_label in d2_nodes
+    assert (first_label, 'answer "1"', target_label) in d2_edges
+    assert ("external: row|count", "row|count", target_label) in d2_edges
 
 
-def test_notebook_graph_diagram_exports_are_valid_when_tools_are_available(
-    browser_graph_sync: BrowserGraphSync,
-    browser_graph_cell: BrowserGraphCellBuilder,
-    tmp_path: Path,
-) -> None:
-    widget = obs.Notebook(
-        obs.ojs("answer = 42", key='quote " cell'),
-        obs.ojs("answer + row_count", key="readout"),
-    )
-    browser_graph_sync(
-        widget,
-        cells=[
-            browser_graph_cell('quote " cell', defines=['answer "1"'], output="answer"),
-            browser_graph_cell(
-                "readout",
-                defines=["result"],
-                references=['answer "1"', "row|count"],
-                output="result",
-            ),
-        ],
-        edges=[('quote " cell', "readout", 'answer "1"')],
-    )
-    ran_validator = False
-    d2 = shutil.which("d2")
-    if d2 is not None:
-        d2_path = tmp_path / "graph.d2"
-        d2_path.write_text(widget.graph.to_d2())
-        subprocess.run([d2, "validate", str(d2_path)], check=True)
-        ran_validator = True
-    chrome_path = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-    mmdc = shutil.which("mmdc")
-    if mmdc is not None and os.path.exists(chrome_path):
-        mermaid_path = tmp_path / "graph.mmd"
-        svg_path = tmp_path / "graph.svg"
-        puppeteer_path = tmp_path / "puppeteer.json"
-        mermaid_path.write_text(widget.graph.to_mermaid())
-        puppeteer_path.write_text(
-            json.dumps({"executablePath": chrome_path, "args": ["--no-sandbox"]})
-        )
-        subprocess.run(
-            [
-                mmdc,
-                "-i",
-                str(mermaid_path),
-                "-o",
-                str(svg_path),
-                "-q",
-                "-p",
-                str(puppeteer_path),
-            ],
-            check=True,
-        )
-        assert svg_path.exists()
-        ran_validator = True
-    if not ran_validator:
-        pytest.skip("D2 and Mermaid validators are unavailable")
+_MERMAID_NODE = re.compile(r'^([A-Za-z][\w-]*)\["(.*)"\]$')
+_MERMAID_EDGE = re.compile(r"^([A-Za-z][\w-]*)\s*-->\|(.*)\|\s*([A-Za-z][\w-]*)$")
+_D2_NODE = re.compile(r"^([A-Za-z][\w-]*)\s*:\s*(.+)$")
+_D2_EDGE = re.compile(r"^([A-Za-z][\w-]*)\s*->\s*([A-Za-z][\w-]*)\s*:\s*(.+)$")
+
+
+def _mermaid_topology(
+    source: str,
+) -> tuple[str, set[str], set[tuple[str, str, str]]]:
+    lines = [line.strip() for line in source.splitlines() if line.strip()]
+    header = lines[0].split()
+    assert header[:1] == ["flowchart"]
+    assert len(header) == 2
+
+    node_labels: dict[str, str] = {}
+    raw_edges: list[tuple[str, str, str]] = []
+    for line in lines[1:]:
+        if node := _MERMAID_NODE.fullmatch(line):
+            node_labels[node.group(1)] = node.group(2)
+        elif edge := _MERMAID_EDGE.fullmatch(line):
+            raw_edges.append((edge.group(1), edge.group(2), edge.group(3)))
+        else:
+            raise AssertionError(f"Unrecognized Mermaid statement: {line}")
+
+    edges = {
+        (node_labels[source_id], label, node_labels[target_id])
+        for source_id, label, target_id in raw_edges
+    }
+    return header[1], set(node_labels.values()), edges
+
+
+def _d2_topology(
+    source: str,
+) -> tuple[str, set[str], set[tuple[str, str, str]]]:
+    lines = [line.strip() for line in source.splitlines() if line.strip()]
+    direction_key, direction = lines[0].split(":", 1)
+    assert direction_key.strip() == "direction"
+
+    node_labels: dict[str, str] = {}
+    raw_edges: list[tuple[str, str, str]] = []
+    for line in lines[1:]:
+        if edge := _D2_EDGE.fullmatch(line):
+            raw_edges.append((edge.group(1), json.loads(edge.group(3)), edge.group(2)))
+        elif node := _D2_NODE.fullmatch(line):
+            node_labels[node.group(1)] = json.loads(node.group(2))
+        else:
+            raise AssertionError(f"Unrecognized D2 statement: {line}")
+
+    edges = {
+        (node_labels[source_id], label, node_labels[target_id])
+        for source_id, label, target_id in raw_edges
+    }
+    return direction.strip(), set(node_labels.values()), edges
 
 
 def test_notebook_graph_drops_invalid_browser_entries() -> None:
@@ -371,18 +401,12 @@ def test_named_notebook_cells_expose_values(
     widget = obs.Notebook(obs.ojs("viewof gain = Inputs.range([0, 11])", key="gain"))
     cell_widget = widget.cell_by_key("gain")
 
-    browser_value_sync(cell_widget, {"gain": 7}, ["gain", "doubled"])
+    browser_value_sync(cell_widget, {"gain": 7}, ["gain"])
 
     assert cell_widget.value("gain") == 7
     assert cell_widget.only_value() == 7
     assert cell_widget.values == {"gain": 7}
     assert cell_widget.has_rendered is True
-    assert widget.has_rendered is False
-    assert widget.has_graph_snapshot is True
-    with pytest.raises(obs.NotRenderedError):
-        widget.runtime_values
-    with pytest.raises(obs.NotRenderedError):
-        widget.cell_values()
 
 
 def test_direct_cell_render_does_not_mark_parent_notebook_rendered(

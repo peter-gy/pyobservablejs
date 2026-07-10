@@ -38,17 +38,7 @@ jobs:
         env:
           BASE_URL: /pyobservablejs
         run: |
-          pnpm format:check
-          pnpm lint
-          pnpm typecheck
-          pnpm test:js
-          uv run ruff format --check .
-          uv run ruff check
-          uv run ty check
-          uv run pytest -q
-          pnpm build
-          uv run python scripts/docs.py build
-          git diff --check
+          make check
           git diff --exit-code -- docs
 
       - name: Build package artifacts

@@ -38,6 +38,7 @@ jobs:
         run: |
           pnpm format:check
           pnpm lint
+          pnpm konsistent
           pnpm typecheck
 
       - name: Check Python formatting, linting, and types

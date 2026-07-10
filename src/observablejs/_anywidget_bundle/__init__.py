@@ -1,5 +1,10 @@
-"""Request-based bundle support for Vite-built anywidget frontends."""
+"""Manifest-based bundle support for Vite-built anywidget frontends."""
 
-from ._bundle import Bundle, BundledWidget
+from ._bundle import Bundle, BundleArtifactError, BundledWidget, BundleModuleError
 
-__all__ = ["Bundle", "BundledWidget"]
+__all__ = [
+    "Bundle",
+    "BundleArtifactError",
+    "BundledWidget",
+    "BundleModuleError",
+]

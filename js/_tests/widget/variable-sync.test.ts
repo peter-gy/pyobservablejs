@@ -1,13 +1,46 @@
 // @vitest-environment jsdom
 
-import type { RenderProps } from "@anywidget/types";
 import { describe, expect, test } from "vitest";
 import widget from "@/widget/app";
-import { SELECTORS } from "@/widget/dom";
-import { createHost, createModel, objectValuedSelectSource, variableValue, waitFor } from "@/_tests/testing";
-import type { WidgetModel } from "@/widget/state";
+import {
+	alertText,
+	composedText,
+	createHost,
+	createModel,
+	renderProps,
+	variableValue,
+	waitFor,
+} from "@/_tests/testing";
 
-describe("widget runtime variable sync", () => {
+const objectValuedSelectSource = `
+Select = (items, options = {}) => {
+  const form = document.createElement("form");
+  const select = document.createElement("select");
+  let selected = options.value ?? items[0];
+  for (const [index, item] of items.entries()) {
+    const option = document.createElement("option");
+    option.value = String(index);
+    option.textContent = String(item.pointDensity);
+    select.appendChild(option);
+  }
+  select.value = String(items.indexOf(selected));
+  const update = () => {
+    selected = items[select.selectedIndex] ?? null;
+  };
+  select.addEventListener("input", update);
+  select.addEventListener("change", update);
+  Object.defineProperty(form, "value", {
+    get() { return selected; },
+    set(value) {
+      selected = items.includes(value) ? value : null;
+      select.selectedIndex = items.indexOf(value);
+    },
+  });
+  form.appendChild(select);
+  return form;
+}`;
+
+describe("widget variable sync", () => {
 	test("updates existing Python variables through the runtime", async () => {
 		const model = createModel({
 			role: "notebook",
@@ -29,22 +62,16 @@ describe("widget runtime variable sync", () => {
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render({
-			model,
-			el,
-			signal: controller.signal,
-			host: createHost(childModels),
-		} as unknown as RenderProps<WidgetModel>);
+		widget.render(renderProps(model, el, controller.signal, createHost(childModels)));
 
 		expect(await waitFor(() => (variableValue(model, "doubled") === 4 ? 4 : undefined))).toBe(4);
-		const doubledCell = await waitFor(() => el.querySelector<HTMLElement>("#cell-2") ?? undefined);
+		await waitFor(() => composedText(el, "4"));
 
 		setVariables(model, 1, "set", { base: 5 });
 
 		expect(await waitFor(() => (variableValue(model, "doubled") === 10 ? 10 : undefined))).toBe(10);
 		expect(variableValue(model, "base_echo")).toBe(5);
-		expect(el.querySelector("#cell-2")).toBe(doubledCell);
-		expect(el.contains(doubledCell)).toBe(true);
+		await waitFor(() => composedText(el, "10"));
 		controller.abort();
 	});
 
@@ -64,12 +91,7 @@ describe("widget runtime variable sync", () => {
 		]);
 		const controller = new AbortController();
 
-		widget.render({
-			model,
-			el: document.createElement("div"),
-			signal: controller.signal,
-			host: createHost(childModels),
-		} as unknown as RenderProps<WidgetModel>);
+		widget.render(renderProps(model, document.createElement("div"), controller.signal, createHost(childModels)));
 
 		await waitFor(() => (variableValue(model, "answer") === 42 ? 42 : undefined));
 
@@ -96,15 +118,10 @@ describe("widget runtime variable sync", () => {
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render({
-			model,
-			el,
-			signal: controller.signal,
-			host: createHost(childModels),
-		} as unknown as RenderProps<WidgetModel>);
+		widget.render(renderProps(model, el, controller.signal, createHost(childModels)));
 
 		expect(await waitFor(() => (variableValue(model, "answer") === 41 ? 41 : undefined))).toBe(41);
-		expect(el.querySelector<HTMLElement>(SELECTORS.composedCell)?.textContent?.trim()).toBe("");
+		expect(el.textContent.trim()).toBe("");
 		controller.abort();
 	});
 
@@ -129,12 +146,7 @@ describe("widget runtime variable sync", () => {
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render({
-			model,
-			el,
-			signal: controller.signal,
-			host: createHost(new Map([["anywidget:mixed", childModel]])),
-		} as unknown as RenderProps<WidgetModel>);
+		widget.render(renderProps(model, el, controller.signal, createHost(new Map([["anywidget:mixed", childModel]]))));
 
 		expect(await waitFor(() => (variableValue(childModel, "answer") === 41 ? 41 : undefined))).toBe(41);
 		expect(
@@ -171,12 +183,7 @@ describe("widget runtime variable sync", () => {
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render({
-			model,
-			el,
-			signal: controller.signal,
-			host: createHost(childModels),
-		} as unknown as RenderProps<WidgetModel>);
+		widget.render(renderProps(model, el, controller.signal, createHost(childModels)));
 		setVariables(model, 1, "set", { base: 6 });
 
 		expect(await waitFor(() => (variableValue(model, "doubled") === 12 ? 12 : undefined))).toBe(12);
@@ -205,12 +212,7 @@ describe("widget runtime variable sync", () => {
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render({
-			model,
-			el,
-			signal: controller.signal,
-			host: createHost(childModels),
-		} as unknown as RenderProps<WidgetModel>);
+		widget.render(renderProps(model, el, controller.signal, createHost(childModels)));
 
 		expect(await waitFor(() => (variableValue(model, "doubled") === 10 ? 10 : undefined))).toBe(10);
 
@@ -253,15 +255,10 @@ viewof gain = {
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render({
-			model,
-			el,
-			signal: controller.signal,
-			host: createHost(childModels),
-		} as unknown as RenderProps<WidgetModel>);
+		widget.render(renderProps(model, el, controller.signal, createHost(childModels)));
 
 		await waitFor(() => {
-			const error = el.querySelector(SELECTORS.error)?.textContent;
+			const error = alertText(el);
 			if (error) throw new Error(error);
 			return rangeWithValue(el, 5);
 		});
@@ -307,12 +304,7 @@ viewof gain = {
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render({
-			model,
-			el,
-			signal: controller.signal,
-			host: createHost(childModels),
-		} as unknown as RenderProps<WidgetModel>);
+		widget.render(renderProps(model, el, controller.signal, createHost(childModels)));
 
 		await waitFor(() => rangeWithValue(el, 5));
 		expect(await waitFor(() => (variableValue(model, "gainKind") === "object" ? "object" : undefined))).toBe("object");
@@ -348,12 +340,7 @@ viewof gain = {
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render({
-			model,
-			el,
-			signal: controller.signal,
-			host: createHost(childModels),
-		} as unknown as RenderProps<WidgetModel>);
+		widget.render(renderProps(model, el, controller.signal, createHost(childModels)));
 
 		const select = await waitFor(() => onlySelect(el));
 		expect(await waitFor(() => (variableValue(model, "pointDensity") === 7 ? 7 : undefined))).toBe(7);
@@ -396,12 +383,7 @@ viewof image = {
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render({
-			model,
-			el,
-			signal: controller.signal,
-			host: createHost(childModels),
-		} as unknown as RenderProps<WidgetModel>);
+		widget.render(renderProps(model, el, controller.signal, createHost(childModels)));
 
 		const form = await waitFor(() => el.querySelector("form") ?? undefined);
 		expect(await waitFor(() => (variableValue(model, "imageTag") === "IMG" ? "IMG" : undefined))).toBe("IMG");
@@ -410,9 +392,7 @@ viewof image = {
 			value: "img",
 		});
 		expect((form as HTMLFormElement & { value: unknown }).value).toBeInstanceOf(Promise);
-
-		await new Promise((resolve) => window.setTimeout(resolve, 25));
-
+		await waitFor(() => (model.get("_has_rendered") === true ? true : undefined));
 		expect((form as HTMLFormElement & { value: unknown }).value).toBeInstanceOf(Promise);
 		expect(variableValue(model, "imageTag")).toBe("IMG");
 		controller.abort();
@@ -453,12 +433,7 @@ viewof gain = {
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render({
-			model,
-			el,
-			signal: controller.signal,
-			host: createHost(childModels),
-		} as unknown as RenderProps<WidgetModel>);
+		widget.render(renderProps(model, el, controller.signal, createHost(childModels)));
 
 		await waitFor(() => rangeWithValue(el, 5));
 		expect(await waitFor(() => (variableValue(model, "seedEcho") === 1 ? 1 : undefined))).toBe(1);
@@ -509,12 +484,7 @@ viewof gain = {
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render({
-			model,
-			el,
-			signal: controller.signal,
-			host: createHost(childModels),
-		} as unknown as RenderProps<WidgetModel>);
+		widget.render(renderProps(model, el, controller.signal, createHost(childModels)));
 
 		const firstInput = await waitFor(() => rangeWithValue(el, 1));
 		expect(await waitFor(() => (variableValue(model, "seedEcho") === 1 ? 1 : undefined))).toBe(1);
@@ -567,12 +537,7 @@ viewof gain = {
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render({
-			model,
-			el,
-			signal: controller.signal,
-			host: createHost(childModels),
-		} as unknown as RenderProps<WidgetModel>);
+		widget.render(renderProps(model, el, controller.signal, createHost(childModels)));
 
 		await waitFor(() => rangeWithValue(el, 1));
 		expect(await waitFor(() => (variableValue(model, "doubled") === 2 ? 2 : undefined))).toBe(2);
@@ -620,12 +585,7 @@ viewof gain = {
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render({
-			model,
-			el,
-			signal: controller.signal,
-			host: createHost(childModels),
-		} as unknown as RenderProps<WidgetModel>);
+		widget.render(renderProps(model, el, controller.signal, createHost(childModels)));
 
 		const firstInput = await waitFor(() => rangeWithValue(el, 5));
 		expect(await waitFor(() => (variableValue(model, "doubled") === 10 ? 10 : undefined))).toBe(10);

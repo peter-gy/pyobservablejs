@@ -147,17 +147,7 @@ target_version() {
 }
 
 run_release_checks() {
-  pnpm format:check
-  pnpm lint
-  pnpm typecheck
-  pnpm test:js
-  uv run ruff format --check .
-  uv run ruff check
-  uv run ty check
-  uv run pytest -q
-  pnpm build
-  uv run python scripts/docs.py build
-  git diff --check
+  make check
   git diff --exit-code -- docs
 }
 
@@ -192,6 +182,7 @@ fi
 VERSION_REQUEST="$1"
 
 require_command git
+require_command make
 require_command pnpm
 require_command uv
 require_command uvx

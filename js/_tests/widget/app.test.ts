@@ -1,118 +1,19 @@
 // @vitest-environment jsdom
 
-import type { RenderProps } from "@anywidget/types";
-import { describe, expect, test } from "vitest";
-import { SELECTORS } from "@/widget/dom";
-import type { WidgetModel } from "@/widget/state";
+import { describe, expect, test, vi } from "vitest";
 import widget from "@/widget/app";
-import { composedText } from "@/_tests/testing";
-import { createHost, createModel, graphValue, hasSavedTrait, variableValue, waitFor } from "@/_tests/testing";
+import {
+	alertText,
+	composedText,
+	createHost,
+	createModel,
+	graphValue,
+	renderProps,
+	variableValue,
+	waitFor,
+} from "@/_tests/testing";
 
 describe("widget graph and notebook values", () => {
-	test("rerenders the scoped notebook root when the theme trait changes", async () => {
-		const model = createModel({
-			role: "notebook",
-			_spec: { theme: "air", cells: [] },
-			theme: "air",
-			_attachments: {},
-			_variables: {},
-			_options: {},
-			_cell_widgets: [],
-		});
-		const controller = new AbortController();
-		const el = document.createElement("div");
-
-		widget.render({
-			model,
-			el,
-			signal: controller.signal,
-			host: createHost(new Map()),
-		} as unknown as RenderProps<WidgetModel>);
-
-		expect(await waitFor(() => notebookRoot(el))).toHaveProperty("dataset.theme", "air");
-
-		model.set("theme", "slate");
-
-		expect(
-			await waitFor(() => {
-				const root = notebookRoot(el);
-				return root?.dataset.theme === "slate" ? root : undefined;
-			}),
-		).toHaveProperty("dataset.theme", "slate");
-		controller.abort();
-	});
-
-	test("renders source-backed theme traits through the notebook widget", async () => {
-		const model = createModel({
-			role: "notebook",
-			_source: '<!doctype html><notebook theme="air"></notebook>',
-			theme: { light: "cotton", dark: "slate" },
-			_attachments: {},
-			_variables: {},
-			_options: {},
-			_cell_widgets: [],
-		});
-		const controller = new AbortController();
-		const el = document.createElement("div");
-
-		widget.render({
-			model,
-			el,
-			signal: controller.signal,
-			host: createHost(new Map()),
-		} as unknown as RenderProps<WidgetModel>);
-
-		const root = await waitFor(() => notebookRoot(el));
-
-		expect(root.dataset.theme).toBe("light-dark");
-		expect(root.dataset.themeLight).toBe("cotton");
-		expect(root.dataset.themeDark).toBe("slate");
-		controller.abort();
-	});
-
-	test("installs theme styles into the widget owner root", async () => {
-		const model = createModel({
-			role: "notebook",
-			_spec: { cells: [] },
-			theme: "air",
-			_attachments: {},
-			_variables: {},
-			_options: {},
-			_cell_widgets: [],
-		});
-		const host = document.createElement("div");
-		const shadowRoot = host.attachShadow({ mode: "open" });
-		const el = document.createElement("div");
-		shadowRoot.append(el);
-		const documentStyleCount = document.head.querySelectorAll("style").length;
-		const controller = new AbortController();
-
-		widget.render({
-			model,
-			el,
-			signal: controller.signal,
-			host: createHost(new Map()),
-		} as unknown as RenderProps<WidgetModel>);
-
-		await waitFor(() => notebookRoot(el));
-		const shadowStyles = shadowRoot.querySelectorAll("style");
-		const themeCss = shadowStyles[0]?.textContent ?? "";
-
-		expect(shadowStyles).toHaveLength(1);
-		expect(themeCss).toContain('.pyobservablejs-notebook[data-theme="air"]');
-		expect(themeCss).toContain('.pyobservablejs-notebook[data-theme="light-dark"][data-theme-light="air"]');
-		expect(themeCss).toContain('.pyobservablejs-notebook[data-theme="light-dark"][data-theme-dark="air"]');
-		expect(themeCss).not.toContain(":root");
-		expect(document.head.querySelectorAll("style")).toHaveLength(documentStyleCount);
-
-		model.set("theme", "slate");
-
-		expect(await waitFor(() => (notebookRoot(el)?.dataset.theme === "slate" ? true : undefined))).toBe(true);
-		expect(shadowRoot.querySelectorAll("style")).toHaveLength(1);
-		expect(document.head.querySelectorAll("style")).toHaveLength(documentStyleCount);
-		controller.abort();
-	});
-
 	test("writes the Notebook Kit graph to the notebook model after child models resolve", async () => {
 		const model = createModel({
 			role: "notebook",
@@ -153,12 +54,7 @@ describe("widget graph and notebook values", () => {
 		const controller = new AbortController();
 		const el = document.createElement("div");
 
-		widget.render({
-			model,
-			el,
-			signal: controller.signal,
-			host: createHost(childModels),
-		} as unknown as RenderProps<WidgetModel>);
+		widget.render(renderProps(model, el, controller.signal, createHost(childModels)));
 
 		const graph = await waitFor(() => graphValue(model));
 
@@ -169,6 +65,46 @@ describe("widget graph and notebook values", () => {
 		expect(graph.edges).toHaveLength(1);
 		expect(graph.edges).toContainEqual({ from: 1, to: 2, variable: "answer" });
 		expect(await waitFor(() => (model.get("_has_rendered") === true ? true : undefined))).toBe(true);
+		controller.abort();
+	});
+
+	test("resets child readback when rerender interrupts pending model resolution", async () => {
+		const model = createModel({
+			role: "notebook",
+			_spec: {
+				cells: [
+					{ id: 1, mode: "ojs", value: "answer = 42" },
+					{ id: 2, mode: "ojs", value: "answer + 1" },
+				],
+			},
+			_attachments: {},
+			_variables: {},
+			_options: {},
+			_cell_widgets: ["anywidget:answer", "anywidget:pending"],
+		});
+		const answer = createModel({
+			role: "cell",
+			name: "answer",
+			_values: {},
+			_value_names: [],
+		});
+		const pending = new Promise<ReturnType<typeof createModel>>(() => {});
+		const childModels = new Map<string, ReturnType<typeof createModel> | Promise<ReturnType<typeof createModel>>>([
+			["anywidget:answer", answer],
+			["anywidget:pending", pending],
+		]);
+		const controller = new AbortController();
+		const el = document.createElement("div");
+
+		widget.render(renderProps(model, el, controller.signal, createHost(childModels)));
+		expect(await waitFor(() => (answer.get("_has_rendered") === true ? true : undefined))).toBe(true);
+
+		model.set("_cell_widgets", ["anywidget:answer"]);
+		await waitFor(() => alertText(el));
+
+		expect(answer.get("_has_rendered")).toBe(false);
+		expect(answer.get("_value_names")).toEqual([]);
+		expect(answer.get("_values")).toEqual({});
 		controller.abort();
 	});
 
@@ -213,12 +149,7 @@ describe("widget graph and notebook values", () => {
 		const controller = new AbortController();
 		const el = document.createElement("div");
 
-		widget.render({
-			model,
-			el,
-			signal: controller.signal,
-			host: createHost(childModels),
-		} as unknown as RenderProps<WidgetModel>);
+		widget.render(renderProps(model, el, controller.signal, createHost(childModels)));
 		await waitFor(() => graphValue(model));
 
 		const gainModel = childModels.get("anywidget:gain");
@@ -251,8 +182,18 @@ describe("widget graph and notebook values", () => {
 			_options: {},
 			_cell_widgets: ["anywidget:base", "anywidget:doubled"],
 		});
-		const baseModel = createModel({ role: "cell", name: "baseEcho", _values: {}, _value_names: [] });
-		const doubledModel = createModel({ role: "cell", name: "doubled", _values: {}, _value_names: [] });
+		const baseModel = createModel({
+			role: "cell",
+			name: "baseEcho",
+			_values: {},
+			_value_names: [],
+		});
+		const doubledModel = createModel({
+			role: "cell",
+			name: "doubled",
+			_values: {},
+			_value_names: [],
+		});
 		const childModels = new Map([
 			["anywidget:base", baseModel],
 			["anywidget:doubled", doubledModel],
@@ -260,15 +201,10 @@ describe("widget graph and notebook values", () => {
 		const controller = new AbortController();
 		const el = document.createElement("div");
 
-		widget.render({
-			model,
-			el,
-			signal: controller.signal,
-			host: createHost(childModels),
-		} as unknown as RenderProps<WidgetModel>);
+		widget.render(renderProps(model, el, controller.signal, createHost(childModels)));
 
-		const root = await waitFor(() => el.querySelector<HTMLElement>(".pyobservablejs-notebook") ?? undefined);
-		const doubledOutput = await waitFor(() => el.querySelector<HTMLElement>("#cell-2") ?? undefined);
+		const root = await waitFor(() => (el.firstElementChild instanceof HTMLElement ? el.firstElementChild : undefined));
+		await waitFor(() => composedText(el, "2"));
 		expect(await waitFor(() => (variableValue(model, "doubled") === 2 ? 2 : undefined))).toBe(2);
 
 		setVariableUpdate(model, 1, { base: 3 });
@@ -278,15 +214,8 @@ describe("widget graph and notebook values", () => {
 		setVariableUpdate(model, 3, { base: 8 });
 		expect(await waitFor(() => (variableValue(model, "doubled") === 16 ? 16 : undefined))).toBe(16);
 
-		expect(el.querySelector(".pyobservablejs-notebook")).toBe(root);
-		expect(el.querySelector("#cell-2")).toBe(doubledOutput);
-		expect(
-			Array.from(el.querySelectorAll<HTMLElement>(SELECTORS.composedCell)).map(
-				(cell) => cell.dataset.pyobservablejsCellRef,
-			),
-		).toEqual(["anywidget:base", "anywidget:doubled"]);
-		expect(childModels.get("anywidget:base")).toBe(baseModel);
-		expect(childModels.get("anywidget:doubled")).toBe(doubledModel);
+		expect(el.firstElementChild).toBe(root);
+		await waitFor(() => composedText(el, "16"));
 		controller.abort();
 	});
 
@@ -326,12 +255,7 @@ describe("widget graph and notebook values", () => {
 		const controller = new AbortController();
 		const el = document.createElement("div");
 
-		widget.render({
-			model,
-			el,
-			signal: controller.signal,
-			host: createHost(childModels),
-		} as unknown as RenderProps<WidgetModel>);
+		widget.render(renderProps(model, el, controller.signal, createHost(childModels)));
 
 		expect(await waitFor(() => (variableValue(readoutModel, "readout") === 43 ? 43 : undefined))).toBe(43);
 		expect(await waitFor(() => (variableValue(model, "readout") === 43 ? 43 : undefined))).toBe(43);
@@ -361,12 +285,7 @@ describe("widget graph and notebook values", () => {
 		const childModels = new Map([["anywidget:readout", readoutModel]]);
 		const controller = new AbortController();
 
-		widget.render({
-			model,
-			el: document.createElement("div"),
-			signal: controller.signal,
-			host: createHost(childModels),
-		} as unknown as RenderProps<WidgetModel>);
+		widget.render(renderProps(model, document.createElement("div"), controller.signal, createHost(childModels)));
 
 		const error = await waitFor(() => variableValue(readoutModel, "readout") as Record<string, unknown> | undefined);
 		expect(
@@ -421,12 +340,7 @@ describe("widget graph and notebook values", () => {
 		const controller = new AbortController();
 		const el = document.createElement("div");
 
-		widget.render({
-			model,
-			el,
-			signal: controller.signal,
-			host: createHost(childModels),
-		} as unknown as RenderProps<WidgetModel>);
+		widget.render(renderProps(model, el, controller.signal, createHost(childModels)));
 
 		await waitFor(() => composedText(el, "41"));
 		await waitFor(() => composedText(el, "82"));
@@ -437,7 +351,12 @@ describe("widget graph and notebook values", () => {
 		controller.abort();
 	});
 
-	test("uses initial Python variable overrides when source definitions would fail", async () => {
+	test("uses initial Python variable overrides before evaluating source definitions", async () => {
+		const evaluateSourceAnswer = vi.fn(() => 1);
+		Object.defineProperty(globalThis, "__pyobservablejsEvaluateSourceAnswer", {
+			configurable: true,
+			value: evaluateSourceAnswer,
+		});
 		const model = createModel({
 			role: "notebook",
 			_spec: {
@@ -445,7 +364,7 @@ describe("widget graph and notebook values", () => {
 					{
 						id: 1,
 						mode: "ojs",
-						value: 'answer = { throw new Error("source answer evaluated"); }',
+						value: "answer = globalThis.__pyobservablejsEvaluateSourceAnswer()",
 					},
 					{ id: 2, mode: "ojs", value: "doubled = answer * 2" },
 				],
@@ -478,21 +397,20 @@ describe("widget graph and notebook values", () => {
 		const controller = new AbortController();
 		const el = document.createElement("div");
 
-		widget.render({
-			model,
-			el,
-			signal: controller.signal,
-			host: createHost(childModels),
-		} as unknown as RenderProps<WidgetModel>);
+		try {
+			widget.render(renderProps(model, el, controller.signal, createHost(childModels)));
 
-		await waitFor(() => composedText(el, "41"));
-		await waitFor(() => composedText(el, "82"));
-		expect(
-			await waitFor(() => (variableValue(childModels.get("anywidget:answer")!, "answer") === 41 ? 41 : undefined)),
-		).toBe(41);
-		expect(await waitFor(() => (variableValue(model, "doubled") === 82 ? 82 : undefined))).toBe(82);
-		expect(el.querySelector(SELECTORS.error)?.textContent).toBeUndefined();
-		controller.abort();
+			await waitFor(() => composedText(el, "41"));
+			await waitFor(() => composedText(el, "82"));
+			expect(
+				await waitFor(() => (variableValue(childModels.get("anywidget:answer")!, "answer") === 41 ? 41 : undefined)),
+			).toBe(41);
+			expect(await waitFor(() => (variableValue(model, "doubled") === 82 ? 82 : undefined))).toBe(82);
+			expect(evaluateSourceAnswer).not.toHaveBeenCalled();
+		} finally {
+			controller.abort();
+			Reflect.deleteProperty(globalThis, "__pyobservablejsEvaluateSourceAnswer");
+		}
 	});
 
 	test("overrides source-backed variables without breaking URL-backed attachments", async () => {
@@ -546,12 +464,7 @@ describe("widget graph and notebook values", () => {
 		]);
 		const controller = new AbortController();
 
-		widget.render({
-			model,
-			el: document.createElement("div"),
-			signal: controller.signal,
-			host: createHost(childModels),
-		} as unknown as RenderProps<WidgetModel>);
+		widget.render(renderProps(model, document.createElement("div"), controller.signal, createHost(childModels)));
 
 		expect(await waitFor(() => (variableValue(model, "count") === 2 ? 2 : undefined))).toBe(2);
 		expect(await waitFor(() => variableValue(model, "rows") as Array<{ x: number }> | undefined)).toEqual([
@@ -603,12 +516,7 @@ describe("widget graph and notebook values", () => {
 		]);
 		const controller = new AbortController();
 
-		widget.render({
-			model,
-			el: document.createElement("div"),
-			signal: controller.signal,
-			host: createHost(childModels),
-		} as unknown as RenderProps<WidgetModel>);
+		widget.render(renderProps(model, document.createElement("div"), controller.signal, createHost(childModels)));
 
 		const graph = await waitFor(() => graphValue(model));
 
@@ -622,9 +530,8 @@ describe("widget graph and notebook values", () => {
 	});
 });
 
-function notebookRoot(el: HTMLElement): HTMLElement | undefined {
-	const root = el.firstElementChild;
-	return root instanceof HTMLElement && root.classList.contains("pyobservablejs-notebook") ? root : undefined;
+function hasSavedTrait(model: ReturnType<typeof createModel>, name: string): boolean {
+	return model.savedTraits.has(name);
 }
 
 function setVariableUpdate(model: ReturnType<typeof createModel>, seq: number, values: Record<string, unknown>): void {

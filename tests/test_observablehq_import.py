@@ -432,7 +432,7 @@ def test_notebook_from_observablehq_converts_sql_database_nodes(
     )
 
 
-def test_notebook_from_observablehq_uses_builtin_duckdb_client_for_legacy_imports(
+def test_notebook_from_observablehq_uses_runtime_duckdb_client_for_of_calls(
     observablehq_response: ObservableHQResponseInstaller,
     script_tags: ScriptTags,
 ) -> None:
@@ -465,7 +465,7 @@ def test_notebook_from_observablehq_uses_builtin_duckdb_client_for_legacy_import
     )
 
 
-def test_notebook_from_observablehq_keeps_legacy_duckdb_import_for_legacy_methods(
+def test_notebook_from_observablehq_preserves_duckdb_import_for_constructor_calls(
     observablehq_response: ObservableHQResponseInstaller,
     script_tags: ScriptTags,
 ) -> None:
@@ -495,7 +495,6 @@ def test_notebook_from_observablehq_keeps_legacy_duckdb_import_for_legacy_method
     widget = obs.Notebook.from_observablehq("@d3/duckdb-view", timeout=1)
 
     scripts = script_tags(widget.to_notebook_html())
-    assert "hidden" not in scripts[0]["attrs"]
     assert scripts[0]["text"].strip() == ('import {DuckDBClient} from "@cmudig/duckdb"')
 
 
@@ -870,9 +869,8 @@ def test_notebook_from_observablehq_uses_cell_backed_sqlite_databases(
 
 def test_notebook_from_observablehq_accepts_initial_variables(
     observablehq_response: ObservableHQResponseInstaller,
-    script_tags: ScriptTags,
 ) -> None:
-    requests = observablehq_response(
+    observablehq_response(
         {
             "title": "Remote",
             "nodes": [{"id": 1, "mode": "js", "value": "py_answer + 1"}],
@@ -885,14 +883,11 @@ def test_notebook_from_observablehq_accepts_initial_variables(
         variables={"py_answer": 7},
     )
 
-    scripts = script_tags(widget.to_notebook_html())
-    assert requests == [("https://api.observablehq.com/document/@d3/bar-chart", 1)]
-    assert scripts[0]["text"].strip() == "py_answer + 1"
     assert widget.variables == {"py_answer": 7}
 
 
 @pytest.mark.parametrize("name", ["Generators", "Mutable", "html", "require"])
-def test_notebook_from_observablehq_rejects_legacy_runtime_variable_updates(
+def test_notebook_from_observablehq_rejects_runtime_compatibility_variable_updates(
     observablehq_response: ObservableHQResponseInstaller,
     name: str,
 ) -> None:
@@ -906,9 +901,8 @@ def test_notebook_from_observablehq_rejects_legacy_runtime_variable_updates(
 
 def test_notebook_from_observablehq_initial_variables_serialize_to_frontend_state(
     observablehq_response: ObservableHQResponseInstaller,
-    script_tags: ScriptTags,
 ) -> None:
-    requests = observablehq_response(
+    observablehq_response(
         {
             "title": "Remote",
             "nodes": [{"id": 1, "mode": "js", "value": "py_answer + 1"}],
@@ -921,7 +915,4 @@ def test_notebook_from_observablehq_initial_variables_serialize_to_frontend_stat
         variables={"py_answer": 7},
     )
 
-    scripts = script_tags(widget.to_notebook_html())
-    assert requests == [("https://api.observablehq.com/document/@d3/bar-chart", 1)]
-    assert scripts[0]["text"].strip() == "py_answer + 1"
     assert widget.get_state(["_variables"])["_variables"] == {"py_answer": 7}

@@ -1,21 +1,6 @@
+import { parseCell } from "@observablehq/parser";
 import { transpile, type Cell, type Notebook } from "@observablehq/notebook-kit";
-
-type ObservableImportSpecifier = {
-	imported: string;
-	local: string;
-	runtimeName: string;
-};
-type ObservableImportInjection = {
-	name: string;
-	alias?: string;
-};
-type ObservableImportWith = {
-	sourceUrl: string;
-	imports: ObservableImportSpecifier[];
-	injections: ObservableImportInjection[];
-};
-type RuntimeBody = (...values: unknown[]) => unknown;
-
+import { exposedVariableNames, runtimeOutputNames, viewVariableName, type RuntimeCellDefinition } from "./definition";
 export type CellGraph = {
 	id: number;
 	index: number;
@@ -44,12 +29,7 @@ export type NotebookGraph = {
 	edges: GraphEdge[];
 };
 
-type NotebookKitDefinition = ReturnType<typeof transpile>;
-type Definition = Omit<NotebookKitDefinition, "body"> & {
-	body: NotebookKitDefinition["body"] | RuntimeBody;
-};
-
-export type RuntimeCellDefinition = Definition;
+type Definition = RuntimeCellDefinition;
 
 export type CellAnalysis =
 	| {
@@ -97,6 +77,36 @@ export function createNotebookGraphFromAnalysis(
 
 export function notebookViewNamesFromAnalysis(analysis: NotebookAnalysis): Set<string> {
 	return new Set(analysis.viewNames);
+}
+
+export function notebookDefinedNamesFromAnalysis(analysis: NotebookAnalysis): ReadonlySet<string> {
+	const names = new Set<string>();
+	for (const cell of analysis.graph.cells) {
+		for (const name of cell.defines) names.add(name);
+		for (const name of cell.runtime_outputs) names.add(name);
+	}
+	return names;
+}
+
+export function notebookDependencyIndexes(analysis: NotebookAnalysis, targetIndex: number): Set<number> {
+	const indexById = new Map(analysis.graph.cells.map((cell) => [cell.id, cell.index]));
+	const sourcesByTarget = new Map<number, number[]>();
+	for (const edge of analysis.graph.edges) {
+		const sourceIndex = indexById.get(edge.from);
+		const target = indexById.get(edge.to);
+		if (sourceIndex === undefined || target === undefined) continue;
+		const sources = sourcesByTarget.get(target);
+		if (sources) sources.push(sourceIndex);
+		else sourcesByTarget.set(target, [sourceIndex]);
+	}
+	const indexes = new Set<number>();
+	const visit = (index: number) => {
+		if (indexes.has(index)) return;
+		indexes.add(index);
+		for (const source of sourcesByTarget.get(index) ?? []) visit(source);
+	};
+	visit(targetIndex);
+	return indexes;
 }
 
 function analyzeCell(cell: Cell, index: number, key: string): CellAnalysis {
@@ -158,19 +168,6 @@ function createGraphFromCells(cells: CellGraph[]): NotebookGraph {
 	return { cells, edges };
 }
 
-export function exposedVariableNames(definition: Definition): string[] {
-	if (definition.output) {
-		if (definition.autoview) return [unprefix(definition.output, "viewof$")];
-		if (definition.automutable) return [unprefix(definition.output, "mutable ")];
-		return [definition.output];
-	}
-	return definition.outputs ?? [];
-}
-
-export function unprefix(value: string, prefix: string): string {
-	return value.startsWith(prefix) ? value.slice(prefix.length) : value;
-}
-
 function cellGraphFromDefinition(
 	notebookCell: Notebook["cells"][number],
 	index: number,
@@ -187,7 +184,7 @@ function cellGraphFromDefinition(
 		references: definition.inputs ?? [],
 		output: definition.output ?? null,
 		outputs: definition.outputs ?? [],
-		runtime_outputs: runtimeOutputs(definition),
+		runtime_outputs: runtimeOutputNames(definition),
 		autodisplay: definition.autodisplay === true,
 		autoview: definition.autoview === true,
 		automutable: definition.automutable === true,
@@ -223,151 +220,17 @@ function notebookCellName(cell: Notebook["cells"][number]): string {
 	return typeof name === "string" ? name : "";
 }
 
-function runtimeOutputs(definition: Definition): string[] {
-	if (!definition.output) return definition.outputs ?? [];
-	if (definition.automutable) return [definition.output, `mutable$${unprefix(definition.output, "mutable ")}`];
-	return [definition.output];
-}
-
 function definedNames(cell: CellGraph): string[] {
 	return Array.from(new Set([...cell.defines, ...cell.runtime_outputs]));
 }
 
-function viewVariableName(definition: Definition): string | null {
-	if (!definition.autoview || !definition.output) return null;
-	return unprefix(definition.output, "viewof$");
-}
-
 function addObservableImportWithInputs(cell: Cell, definition: RuntimeCellDefinition): RuntimeCellDefinition {
-	const parsed = parseObservableImportWith(cell);
-	if (!parsed) return definition;
+	if (cell.mode !== "ojs" || !definition.inputs?.includes("@variable")) return definition;
 	const inputs = Array.from(
-		new Set([...(definition.inputs ?? []), ...parsed.injections.map((injection) => injection.name)]),
+		new Set([...(definition.inputs ?? []), ...parseCell(cell.value).references.map(({ name }) => name)]),
 	);
 	return {
 		...definition,
 		inputs,
 	};
-}
-
-function parseObservableImportWith(cell: Cell): ObservableImportWith | null {
-	if (cell.mode !== "ojs") return null;
-	const source = stripLeadingImportTrivia(cell.value);
-	const match = source.match(
-		/^\s*import\s*\{(?<imports>[\s\S]*?)\}\s+with\s*\{(?<injections>[\s\S]*?)\}\s+from\s*(?<quote>["'])(?<source>[^"']+)\k<quote>\s*;?\s*$/,
-	);
-	if (!match?.groups) return null;
-	const imports = parseImportSpecifiers(match.groups.imports);
-	const injections = parseImportInjections(match.groups.injections);
-	if (imports.length === 0 || injections.length === 0) return null;
-	return {
-		sourceUrl: resolveObservableImportSource(match.groups.source),
-		imports,
-		injections,
-	};
-}
-
-function stripLeadingImportTrivia(source: string): string {
-	let value = source.trimStart();
-	for (;;) {
-		if (value.startsWith("//")) {
-			const newline = value.indexOf("\n");
-			if (newline === -1) return "";
-			value = value.slice(newline + 1).trimStart();
-			continue;
-		}
-		if (value.startsWith("/*")) {
-			const end = value.indexOf("*/");
-			if (end === -1) return "";
-			value = value.slice(end + 2).trimStart();
-			continue;
-		}
-		return value;
-	}
-}
-
-function parseImportSpecifiers(source: string): ObservableImportSpecifier[] {
-	return parseNamedEntries(source, { allowSpecial: true }).flatMap((entry) => importSpecifiersFromEntry(entry));
-}
-
-function parseImportInjections(source: string): ObservableImportInjection[] {
-	return parseNamedEntries(source).map(({ name, alias }) => (alias ? { name, alias } : { name }));
-}
-
-type NamedEntry = { name: string; alias?: string; kind?: "mutable" | "viewof" };
-
-function parseNamedEntries(source: string, options: { allowSpecial?: boolean } = {}): NamedEntry[] {
-	return source
-		.split(",")
-		.map((entry) => entry.trim())
-		.filter(Boolean)
-		.map((entry) => {
-			const special = options.allowSpecial ? "(?:(?<kind>viewof|mutable)\\s+)?" : "";
-			const match = entry.match(
-				new RegExp(`^${special}(?<name>[A-Za-z_$][0-9A-Za-z_$]*)(?:\\s+as\\s+(?<alias>[A-Za-z_$][0-9A-Za-z_$]*))?$`),
-			);
-			if (!match?.groups) throw new SyntaxError(`unsupported Observable import specifier: ${entry}`);
-			return {
-				name: match.groups.name,
-				alias: match.groups.alias,
-				kind: match.groups.kind as NamedEntry["kind"],
-			};
-		});
-}
-
-function importSpecifiersFromEntry(entry: NamedEntry): ObservableImportSpecifier[] {
-	if (!entry.kind) {
-		return [
-			{
-				imported: entry.name,
-				local: entry.alias ?? entry.name,
-				runtimeName: dedollar(entry.name),
-			},
-		];
-	}
-	const runtimeName = dedollar(entry.name);
-	const localName = entry.alias ?? entry.name;
-	const specialRuntimeName = `${entry.kind} ${runtimeName}`;
-	const specialLocal = entry.kind === "viewof" ? `viewof$${localName}` : `mutable$${localName}`;
-	return [
-		{
-			imported: entry.name,
-			local: localName,
-			runtimeName,
-		},
-		{
-			imported: `${entry.kind} ${entry.name}`,
-			local: specialLocal,
-			runtimeName: specialRuntimeName,
-		},
-	];
-}
-
-function resolveObservableImportSource(source: string): string {
-	if (source.startsWith("observable:")) {
-		let path = source.slice("observable:".length);
-		if (/^[0-9a-f]{16}(@|$)/.test(path)) path = `d/${path}`;
-		return `https://api.observablehq.com/${path}.js?v=4`;
-	}
-	if (/^\w+:/.test(source)) return source;
-	const path = /^[0-9a-f]{16}(@|$)/.test(source) ? `d/${source}` : source;
-	return `https://api.observablehq.com/${path}.js?v=4`;
-}
-
-function dedollar(input: string): string {
-	let output = "";
-	let dollars = 0;
-	for (const character of input) {
-		if (character === "$") {
-			dollars += 1;
-			continue;
-		}
-		if (dollars > 0) {
-			output += dollars === 1 ? " " : "$".repeat(dollars - 1);
-			dollars = 0;
-		}
-		output += character;
-	}
-	if (dollars > 0) output += dollars === 1 ? " " : "$".repeat(dollars - 1);
-	return output;
 }

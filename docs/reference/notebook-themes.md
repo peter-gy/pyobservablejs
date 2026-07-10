@@ -8,6 +8,8 @@ description: Notebook Kit theme names accepted by pyobservablejs.
 `theme` accepts one Notebook Kit theme name.
 
 ```python
+import observablejs as obs
+
 notebook = obs.Notebook(..., theme="glacier")
 ```
 
@@ -20,7 +22,7 @@ notebook = obs.Notebook(
 )
 ```
 
-`observablejs.NOTEBOOK_THEMES` contains the accepted names:
+`observablejs.NOTEBOOK_THEMES` is a tuple containing the accepted names:
 
 ```python
 (
@@ -40,5 +42,6 @@ notebook = obs.Notebook(
 )
 ```
 
-Unknown theme names raise `ValueError`. Mappings must contain exactly `light`
-and `dark`.
+Theme names are stripped and normalized to lowercase. Unknown names raise
+`ValueError`. Mappings must contain exactly `light` and `dark`, with a valid
+theme name for each value. Other value types raise `TypeError`.

@@ -1,12 +1,13 @@
 ---
-title: HTML notebook files
-description: Load Notebook Kit HTML and a local CSV attachment.
+title: Load notebook HTML
+description: Render an existing Notebook Kit HTML document from Python.
 ---
 
-# HTML notebook files
+# Load notebook HTML
 
-This example writes a CSV file, loads a Notebook Kit HTML string, and asks
-`Notebook.from_html` to embed the file.
+`Notebook.from_html` turns an existing Notebook Kit document into a
+`pyobservablejs` widget. The source can use Notebook Kit cells and built-in
+libraries directly. This document uses Notebook Kit's built-in AAPL sample.
 
 ```{marimo-config}
 :pyproject:
@@ -20,53 +21,35 @@ This example writes a CSV file, loads a Notebook Kit HTML string, and asks
 ```{marimo} python
 :echo: true
 
-from pathlib import Path
-import tempfile
-
 import marimo as mo
 import observablejs as obs
 
-base = Path(tempfile.mkdtemp(prefix="pyobservablejs-docs-"))
-(base / "traffic.csv").write_text(
-    "source,visits\nsearch,1200\nemail,640\nsocial,380\n",
-    encoding="utf-8",
-)
-
 source = """
 <notebook theme="air">
-  <script id="1" name="traffic" type="application/vnd.observable.javascript">
-traffic = FileAttachment("traffic.csv").csv({typed: true})
+  <script type="text/markdown">
+# Apple closing price
   </script>
-  <script id="2" name="chart" type="application/vnd.observable.javascript">
-Plot.plot({
-  height: 220,
-  marginLeft: 52,
-  y: {grid: true},
-  marks: [
-    Plot.barY(traffic, {x: "source", y: "visits", tip: true})
-  ]
+  <script type="module">
+Plot.areaY(aapl, {x: "Date", y: "Close", tip: true}).plot({
+  height: 280,
+  y: {grid: true, label: "Close ($)"}
 })
   </script>
 </notebook>
 """
 
-notebook = obs.Notebook.from_html(
-    source,
-    base_path=base,
-    embed_file_attachments=True,
-)
+notebook = obs.Notebook.from_html(source)
 mo.ui.anywidget(notebook)
 ```
 
-The notebook renders bars from `traffic.csv`. `embed_file_attachments=True`
-discovers the local file attachment relative to `base_path`.
+The widget preserves the document theme and renders the built-in AAPL sample as
+an area chart. The JavaScript remains a standard Notebook Kit module cell.
 
-The file is discovered from the executable `FileAttachment("traffic.csv")`
-expression. Text that merely mentions `FileAttachment` in Markdown is ignored.
+Use `Notebook.from_html_file(...)` for a document on disk. Local attachments and
+relative imports need a base path and their corresponding rewrite options.
 
 ## Continue
 
-- [Source notebooks](../reference/source-notebooks.md) gives the `from_html`
-  contract.
-- [Variables](../reference/variables.md) covers when to use variables instead of
-  file attachments.
+- [Source HTML](../guides/source-html.md) embeds local `FileAttachment` files.
+- [Source notebooks](../reference/source-notebooks.md) gives the complete
+  constructor contract.

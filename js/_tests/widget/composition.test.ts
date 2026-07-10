@@ -1,23 +1,23 @@
 // @vitest-environment jsdom
 
-import type { RenderProps } from "@anywidget/types";
-import { describe, expect, test } from "vitest";
+import { toNotebook } from "@observablehq/notebook-kit";
+import { describe, expect, test, vi } from "vitest";
+import { createRuntime, createRuntimeCleanup, registerAttachments } from "@/runtime";
+import { analyzeNotebook } from "@/runtime/graph";
 import widget from "@/widget/app";
-import { SELECTORS } from "@/widget/dom";
+import { renderStandaloneCellProjection, resolveCellModel } from "@/widget/composition";
 import {
-	composedInspectorText,
+	alertText,
 	composedText,
 	createHost,
 	createModel,
 	graphValue,
-	projectErrorText,
+	renderProps,
 	variableValue,
 	waitFor,
-	waitStep,
 } from "@/_tests/testing";
-import type { WidgetModel } from "@/widget/state";
 
-describe("widget composition lifecycle", () => {
+describe("notebook cell coordination", () => {
 	test("renders direct cell displays from the explicit parent notebook reference", async () => {
 		const parentModel = createModel({
 			role: "notebook",
@@ -45,15 +45,11 @@ describe("widget composition lifecycle", () => {
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render({
-			model,
-			el,
-			signal: controller.signal,
-			host: createHost(new Map([["anywidget:notebook", parentModel]])),
-		} as unknown as RenderProps<WidgetModel>);
+		widget.render(
+			renderProps(model, el, controller.signal, createHost(new Map([["anywidget:notebook", parentModel]]))),
+		);
 
 		await waitStep("standalone dependency output", () => composedText(el, "84"));
-		expect(el.querySelectorAll(SELECTORS.composedCell)).toHaveLength(1);
 		expect(variableValue(model, "double")).toBe(84);
 		const graph = await waitFor(() => graphValue(parentModel));
 		expect(graph.cells.map((cell) => cell.key)).toEqual(["answer", "double"]);
@@ -65,7 +61,169 @@ describe("widget composition lifecycle", () => {
 		controller.abort();
 	});
 
+	test("uses Python-owned values in direct cell dependencies", async () => {
+		const trackSource = vi.fn(() => 1);
+		Object.defineProperty(globalThis, "__pyobservablejsTrackPythonDependency", {
+			configurable: true,
+			value: trackSource,
+		});
+		const notebook = toNotebook({
+			cells: [
+				{
+					id: 1,
+					mode: "ojs",
+					value: "base = globalThis.__pyobservablejsTrackPythonDependency()",
+				},
+				{ id: 2, mode: "ojs", value: "doubled = base * 2" },
+			],
+		});
+		const parentModel = createModel({
+			role: "notebook",
+			_cell_keys: ["base", "doubled"],
+		});
+		const model = createModel({
+			role: "cell",
+			key: "doubled",
+			name: "doubled",
+			_values: {},
+			_value_names: [],
+		});
+		const el = document.createElement("div");
+		const root = document.createElement("div");
+		el.appendChild(root);
+		const controller = new AbortController();
+		const options = {
+			attachments: {},
+			baseUrl: document.baseURI,
+			variables: { base: 5 },
+			showSource: false,
+		};
+		const registry = registerAttachments({});
+		const runtime = createRuntime(root, el, options, registry);
+
+		try {
+			renderStandaloneCellProjection({
+				parentModel,
+				cellModel: model,
+				root,
+				notebook,
+				cellIndex: 1,
+				analysis: analyzeNotebook(notebook),
+				runtime,
+				options,
+				variablesSync: {
+					applyInitialViews() {},
+					setView() {},
+					deleteView() {},
+				},
+				signal: controller.signal,
+			});
+
+			await waitStep("Python-owned dependency output", () => composedText(el, "10"));
+			expect(variableValue(model, "doubled")).toBe(10);
+			expect(trackSource).not.toHaveBeenCalled();
+		} finally {
+			controller.abort();
+			createRuntimeCleanup(runtime, registry)();
+			Reflect.deleteProperty(globalThis, "__pyobservablejsTrackPythonDependency");
+		}
+	});
+
+	test("applies Python values to hidden direct view dependencies", async () => {
+		const parentModel = createModel({
+			role: "notebook",
+			_spec: {
+				cells: [
+					{
+						id: 1,
+						mode: "ojs",
+						value: 'viewof gain = Object.assign(document.createElement("input"), {type: "range", value: 2})',
+						key: "gain",
+					},
+					{ id: 2, mode: "ojs", value: "doubled = gain * 2", key: "doubled" },
+				],
+			},
+			_attachments: {},
+			_variables: { gain: 5 },
+			_options: {},
+			_cell_keys: ["gain", "doubled"],
+			_cell_widgets: ["anywidget:gain", "anywidget:doubled"],
+		});
+		const model = createModel({
+			role: "cell",
+			key: "doubled",
+			name: "doubled",
+			_notebook_widget: "anywidget:notebook",
+			_notebook_index: 1,
+			_values: {},
+			_value_names: [],
+		});
+		const el = document.createElement("div");
+		const controller = new AbortController();
+
+		widget.render(
+			renderProps(model, el, controller.signal, createHost(new Map([["anywidget:notebook", parentModel]]))),
+		);
+
+		expect(
+			await waitStep("Python-updated hidden view dependency", () =>
+				variableValue(model, "doubled") === 10 ? 10 : undefined,
+			),
+		).toBe(10);
+		controller.abort();
+	});
+
+	test("evaluates visibility inputs in hidden direct cell dependencies", async () => {
+		class NeverVisibleObserver {
+			observe(): void {}
+			disconnect(): void {}
+		}
+		vi.stubGlobal("IntersectionObserver", NeverVisibleObserver);
+		const parentModel = createModel({
+			role: "notebook",
+			_spec: {
+				cells: [
+					{ id: 1, mode: "ojs", value: "answer = visibility(42)", key: "answer" },
+					{ id: 2, mode: "ojs", value: "doubled = answer * 2", key: "doubled" },
+				],
+			},
+			_attachments: {},
+			_variables: {},
+			_options: {},
+			_cell_keys: ["answer", "doubled"],
+			_cell_widgets: ["anywidget:answer", "anywidget:doubled"],
+		});
+		const model = createModel({
+			role: "cell",
+			key: "doubled",
+			name: "doubled",
+			_notebook_widget: "anywidget:notebook",
+			_notebook_index: 1,
+			_values: {},
+			_value_names: [],
+		});
+		const el = document.createElement("div");
+		const controller = new AbortController();
+
+		try {
+			widget.render(
+				renderProps(model, el, controller.signal, createHost(new Map([["anywidget:notebook", parentModel]]))),
+			);
+
+			await waitStep("visibility dependency output", () => composedText(el, "84"));
+			expect(variableValue(model, "doubled")).toBe(84);
+		} finally {
+			controller.abort();
+			vi.unstubAllGlobals();
+		}
+	});
+
 	test("direct cell displays skip unrelated cells outside the dependency closure", async () => {
+		const trackUnrelated = vi.fn();
+		Object.defineProperty(globalThis, "__pyobservablejsTrackUnrelated", {
+			configurable: true,
+			value: trackUnrelated,
+		});
 		const parentModel = createModel({
 			role: "notebook",
 			_spec: {
@@ -74,7 +232,7 @@ describe("widget composition lifecycle", () => {
 					{
 						id: 2,
 						mode: "ojs",
-						value: 'unrelated = { throw new Error("unrelated cell ran"); }',
+						value: "unrelated = globalThis.__pyobservablejsTrackUnrelated()",
 						key: "unrelated",
 					},
 					{ id: 3, mode: "ojs", value: "double = answer * 2", key: "double" },
@@ -98,23 +256,23 @@ describe("widget composition lifecycle", () => {
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render({
-			model,
-			el,
-			signal: controller.signal,
-			host: createHost(new Map([["anywidget:notebook", parentModel]])),
-		} as unknown as RenderProps<WidgetModel>);
+		try {
+			widget.render(
+				renderProps(model, el, controller.signal, createHost(new Map([["anywidget:notebook", parentModel]]))),
+			);
 
-		await waitStep("standalone closure output", () => composedText(el, "84"));
-		await new Promise((resolve) => window.setTimeout(resolve, 25));
-		expect(projectErrorText(el)).toBeUndefined();
-		expect(el.textContent).not.toContain("unrelated cell ran");
-		expect(variableValue(model, "double")).toBe(84);
-		const graph = await waitFor(() => graphValue(parentModel));
-		expect(graph.cells.map((cell) => cell.key)).toEqual(["answer", "unrelated", "double"]);
-		expect(model.get("_has_rendered")).toBe(true);
-		expect(parentModel.get("_has_rendered")).toBeUndefined();
-		controller.abort();
+			await waitStep("standalone closure output", () => composedText(el, "84"));
+			expect(variableValue(model, "double")).toBe(84);
+			const graph = await waitFor(() => graphValue(parentModel));
+			await waitFor(() => (model.get("_has_rendered") === true ? true : undefined));
+			expect(trackUnrelated).not.toHaveBeenCalled();
+			expect(graph.cells.map((cell) => cell.key)).toEqual(["answer", "unrelated", "double"]);
+			expect(model.get("_has_rendered")).toBe(true);
+			expect(parentModel.get("_has_rendered")).toBeUndefined();
+		} finally {
+			controller.abort();
+			Reflect.deleteProperty(globalThis, "__pyobservablejsTrackUnrelated");
+		}
 	});
 
 	test("failed direct cell rerenders preserve the last successful shared readback", async () => {
@@ -144,12 +302,9 @@ describe("widget composition lifecycle", () => {
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render({
-			model,
-			el,
-			signal: controller.signal,
-			host: createHost(new Map([["anywidget:notebook", parentModel]])),
-		} as unknown as RenderProps<WidgetModel>);
+		widget.render(
+			renderProps(model, el, controller.signal, createHost(new Map([["anywidget:notebook", parentModel]]))),
+		);
 
 		await waitStep("initial direct output", () => composedText(el, "84"));
 		expect(variableValue(model, "double")).toBe(84);
@@ -192,12 +347,9 @@ describe("widget composition lifecycle", () => {
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render({
-			model,
-			el,
-			signal: controller.signal,
-			host: createHost(new Map([["anywidget:notebook", parentModel]])),
-		} as unknown as RenderProps<WidgetModel>);
+		widget.render(
+			renderProps(model, el, controller.signal, createHost(new Map([["anywidget:notebook", parentModel]]))),
+		);
 
 		await waitStep("initial direct value", () => composedText(el, "42"));
 		expect(variableValue(model, "answer")).toBe(42);
@@ -240,12 +392,7 @@ describe("widget composition lifecycle", () => {
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render({
-			model,
-			el,
-			signal: controller.signal,
-			host: createHost(new Map([["anywidget:metrics", cellModel]])),
-		} as unknown as RenderProps<WidgetModel>);
+		widget.render(renderProps(model, el, controller.signal, createHost(new Map([["anywidget:metrics", cellModel]]))));
 
 		expect(await waitFor(() => (variableValue(cellModel, "x") === 1 ? 1 : undefined))).toBe(1);
 		expect(cellModel.get("_has_rendered")).toBe(false);
@@ -267,15 +414,21 @@ describe("widget composition lifecycle", () => {
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render({
-			model,
-			el,
-			signal: controller.signal,
-			host: undefined,
-		} as unknown as RenderProps<WidgetModel>);
+		widget.render(renderProps(model, el, controller.signal, createHost(new Map())));
 
 		expect(await waitFor(() => projectErrorText(el))).toBe("Error: NotebookCell has no parent Notebook reference");
 		controller.abort();
+	});
+
+	test("aborts pending host model lookups", async () => {
+		const controller = new AbortController();
+		const pending = new Promise<ReturnType<typeof createModel>>(() => {});
+		const host = createHost(new Map([["anywidget:pending", pending]]));
+		const outcome = resolveCellModel(host, "anywidget:pending", controller.signal);
+
+		controller.abort();
+
+		await expect(outcome).rejects.toThrow("Unable to resolve cell widget anywidget:pending");
 	});
 
 	test("reports direct cell displays whose parent ref does not point to a notebook", async () => {
@@ -296,12 +449,7 @@ describe("widget composition lifecycle", () => {
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render({
-			model,
-			el,
-			signal: controller.signal,
-			host: createHost(new Map([["anywidget:parent", parentModel]])),
-		} as unknown as RenderProps<WidgetModel>);
+		widget.render(renderProps(model, el, controller.signal, createHost(new Map([["anywidget:parent", parentModel]]))));
 
 		expect(await waitFor(() => projectErrorText(el))).toBe("Error: Parent widget anywidget:parent is not a Notebook");
 		controller.abort();
@@ -327,12 +475,7 @@ describe("widget composition lifecycle", () => {
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render({
-			model,
-			el,
-			signal: controller.signal,
-			host: createHost(new Map([["anywidget:answer", answerModel]])),
-		} as unknown as RenderProps<WidgetModel>);
+		widget.render(renderProps(model, el, controller.signal, createHost(new Map([["anywidget:answer", answerModel]]))));
 
 		await waitStep("initial notebook output", () => composedText(el, "42"));
 		expect(await waitFor(() => (variableValue(model, "answer") === 42 ? 42 : undefined))).toBe(42);
@@ -383,19 +526,21 @@ describe("widget composition lifecycle", () => {
 		const controller = new AbortController();
 		const el = document.createElement("div");
 
-		widget.render({
-			model,
-			el,
-			signal: controller.signal,
-			host: createHost(
-				new Map([
-					["anywidget:geometric", geometricModel],
-					["anywidget:readout", readoutModel],
-				]),
+		widget.render(
+			renderProps(
+				model,
+				el,
+				controller.signal,
+				createHost(
+					new Map([
+						["anywidget:geometric", geometricModel],
+						["anywidget:readout", readoutModel],
+					]),
+				),
 			),
-		} as unknown as RenderProps<WidgetModel>);
+		);
 
-		await waitStep("require readout", () => composedInspectorText(el, "ready"));
+		await waitStep("require readout", () => (variableValue(readoutModel, "readout") === "ready" ? "ready" : undefined));
 		expect(variableValue(geometricModel, "geometric")).toMatchObject({ line: "ready" });
 		expect(readoutModel.get("_has_rendered")).toBe(true);
 		const graph = await waitFor(() => graphValue(model));
@@ -437,12 +582,7 @@ describe("widget composition lifecycle", () => {
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render({
-			model,
-			el,
-			signal: controller.signal,
-			host: createHost(new Map([["anywidget:unsafe", unsafeModel]])),
-		} as unknown as RenderProps<WidgetModel>);
+		widget.render(renderProps(model, el, controller.signal, createHost(new Map([["anywidget:unsafe", unsafeModel]]))));
 
 		await waitStep("inspector fallback", () =>
 			composedText(el, "Unable to inspect value: TypeError: inspector failed"),
@@ -485,17 +625,19 @@ describe("widget composition lifecycle", () => {
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render({
-			model,
-			el,
-			signal: controller.signal,
-			host: createHost(
-				new Map([
-					["anywidget:summary", displayModel],
-					["anywidget:answer", answerModel],
-				]),
+		widget.render(
+			renderProps(
+				model,
+				el,
+				controller.signal,
+				createHost(
+					new Map([
+						["anywidget:summary", displayModel],
+						["anywidget:answer", answerModel],
+					]),
+				),
 			),
-		} as unknown as RenderProps<WidgetModel>);
+		);
 
 		await waitStep("display-only output", () => composedText(el, "Summary"));
 		expect(await waitFor(() => (variableValue(model, "answer") === 42 ? 42 : undefined))).toBe(42);
@@ -535,24 +677,14 @@ describe("widget composition lifecycle", () => {
 			]),
 		);
 
-		widget.render({
-			model,
-			el: parentEl,
-			signal: parentController.signal,
-			host,
-		} as unknown as RenderProps<WidgetModel>);
+		widget.render(renderProps(model, parentEl, parentController.signal, host));
 
 		await waitStep("parent output", () => composedText(parentEl, "42"));
 		expect(await waitFor(() => (model.get("_has_rendered") === true ? true : undefined))).toBe(true);
 		expect(variableValue(model, "answer")).toBe(42);
 		const graph = await waitFor(() => graphValue(model));
 
-		widget.render({
-			model: answerModel,
-			el: directEl,
-			signal: directController.signal,
-			host,
-		} as unknown as RenderProps<WidgetModel>);
+		widget.render(renderProps(answerModel, directEl, directController.signal, host));
 
 		expect(await waitFor(() => projectErrorText(directEl))).toBe(
 			"Error: NotebookCell index 99 is outside the parent Notebook",
@@ -586,14 +718,9 @@ describe("widget composition lifecycle", () => {
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render({
-			model,
-			el,
-			signal: controller.signal,
-			host: createHost(new Map([["anywidget:broken", brokenModel]])),
-		} as unknown as RenderProps<WidgetModel>);
+		widget.render(renderProps(model, el, controller.signal, createHost(new Map([["anywidget:broken", brokenModel]]))));
 
-		expect(await waitFor(() => projectErrorText(el))).toContain("Error:");
+		expect(await waitFor(() => projectErrorText(el))).toContain("SyntaxError");
 		expect(await waitFor(() => (brokenModel.get("_has_rendered") === true ? true : undefined))).toBe(true);
 		expect(await waitFor(() => (model.get("_has_rendered") === true ? true : undefined))).toBe(true);
 		expect(variableValue(model, "broken")).toBeUndefined();
@@ -615,28 +742,23 @@ describe("widget composition lifecycle", () => {
 			_options: {},
 			_cell_widgets: ["anywidget:answer"],
 		});
-		const childModels = new Map([["anywidget:answer", childModel]]);
-		let lookupAttempts = 0;
+		const host = createHost(new Map([["anywidget:answer", childModel]]));
+		let lookups = 0;
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render({
-			model,
-			el,
-			signal: controller.signal,
-			host: {
-				getModel: async (ref: string) => {
-					lookupAttempts += 1;
-					await new Promise((resolve) => window.setTimeout(resolve, 0));
-					return lookupAttempts >= 3 ? childModels.get(ref) : undefined;
+		widget.render(
+			renderProps(model, el, controller.signal, {
+				...host,
+				async getModel(ref) {
+					lookups += 1;
+					return host.getModel(ref);
 				},
-				getWidget: async () => {
-					throw new Error("Test host resolves child models only");
-				},
-			},
-		} as unknown as RenderProps<WidgetModel>);
+			}),
+		);
 
 		await waitStep("composed output", () => composedText(el, "42"));
+		expect(lookups).toBe(1);
 		controller.abort();
 	});
 
@@ -660,90 +782,15 @@ describe("widget composition lifecycle", () => {
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render({
-			model,
-			el,
-			signal: controller.signal,
-			host: createHost(childModels),
-		} as unknown as RenderProps<WidgetModel>);
+		widget.render(renderProps(model, el, controller.signal, createHost(childModels)));
 
-		const wrapper = await waitFor(() => el.querySelector<HTMLElement>(SELECTORS.composedCell) ?? undefined);
 		await waitStep("pinned source output", () => (variableValue(answerModel, "answer") === 42 ? 42 : undefined));
 		const sourceBlock = await waitFor(
-			() => wrapper.querySelector<HTMLPreElement>("pre[aria-label='OJS source']") ?? undefined,
+			() => el.querySelector<HTMLPreElement>("pre[aria-label='OJS source']") ?? undefined,
 		);
 
 		expect(sourceBlock.textContent).toBe(source);
 		expect(sourceBlock.getAttribute("aria-label")).toBe("OJS source");
-		controller.abort();
-	});
-
-	test("resolves child models from widget_manager when the host prop is unavailable", async () => {
-		const childModel = createModel({
-			role: "cell",
-			name: "answer",
-			_values: {},
-			_value_names: [],
-		});
-		let lookupAttempts = 0;
-		const model = createModel(
-			{
-				role: "notebook",
-				_spec: { cells: [{ id: 1, mode: "ojs", value: "answer = 42" }] },
-				_attachments: {},
-				_variables: {},
-				_options: {},
-				_cell_widgets: ["anywidget:answer"],
-			},
-			{
-				get_model: async (modelId: string) => {
-					lookupAttempts += 1;
-					if (lookupAttempts === 1) {
-						throw new Error("not ready");
-					}
-					await new Promise((resolve) => window.setTimeout(resolve, 0));
-					return lookupAttempts >= 4 && modelId === "answer" ? childModel : undefined;
-				},
-			},
-		);
-		const el = document.createElement("div");
-		const controller = new AbortController();
-
-		widget.render({
-			model,
-			el,
-			signal: controller.signal,
-			host: undefined,
-		} as unknown as RenderProps<WidgetModel>);
-
-		await waitStep("widget-manager output", () => composedText(el, "42"));
-		expect(variableValue(childModel, "answer")).toBe(42);
-		expect(await waitFor(() => (variableValue(model, "answer") === 42 ? 42 : undefined))).toBe(42);
-		controller.abort();
-	});
-
-	test("reports unsupported composition hosts when no model lookup is available", async () => {
-		const model = createModel({
-			role: "notebook",
-			_spec: { cells: [{ id: 1, mode: "ojs", value: "answer = 42" }] },
-			_attachments: {},
-			_variables: {},
-			_options: {},
-			_cell_widgets: ["anywidget:answer"],
-		});
-		const el = document.createElement("div");
-		const controller = new AbortController();
-
-		widget.render({
-			model,
-			el,
-			signal: controller.signal,
-			host: undefined,
-		} as unknown as RenderProps<WidgetModel>);
-
-		expect(await waitFor(() => projectErrorText(el))).toBe(
-			"Error: This anywidget host cannot resolve child widget models",
-		);
 		controller.abort();
 	});
 
@@ -754,51 +801,33 @@ describe("widget composition lifecycle", () => {
 			_values: {},
 			_value_names: [],
 		});
-		const model = createModel(
-			{
-				role: "notebook",
-				_spec: {
-					cells: [
-						{ id: 1, mode: "ojs", value: "answer = 42" },
-						{ id: 2, mode: "ojs", value: "broken = answer + 1" },
-					],
-				},
-				_attachments: {},
-				_variables: {},
-				_options: {},
-				_cell_widgets: ["anywidget:answer", "anywidget:broken"],
+		const model = createModel({
+			role: "notebook",
+			_spec: {
+				cells: [
+					{ id: 1, mode: "ojs", value: "answer = 42" },
+					{ id: 2, mode: "ojs", value: "broken = answer + 1" },
+				],
 			},
-			{
-				get_model: async (modelId: string) => (modelId === "answer" ? answerModel : undefined),
-			},
-		);
+			_attachments: {},
+			_variables: {},
+			_options: {},
+			_cell_widgets: ["anywidget:answer", "anywidget:broken"],
+		});
 		const childModels = new Map([["anywidget:answer", answerModel]]);
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render({
-			model,
-			el,
-			signal: controller.signal,
-			host: createHost(childModels),
-		} as unknown as RenderProps<WidgetModel>);
+		widget.render(renderProps(model, el, controller.signal, createHost(childModels)));
 
 		await waitStep("resolved cell output", () => composedText(el, "42"));
-		const renderedCells = await waitFor(() => {
-			const cells = Array.from(el.querySelectorAll<HTMLElement>(SELECTORS.composedCell));
-			return cells.length === 2 ? cells : undefined;
-		});
-		expect(renderedCells[0]?.textContent?.trim()).toBe("42");
-		expect(projectErrorText(renderedCells[0]!)).toBeUndefined();
 		expect(variableValue(answerModel, "answer")).toBe(42);
 		expect(await waitFor(() => (variableValue(model, "answer") === 42 ? 42 : undefined))).toBe(42);
 		const graph = await waitFor(() => graphValue(model), 1500);
 		expect(graph.cells[0]?.defines).toEqual(["answer"]);
 		expect(graph.cells[1]?.defines).toEqual(["broken"]);
 		expect(graph.edges).toContainEqual({ from: 1, to: 2, variable: "answer" });
-		expect(await waitFor(() => projectErrorText(renderedCells[1]!), 1500)).toBe(
-			"Error: Unknown widget model anywidget:broken",
-		);
+		expect(await waitFor(() => projectErrorText(el), 1500)).toBe("Error: Unknown widget model anywidget:broken");
 		controller.abort();
 	});
 
@@ -815,12 +844,7 @@ describe("widget composition lifecycle", () => {
 		controller.abort();
 		const el = document.createElement("div");
 
-		widget.render({
-			model,
-			el,
-			signal: controller.signal,
-			host: createHost(new Map()),
-		} as unknown as RenderProps<WidgetModel>);
+		widget.render(renderProps(model, el, controller.signal, createHost(new Map())));
 
 		model.set("_spec", {
 			cells: [{ id: 1, mode: "ojs", value: "answer = 42" }],
@@ -832,4 +856,16 @@ describe("widget composition lifecycle", () => {
 
 function moduleUrl(source: string): string {
 	return `data:text/javascript;charset=utf-8,${encodeURIComponent(source)}`;
+}
+
+async function waitStep<T>(label: string, read: () => T | undefined, timeoutMs?: number): Promise<T> {
+	try {
+		return await waitFor(read, timeoutMs);
+	} catch (error) {
+		throw new Error(`${label}: ${error instanceof Error ? error.message : String(error)}`);
+	}
+}
+
+function projectErrorText(el: HTMLElement): string | undefined {
+	return alertText(el);
 }

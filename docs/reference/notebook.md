@@ -1,9 +1,25 @@
 ---
 title: Notebook
-description: obs.Notebook constructor and methods.
+description: Notebook construction, public members, return values, errors, and browser lifecycle.
 ---
 
 # `Notebook`
+
+`Notebook` represents an Observable Notebook Kit document and displays as an
+anywidget in supported notebook frontends. It owns authored or source HTML, file
+attachments, Python variables, child cells, and browser-synchronized readback.
+
+```python
+import observablejs as obs
+
+notebook = obs.Notebook(
+    obs.md("# Summary"),
+    obs.ojs("answer = 40 + 2", key="answer"),
+    obs.ojs("md`Answer: **${answer}**`"),
+)
+```
+
+## `Notebook(*cells, ...)`
 
 ```python
 obs.Notebook(
@@ -17,88 +33,268 @@ obs.Notebook(
 )
 ```
 
-Creates an anywidget model for an Observable Notebook Kit notebook.
+Creates a Python-authored notebook and prepares its widget state. Display the
+returned widget in Jupyter or marimo to start the browser runtime, render the
+notebook, and synchronize values.
+
+| Argument             | Default      | Contract                                                                                                |
+| -------------------- | ------------ | ------------------------------------------------------------------------------------------------------- |
+| `*cells`             | Empty        | `Cell` objects from `ojs`, `js`, `md`, `html`, or direct `Cell` construction.                           |
+| `title`              | `"Untitled"` | Notebook Kit document title used by `spec` and generated HTML.                                          |
+| `theme`              | `"air"`      | Theme name or `{"light": name, "dark": name}` mapping. Names are normalized to lowercase.               |
+| `files`              | `None`       | Named local paths, URLs, or attachment records for `FileAttachment`.                                    |
+| `base_path`          | `None`       | Base directory for relative local paths in `files`. The current working directory is used when omitted. |
+| `variables`          | `None`       | Mapping of Python-owned Observable variable names to serializable values.                               |
+| `show_pinned_source` | `False`      | Sends `show_source=True` to the renderer so pinned cells appear in the source panel.                    |
+
+Construction returns a `Notebook` instance. See [Cells](cells.md),
+[variables](variables.md), [file attachments](file-attachments.md), and
+[notebook themes](notebook-themes.md) for the nested input contracts.
+
+### Construction errors
+
+- `TypeError` reports a non-`Cell` positional input, a non-mapping `variables`
+  value, an unsupported variable value, or an invalid theme value type.
+- `ValueError` reports an unknown cell mode, duplicate nonempty cell keys, an
+  invalid or reserved variable name, an unknown theme, or a malformed theme
+  mapping.
+- `FileNotFoundError` reports a missing explicit local attachment.
+- Other `OSError` subclasses report local attachment read or metadata failures.
+
+## Construction-time state
+
+These members are available immediately after construction.
+
+### `Notebook.source`
 
 ```python
-import observablejs as obs
-
-notebook = obs.Notebook(
-    obs.md("# Summary"),
-    obs.ojs("answer = 40 + 2", key="answer"),
-    obs.ojs("md`Answer: **${answer}**`"),
-)
+source: str = notebook.source
 ```
 
-## Arguments
+Returns Notebook Kit HTML owned by a source-backed notebook. Python-authored
+notebooks return `""`. `from_html` returns its prepared source, including local
+JavaScript import rewrites when requested. ObservableHQ constructors return the
+Notebook Kit HTML generated from imported nodes.
 
-`*cells` accepts `Cell` objects created by `obs.ojs`, `obs.js`, `obs.md`, and
-`obs.html`.
-
-`title` becomes the Notebook Kit document title for Python-authored notebooks.
-
-`theme` accepts a theme name or `{"light": name, "dark": name}`.
-
-`files` registers Python file inputs. Local paths are resolved against
-`base_path` when provided. Observable code reads them with `FileAttachment`.
-
-`variables` sets Python-owned Observable variables.
-
-`show_pinned_source=True` renders pinned source cells in the Notebook Kit source
-panel.
-
-## Variable methods
+### `Notebook.spec`
 
 ```python
-notebook.variables
-notebook.update_variables({"minimum": 5})
-notebook.update_variables(minimum=5)
-notebook.replace_variables({"rows": rows})
-notebook.reset_variables("minimum")
+spec: dict[str, object] = notebook.spec
 ```
 
-`variables` returns a copy of the Python-owned environment.
+Returns a shallow copy of the Notebook Kit spec for a Python-authored notebook.
+The dictionary contains `title`, `theme`, and `cells`. Source-backed notebooks
+return an empty dictionary because their `source` is the rendering input.
 
-`update_variables` merges updates into that environment and patches the live
-runtime when the widget is displayed.
-
-`replace_variables` replaces the whole environment. Names omitted from the
-replacement are released.
-
-`reset_variables` releases named variables if Python currently owns them.
-
-## Cells and values
+### `Notebook.attachments`
 
 ```python
-notebook.cells
-notebook.cell_at(0)
-notebook.cell_by_key("answer")
-notebook.cell_for_variable("answer")
-notebook.runtime_values
-notebook.cell_values()
-notebook.value("answer")
-notebook.graph
+attachments: dict[str, dict[str, object]] = notebook.attachments
 ```
 
-Values and graph metadata are browser-synchronized. `notebook.graph` is
-available after graph metadata syncs from either a full notebook display or a
-direct `NotebookCell` display. `notebook.runtime_values`,
-`notebook.cell_values()`, and `notebook.value(name)` require a full notebook
-render. These readback APIs raise `NotRenderedError` before their lifecycle
-state is available.
+Returns a shallow copy of the named `FileAttachment` records. Local files appear
+as data URLs. URL-backed records retain their URL and optional metadata. See
+[File attachments](file-attachments.md) for path resolution and serialized HTML
+boundaries.
 
-## Source output
+### `Notebook.base_url`
 
 ```python
-html = notebook.to_notebook_html()
+base_url: str = notebook.base_url
 ```
 
-For Python-authored notebooks, this returns serialized Notebook Kit HTML. For
-source-backed notebooks, it returns the original source after explicit file or
-import rewrites.
+Returns the base URL for attachment names absent from `attachments`.
+Constructors use `""`, which selects the browser document base URI.
 
-## Errors
+### `Notebook.options`
 
-`Notebook` raises `ValueError` for unsupported modes, invalid variable names,
-reserved runtime names, duplicate cell keys, and unsupported themes. It raises
-`TypeError` for unsupported cell or variable values. Local files can raise
-`FileNotFoundError` or `OSError`.
+```python
+options: dict[str, object] = notebook.options
+```
+
+Returns a shallow copy of renderer options. Every notebook includes
+`{"show_source": bool}`. ObservableHQ imports also include a
+`runtime_compatibility` mapping for classic Observable helpers.
+
+### `Notebook.theme`
+
+```python
+theme = notebook.theme
+notebook.theme = "slate"
+```
+
+Returns the normalized theme name or light and dark mapping. Assigning a valid
+theme on a Python-authored notebook updates the displayed notebook and
+`notebook.spec`. Source-backed notebooks take their theme from source HTML, and
+changing that theme raises `traitlets.TraitError`.
+
+### `Notebook.variables`
+
+```python
+variables: dict[str, object] = notebook.variables
+```
+
+Returns a shallow copy of the Python-owned variable environment. See
+[Variables](variables.md) for serialization and mutation contracts.
+
+### `Notebook.cells`
+
+```python
+cells: tuple[obs.NotebookCell, ...] = notebook.cells
+```
+
+Returns child `NotebookCell` widgets in notebook order. The tuple exists before
+browser render. Each child acquires values and graph metadata through the
+render lifecycle described in [Values and graph](values-and-graph.md).
+
+## Variable mutation
+
+### `Notebook.update_variables(values=None, /, **kwargs)`
+
+Merges a mapping or iterable of key-value pairs into the Python-owned
+environment and returns `None`. A displayed notebook receives a live `set`
+update. Keyword arguments win over matching entries in `values`. Empty updates
+are no-ops.
+
+### `Notebook.replace_variables(values=None, /, **kwargs)`
+
+Replaces the Python-owned environment and returns `None`. Omitted names are
+released. A displayed notebook rebuilds the runtime so notebook definitions
+resume ownership of released names.
+
+### `Notebook.reset_variables(*names)`
+
+Releases listed names that Python currently owns and returns `None`. Empty calls
+and unknown names are no-ops. Releasing at least one name follows the
+replacement lifecycle.
+
+`update_variables` and `replace_variables` apply the name and value errors
+documented on the [Variables](variables.md) page.
+
+## Cell lookup
+
+### `Notebook.cell_at(index)`
+
+```python
+cell = notebook.cell_at(0)
+```
+
+Returns `notebook.cells[index]` with normal Python tuple indexing. Nonnegative
+indices count from the start, negative indices count from the end, and an
+out-of-range index raises `IndexError`.
+
+### `Notebook.cell_by_key(key)`
+
+```python
+cell = notebook.cell_by_key("answer")
+```
+
+Returns the unique child whose Python key equals `key`. It is available before
+render. Missing and ambiguous keys raise `KeyError`.
+
+### `Notebook.cell_for_variable(name)`
+
+```python
+cell = notebook.cell_for_variable("answer")
+```
+
+Returns the unique child whose synchronized graph record defines `name`. It
+requires a graph snapshot and raises `NotRenderedError` before one arrives.
+Unknown and ambiguous definitions raise `KeyError`.
+
+## Browser lifecycle
+
+`has_rendered` tracks a full notebook render. `has_graph_snapshot` tracks graph
+metadata produced by either a notebook render or a direct child-cell render.
+
+| State                        | `has_rendered`    | `has_graph_snapshot` | Available readback                                         |
+| ---------------------------- | ----------------- | -------------------- | ---------------------------------------------------------- |
+| Constructed, never displayed | `False`           | `False`              | Construction-time state and cell lookup by position or key |
+| One `NotebookCell` displayed | `False`           | `True` after sync    | That cell's values and notebook graph metadata             |
+| Full `Notebook` displayed    | `True` after sync | `True` after sync    | Notebook values, all cell values, and graph metadata       |
+
+### `Notebook.has_rendered`
+
+```python
+ready: bool = notebook.has_rendered
+```
+
+Returns whether the browser has synchronized a full notebook render. Directly
+displaying a child `NotebookCell` leaves this value false.
+
+### `Notebook.has_graph_snapshot`
+
+```python
+ready: bool = notebook.has_graph_snapshot
+```
+
+Returns whether the synchronized graph trait contains `cells` and `edges`
+lists. A direct child-cell render can make this true before the full notebook
+renders.
+
+### `Notebook.graph`
+
+```python
+graph: obs.NotebookGraph = notebook.graph
+```
+
+Returns the decoded immutable graph snapshot. It raises `NotRenderedError`
+before graph synchronization. See [Values and graph](values-and-graph.md) for
+`NotebookGraph`, `CellInfo`, and `DependencyEdge`.
+
+### `Notebook.runtime_values`
+
+```python
+values: dict[str, object] = notebook.runtime_values
+```
+
+Returns a new dictionary of decoded notebook-level browser values. It requires
+a full notebook render and raises `NotRenderedError` beforehand.
+
+### `Notebook.cell_values()`
+
+```python
+values: tuple[obs.CellValues, ...] = notebook.cell_values()
+```
+
+Returns one `CellValues` record per child in notebook order. It requires a full
+notebook render and raises `NotRenderedError` beforehand.
+
+### `Notebook.value(name)`
+
+```python
+answer = notebook.value("answer")
+```
+
+Returns `notebook.runtime_values[name]`. It raises `NotRenderedError` before a
+full notebook render and `KeyError` when the rendered value mapping has no
+matching name.
+
+## `Notebook.to_notebook_html()`
+
+```python
+html: str = notebook.to_notebook_html()
+```
+
+Returns Notebook Kit HTML. Python-authored notebooks serialize the current
+`spec`. Source-backed notebooks return `source`, including explicit source
+rewrites. File attachment records and Python variables remain widget state, as
+described by [File attachments](file-attachments.md) and
+[Variables](variables.md).
+
+## Alternative constructors
+
+`Notebook` also provides these class methods:
+
+```python
+Notebook.from_html(source, *, files=None, base_path=None, embed_file_attachments=False, rewrite_imports=False, variables=None, show_pinned_source=False)
+Notebook.from_html_file(path, *, files=None, embed_file_attachments=False, rewrite_imports=False, variables=None, show_pinned_source=False)
+Notebook.from_observablehq(specifier, *, variables=None, files=None, show_pinned_source=False, timeout=30)
+Notebook.from_observablehq_document(document, *, title=None, variables=None, files=None, show_pinned_source=False)
+Notebook.from_observablehq_page_data(page_data, *, title=None, variables=None, files=None, show_pinned_source=False)
+Notebook.from_observablehq_nodes(nodes, *, observable_files=None, title="Untitled", variables=None, files=None, show_pinned_source=False)
+```
+
+Each method returns a source-backed `Notebook`. See
+[Source notebooks](source-notebooks.md) for accepted source shapes, defaults,
+network failures, file precedence, and import compatibility.

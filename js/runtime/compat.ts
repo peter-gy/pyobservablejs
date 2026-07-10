@@ -1,5 +1,5 @@
 import { library } from "@observablehq/notebook-kit/runtime";
-import { unprefix, type RuntimeCellDefinition } from "./graph";
+import { unprefix, type RuntimeCellDefinition } from "./definition";
 
 type HtmlTemplateTag = (strings: TemplateStringsArray, ...values: unknown[]) => unknown;
 type LegacyRequire = {
@@ -367,11 +367,22 @@ function syncIterableAsyncGenerator<T>(value: T): T {
 		has(target, property) {
 			return property === Symbol.iterator || property in Object(target);
 		},
-		get(target, property, receiver) {
+		get(target, property) {
 			if (property === Symbol.iterator) return () => syncIteratorFromAsyncGenerator(target);
-			return Reflect.get(target, property, receiver);
+			const resolved = Reflect.get(target, property, target);
+			return isGeneratorMethod(property) && typeof resolved === "function" ? resolved.bind(target) : resolved;
 		},
 	});
+}
+
+function isGeneratorMethod(property: PropertyKey): boolean {
+	return (
+		property === "next" ||
+		property === "return" ||
+		property === "throw" ||
+		property === Symbol.asyncIterator ||
+		property === Symbol.asyncDispose
+	);
 }
 
 function syncIteratorFromAsyncGenerator<T>(generator: AsyncGenerator<T>): Iterator<Promise<T | undefined>> {
@@ -383,8 +394,10 @@ function syncIteratorFromAsyncGenerator<T>(generator: AsyncGenerator<T>): Iterat
 			};
 		},
 		return() {
-			void generator.return(undefined);
-			return { done: true, value: undefined };
+			return {
+				done: true,
+				value: generator.return(undefined).then((result) => result.value),
+			};
 		},
 	};
 }

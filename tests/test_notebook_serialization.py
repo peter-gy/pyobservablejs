@@ -75,10 +75,7 @@ def test_observable_document_js_nodes_become_ojs_cells(
     observablehq_response: ObservableHQResponseInstaller,
     script_tags: ScriptTags,
 ) -> None:
-    markdown_source = (
-        "md`** 1. Import the library**\n\n"
-        "Version 119.1 was the latest when this notebook was written.`"
-    )
+    markdown_source = "md`Imported notebook source`"
     notebook = _notebook_from_observable_document(
         observablehq_response,
         {
@@ -174,18 +171,18 @@ def test_notebook_serializes_source_cells(
     assert scripts[2]["text"].strip() == "<p>Done</p>"
 
 
-def test_source_backed_notebooks_preserve_ojs_markdown_source(
+def test_source_backed_notebooks_preserve_ojs_source(
     script_tags: ScriptTags,
 ) -> None:
     source = """<notebook>
-  <script id="1" type="application/vnd.observable.javascript">md`** Heading**`</script>
+  <script id="1" type="application/vnd.observable.javascript">md`Source text`</script>
 </notebook>
 """
 
     from_html = obs.Notebook.from_html(source)
-    authored = obs.Notebook(obs.ojs("md`** Heading**`"))
+    authored = obs.Notebook(obs.ojs("md`Source text`"))
 
     for notebook in (from_html, authored):
         [script] = script_tags(notebook.to_notebook_html())
         assert script["attrs"]["type"] == "application/vnd.observable.javascript"
-        assert script["text"].strip() == "md`** Heading**`"
+        assert script["text"].strip() == "md`Source text`"

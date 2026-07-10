@@ -1,13 +1,13 @@
 ---
-title: Cell values
+title: Values back to Python
 description: Read browser-synchronized values and graph metadata from Python.
 ---
 
-# Cell values
+# Values back to Python
 
-`NotebookCell` objects expose values and graph metadata synchronized from the
-browser. Display the parent `Notebook` for full notebook values, or display a
-single `NotebookCell` for that cell output.
+`NotebookCell` values and graph metadata synchronize after the browser renders
+the widget. Try moving `gain`. The readout updates in the browser. A later
+Python cell can then read the synchronized `doubled` value.
 
 ```{marimo-config}
 :pyproject:
@@ -25,59 +25,49 @@ import marimo as mo
 import observablejs as obs
 
 notebook = obs.Notebook(
-    obs.ojs(
-        'viewof gain = Inputs.range([0, 12], {value: 5, step: 1, label: "gain"})',
+    obs.js(
+        'const gain = view(Inputs.range([0, 12], {value: 5, step: 1, label: "Gain"}));',
         key="gain_control",
     ),
-    obs.ojs("double = gain * 2", key="double_cell"),
-    obs.ojs('md`gain is **${gain}** and double is **${double}**`', key="readout"),
+    obs.js("const doubled = gain * 2;", key="doubled", display=False),
+    obs.js(
+        'html`<p>Gain is <strong>${gain}</strong>. Doubled is <strong>${doubled}</strong>.</p>`',
+        key="readout",
+    ),
 )
 
-view = mo.ui.anywidget(notebook)
-view
+widget = mo.ui.anywidget(notebook)
+widget
 ```
 
-Move `gain` from 5 to 8. The readout changes to `gain is 8 and double is 16`.
-After the full notebook renders, `notebook.value("double")` returns the
-synchronized browser value.
-
-After the widget has rendered, the Python object can read synchronized values.
+After render, read values through the notebook or the cell that owns them.
 
 ```python
 gain_cell = notebook.cell_by_key("gain_control")
 gain_value = gain_cell.value("gain")
-double_value = notebook.value("double")
+doubled_value = notebook.value("doubled")
 runtime_values = notebook.runtime_values
 cell_values = notebook.cell_values()
 ```
 
-The graph is also browser-produced. `notebook.graph` raises `NotRenderedError`
-before graph metadata syncs.
+## Inspect the graph
+
+The browser also reports cell definitions and references.
 
 ```python
 if notebook.has_graph_snapshot:
     graph = notebook.graph
-    double_cell = notebook.cell_for_variable("double")
-    defined_names = double_cell.defines
-    referenced_names = double_cell.references
+    doubled_cell = notebook.cell_for_variable("doubled")
+    defined_names = doubled_cell.defines
+    referenced_names = doubled_cell.references
 ```
 
-## Reading rules
+`notebook.graph` raises `NotRenderedError` before graph metadata arrives.
+`cell_for_variable(name)` raises `KeyError` when the graph has no unique owner
+for `name`.
 
-`notebook.cell_at(index)` returns a cell by order. `notebook.cell_by_key(key)`
-returns a cell by the Python helper `key`.
+Displaying one `NotebookCell` synchronizes that cell and the parent graph.
+Display the parent `Notebook` when Python needs values from the full document.
 
-`notebook.cell_for_variable(name)` uses graph metadata to find the cell that
-defines an Observable variable. It raises `NotRenderedError` before graph sync
-and `KeyError` when no cell defines the variable or when more than one cell
-defines it.
-
-`NotebookCell.value(name)` reads a named synchronized value from one cell.
-`NotebookCell.only_value()` is available when the cell exposes exactly one
-value.
-
-`notebook.runtime_values` contains notebook-level values synchronized by a full
-notebook render. `notebook.cell_values()` returns values grouped by cell helper
-name after the full notebook renders. Displaying one `NotebookCell` can sync that
-cell's `values` and the parent graph without making full notebook values
-available.
+See [Values and graph](../reference/values-and-graph.md) for the complete
+lifecycle and lookup contracts.

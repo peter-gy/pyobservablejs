@@ -1,51 +1,28 @@
-import type { RenderProps } from "@anywidget/types";
+import type { Experimental, Host, InitializeProps, RenderProps } from "@anywidget/types";
 import type { NotebookGraph } from "@/runtime/graph";
-import { SELECTORS } from "@/widget/dom";
-import type { WidgetModel } from "@/widget/state";
+import type { WidgetModel } from "@/widget/model";
 
 export type Model = RenderProps<WidgetModel>["model"];
 export type TestModel = Model & {
 	savedTraits: Set<string>;
+	listenerCount(name: string): number;
 };
-export type TestWidgetManager = {
-	get_model(modelId: string): Promise<Model | undefined> | Model | undefined;
+const experimental: Experimental = {
+	async invoke<T>(): Promise<[T, DataView[]]> {
+		return [undefined as T, []];
+	},
 };
 
-export const objectValuedSelectSource = `
-Select = (items, options = {}) => {
-  const form = document.createElement("form");
-  const select = document.createElement("select");
-  let selected = options.value ?? items[0];
-  for (const [index, item] of items.entries()) {
-    const option = document.createElement("option");
-    option.value = String(index);
-    option.textContent = String(item.pointDensity);
-    select.appendChild(option);
-  }
-  select.value = String(items.indexOf(selected));
-  const update = () => {
-    selected = items[select.selectedIndex] ?? null;
-  };
-  select.addEventListener("input", update);
-  select.addEventListener("change", update);
-  Object.defineProperty(form, "value", {
-    get() { return selected; },
-    set(value) {
-      selected = items.includes(value) ? value : null;
-      select.selectedIndex = items.indexOf(value);
-    },
-  });
-  form.appendChild(select);
-  return form;
-}`;
-
-export function createModel(initial: Partial<WidgetModel>, widgetManager?: TestWidgetManager): TestModel {
+export function createModel(initial: Partial<WidgetModel>): TestModel {
 	const state = new Map<string, unknown>(Object.entries(initial));
 	const dirtyTraits = new Set<string>();
 	const savedTraits = new Set<string>();
 	const listeners = new Map<string, Set<() => void>>();
 	return {
 		savedTraits,
+		listenerCount(name: string) {
+			return listeners.get(name)?.size ?? 0;
+		},
 		get(name: string) {
 			return state.get(name);
 		},
@@ -74,21 +51,37 @@ export function createModel(initial: Partial<WidgetModel>, widgetManager?: TestW
 			}
 			listeners.get(name)?.delete(callback);
 		},
-		...(widgetManager ? { widget_manager: widgetManager } : {}),
 	} as unknown as TestModel;
 }
 
-export function hasSavedTrait(model: Model, name: string): boolean {
-	return (model as TestModel).savedTraits.has(name);
+export function createHost(childModels: ReadonlyMap<string, Model | Promise<Model>>): RenderProps<WidgetModel>["host"] {
+	const host: Host = {
+		getModel: async (ref: string) => {
+			const model = childModels.get(ref);
+			if (!model) throw new Error(`Unknown widget model ${ref}`);
+			return (await model) as never;
+		},
+		getWidget: async () => {
+			throw new Error("Test host does not render child widgets");
+		},
+	};
+	return host;
 }
 
-export function createHost(childModels: Map<string, Model>): RenderProps<WidgetModel>["host"] {
-	return {
-		getModel: async (ref: string) => childModels.get(ref),
-		getWidget: async () => {
-			throw new Error("Test host resolves child models only");
-		},
-	} as unknown as RenderProps<WidgetModel>["host"];
+export function renderProps<State extends Record<string, unknown>>(
+	model: RenderProps<State>["model"],
+	el: HTMLElement,
+	signal: AbortSignal,
+	host: Host = createHost(new Map()),
+): RenderProps<State> {
+	return { model, el, signal, host, experimental };
+}
+
+export function initializeProps<State extends Record<string, unknown>>(
+	model: InitializeProps<State>["model"],
+	signal: AbortSignal,
+): InitializeProps<State> {
+	return { model, signal, experimental };
 }
 
 export function variableValue(model: Model, name: string): unknown | undefined {
@@ -127,39 +120,23 @@ export async function waitFor<T>(read: () => T | undefined, timeoutMs = 1000): P
 	});
 }
 
-export async function waitStep<T>(label: string, read: () => T | undefined, timeoutMs?: number): Promise<T> {
-	try {
-		return await waitFor(read, timeoutMs);
-	} catch (error) {
-		throw new Error(`${label}: ${error instanceof Error ? error.message : String(error)}`);
-	}
-}
-
 export function composedText(el: HTMLElement, value: string): HTMLElement | undefined {
-	const cells = Array.from(el.querySelectorAll<HTMLElement>(SELECTORS.composedCell));
-	if (cells.length === 0) return undefined;
-	const matches = cells.filter((cell) => (cell.textContent?.trim() ?? "") === value);
-	if (matches.length === 0) return undefined;
-	if (matches.length > 1) throw new Error(`Expected one composed cell with ${value}, found ${matches.length}`);
-	return matches[0]!;
-}
-
-export function composedInspectorText(el: HTMLElement, value: string): HTMLElement | undefined {
-	const cells = Array.from(el.querySelectorAll<HTMLElement>(SELECTORS.composedCell));
-	if (cells.length === 0) return undefined;
-	const matches = cells.filter((cell) => {
-		const text = cell.textContent?.trim() ?? "";
-		return text === value || text === `"${value}"`;
+	const matches = Array.from(el.querySelectorAll<HTMLElement>("*")).filter((item) => {
+		if (isHidden(item) || item.getAttribute("role") === "alert" || item.textContent?.trim() !== value) return false;
+		return !Array.from(item.children).some((child) => child.textContent?.trim() === value);
 	});
 	if (matches.length === 0) return undefined;
-	if (matches.length > 1) throw new Error(`Expected one composed cell with ${value}, found ${matches.length}`);
+	if (matches.length > 1) throw new Error(`Expected one visible output with ${value}, found ${matches.length}`);
 	return matches[0]!;
 }
 
-export function projectErrorText(el: HTMLElement): string | undefined {
-	const errors = Array.from(el.querySelectorAll<HTMLElement>(SELECTORS.error));
-	if (errors.length === 0) return undefined;
-	if (errors.length > 1) throw new Error(`Expected one error output, found ${errors.length}`);
-	const text = errors[0]?.textContent?.trim() ?? "";
-	return text || undefined;
+export function alertText(el: HTMLElement): string | undefined {
+	const alerts = Array.from(el.querySelectorAll<HTMLElement>("[role='alert']")).filter((alert) => !isHidden(alert));
+	if (alerts.length === 0) return undefined;
+	if (alerts.length > 1) throw new Error(`Expected one alert, found ${alerts.length}`);
+	return alerts[0]?.textContent?.trim() || undefined;
+}
+
+function isHidden(item: HTMLElement): boolean {
+	return item.closest("[hidden], [aria-hidden='true']") !== null;
 }

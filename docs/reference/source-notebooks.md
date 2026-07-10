@@ -25,22 +25,39 @@ obs.Notebook.from_html(
 Creates a notebook from a Notebook Kit HTML string.
 
 ```python
-notebook = obs.Notebook.from_html(source, base_path="notebooks/report")
+import observablejs as obs
+
+source = """<!doctype html>
+<notebook theme="air">
+  <script id="1" type="application/vnd.observable.javascript">
+    answer = 40 + 2
+  </script>
+</notebook>
+"""
+
+notebook = obs.Notebook.from_html(source)
 ```
 
-`source` must be a string. `base_path` resolves local files and relative
-imports. `files` registers explicit Python file inputs and local paths are
-normalized against `base_path`.
+`source` must be a string. `base_path` resolves local files and supplies the
+base used when `rewrite_imports=True`. `files` registers explicit Python file
+inputs and local paths are normalized against `base_path`.
 
-`embed_file_attachments=True` embeds local `FileAttachment` references.
-`rewrite_imports=True` rewrites relative JavaScript imports to data URLs. Either
-option requires `base_path`.
+`embed_file_attachments=True` registers existing local `FileAttachment`
+references as data URLs.
+`rewrite_imports=True` embeds existing local modules referenced by quoted
+relative specifiers in static imports, `export ... from` declarations, and
+dynamic `import(...)` calls. Computed specifiers and paths that do not resolve
+to files stay unchanged. Either option requires `base_path`.
 
 Explicit `files` override discovered files with the same name.
+See [File attachments](file-attachments.md) for accepted `files` values,
+construction-time data URLs, and discovery boundaries.
 
-`source` values that are not strings raise `TypeError`. Unsupported Notebook Kit
-theme attributes raise `ValueError`. Local attachments can raise
-`FileNotFoundError` or `OSError` when files are missing or unreadable.
+A non-string `source` raises `TypeError`. Unsupported Notebook Kit theme
+attributes raise `ValueError`. Explicit local files can raise
+`FileNotFoundError` or `OSError` when files are missing or unreadable. Import
+rewriting raises `ValueError` for a circular local graph. Reading an imported
+module can raise an `OSError` or `UnicodeError` subclass.
 
 ## `Notebook.from_html_file`
 
@@ -56,12 +73,17 @@ obs.Notebook.from_html_file(
 )
 ```
 
-Creates a notebook from a Notebook Kit HTML file. The file parent is used as the
-base path when embedding files or rewriting imports is enabled.
+Creates a notebook from a Notebook Kit HTML file. The file parent resolves
+relative explicit files, discovered attachments, and rewritten imports.
 
 ```python
+import observablejs as obs
+
 notebook = obs.Notebook.from_html_file("notebooks/report.html")
 ```
+
+The file is read as UTF-8. Missing files raise `FileNotFoundError`. Read and
+decode failures raise the corresponding `OSError` or `UnicodeError` subclass.
 
 ## `Notebook.from_observablehq`
 
@@ -79,6 +101,8 @@ obs.Notebook.from_observablehq(
 Fetches a public ObservableHQ notebook through the document API.
 
 ```python
+import observablejs as obs
+
 notebook = obs.Notebook.from_observablehq("@d3/bar-chart", timeout=10)
 ```
 
@@ -105,12 +129,20 @@ obs.Notebook.from_observablehq_document(
 Creates a notebook from an already-fetched ObservableHQ document API mapping.
 
 ```python
-document = json.loads(path.read_text())
+import observablejs as obs
+
+document = {
+    "title": "Report",
+    "nodes": [
+        {"id": 1, "mode": "js", "name": "answer", "value": "answer = 42"}
+    ],
+}
 notebook = obs.Notebook.from_observablehq_document(document)
 ```
 
 Document `files` become URL-backed file records. Explicit `files` override
-uploaded files with the same name.
+uploaded files with the same name. `title=None` uses the document title, then
+falls back to `"Untitled"`.
 
 ## `Notebook.from_observablehq_page_data`
 
@@ -128,7 +160,18 @@ obs.Notebook.from_observablehq_page_data(
 Creates a notebook from Observable page data with `initialNotebook`.
 
 ```python
-page_data = json.loads(path.read_text())
+import observablejs as obs
+
+page_data = {
+    "pageProps": {
+        "initialNotebook": {
+            "title": "Report",
+            "nodes": [
+                {"id": 1, "mode": "js", "value": "answer = 42"}
+            ],
+        }
+    }
+}
 notebook = obs.Notebook.from_observablehq_page_data(page_data)
 ```
 
@@ -152,9 +195,13 @@ obs.Notebook.from_observablehq_nodes(
 Creates a notebook from ObservableHQ node records and optional file records.
 
 ```python
+import observablejs as obs
+
+nodes = [
+    {"id": 1, "mode": "js", "name": "answer", "value": "answer = 42"}
+]
 notebook = obs.Notebook.from_observablehq_nodes(
     nodes,
-    observable_files=files,
     title="Imported notebook",
 )
 ```
@@ -163,5 +210,21 @@ ObservableHQ `js` nodes are imported with Observable JavaScript semantics.
 Remote uploaded files become URL-backed file records. Explicit `files` override
 uploaded files with the same name.
 
+The resulting records follow the contract described in
+[File attachments](file-attachments.md).
+
 Unsupported document, page-data, or node shapes raise `TypeError` or
 `ValueError`.
+
+## Imported runtime compatibility
+
+ObservableHQ documents can depend on helpers from the classic Observable
+runtime. Imported cells receive these compatibility behaviors:
+
+| Behavior                                     | Contract                                                                                                                                                 |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `require`                                    | Resolves npm package specifiers through jsDelivr, supports `require.resolve`, `require.alias`, preloaded aliases, multiple loads, and default promotion. |
+| `Mutable`                                    | Keeps Notebook Kit's async mutable generator with a `.value` setter and adds a `generator` alias for older code.                                         |
+| `Generators.observe`, `.queue`, and `.input` | Keep Notebook Kit's async generator shape and expose a sync iterator for older consumers.                                                                |
+| `html`                                       | Accepts simple form and text markup in legacy string interpolations. Event handlers, URL attributes, inline styles, and other tags stay as text.         |
+| notebook-defined `display` and `view`        | Lets cells call variables named `display` or `view` when the notebook defines those variables.                                                           |

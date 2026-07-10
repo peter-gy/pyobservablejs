@@ -1,9 +1,19 @@
----
-title: Development
-description: Local setup, docs, and checks for pyobservablejs contributors.
----
-
 # Development
+
+## Repository map
+
+- `src/observablejs/` owns the Python models, serialization, and traitlets.
+- `js/runtime/` owns Notebook Kit analysis and execution.
+- `js/widget/` adapts the runtime to anywidget rendering and synchronization.
+- `js/anywidget-bundle/` and `src/observablejs/_anywidget_bundle/` own the
+  cross-language build and module-transport boundary.
+- `docs/` contains the published Jupyter Book source and live marimo pages.
+- `development_docs/` contains contributor documentation that stays outside the
+  published site.
+- `scripts/docs.py` builds the wheel and static documentation artifact.
+
+Read [Architecture](architecture.md) before changing runtime ownership. See
+[Documentation build](docs-build.md) for the wheel-backed docs workflow.
 
 ## Setup
 
@@ -49,26 +59,16 @@ uv run python scripts/docs.py serve
 ```
 
 Rendered docs pages use a fresh wheel from `dist/docs/`. The build copies that
-wheel into `docs/_build/site/public/pkg/py/pyobservablejs/<sha256>/` and rewrites
-generated metadata to the static path.
+wheel into `docs/_build/html/public/wheels/<sha256>/` and writes a base-aware,
+same-origin path into the browser notebook metadata. Set
+`BASE_URL=/pyobservablejs` for a site published below that path.
 
 ## Checks
 
 Run the full local gate before sending changes for review:
 
 ```sh
-pnpm format:check
-pnpm lint
-pnpm konsistent
-pnpm typecheck
-pnpm test:js
-uv run ruff format --check .
-uv run ruff check
-uv run ty check
-uv run pytest -q
-pnpm build
-uv run python scripts/docs.py build
-git diff --check
+make check
 ```
 
 ## Browser checks
@@ -77,8 +77,15 @@ For widget frontend, notebook rendering, Observable runtime, Jupyter or marimo
 integration, docs site rendering, or user-visible UI changes, run the local
 frontends and verify them with `agent-browser`.
 
+Start JupyterLab in one shell:
+
 ```sh
 uv run jupyter lab --no-browser --port 27273 --ServerApp.token='' --ServerApp.password=''
+```
+
+Start the documentation server in another shell:
+
+```sh
 uv run python scripts/docs.py serve
 ```
 
@@ -91,5 +98,5 @@ Verify:
   changes without remounting the widget output.
 
 Use `agent-browser console`, `agent-browser errors`, DOM or shadow-DOM
-inspection, and screenshots where they expose the failure. Stop local servers and
-browser sessions before handoff.
+inspection, and screenshots where they expose the failure. Stop local servers
+and browser sessions before handoff.
