@@ -1,7 +1,0 @@
-{
-	"$schema": "./node_modules/oxfmt/configuration_schema.json",
-	"ignorePatterns": ["node_modules/**", "src/observablejs/static/**"],
-	"printWidth": 120,
-	"semi": true,
-	"useTabs": true,
-}

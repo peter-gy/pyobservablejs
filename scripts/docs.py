@@ -122,9 +122,20 @@ def build_docs(*, base_url: str | None = None) -> Path:
 
 
 def build_wheel() -> Path:
+    run(["pnpm", "--filter", "@pyobservablejs/python", "build"])
     remove_tree(DOCS_WHEEL_DIR)
     DOCS_WHEEL_DIR.mkdir(parents=True, exist_ok=True)
-    run(["uv", "build", "--wheel", "--out-dir", str(DOCS_WHEEL_DIR)])
+    run(
+        [
+            "uv",
+            "build",
+            "--package",
+            "pyobservablejs",
+            "--wheel",
+            "--out-dir",
+            str(DOCS_WHEEL_DIR),
+        ]
+    )
     return single_wheel(DOCS_WHEEL_DIR)
 
 
@@ -370,7 +381,7 @@ def check_docs_plugin() -> None:
     if shutil.which("jupyter-book-marimo") is None:
         raise SystemExit(
             "Jupyter Book marimo plugin is missing. "
-            "Run `uv sync --group dev` before building docs."
+            "Run `uv sync --package pyobservablejs --group dev` before building docs."
         )
 
 

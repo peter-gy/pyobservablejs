@@ -3,46 +3,65 @@
 `pyobservablejs` is a browser-first Python interface to Observable Notebook Kit.
 Python owns notebook models, serialization, attachments, and synchronized state.
 The TypeScript frontend owns Notebook Kit evaluation and rendering. Preserve
-that split. Favor lifecycle correctness, portable artifacts, and stable user
-contracts over shortcuts at either runtime boundary.
+that split.
 
-The distribution is named `pyobservablejs`. Python imports it as `observablejs`.
+The PyPI distribution is named `pyobservablejs`. Python imports it as
+`observablejs`.
 
-## Architecture boundaries
+## Workspace boundaries
 
-- `src/observablejs/` owns the public Python API, traitlets, serialization, and
-  browser readback.
-- `js/runtime/` owns Notebook Kit analysis and execution. Keep it independent of
-  anywidget model details.
-- `js/widget/` adapts the runtime to anywidget model resolution, rendering,
-  variable synchronization, and teardown.
-- `js/anywidget-bundle/` and `src/observablejs/_anywidget_bundle/` form the
-  private build and module-transport boundary. Keep manifest rules, path
-  validation, protocol envelopes, and lifecycle behavior aligned across both
-  languages.
-- `docs/` contains the published Jupyter Book. `scripts/docs.py` builds a fresh
-  wheel, executes interactive pages, and publishes that wheel with the static
-  site.
-- `development_docs/` contains plain Markdown for contributors and coding
-  agents. It is outside the published documentation build.
+- `packages/runtime/` owns Notebook Kit analysis and execution. It has no
+  anywidget model or packaging concerns.
+- `packages/widget/` adapts the runtime to anywidget rendering, model
+  resolution, variable synchronization, and teardown. It depends on
+  `@pyobservablejs/runtime` through `workspace:*`.
+- `packages/anywidget-bundle/` owns the app-agnostic Vite plugin, browser module
+  transport, manifest, and lifecycle protocol. It does not import the runtime
+  or widget packages.
+- `packages/pyobservablejs/` owns the public Python API and composes the widget
+  with the bundle plugin into the static assets shipped in the wheel.
+- `docs/` contains the published Jupyter Book. `development_docs/` contains
+  contributor and agent material outside the published site.
+
+Use package names for cross-package imports. Do not import sibling source paths.
+The Python distribution depends on `widget` and `anywidget-bundle`. `widget`
+depends on `runtime`. `runtime` and `anywidget-bundle` remain independent.
 
 Python and the frontend communicate through traitlets and anywidget mechanisms.
-Do not use marimo internals as a transport or lifecycle escape hatch. Change
-TypeScript and Python contracts together when a trait, wire value, manifest, or
-message shape crosses the boundary.
+Change both sides when a trait, wire value, manifest, or message shape crosses
+the boundary. Do not use notebook-host internals as a transport or lifecycle
+escape hatch.
 
 Read [Architecture](development_docs/architecture.md) before changing runtime
-ownership. Use [Development](development_docs/development.md) for setup, focused
-workflows, and browser checks.
+ownership. Use [Development](development_docs/development.md) for setup,
+package commands, and browser checks. Use
+[Workspace](development_docs/workspace.md) for the package graph and artifact
+contracts.
 
-## Source and generated files
+## Tooling and generated files
 
-Use `pnpm` and `uv` for dependency and lockfile changes. Prefer package-provided
-types. Keep unavoidable local declarations under `js/types/`.
+The root `package.json` and `vite.config.ts` own JavaScript orchestration and
+shared Vite+ policy. Package manifests own dependencies, tests, and builds. Use
+`workspace:*` for internal dependencies and the pnpm catalog for shared external
+versions.
 
-`src/observablejs/static/`, `dist/`, `docs/_build/`, and
-`docs/.jupyter-book-marimo/` are generated. Change their sources and rebuild.
-Do not hand-edit or package local build churn.
+The root `pyproject.toml` is a virtual uv workspace. The publishable project and
+Hatch configuration live in `packages/pyobservablejs/pyproject.toml`. Scope uv
+commands with `--package pyobservablejs`.
+
+Prefer dependency-provided types. The parser package does not publish types, so
+its declaration stays with its consumer at
+`packages/runtime/src/types/observablehq-parser.d.ts`.
+
+These paths are generated:
+
+- `packages/*/dist/`
+- `packages/pyobservablejs/src/observablejs/static/`
+- `dist/`
+- `docs/_build/`
+- `docs/.jupyter-book-marimo/`
+
+Change source and rebuild. Do not hand-edit generated output.
 
 ## Mandatory handoff gate
 
@@ -52,28 +71,32 @@ Run the complete local gate before handing off a repository change:
 make check
 ```
 
-The `Makefile` target is the canonical full gate. Fix underlying failures. Do
-not suppress lint, type, or test errors. Inspect the final diff for unrelated
-edits, stale generated files, listener cleanup, cross-language drift, and
-accidental private-runtime coupling.
+Vite+ owns JavaScript formatting, linting, type checks, tests, and package
+builds. uv owns Python formatting, linting, type checks, tests, and packaging.
+Fix underlying failures. Do not suppress checks. Inspect the final diff for
+unrelated edits, stale generated files, listener cleanup, cross-language drift,
+and accidental package-boundary violations.
 
 ## Verification by boundary
 
 - Test Python behavior through the public `observablejs` API and serialized
   widget state.
-- Test TypeScript behavior through runtime, widget, Vite, or DOM contracts that
-  consumers depend on. Wait on observable state, not elapsed time.
-- Validate visual behavior, notebook rendering, frontend integration, and docs
-  pages with `$agent-browser`. Follow
-  [Browser checks](development_docs/development.md#browser-checks), then stop
-  every browser session and local server.
+- Test TypeScript behavior through runtime, widget, Vite, DOM, and generated
+  artifact contracts. Wait on observable state, not elapsed time.
 - Validate `scripts/docs.py` through a fresh wheel-backed build and a served
-  interactive page. For deployment-path changes, exercise both `/` and
-  `BASE_URL=/pyobservablejs` and confirm the wheel request stays on the served
-  origin.
+  interactive page. Do not add a unit test for the helper.
+- Validate frontend, notebook, and docs changes with `$agent-browser`. Exercise
+  JupyterLab, the marimo-backed docs pages, and Python variable synchronization.
+  Check console and page errors, then stop every browser session and local
+  server.
+- Build the wheel from the produced sdist when packaging changes. The sdist
+  carries browser assets and must build without the sibling TypeScript
+  workspaces.
 
-Published docs explain Notebook authoring, frontend use, runtime values, and
-source imports. Keep contributor workflows and implementation notes in
-`development_docs/`. Comments should explain lifecycle ordering, invariants,
-cross-runtime parity, generated-artifact constraints, or bailout reasons. Delete
-comments that restate the code.
+Published docs explain notebook authoring, frontend use, runtime values, and
+source imports. Keep package layout, release mechanics, generated artifacts,
+and contributor workflows in `development_docs/`.
+
+Comments should explain lifecycle ordering, invariants, cache behavior,
+cross-runtime parity, generated-artifact constraints, or bailout reasons.
+Delete comments that restate the code.

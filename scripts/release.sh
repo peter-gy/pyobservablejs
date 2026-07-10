@@ -40,12 +40,12 @@ require_command() {
 }
 
 current_version() {
-  uv version --short
+  uv version --package pyobservablejs --short
 }
 
 write_version() {
   local version="$1"
-  uv version --frozen "$version" >/dev/null
+  uv version --package pyobservablejs --frozen "$version" >/dev/null
 }
 
 bump_version() {
@@ -153,7 +153,8 @@ run_release_checks() {
 
 build_release_artifacts() {
   rm -rf dist
-  uv build
+  pnpm --filter @pyobservablejs/python build
+  uv build --package pyobservablejs --out-dir "$ROOT/dist"
   uvx twine check dist/pyobservablejs-*.whl dist/pyobservablejs-*.tar.gz
 }
 
@@ -163,7 +164,7 @@ restore_version_on_failure() {
   if [[ "$status" -ne 0 && "${VERSION_UPDATED:-0}" == "1" && "${COMMITTED:-0}" == "0" ]]; then
     write_version "$CURRENT_VERSION"
     uv lock
-    printf '\nRestored pyproject.toml and uv.lock to %s.\n' "$CURRENT_VERSION"
+    printf '\nRestored packages/pyobservablejs/pyproject.toml and uv.lock to %s.\n' "$CURRENT_VERSION"
   fi
 
   exit "$status"
@@ -249,7 +250,7 @@ print_step "Building release artifacts"
 build_release_artifacts
 
 print_step "Committing version"
-git add pyproject.toml uv.lock
+git add packages/pyobservablejs/pyproject.toml uv.lock
 git commit -m "release: $NEW_VERSION"
 COMMITTED=1
 

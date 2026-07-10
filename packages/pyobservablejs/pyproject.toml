@@ -1,0 +1,44 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pyobservablejs"
+version = "0.0.0rc1"
+description = "Observable JavaScript notebooks as reusable Python widgets"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "Peter Ferenc Gyarmati", email = "dev.petergy@gmail.com" }]
+maintainers = [{ name = "Peter Ferenc Gyarmati", email = "dev.petergy@gmail.com" }]
+requires-python = ">=3.11"
+keywords = ["anywidget", "jupyter", "marimo", "notebooks", "observable", "visualization"]
+dependencies = ["anywidget>=0.11.0", "traitlets>=5"]
+classifiers = [
+	"Programming Language :: Python :: 3",
+	"Programming Language :: Python :: 3 :: Only",
+	"Programming Language :: Python :: 3.11",
+	"Programming Language :: Python :: 3.12",
+	"Programming Language :: Python :: 3.13",
+	"Programming Language :: Python :: 3.14",
+	"License :: OSI Approved :: MIT License",
+]
+
+[project.urls]
+Homepage = "https://github.com/peter-gy/pyobservablejs"
+Documentation = "https://peter-gy.github.io/pyobservablejs/"
+Source = "https://github.com/peter-gy/pyobservablejs"
+Issues = "https://github.com/peter-gy/pyobservablejs/issues"
+
+[tool.hatch.build]
+only-packages = true
+artifacts = ["src/observablejs/static/**"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/observablejs"]
+
+[tool.hatch.build.targets.sdist]
+include = ["/hatch_build.py", "/LICENSE", "/NOTICE", "/README.md", "/pyproject.toml", "/src/observablejs"]
+
+[tool.hatch.build.hooks.custom]
+path = "hatch_build.py"

@@ -1,16 +1,12 @@
 .PHONY: check
 
-check: export KONSISTENT_NO_UPDATE_CHECK = 1
 check:
-	pnpm format:check
-	pnpm lint
-	pnpm konsistent
-	pnpm typecheck
-	pnpm test:js
-	uv run ruff format --check .
-	uv run ruff check
-	uv run ty check
-	uv run pytest -q
+	pnpm check
+	pnpm test
+	uv run --package pyobservablejs ruff format --check .
+	uv run --package pyobservablejs ruff check
+	uv run --package pyobservablejs ty check packages/pyobservablejs scripts
+	uv run --package pyobservablejs pytest -q packages/pyobservablejs/tests
 	pnpm build
-	uv run python scripts/docs.py build
+	uv run --package pyobservablejs python scripts/docs.py build
 	git diff --check

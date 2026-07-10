@@ -1,5 +1,5 @@
 {
-	"include": ["js", "vite.config.mts", "vitest.config.mts"],
+	"include": ["vite.config.ts", "packages/**/*.ts"],
 	"compilerOptions": {
 		"target": "ES2020",
 		"module": "ESNext",
@@ -7,17 +7,14 @@
 		"types": ["node", "vite/client"],
 		"skipLibCheck": true,
 		"moduleResolution": "bundler",
-		"paths": {
-			"@/*": ["./js/*"]
-		},
 		"allowImportingTsExtensions": true,
 		"resolveJsonModule": true,
 		"isolatedModules": true,
 		"noEmit": true,
-		"jsx": "react",
 		"strict": true,
 		"noUnusedLocals": true,
 		"noUnusedParameters": true,
-		"noFallthroughCasesInSwitch": true
+		"noFallthroughCasesInSwitch": true,
+		"forceConsistentCasingInFileNames": true
 	}
 }

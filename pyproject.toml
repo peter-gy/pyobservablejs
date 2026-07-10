@@ -1,37 +1,9 @@
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[project]
-name = "pyobservablejs"
-version = "0.0.0rc1"
-description = "Observable JavaScript notebooks as reusable Python widgets"
-readme = "README.md"
-license = "MIT"
-license-files = ["LICENSE", "NOTICE"]
-authors = [{ name = "Peter Ferenc Gyarmati", email = "dev.petergy@gmail.com" }]
-maintainers = [{ name = "Peter Ferenc Gyarmati", email = "dev.petergy@gmail.com" }]
-requires-python = ">=3.11"
-keywords = ["anywidget", "jupyter", "marimo", "notebooks", "observable", "visualization"]
-dependencies = ["anywidget>=0.11.0", "traitlets>=5"]
-classifiers = [
-	"Programming Language :: Python :: 3",
-	"Programming Language :: Python :: 3 :: Only",
-	"Programming Language :: Python :: 3.11",
-	"Programming Language :: Python :: 3.12",
-	"Programming Language :: Python :: 3.13",
-	"Programming Language :: Python :: 3.14",
-	"License :: OSI Approved :: MIT License",
-]
-
-[project.urls]
-Homepage = "https://github.com/peter-gy/pyobservablejs"
-Documentation = "https://peter-gy.github.io/pyobservablejs/"
-Source = "https://github.com/peter-gy/pyobservablejs"
-Issues = "https://github.com/peter-gy/pyobservablejs/issues"
+[tool.uv.workspace]
+members = ["packages/pyobservablejs"]
 
 [dependency-groups]
 dev = [
+	"hatchling",
 	"watchfiles",
 	"jupyterlab",
 	"ruff>=0.15.14",
@@ -41,49 +13,3 @@ dev = [
 	"jupyter-book>=2.1.5",
 	"jupyter-book-marimo>=0.0.1",
 ]
-
-[tool.uv]
-cache-keys = [
-	{ file = "pyproject.toml" },
-	{ file = "package.json" },
-	{ file = "pnpm-lock.yaml" },
-	{ file = "pnpm-workspace.yaml" },
-	{ file = "vite.config.mts" },
-	{ file = "src/observablejs/**/*.py" },
-	{ file = "js/**/*.ts" },
-	{ file = "js/**/*.mjs" },
-	{ file = "js/**/*.css" },
-]
-
-
-[tool.hatch.build]
-only-packages = true
-artifacts = ["src/observablejs/static/**"]
-
-[tool.hatch.build.targets.wheel]
-packages = ["src/observablejs"]
-
-[tool.hatch.build.targets.sdist.force-include]
-"CITATION.cff" = "CITATION.cff"
-"js/anywidget-bundle" = "js/anywidget-bundle"
-"js/runtime" = "js/runtime"
-"js/types" = "js/types"
-"js/widget" = "js/widget"
-"package.json" = "package.json"
-"pnpm-lock.yaml" = "pnpm-lock.yaml"
-"pnpm-workspace.yaml" = "pnpm-workspace.yaml"
-"vite.config.mts" = "vite.config.mts"
-
-[tool.hatch.build.hooks.jupyter-builder]
-build-function = "hatch_jupyter_builder.npm_builder"
-ensured-targets = [
-	"src/observablejs/static/index.js",
-	"src/observablejs/static/anywidget.json",
-	"src/observablejs/static/chunks/app.js",
-	"src/observablejs/static/widget.css",
-]
-dependencies = ["hatch-jupyter-builder>=0.5.0"]
-
-[tool.hatch.build.hooks.jupyter-builder.build-kwargs]
-npm = "pnpm"
-build_cmd = "build"

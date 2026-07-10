@@ -115,6 +115,7 @@ Contributor documentation:
 
 - [Development](development_docs/development.md)
 - [Architecture](development_docs/architecture.md)
+- [Workspace](development_docs/workspace.md)
 - [Documentation build](development_docs/docs-build.md)
 
 ## Built on

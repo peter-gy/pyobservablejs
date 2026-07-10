@@ -32,22 +32,20 @@ jobs:
       - name: Install Python
         run: uv python install "$(cat .python-version)"
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: voidzero-dev/setup-vp@13e7afb99c66525824db54e107d667216e795d37 # v1.14.0
         with:
-          node-version: 26.4.0
-          cache: pnpm
-
-      - name: Install pnpm
-        run: corepack enable pnpm
-
-      - name: Install JavaScript dependencies
-        run: pnpm install --frozen-lockfile
+          version: 0.2.4
+          node-version: 22
+          cache: true
+          sfw: true
+          run-install: |
+            - args: ['--frozen-lockfile']
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
 
       - name: Build docs
-        run: uv run python scripts/docs.py build
+        run: uv run --package pyobservablejs python scripts/docs.py build
 
       - name: Upload GitHub Pages artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0

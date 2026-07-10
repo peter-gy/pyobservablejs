@@ -23,16 +23,14 @@ jobs:
       - name: Install Python
         run: uv python install "$(cat .python-version)"
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: voidzero-dev/setup-vp@13e7afb99c66525824db54e107d667216e795d37 # v1.14.0
         with:
-          node-version: 26.4.0
-          cache: pnpm
-
-      - name: Install pnpm
-        run: corepack enable pnpm
-
-      - name: Install JavaScript dependencies
-        run: pnpm install --frozen-lockfile
+          version: 0.2.4
+          node-version: 22
+          cache: true
+          sfw: true
+          run-install: |
+            - args: ['--frozen-lockfile']
 
       - name: Run release checks
         env:
@@ -44,10 +42,14 @@ jobs:
       - name: Build package artifacts
         run: |
           rm -rf dist
-          uv build
+          pnpm --filter @pyobservablejs/python build
+          uv build --package pyobservablejs --out-dir dist
 
       - name: Check package artifacts
-        run: uvx twine check dist/pyobservablejs-*.whl dist/pyobservablejs-*.tar.gz
+        run: |
+          uvx twine check dist/pyobservablejs-*.whl dist/pyobservablejs-*.tar.gz
+          uv build --wheel dist/pyobservablejs-*.tar.gz --out-dir dist/from-sdist
+          uv run --no-project --with dist/from-sdist/pyobservablejs-*.whl python -c "import observablejs"
 
       - name: Upload package artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -92,7 +94,7 @@ jobs:
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: 26.4.0
+          node-version: 22
 
       - name: Update release notes
         run: npx changelogithub@14.0.0

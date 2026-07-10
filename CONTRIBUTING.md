@@ -5,14 +5,14 @@
 Set up the Python and JavaScript dependencies:
 
 ```sh
-uv sync --group dev
+uv sync --package pyobservablejs --group dev
 pnpm install
 ```
 
 Build the widget bundle:
 
 ```sh
-pnpm build
+pnpm --filter @pyobservablejs/python build
 ```
 
 ## Docs
@@ -20,13 +20,13 @@ pnpm build
 Build the Jupyter Book docs:
 
 ```sh
-uv run python scripts/docs.py build
+uv run --package pyobservablejs python scripts/docs.py build
 ```
 
 Preview them locally:
 
 ```sh
-uv run python scripts/docs.py serve
+uv run --package pyobservablejs python scripts/docs.py serve
 ```
 
 ## Checks
@@ -37,7 +37,7 @@ Before sending changes for review, run:
 make check
 ```
 
-## Browser Deep Checks
+## Browser checks
 
 Run the browser deep-check flow in
 [Development](development_docs/development.md) when a change touches the widget
