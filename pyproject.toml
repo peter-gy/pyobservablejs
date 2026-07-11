@@ -3,13 +3,16 @@ members = ["packages/pyobservablejs"]
 
 [dependency-groups]
 dev = [
-	"hatchling",
-	"watchfiles",
-	"jupyterlab",
-	"ruff>=0.15.14",
-	"ty>=0.0.39",
-	"pytest>=9.0.3",
-	"marimo[recommended]>=0.23.8",
+	"jupyter",
 	"jupyter-book>=2.1.5",
 	"jupyter-book-marimo>=0.0.1",
+	"marimo[recommended]>=0.23.8",
+	"pyrefly>=1",
+	"pytest>=9.0.3",
+	"ruff>=0.15.14",
+	"ty>=0.0.39",
 ]
+
+[tool.pyrefly]
+project-includes = ["packages/pyobservablejs", "scripts"]
+search-path = ["packages/pyobservablejs/src", "packages/pyobservablejs/tests"]

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import argparse
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 import hashlib
 import os
@@ -140,7 +140,7 @@ def build_wheel() -> Path:
 
 
 @contextmanager
-def source_build_references(local_requirement: str) -> Iterator[None]:
+def source_build_references(local_requirement: str) -> Generator[None, None, None]:
     paths = interactive_docs()
     originals = {path: path.read_bytes() for path in paths}
     replacement = f'"{local_requirement}",'.encode()
@@ -322,7 +322,7 @@ def configured_base_url(value: str | None = None) -> str:
 
 
 @contextmanager
-def docs_serve_root(base_url: str) -> Iterator[Path]:
+def docs_serve_root(base_url: str) -> Generator[Path, None, None]:
     if not base_url:
         yield DOCS_HTML_DIR
         return

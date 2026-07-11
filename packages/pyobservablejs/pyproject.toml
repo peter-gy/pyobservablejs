@@ -30,6 +30,9 @@ Documentation = "https://peter-gy.github.io/pyobservablejs/"
 Source = "https://github.com/peter-gy/pyobservablejs"
 Issues = "https://github.com/peter-gy/pyobservablejs/issues"
 
+[dependency-groups]
+dev = ["hatchling", "watchfiles"]
+
 [tool.hatch.build]
 only-packages = true
 artifacts = ["src/observablejs/static/**"]

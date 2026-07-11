@@ -176,7 +176,7 @@ def _cell_label(cell: _Cell) -> str:
 
 
 def _inline_text(value: str) -> str:
-    return " ".join(str(value).split())
+    return " ".join(value.split())
 
 
 def _mermaid_text(value: str) -> str:

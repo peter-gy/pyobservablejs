@@ -164,7 +164,7 @@ def _unique(values: Iterable[str]) -> tuple[str, ...]:
 
 def _sequence(raw: Mapping[str, Any], key: str) -> tuple[Any, ...]:
     value = raw.get(key)
-    return value if isinstance(value, list | tuple) else ()
+    return tuple(value) if isinstance(value, list | tuple) else ()
 
 
 def _strings(raw: Mapping[str, Any], key: str) -> tuple[str, ...]:

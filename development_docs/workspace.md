@@ -64,6 +64,9 @@ pnpm --filter @pyobservablejs/python build
 
 The root `pyproject.toml` defines a virtual uv workspace. The project metadata
 and Hatch configuration live in `packages/pyobservablejs/pyproject.toml`.
+The root `dev` group owns repository-wide tools and docs tooling: Ruff, ty,
+pytest, Pyrefly, marimo, Jupyter, Jupyter Book, and its marimo plugin. The
+package `dev` group owns Hatchling and watchfiles.
 Scope commands to the distribution:
 
 ```sh

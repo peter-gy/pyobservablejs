@@ -141,7 +141,7 @@ class NotebookCell(_ObservableWidget):
     def has_rendered(self) -> bool:
         """Whether this cell has synced a rendered browser output."""
 
-        return bool(self._has_rendered)
+        return self._has_rendered
 
     @property
     def info(self) -> CellInfo:
@@ -508,7 +508,7 @@ class Notebook(_ObservableWidget):
     def has_rendered(self) -> bool:
         """Whether the browser has synced a full notebook render."""
 
-        return bool(self._has_rendered)
+        return self._has_rendered
 
     @property
     def has_graph_snapshot(self) -> bool:
