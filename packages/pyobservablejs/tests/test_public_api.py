@@ -18,6 +18,7 @@ def test_public_namespace_is_small() -> None:
         "DependencyEdge",
         "Notebook",
         "NotebookCell",
+        "NotebookView",
         "NotebookGraph",
         "NotRenderedError",
         "html",
@@ -258,6 +259,17 @@ def test_notebook_theme_setter_syncs_spec_transport() -> None:
     assert notebook.spec["theme"] == "slate"
     assert notebook.get_state(["theme", "_spec"])["theme"] == "slate"
     assert notebook.get_state(["theme", "_spec"])["_spec"]["theme"] == "slate"
+
+
+def test_closed_notebook_rejects_theme_mutation() -> None:
+    notebook = obs.Notebook(obs.ojs("answer = 42"), theme="air")
+    notebook.close()
+
+    with pytest.raises(RuntimeError, match="closed Notebook"):
+        notebook.theme = "slate"
+
+    assert notebook.theme == "air"
+    assert notebook.spec["theme"] == "air"
 
 
 def test_source_backed_notebook_theme_trait_is_source_owned() -> None:

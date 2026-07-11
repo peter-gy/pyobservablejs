@@ -47,7 +47,7 @@ class CellInfo:
 
 @dataclasses.dataclass(frozen=True)
 class NotebookGraph:
-    """Symbolic graph for a rendered Observable notebook."""
+    """Symbolic graph for the cells evaluated by one ``NotebookView``."""
 
     cells: tuple[CellInfo, ...]
     edges: tuple[DependencyEdge, ...]

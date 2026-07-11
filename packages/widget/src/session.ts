@@ -6,12 +6,17 @@ import {
 	notebookViewNamesFromAnalysis,
 	type NotebookAnalysis,
 	type NotebookOptions,
-	type RuntimeVariablesSync,
 } from "@pyobservablejs/runtime";
 import { createNotebookRoot, prepareWidgetShell } from "./dom";
 import { readNotebookOptions, type WidgetModel } from "./model";
 import { installNotebookThemeStyles } from "./themes";
-import { createRuntimeVariablesSync, writeProgrammaticViewValue } from "./variable-sync";
+import {
+	createRuntimeVariablesSync,
+	createRuntimeViewSync,
+	writeProgrammaticViewValue,
+	type RuntimeVariablesController,
+	type RuntimeViewSync,
+} from "./variable-sync";
 
 type AnyWidgetModel = RenderProps<WidgetModel>["model"];
 
@@ -29,7 +34,8 @@ export type NotebookRuntimeSession = {
 	root: HTMLElement;
 	runtime: NotebookRuntime;
 	options: NotebookOptions;
-	variablesSync: RuntimeVariablesSync;
+	variablesSync: RuntimeVariablesController;
+	viewSync: RuntimeViewSync;
 	signal: AbortSignal;
 	cleanup(): void;
 };
@@ -72,8 +78,9 @@ export function openNotebookRuntimeSession({
 			onReset: onInputReset,
 			writeViewValue: writeProgrammaticViewValue,
 		});
+		const viewSync = createRuntimeViewSync({ model, variables: variablesSync, signal: sessionSignal });
 		signal.addEventListener("abort", cleanup, { once: true });
-		return { root, runtime, options, variablesSync, signal: sessionSignal, cleanup };
+		return { root, runtime, options, variablesSync, viewSync, signal: sessionSignal, cleanup };
 	} catch (error) {
 		cleanup();
 		throw error;

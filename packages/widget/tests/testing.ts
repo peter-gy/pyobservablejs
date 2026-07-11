@@ -1,4 +1,4 @@
-import type { Experimental, Host, InitializeProps, RenderProps, ResolvedWidget } from "@anywidget/types";
+import type { Experimental, Host, InitializeProps, RenderProps } from "@anywidget/types";
 import type { NotebookGraph } from "@pyobservablejs/runtime";
 import createWidget from "../src";
 import type { WidgetModel } from "../src/model";
@@ -6,9 +6,9 @@ import type { WidgetModel } from "../src/model";
 export type Model = RenderProps<WidgetModel>["model"];
 export type TestModel = Model & {
 	listenerCount(name: string): number;
+	saveCount(): number;
 };
 type WidgetDefinition = ReturnType<typeof createWidget>;
-type HostRender = { ref: string; el: HTMLElement; signal: AbortSignal };
 
 const experimental: Experimental = {
 	async invoke<T>(): Promise<[T, DataView[]]> {
@@ -29,15 +29,14 @@ function definitionFor(model: Model): WidgetDefinition {
 
 export const widget = {
 	render(props: RenderProps<WidgetModel>) {
-		void definitionFor(props.model).render(props);
+		definitionFor(props.model).render(props);
 	},
 };
 
 export function createModel(initial: Partial<WidgetModel>): TestModel {
-	const state = new Map<string, unknown>(
-		Object.entries({ _cell_values: {}, _has_rendered: false, ...initial } satisfies Partial<WidgetModel>),
-	);
+	const state = new Map<string, unknown>(Object.entries(initial));
 	const listeners = new Map<string, Set<() => void>>();
+	let saves = 0;
 	return {
 		listenerCount(name: string) {
 			return listeners.get(name)?.size ?? 0;
@@ -49,7 +48,12 @@ export function createModel(initial: Partial<WidgetModel>): TestModel {
 			state.set(name, value);
 			for (const listener of listeners.get(`change:${name}`) ?? []) listener();
 		},
-		save_changes() {},
+		saveCount() {
+			return saves;
+		},
+		save_changes() {
+			saves += 1;
+		},
 		on(name: string, callback: () => void) {
 			const callbacks = listeners.get(name) ?? new Set();
 			callbacks.add(callback);
@@ -72,15 +76,11 @@ export function createModel(initial: Partial<WidgetModel>): TestModel {
 export type TestHost = Host & {
 	modelLookups: string[];
 	widgetLookups: string[];
-	widgetResolutions: string[];
-	renders: HostRender[];
 };
 
 export function createHost(models: ReadonlyMap<string, Model | Promise<Model>>): TestHost {
 	const modelLookups: string[] = [];
 	const widgetLookups: string[] = [];
-	const widgetResolutions: string[] = [];
-	const renders: HostRender[] = [];
 	const resolve = async (ref: string): Promise<Model> => {
 		const model = models.get(ref);
 		if (!model) throw new Error(`Unknown widget model ${ref}`);
@@ -89,27 +89,42 @@ export function createHost(models: ReadonlyMap<string, Model | Promise<Model>>):
 	const host: TestHost = {
 		modelLookups,
 		widgetLookups,
-		widgetResolutions,
-		renders,
 		getModel: async (ref: string) => {
 			modelLookups.push(ref);
 			return (await resolve(ref)) as never;
 		},
-		getWidget: async <T = unknown>(ref: string): Promise<ResolvedWidget<T>> => {
+		getWidget: async (ref: string) => {
 			widgetLookups.push(ref);
-			const model = await resolve(ref);
-			widgetResolutions.push(ref);
-			return {
-				exports: {} as T,
-				render: async ({ el, signal }) => {
-					const renderSignal = signal ?? new AbortController().signal;
-					renders.push({ ref, el, signal: renderSignal });
-					await definitionFor(model).render(renderProps(model, el, renderSignal, host));
-				},
-			};
+			throw new Error(`Unexpected reverse widget lookup ${ref}`);
 		},
 	};
 	return host;
+}
+
+export function createSession(initial: Omit<Partial<WidgetModel>, "role">): TestModel {
+	return createModel({ role: "session", _view_values: {}, ...initial });
+}
+
+export function createView(ref = "anywidget:session", cellIndexes: number[] | null = null): TestModel {
+	return createModel({
+		role: "view",
+		_notebook: ref,
+		_cell_indexes: cellIndexes,
+		_graph: {},
+		_has_rendered: false,
+		_cell_values: {},
+	});
+}
+
+export function createNotebookFixture(initial: Omit<Partial<WidgetModel>, "role">): {
+	session: TestModel;
+	view: TestModel;
+	host: TestHost;
+} {
+	const session = createSession(initial);
+	const view = createView();
+	const host = createHost(new Map([["anywidget:session", session]]));
+	return { session, view, host };
 }
 
 export function renderProps<State extends Record<string, unknown>>(

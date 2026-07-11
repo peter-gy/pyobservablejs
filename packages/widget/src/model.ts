@@ -3,23 +3,22 @@ import { deserialize, toNotebook, type Notebook } from "@observablehq/notebook-k
 import type { AttachmentInfo, NotebookGraph, NotebookOptions } from "@pyobservablejs/runtime";
 
 export type WidgetModel = {
-	role?: "notebook" | "cell";
-	key?: string;
-	name?: string;
-	_notebook_widget?: string | null;
-	_notebook_index?: number;
+	role?: "session" | "view";
+	_notebook?: string | null;
+	_cell_indexes?: number[] | null;
 	_source?: string;
 	_spec?: Record<string, unknown>;
 	theme?: unknown;
 	_attachments?: Record<string, AttachmentInfo>;
 	_base_url?: string;
 	_variables?: Record<string, unknown>;
+	_view_values?: Record<string, unknown>;
 	_variable_update?: {
 		seq?: number;
 		kind?: "set" | "replace";
 		values?: Record<string, unknown>;
 	};
-	_graph?: NotebookGraph;
+	_graph?: NotebookGraph | Record<string, never>;
 	_has_rendered?: boolean;
 	_cell_values?: Record<
 		string,
@@ -44,7 +43,7 @@ export type WidgetModel = {
 
 export type AnyWidgetModel = RenderProps<WidgetModel>["model"];
 
-export const NOTEBOOK_MODEL_CHANGE_EVENTS = [
+export const SESSION_MODEL_CHANGE_EVENTS = [
 	"change:_source",
 	"change:_spec",
 	"change:theme",
@@ -53,6 +52,8 @@ export const NOTEBOOK_MODEL_CHANGE_EVENTS = [
 	"change:_options",
 	"change:_cell_keys",
 ] as const;
+
+export const VIEW_MODEL_CHANGE_EVENTS = ["change:_notebook", "change:_cell_indexes"] as const;
 
 export function readNotebookVariables(model: AnyWidgetModel): Record<string, unknown> {
 	const value = model.get("_variables");

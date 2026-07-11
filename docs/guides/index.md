@@ -24,7 +24,7 @@ Connect JavaScript cells through Notebook Kit's reactive graph.
 :::{card} Update from Python
 :link: python-variables.md
 
-Keep a widget mounted while Python changes its variables.
+Keep a view mounted while Python changes its variables.
 :::
 
 :::{card} Values back to Python
@@ -42,7 +42,7 @@ Embed local attachments and relative imports from Notebook Kit HTML.
 :::{card} Jupyter and marimo
 :link: notebook-frontends.md
 
-Display whole notebooks or individual cells in supported frontends.
+Render full, single-cell, and composite views in supported frontends.
 :::
 
 :::{card} ObservableHQ imports

@@ -1,10 +1,9 @@
 import { describe, test } from "vite-plus/test";
-import { alertText, composedText, createModel, renderProps, waitFor, widget } from "./testing";
+import { alertText, composedText, createNotebookFixture, renderProps, waitFor, widget } from "./testing";
 
 describe("widget markdown rendering", () => {
 	test("renders Python-authored Notebook Kit markdown cells", async () => {
-		const model = createModel({
-			role: "notebook",
+		const { view, host } = createNotebookFixture({
 			_spec: {
 				cells: [{ id: 1, mode: "md", value: "# Python rows drive an Observable Plot bar chart" }],
 			},
@@ -15,7 +14,7 @@ describe("widget markdown rendering", () => {
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render(renderProps(model, el, controller.signal));
+		widget.render(renderProps(view, el, controller.signal, host));
 
 		await waitFor(() => {
 			const error = alertText(el);
@@ -33,8 +32,7 @@ describe("widget markdown rendering", () => {
 			"<notebook>\n" +
 			'  <script id="1" type="application/vnd.observable.javascript">md`**Rendered text**`</script>\n' +
 			"</notebook>";
-		const model = createModel({
-			role: "notebook",
+		const { view, host } = createNotebookFixture({
 			_source: source,
 			_attachments: {},
 			_variables: {},
@@ -43,7 +41,7 @@ describe("widget markdown rendering", () => {
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render(renderProps(model, el, controller.signal));
+		widget.render(renderProps(view, el, controller.signal, host));
 
 		await waitFor(() => {
 			const error = alertText(el);
@@ -60,8 +58,7 @@ describe("widget markdown rendering", () => {
 			'  <script id="1" type="application/vnd.observable.javascript">md = (template) => `CUSTOM:${template[0]}`</script>\n' +
 			'  <script id="2" type="application/vnd.observable.javascript">md`** custom**`</script>\n' +
 			"</notebook>";
-		const model = createModel({
-			role: "notebook",
+		const { view, host } = createNotebookFixture({
 			_source: source,
 			_attachments: {},
 			_variables: {},
@@ -70,7 +67,7 @@ describe("widget markdown rendering", () => {
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render(renderProps(model, el, controller.signal));
+		widget.render(renderProps(view, el, controller.signal, host));
 
 		await waitFor(() => {
 			const error = alertText(el);

@@ -51,54 +51,160 @@ def test_notebook_returns_stable_cell_handles() -> None:
     assert answer is widget.cells[1]
 
 
-def test_notebook_cell_display_creates_a_fresh_model() -> None:
-    widget = obs.Notebook(
+def test_notebook_view_calls_create_distinct_stable_display_models() -> None:
+    notebook = obs.Notebook(
         obs.md("# Title", key="title"),
         obs.ojs("answer = 42", key="answer"),
     )
+    first = notebook.view()
+    second = notebook.view()
 
-    cell = widget.cell_at(1)
-    first_id = _widget_model_id(cell._repr_mimebundle_())
-    second_id = _widget_model_id(cell._repr_mimebundle_())
+    first_id = _widget_model_id(_view_mimebundle(first))
 
-    assert first_id != second_id
+    assert first is not second
+    assert first_id != _widget_model_id(_view_mimebundle(second))
+    assert _widget_model_id(_view_mimebundle(first)) == first_id
 
 
-def test_notebook_cell_display_serializes_its_parent_reference() -> None:
-    widget = obs.Notebook(
+def test_notebook_view_serializes_session_and_cell_selection() -> None:
+    notebook = obs.Notebook(
         obs.md("# Title", key="title"),
         obs.ojs("answer = 42", key="answer"),
     )
-    cell = widget._new_cell_view(1)
-    state = cell.get_state(["_notebook_widget", "_notebook_index"])
+    full = notebook.view()
+    selected = notebook.view([1, "title"])
+    state = selected.get_state(["role", "_notebook", "_cell_indexes"])
 
-    assert cell._notebook_widget is widget
-    assert state["_notebook_widget"] == f"anywidget:{widget.model_id}"
-    assert state["_notebook_index"] == 1
+    assert notebook.role == "session"
+    assert full.role == "view"
+    assert full.cell_indexes is None
+    assert selected.notebook is notebook
+    assert selected.cell_indexes == (0, 1)
+    assert state == {
+        "role": "view",
+        "_notebook": f"anywidget:{notebook.model_id}",
+        "_cell_indexes": [0, 1],
+    }
 
 
-def test_notebook_cell_parent_reference_rejects_browser_wire_state() -> None:
-    widget = obs.Notebook(obs.ojs("answer = 42", key="answer"))
-    cell = widget._new_cell_view(0)
-    ref = f"anywidget:{widget.model_id}"
+def test_notebook_cell_view_selects_its_index() -> None:
+    notebook = obs.Notebook(
+        obs.ojs("answer = 42", key="answer"),
+        obs.ojs("double = answer * 2", key="double"),
+    )
+
+    view = notebook.cell_by_key("double").view()
+
+    assert view.notebook is notebook
+    assert view.cell_indexes == (1,)
+
+
+def test_selected_view_readback_uses_notebook_order(
+    browser_value_sync: BrowserValueSync,
+) -> None:
+    notebook = obs.Notebook(
+        obs.ojs("a = 1", key="a"),
+        obs.ojs("b = 2", key="b"),
+        obs.ojs("c = 3", key="c"),
+    )
+    view = notebook.view([2, 0])
+    browser_value_sync(view, {"c": 3}, index=2)
+    browser_value_sync(view, {"a": 1}, index=0)
+
+    assert view.cell_indexes == (0, 2)
+    assert view.get_state(["_cell_indexes"])["_cell_indexes"] == [0, 2]
+    assert view.cell_values() == (
+        obs.CellValues(index=0, key="a", values={"a": 1}),
+        obs.CellValues(index=2, key="c", values={"c": 3}),
+    )
+
+
+def test_notebook_view_validates_selections() -> None:
+    notebook = obs.Notebook(obs.ojs("answer = 42", key="answer"))
+    other = obs.Notebook(obs.ojs("other = 1", key="other"))
+
+    assert notebook.view([-1]).cell_indexes == (0,)
+    with pytest.raises(ValueError, match="at least one"):
+        notebook.view([])
+    with pytest.raises(ValueError, match="each notebook cell once"):
+        notebook.view([0, "answer"])
+    with pytest.raises(ValueError, match="another Notebook"):
+        notebook.view([other.cell_at(0)])
+    scalar_selection: Any = "answer"
+    with pytest.raises(TypeError, match="sequence"):
+        notebook.view(scalar_selection)
+    boolean_selection: Any = [True]
+    with pytest.raises(TypeError, match="must contain"):
+        notebook.view(boolean_selection)
+
+
+@pytest.mark.parametrize(
+    "cells",
+    [{0: "answer"}, {0}, bytearray([0])],
+    ids=["mapping", "set", "bytearray"],
+)
+def test_notebook_view_requires_a_sequence_container(cells: Any) -> None:
+    notebook = obs.Notebook(obs.ojs("answer = 42", key="answer"))
+
+    with pytest.raises(TypeError, match="must be a sequence"):
+        notebook.view(cells)
+
+
+@pytest.mark.parametrize(
+    "cell_indexes",
+    [{0: "answer"}, {0}, bytearray([0]), "0", b"0"],
+    ids=["mapping", "set", "bytearray", "string", "bytes"],
+)
+def test_notebook_view_constructor_requires_a_sequence_container(
+    cell_indexes: Any,
+) -> None:
+    notebook = obs.Notebook(obs.ojs("answer = 42", key="answer"))
+
+    with pytest.raises(TypeError, match="cell_indexes must be a sequence"):
+        obs.NotebookView(notebook, cell_indexes=cell_indexes)
+
+
+def test_notebook_view_constructor_accepts_sequence_indexes() -> None:
+    notebook = obs.Notebook(
+        obs.ojs("a = 1", key="a"),
+        obs.ojs("b = 2", key="b"),
+    )
+
+    view = obs.NotebookView(notebook, cell_indexes=(1, 0))
+
+    assert view.cell_indexes == (0, 1)
+
+
+def test_notebook_view_session_reference_rejects_browser_wire_state() -> None:
+    notebook = obs.Notebook(obs.ojs("answer = 42", key="answer"))
+    view = notebook.view()
+    ref = f"anywidget:{notebook.model_id}"
 
     with pytest.raises(traitlets.TraitError, match="expected a Notebook"):
-        cell.set_state({"_notebook_widget": ref})
+        view.set_state({"_notebook": ref})
 
-    assert cell._notebook_widget is widget
+    assert view.notebook is notebook
+
+
+def test_notebook_view_rejects_an_empty_wire_selection() -> None:
+    view = obs.Notebook(obs.ojs("answer = 42", key="answer")).view()
+
+    with pytest.raises(traitlets.TraitError, match="non-empty"):
+        view.set_state({"_cell_indexes": []})
 
 
 def test_notebook_graph_exposes_symbolic_cell_metadata(
     browser_graph_sync: BrowserGraphSync,
     browser_graph_cell: BrowserGraphCellBuilder,
 ) -> None:
-    widget = obs.Notebook(
+    notebook = obs.Notebook(
         obs.ojs("a = 1", key="a"),
         obs.ojs("b = a + rows.length", key="b"),
         variables={"rows": [{"x": 1}]},
     )
+    view = notebook.view()
     browser_graph_sync(
-        widget,
+        view,
         cells=[
             browser_graph_cell(
                 "a",
@@ -117,7 +223,7 @@ def test_notebook_graph_exposes_symbolic_cell_metadata(
         edges=[("a", "b", "a")],
     )
 
-    graph = widget.graph
+    graph = view.graph
 
     assert graph is not None
     assert graph.defines == ("a", "b")
@@ -131,24 +237,21 @@ def test_notebook_graph_exposes_symbolic_cell_metadata(
         if edge.source_id == graph.cell_for_variable("a").id
         and edge.target_id == graph.cell_for_variable("b").id
     ] == ["a"]
-    assert widget.cell_by_key("b").defines == ("b",)
-    assert widget.cell_by_key("b").references == ("a", "rows")
-    assert widget.cell_by_key("b").outputs == ()
-    assert widget.cell_by_key("b").runtime_outputs == ("b",)
-    assert widget.cell_by_key("b").output == "b"
+    assert notebook.cell_by_key("b").key == "b"
 
 
 def test_notebook_graph_exports_mermaid_dependency_diagram(
     browser_graph_sync: BrowserGraphSync,
     browser_graph_cell: BrowserGraphCellBuilder,
 ) -> None:
-    widget = obs.Notebook(
+    notebook = obs.Notebook(
         obs.ojs("a = 1", key="alpha"),
         obs.ojs("b = a + rows.length", key="beta"),
         variables={"rows": [{"x": 1}]},
     )
+    view = notebook.view()
     browser_graph_sync(
-        widget,
+        view,
         cells=[
             browser_graph_cell("alpha", defines=["a"], output="a"),
             browser_graph_cell(
@@ -161,7 +264,7 @@ def test_notebook_graph_exports_mermaid_dependency_diagram(
         edges=[("alpha", "beta", "a")],
     )
 
-    direction, nodes, edges = _mermaid_topology(widget.graph.to_mermaid())
+    direction, nodes, edges = _mermaid_topology(view.graph.to_mermaid())
 
     assert direction == "LR"
     assert nodes == {
@@ -179,13 +282,14 @@ def test_notebook_graph_exports_d2_dependency_diagram(
     browser_graph_sync: BrowserGraphSync,
     browser_graph_cell: BrowserGraphCellBuilder,
 ) -> None:
-    widget = obs.Notebook(
+    notebook = obs.Notebook(
         obs.ojs("a = 1", key="alpha"),
         obs.ojs("b = a + rows.length", key="beta"),
         variables={"rows": [{"x": 1}]},
     )
+    view = notebook.view()
     browser_graph_sync(
-        widget,
+        view,
         cells=[
             browser_graph_cell("alpha", defines=["a"], output="a"),
             browser_graph_cell(
@@ -198,7 +302,7 @@ def test_notebook_graph_exports_d2_dependency_diagram(
         edges=[("alpha", "beta", "a")],
     )
 
-    direction, nodes, edges = _d2_topology(widget.graph.to_d2())
+    direction, nodes, edges = _d2_topology(view.graph.to_d2())
 
     assert direction == "right"
     assert nodes == {
@@ -216,12 +320,13 @@ def test_notebook_graph_diagram_exports_escape_labels(
     browser_graph_sync: BrowserGraphSync,
     browser_graph_cell: BrowserGraphCellBuilder,
 ) -> None:
-    widget = obs.Notebook(
+    notebook = obs.Notebook(
         obs.ojs("answer = 42", key='quote " cell'),
         obs.ojs("answer + row_count", key="readout"),
     )
+    view = notebook.view()
     browser_graph_sync(
-        widget,
+        view,
         cells=[
             browser_graph_cell('quote " cell', defines=['answer "1"'], output="answer"),
             browser_graph_cell(
@@ -235,7 +340,7 @@ def test_notebook_graph_diagram_exports_escape_labels(
     )
 
     mermaid_direction, mermaid_nodes, mermaid_edges = _mermaid_topology(
-        widget.graph.to_mermaid()
+        view.graph.to_mermaid()
     )
     escaped_first_label = "Cell 0: quote #quot; cell, defines: answer #quot;1#quot;"
     escaped_target_label = "Cell 1: readout, defines: result"
@@ -252,7 +357,7 @@ def test_notebook_graph_diagram_exports_escape_labels(
         escaped_target_label,
     ) in mermaid_edges
 
-    d2_direction, d2_nodes, d2_edges = _d2_topology(widget.graph.to_d2())
+    d2_direction, d2_nodes, d2_edges = _d2_topology(view.graph.to_d2())
     first_label = 'Cell 0: quote " cell, defines: answer "1"'
     target_label = "Cell 1: readout, defines: result"
     assert d2_direction == "right"
@@ -317,8 +422,8 @@ def _d2_topology(
 
 
 def test_notebook_graph_drops_invalid_browser_entries() -> None:
-    widget = obs.Notebook(obs.ojs("answer = 42", key="answer"))
-    widget.set_trait(
+    view = obs.Notebook(obs.ojs("answer = 42", key="answer")).view()
+    view.set_trait(
         "_graph",
         {
             "cells": [
@@ -339,23 +444,24 @@ def test_notebook_graph_drops_invalid_browser_entries() -> None:
         },
     )
 
-    graph = widget.graph
+    graph = view.graph
 
     assert graph is not None
     assert [cell.defines for cell in graph.cells] == [("answer",)]
     assert graph.edges == ()
 
 
-def test_cell_lookup_can_use_unique_graph_output(
+def test_view_graph_resolves_a_unique_variable(
     browser_graph_sync: BrowserGraphSync,
     browser_graph_cell: BrowserGraphCellBuilder,
 ) -> None:
-    widget = obs.Notebook(
+    notebook = obs.Notebook(
         obs.ojs("answer = 42"),
         obs.ojs("answer + 1", key="readout"),
     )
+    view = notebook.view()
     browser_graph_sync(
-        widget,
+        view,
         cells=[
             browser_graph_cell(
                 "answer-cell",
@@ -367,21 +473,22 @@ def test_cell_lookup_can_use_unique_graph_output(
     )
 
     with pytest.raises(KeyError, match="Unknown Observable cell key"):
-        widget.cell_by_key("answer")
-    assert widget.cell_for_variable("answer") is widget.cells[0]
-    assert widget.cell_for_variable("answer").defines == ("answer",)
+        notebook.cell_by_key("answer")
+    assert view.graph.cell_for_variable("answer").index == 0
+    assert view.graph.cell_for_variable("answer").defines == ("answer",)
 
 
-def test_cell_lookup_rejects_ambiguous_graph_variable(
+def test_view_graph_rejects_an_ambiguous_variable(
     browser_graph_sync: BrowserGraphSync,
     browser_graph_cell: BrowserGraphCellBuilder,
 ) -> None:
-    widget = obs.Notebook(
+    notebook = obs.Notebook(
         obs.ojs("answer = 42"),
         obs.ojs("answer = 43"),
     )
+    view = notebook.view()
     browser_graph_sync(
-        widget,
+        view,
         cells=[
             browser_graph_cell("first-answer", defines=["answer"]),
             browser_graph_cell("second-answer", defines=["answer"]),
@@ -389,55 +496,60 @@ def test_cell_lookup_rejects_ambiguous_graph_variable(
     )
 
     with pytest.raises(KeyError, match="Ambiguous Observable variable"):
-        widget.cell_for_variable("answer")
+        view.graph.cell_for_variable("answer")
 
 
-def test_cell_lookup_separates_python_key_from_ojs_variable(
+def test_view_graph_keeps_python_keys_separate_from_ojs_variables(
     browser_graph_sync: BrowserGraphSync,
     browser_graph_cell: BrowserGraphCellBuilder,
 ) -> None:
-    widget = obs.Notebook(
+    notebook = obs.Notebook(
         obs.ojs("alpha = 1", key="conflict"),
         obs.ojs("conflict = 2", key="other"),
     )
+    view = notebook.view()
     browser_graph_sync(
-        widget,
+        view,
         cells=[
             browser_graph_cell("python-name", defines=["alpha"]),
             browser_graph_cell("ojs-variable", defines=["conflict"]),
         ],
     )
 
-    assert widget.cell_by_key("conflict").defines == ("alpha",)
-    assert widget.cell_for_variable("conflict").key == "other"
-    assert widget.cell_for_variable("conflict").defines == ("conflict",)
+    assert notebook.cell_by_key("conflict").key == "conflict"
+    assert view.graph.cell_for_variable("conflict").key == "ojs-variable"
+    assert view.graph.cell_for_variable("conflict").defines == ("conflict",)
 
 
-def test_named_notebook_cells_expose_values(
+def test_cell_view_exposes_its_synchronized_values(
     browser_value_sync: BrowserValueSync,
 ) -> None:
-    widget = obs.Notebook(obs.ojs("viewof gain = Inputs.range([0, 11])", key="gain"))
-    cell_widget = widget.cell_by_key("gain")
+    notebook = obs.Notebook(obs.ojs("viewof gain = Inputs.range([0, 11])", key="gain"))
+    view = notebook.cell_by_key("gain").view()
 
-    browser_value_sync(cell_widget, {"gain": 7}, ["gain"])
+    browser_value_sync(view, {"gain": 7}, ["gain"])
 
-    assert cell_widget.value("gain") == 7
-    assert cell_widget.only_value() == 7
-    assert cell_widget.values == {"gain": 7}
-    assert cell_widget.has_rendered is True
+    assert view.has_rendered is True
+    assert view.runtime_values == {"gain": 7}
+    assert view.value("gain") == 7
+    assert view.cell_values() == (
+        obs.CellValues(index=0, key="gain", values={"gain": 7}),
+    )
 
 
-def test_direct_cell_render_keeps_parent_notebook_unrendered(
+def test_selected_view_owns_readback_independently_from_another_view(
     browser_graph_sync: BrowserGraphSync,
     browser_graph_cell: BrowserGraphCellBuilder,
     browser_value_sync: BrowserValueSync,
 ) -> None:
-    widget = obs.Notebook(
+    notebook = obs.Notebook(
         obs.ojs("answer = 42", key="answer"),
         obs.ojs("double = answer * 2", key="double"),
     )
+    full = notebook.view()
+    selected = notebook.cell_by_key("double").view()
     browser_graph_sync(
-        widget,
+        selected,
         cells=[
             browser_graph_cell("answer", defines=["answer"], output="answer"),
             browser_graph_cell(
@@ -449,80 +561,67 @@ def test_direct_cell_render_keeps_parent_notebook_unrendered(
         ],
         edges=[("answer", "double", "answer")],
     )
-    browser_value_sync(widget.cell_by_key("double"), {"double": 84}, ["double"])
+    browser_value_sync(selected, {"double": 84}, ["double"], index=1)
 
-    assert widget.has_graph_snapshot is True
-    assert widget.has_rendered is False
-    assert widget.graph.cell_for_variable("double").key == "double"
-    assert widget.cell_by_key("double").value("double") == 84
-    with pytest.raises(obs.NotRenderedError):
-        widget.runtime_values
-    with pytest.raises(obs.NotRenderedError):
-        widget.cell_values()
-
-
-def test_cell_value_error_points_to_values_mapping(
-    browser_value_sync: BrowserValueSync,
-) -> None:
-    cell_widget = obs.Notebook(obs.ojs("answer = 42", key="cell")).cell_by_key("cell")
-    browser_value_sync(cell_widget, {"answer": 42, "double": 84})
-
-    with pytest.raises(KeyError, match=r"cell\.value\(name\)"):
-        cell_widget.only_value()
-
-
-def test_browser_values_are_exposed_to_notebook_values(
-    browser_value_sync: BrowserValueSync,
-) -> None:
-    widget = obs.Notebook(obs.ojs("viewof gain = Inputs.range([0, 11])", key="gain"))
-
-    browser_value_sync(widget, {"gain": 8}, ["gain"])
-
-    assert widget.has_rendered is True
-    assert widget.runtime_values == {"gain": 8}
-    assert widget.value("gain") == 8
-
-
-def test_cell_handle_reads_parent_snapshot_created_before_it() -> None:
-    widget = obs.Notebook(obs.ojs("answer = 42", key="answer"))
-    widget.set_trait(
-        "_cell_values",
-        {
-            "0": {
-                "rendered": True,
-                "names": ["answer"],
-                "values": {"answer": 42},
-            }
-        },
+    assert selected.has_graph_snapshot is True
+    assert selected.graph.cell_for_variable("double").key == "double"
+    assert selected.value("double") == 84
+    assert selected.cell_values() == (
+        obs.CellValues(index=1, key="double", values={"double": 84}),
     )
-
-    cell = widget.cell_at(0)
-
-    assert cell.has_rendered is True
-    assert cell.values == {"answer": 42}
+    assert full.has_rendered is False
+    with pytest.raises(obs.NotRenderedError):
+        full.runtime_values
 
 
-def test_closing_notebook_closes_live_cell_display_models() -> None:
-    widget = obs.Notebook(obs.ojs("answer = 42", key="answer"))
-    cell = widget.cell_at(0)
-    cell._repr_mimebundle_()
-    cell._repr_mimebundle_()
-    views = tuple(widget._cell_views)
+def test_browser_values_are_exposed_by_the_rendered_view(
+    browser_value_sync: BrowserValueSync,
+) -> None:
+    view = obs.Notebook(
+        obs.ojs("viewof gain = Inputs.range([0, 11])", key="gain")
+    ).view()
 
-    widget.close()
+    browser_value_sync(view, {"gain": 8}, ["gain"])
 
-    assert widget.comm is None
-    assert len(views) == 2
-    assert all(view.comm is None for view in views)
+    assert view.has_rendered is True
+    assert view.runtime_values == {"gain": 8}
+    assert view.value("gain") == 8
 
 
-def test_notebook_cell_display_rejects_a_closed_parent() -> None:
-    widget = obs.Notebook(obs.ojs("answer = 42", key="answer"))
-    cell = widget.cell_at(0)
-    widget.close()
+def test_closing_notebook_closes_live_views() -> None:
+    notebook = obs.Notebook(obs.ojs("answer = 42", key="answer"))
+    first = notebook.view()
+    second = notebook.cell_at(0).view()
 
-    with pytest.raises(RuntimeError, match="parent Notebook is closed"):
-        cell._repr_mimebundle_()
+    notebook.close()
+    notebook.close()
+
+    with pytest.raises(RuntimeError, match="closed NotebookView"):
+        first.update_variables(answer=43)
+    with pytest.raises(RuntimeError, match="closed NotebookView"):
+        second.update_variables(answer=43)
+
+
+def test_closing_a_view_releases_it_from_the_session() -> None:
+    notebook = obs.Notebook(obs.ojs("answer = 42", key="answer"))
+    view = notebook.view()
+
+    view.close()
+
+    with pytest.raises(RuntimeError, match="closed NotebookView"):
+        view.update_variables(answer=43)
+    assert notebook.view().notebook is notebook
+
+
+def test_notebook_rejects_views_after_close() -> None:
+    notebook = obs.Notebook(obs.ojs("answer = 42", key="answer"))
+    cell = notebook.cell_at(0)
+    notebook.close()
+
+    with pytest.raises(RuntimeError, match="closed Notebook"):
+        notebook.view()
+    with pytest.raises(RuntimeError, match="closed Notebook"):
+        cell.view()
 
 
 def _widget_model_id(bundle: tuple[dict[str, Any], dict[str, Any]] | None) -> str:
@@ -533,6 +632,13 @@ def _widget_model_id(bundle: tuple[dict[str, Any], dict[str, Any]] | None) -> st
     model_id = widget_view["model_id"]
     assert isinstance(model_id, str)
     return model_id
+
+
+def _view_mimebundle(
+    view: obs.NotebookView,
+) -> tuple[dict[str, Any], dict[str, Any]] | None:
+    untyped: Any = view
+    return untyped._repr_mimebundle_()
 
 
 def test_script_end_tag_literal_stays_inside_script_cell(

@@ -5,8 +5,8 @@
 - `packages/pyobservablejs/` owns the Python models, serialization, traitlets,
   tests, and packaged widget assets.
 - `packages/runtime/` owns Notebook Kit analysis and execution.
-- `packages/widget/` adapts the runtime to anywidget rendering and
-  synchronization.
+- `packages/widget/` adapts notebook sessions and view-owned runtimes to
+  anywidget rendering and synchronization.
 - `packages/anywidget-bundle/` and
   `packages/pyobservablejs/src/observablejs/_anywidget_bundle/` own the
   cross-language build and module-transport boundary.
@@ -99,7 +99,15 @@ Verify:
   Observable title plus Plot output.
 - docs pages with `{marimo}` blocks render their pyobservablejs widgets.
 - `guides/python-variables` updates the Observable Plot when the Python slider
-  changes without remounting the widget output.
+  changes and preserves the mounted widget model.
+- a full view and a cell view can stay mounted together in marimo, share a
+  named `viewof` input, and preserve both view model ids through interaction.
+- after one input interaction, shared state and both rendered outputs settle
+  and remain stable during an idle observation window.
+- a composite view evaluates its selected cells in one runtime and exposes one
+  coherent value and graph snapshot.
+- Jupyter can render two views from one notebook while preserving independent
+  readback for each view.
 
 Use `agent-browser console`, `agent-browser errors`, DOM or shadow-DOM
 inspection, and screenshots where they expose the failure. Stop local servers

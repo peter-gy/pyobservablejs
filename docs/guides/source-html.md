@@ -53,7 +53,8 @@ notebook = obs.Notebook.from_html_file(
     base / "penguins.html",
     embed_file_attachments=True,
 )
-mo.ui.anywidget(notebook)
+full_view = notebook.view()
+mo.ui.anywidget(full_view)
 ```
 
 The output renders species counts from the local CSV. The counts come from the

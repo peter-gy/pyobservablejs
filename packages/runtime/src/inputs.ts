@@ -34,14 +34,18 @@ export function createRuntimeInputs({
 	writeViewValue = writeRawViewValue,
 }: RuntimeInputsOptions): RuntimeInputs {
 	const views = new Map<string, ViewTarget>();
-	const releaseCallbacks = new Map<string, () => void>();
+	const suppressedInitialViews = new Map<string, ViewTarget>();
 	let variables = { ...initialVariables };
 	let version = 0;
 
 	return {
 		applyInitialViews() {
 			version += 1;
-			applyRuntimeVariables(runtime, variables, views, viewNames, signal, () => version, writeViewValue);
+			const initialVariables = Object.fromEntries(
+				Object.entries(variables).filter(([name]) => suppressedInitialViews.get(name) !== views.get(name)),
+			);
+			suppressedInitialViews.clear();
+			applyRuntimeVariables(runtime, initialVariables, views, viewNames, signal, () => version, writeViewValue);
 		},
 		set(values) {
 			variables = { ...variables, ...values };
@@ -50,25 +54,23 @@ export function createRuntimeInputs({
 			applyRuntimeVariables(runtime, values, views, viewNames, signal, () => version, writeViewValue);
 		},
 		replace(values) {
-			for (const [name, release] of releaseCallbacks) {
-				if (!Object.prototype.hasOwnProperty.call(values, name)) release();
-			}
 			variables = { ...values };
 			onVariablesChange?.(variables);
 			version += 1;
 			onReplace(variables);
 		},
-		setView(name, view, onVariableRelease) {
+		setView(name, view, options) {
 			views.set(name, view);
-			if (onVariableRelease) releaseCallbacks.set(name, onVariableRelease);
-			if (Object.prototype.hasOwnProperty.call(variables, name)) {
+			if (options?.applyInitialVariable === false) suppressedInitialViews.set(name, view);
+			else suppressedInitialViews.delete(name);
+			if (options?.applyInitialVariable !== false && Object.prototype.hasOwnProperty.call(variables, name)) {
 				void writeVariableToView(runtime, name, view, variables[name], views, signal, () => version, writeViewValue);
 			}
 		},
 		deleteView(name, view) {
 			if (views.get(name) === view) {
 				views.delete(name);
-				releaseCallbacks.delete(name);
+				suppressedInitialViews.delete(name);
 			}
 		},
 	};

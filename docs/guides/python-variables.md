@@ -6,8 +6,7 @@ description: Update a mounted Observable chart from a Python control.
 # Update from Python
 
 `variables` gives Python ownership of named values in the Observable graph.
-`update_variables` changes those values while the displayed widget stays
-mounted.
+`update_variables` changes those values while the view stays mounted.
 
 Try moving the minimum body mass slider. The chart filters the built-in Palmer
 Penguins sample.
@@ -70,7 +69,8 @@ notebook = obs.Notebook(
     variables={"minimumMass": 4000},
 )
 
-widget = mo.ui.anywidget(notebook)
+full_view = notebook.view()
+widget = mo.ui.anywidget(full_view)
 ```
 
 ```{marimo} python
@@ -81,8 +81,8 @@ mo.vstack([minimum_mass, widget])
 ```
 
 The final cell updates one Python-owned variable and returns the existing
-`widget`. Notebook Kit invalidates the two JavaScript cells that depend on
-`minimumMass`.
+`widget`. The notebook session sends the value to `full_view`, and Notebook Kit
+invalidates the two JavaScript cells that depend on `minimumMass`.
 
 ## Update, replace, or release
 

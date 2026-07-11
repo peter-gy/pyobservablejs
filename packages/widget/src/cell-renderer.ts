@@ -17,7 +17,7 @@ import {
 	type RuntimeVariablesSync,
 } from "@pyobservablejs/runtime";
 import { createCellOutput, createTopLevelError, renderSource } from "./dom";
-import { applyModelVariablesToViews, registerView, type CellVariableSync } from "./variable-sync";
+import type { CellVariableSync, RuntimeViewSync } from "./variable-sync";
 
 type RuntimeDefinition = Parameters<NotebookRuntime["define"]>[1];
 type RuntimeObserver = Parameters<NotebookRuntime["main"]["variable"]>[0];
@@ -42,6 +42,7 @@ export type CellRenderContext = {
 	analysis: NotebookAnalysis;
 	notebookNames: ReadonlySet<string>;
 	runtimeCompatibility: NotebookOptions["runtimeCompatibility"];
+	viewSync: RuntimeViewSync;
 };
 
 export function renderCellTargets(targets: readonly CellRenderTarget[], context: CellRenderContext): void {
@@ -57,6 +58,7 @@ export function renderCellTarget(target: CellRenderTarget, context: CellRenderCo
 		visible: target.visible,
 		sync: target.sync,
 		variablesSync: target.variablesSync,
+		viewSync: context.viewSync,
 		signal: context.signal,
 		cellName: target.cellName,
 		pythonVariableNames: context.pythonVariableNames,
@@ -74,6 +76,7 @@ function renderCell({
 	visible,
 	sync,
 	variablesSync,
+	viewSync,
 	signal,
 	cellName,
 	pythonVariableNames = new Set(),
@@ -88,6 +91,7 @@ function renderCell({
 	visible: boolean;
 	sync?: CellVariableSync;
 	variablesSync?: RuntimeVariablesSync;
+	viewSync: RuntimeViewSync;
 	signal: AbortSignal;
 	cellName?: string;
 	pythonVariableNames?: Set<string>;
@@ -103,6 +107,7 @@ function renderCell({
 		cell,
 		sync,
 		variablesSync,
+		viewSync,
 		cellName,
 		pythonVariableNames,
 		definitionInputFromAnalysis(analysis),
@@ -117,8 +122,9 @@ function defineCell(
 	runtime: NotebookRuntime,
 	root: HTMLDivElement,
 	cell: Cell,
-	sync?: CellVariableSync,
-	variablesSync?: RuntimeVariablesSync,
+	sync: CellVariableSync | undefined,
+	variablesSync: RuntimeVariablesSync | undefined,
+	viewSync: RuntimeViewSync,
 	cellName?: string,
 	pythonVariableNames: Set<string> = new Set(),
 	definitionInput?: DefinitionInput,
@@ -136,7 +142,6 @@ function defineCell(
 		if (pythonNames.length === exposed.length && pythonNames.length > 0) {
 			renderPythonVariableCell(runtime, root, cell, definition, pythonNames, observer);
 			if (sync) defineSyncObservers(runtime, sync, exposed);
-			if (sync) applyModelVariablesToViews(sync);
 			return;
 		}
 		const sourceDefinition = sourceRuntimeDefinition(definition, pythonNames);
@@ -146,8 +151,8 @@ function defineCell(
 			cell,
 			sourceDefinition,
 			sync
-				? createCellObserver(sync, sourceDefinition, displayName, exposed.length > 0)
-				: createRuntimeInputObserver(observer, variablesSync, sourceDefinition),
+				? createCellObserver(sync, viewSync, sourceDefinition, displayName, exposed.length > 0)
+				: createRuntimeInputObserver(observer, variablesSync, viewSync, sourceDefinition),
 			{
 				document: runtimeDocument(runtime),
 				notebookNames,
@@ -155,7 +160,6 @@ function defineCell(
 			},
 		);
 		if (sync) defineSyncObservers(runtime, sync, exposed);
-		if (sync) applyModelVariablesToViews(sync);
 	} catch (error) {
 		root.appendChild(createTopLevelError(error));
 		sync?.markRendered();
@@ -165,6 +169,7 @@ function defineCell(
 function createRuntimeInputObserver(
 	observer: typeof observe,
 	variablesSync: RuntimeVariablesSync | undefined,
+	viewSync: RuntimeViewSync,
 	definition: RuntimeCellDefinition,
 ): typeof observe {
 	const viewName = viewVariableName(definition);
@@ -173,7 +178,7 @@ function createRuntimeInputObserver(
 		const runtimeObserver = observer(state, runtimeDefinition);
 		const fulfilled = runtimeObserver.fulfilled.bind(runtimeObserver);
 		runtimeObserver.fulfilled = (value: unknown) => {
-			if (isViewTarget(value)) variablesSync.setView(viewName, value);
+			if (isViewTarget(value)) viewSync.register(viewName, value);
 			fulfilled(value);
 		};
 		return runtimeObserver;
@@ -224,6 +229,7 @@ function readDefinition(cell: Cell, input: DefinitionInput | undefined): Runtime
 
 function createCellObserver(
 	sync: CellVariableSync,
+	viewSync: RuntimeViewSync,
 	definition: RuntimeCellDefinition,
 	displayName: string | null,
 	hasSyncedNames: boolean,
@@ -231,12 +237,12 @@ function createCellObserver(
 	const displayObserverCompletesReadback = displayName !== null || !hasSyncedNames;
 	return (state, runtimeDefinition) => {
 		// Keep the runtime output for variable wiring and clear the display label so
-		// NotebookCell output renders the value text expected by Python callers.
+		// Selected cell output renders the value text expected by Python callers.
 		const observer = safeObserve(state, { ...runtimeDefinition, output: undefined });
 		const fulfilled = observer.fulfilled.bind(observer);
 		observer.fulfilled = (value: unknown) => {
 			const viewName = viewVariableName(definition);
-			if (viewName) registerView(sync, viewName, value);
+			if (viewName) viewSync.register(viewName, value);
 			if (displayName) sync.setVariable(displayName, toWireValue(value));
 			if (displayObserverCompletesReadback) sync.markRendered();
 			fulfilled(value);

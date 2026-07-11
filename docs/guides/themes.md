@@ -39,11 +39,12 @@ notebook = obs.Notebook(
     show_pinned_source=True,
 )
 
-mo.ui.anywidget(notebook)
+full_view = notebook.view()
+mo.ui.anywidget(full_view)
 ```
 
-The rendered notebook follows the page color scheme and exposes the chart source
-in its source panel.
+The rendered view follows the page color scheme and exposes the chart source in
+its source panel.
 
 ## Theme names
 

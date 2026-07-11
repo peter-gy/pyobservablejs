@@ -1,96 +1,97 @@
 # Architecture
 
-`pyobservablejs` is browser-first. Python owns the notebook model. The browser
-evaluates Observable JavaScript through Notebook Kit and synchronizes values
-back through anywidget traits.
+`pyobservablejs` is browser-first. Python owns notebook definitions,
+serialization, attachments, and session state. The browser evaluates
+Observable JavaScript through Notebook Kit. A `NotebookView` owns each browser
+runtime and its synchronized readback.
 
-The installed wheel includes the browser runtime used by Jupyter and marimo
-frontends.
+The installed wheel includes the browser runtime used by Jupyter and marimo.
 
 ```text
-Full Notebook view
-
 Python Notebook
-  cells, variables, attachments, options
+  definition, attachments, options, shared variables and named inputs
         |
-        v
-one anywidget parent model
+        +---- NotebookCell selection handle
+        |          |
+        |          +---- view()
         |
-        v
-lightweight TypeScript dispatcher
-        |
-        v
-dynamically loaded parent renderer
-        |
-        v
-one Notebook Kit runtime per view
-        |
-        v
-parent-owned cell values and graph metadata
+        +---- view() or view(cells=[...])
+                   |
+                   v
+             NotebookView model
+               cell selection
+                   |
+                   v
+          one Notebook Kit runtime
+                   |
+                   v
+       view-owned values and graph snapshot
 ```
+
+## Ownership boundaries
+
+`Notebook` owns the definition and session. Its state includes authored cells
+or source HTML, attachments, renderer options, Python variables, and named
+browser input values shared across its views.
+
+`NotebookCell` owns a stable cell selection. `NotebookCell.view()` creates a
+`NotebookView` for the selected cell and its dependency closure. The resulting
+view owns the browser runtime and readback state.
+
+`NotebookView` owns one anywidget display model, one Notebook Kit runtime, the
+selected cell indices, render gates, runtime values, per-cell values, and graph
+metadata. `Notebook.view()` selects every cell. `Notebook.view(cells=[...])`
+creates a composite selection that evaluates in one runtime.
+
+Separate views from one notebook share named Python variables. A browser input
+event on a named `viewof` value becomes session state for current and future
+views. Untouched source defaults remain local to each runtime. Use a composite
+view when multiple cells require the same runtime and graph snapshot.
 
 ## Render lifecycle
 
 1. Python creates a `Notebook` from authored cells, Notebook Kit HTML, or an
    ObservableHQ document.
-2. The parent widget model sends source, specs, attachments, variables, and
-   cell keys through traitlets.
-3. The widget entry dispatcher loads the parent renderer on demand.
-4. Notebook Kit parses or transpiles the notebook and creates one Observable
-   runtime for the rendered view.
-5. The browser renders logical cells and writes graph metadata plus one
-   `_cell_values` snapshot on the parent model.
-6. Python decodes that snapshot through `Notebook.runtime_values`,
-   `Notebook.cell_values()`, and materialized `NotebookCell` handles.
-7. Teardown disposes the browser runtime, model listeners, and cell DOM owned by
-   that view.
+2. Python creates a `NotebookView` with a full, single-cell, or composite
+   selection.
+3. Jupyter displays the view, or marimo wraps that view with
+   `mo.ui.anywidget`.
+4. The frontend resolves the referenced notebook session and reads its source,
+   spec, attachments, variables, options, and shared input values.
+5. Notebook Kit parses or transpiles the definition and creates one Observable
+   runtime for that view.
+6. The browser writes runtime values, per-cell values, graph metadata, and
+   render status to the view model.
+7. Teardown disposes the runtime, model listeners, and DOM owned by that view.
 
-## Cell projection composition
+Creating another view repeats steps 2 through 7 with a distinct model and
+runtime. Closing one view leaves the notebook session and sibling views alive.
 
-`NotebookCell` is a cached projection handle. `Notebook.cell_at`,
-`Notebook.cell_by_key`, and `Notebook.cell_for_variable` materialize one handle.
-`Notebook.cells` materializes every handle. Full notebook rendering and
-readback operate directly on the parent model.
+## Session synchronization
 
-The cached handle has no comm. Each display creates a private anywidget adapter
-whose lifetime belongs to that display. The adapter carries a typed
-`traitlets.Instance(Notebook)` reference and a cell index. The Anywidget
-serializer sends the parent as an `anywidget:<model-id>` reference. A direct
-cell view resolves that reference through the Anywidget Front-End Module
-`host.getWidget` API available as of anywidget 0.11. It installs a small
-projection context on the target element and invokes the parent renderer. The
-parent evaluates the selected cell and its hidden dependency closure in one
-Notebook Kit runtime.
+Python variable methods mutate the notebook session. `update_variables` sends
+a patch to each active view. `replace_variables` publishes a complete
+environment and rebuilds each active runtime so released names return to
+Notebook Kit ownership.
 
-Reactive hosts may close a display adapter when its owning cell reruns. The
-next display creates a new adapter and model id while the public handle keeps
-its identity and reads the same parent-owned snapshot.
+Browser input events on named `viewof` values publish the interacted value to
+the session. Sibling views apply that value through the Observable input path.
+Equality checks at the session boundary prevent an unchanged browser value from
+becoming another input update.
 
-The entry module stays small so cell handles can resolve their parent before
-the parent renderer loads. The dynamically imported parent module owns runtime
-construction, model listeners, readback, and teardown.
+View readback stays on the originating `NotebookView` model. This keeps marimo
+reactivity scoped to the wrapped view and prevents a readback update from
+recreating the shared session.
 
 ## Readback ownership
 
-The parent model owns `_cell_values`, keyed by cell index. Each record carries
-the render flag, synchronized names, and serialized values. Full notebook views
-and direct cell projections publish through the same `NotebookReadback`
-coordinator.
+Each view owns its render flag, graph snapshot, runtime values, and per-cell
+values. Python reads them through `NotebookView.runtime_values`,
+`NotebookView.cell_values()`, `NotebookView.value()`, and `NotebookView.graph`.
 
-Each render attempt has a model generation and view version. Writes from an
-aborted or superseded attempt are dropped. Closing one view preserves snapshots
-published by another live view. Changes to notebook inputs invalidate the
-generation, graph, full-render gate, and cell snapshots together.
-
-## Variable updates
-
-`update_variables` sends a patch. The frontend applies the patch to the live
-runtime. `replace_variables` sends a full replacement and releases names omitted
-from the replacement.
-
-`viewof` cells are browser-owned. Python can override a variable with the same
-name, and the frontend writes the value through the runtime path used by
-Observable inputs.
+Render attempts carry a generation and view version. Writes from an aborted or
+superseded attempt are dropped. Input changes invalidate the affected view's
+runtime snapshot before the replacement attempt publishes readback.
 
 ## Source-backed notebooks
 

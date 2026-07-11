@@ -6,8 +6,8 @@ description: Fetch public ObservableHQ notebooks and override variables.
 # ObservableHQ imports
 
 `Notebook.from_observablehq` fetches a public ObservableHQ notebook through the
-document API and returns a `Notebook` you can display like any Python-authored
-notebook.
+document API and returns a `Notebook` definition. Call `view()` to create its
+renderable view.
 
 The constructor performs a network request. For reproducible builds and tests,
 store the document data separately and pass it to
@@ -17,6 +17,7 @@ store the document data separately and pass it to
 import observablejs as obs
 
 notebook = obs.Notebook.from_observablehq("@observablehq/plot-scatterplot/2")
+full_view = notebook.view()
 ```
 
 The `specifier` can be an ObservableHQ URL, a notebook slug, a notebook id, or a

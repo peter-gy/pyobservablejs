@@ -13,7 +13,7 @@ import datetime as _dt
 import math
 import re
 import sys
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from typing import Any
 
 TYPE_KEY = "__observablejs_type__"
@@ -75,27 +75,67 @@ RESERVED_VARIABLE_NAMES = frozenset(
 )
 
 
-def serialize_variables(values: Mapping[str, Any] | None) -> dict[str, Any]:
-    """Return the synced ``_variables`` payload for Observable runtime builtins."""
+def prepare_variables(
+    values: Mapping[str, Any] | None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Return replayable Python values and their serialized wire snapshot."""
 
     if values is None:
-        return {}
+        return {}, {}
     if not isinstance(values, Mapping):
         raise TypeError(
             "variables must be a mapping of JavaScript identifier names to values"
         )
-    out: dict[str, Any] = {}
+    prepared: dict[str, Any] = {}
+    serialized: dict[str, Any] = {}
     for name, value in values.items():
         validate_variable_name(name)
-        out[name] = serialize_value(value)
-    return out
+        prepared_value = _materialize_iterators(value)
+        prepared[name] = prepared_value
+        serialized[name] = serialize_value(prepared_value)
+    return prepared, serialized
 
 
-def copy_variables(variables: Mapping[str, Any] | None) -> dict[str, Any]:
-    """Validate and copy the Python-owned variable map."""
+def _materialize_iterators(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {key: _materialize_iterators(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_materialize_iterators(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_materialize_iterators(item) for item in value)
+    if isinstance(value, Iterator):
+        return [_materialize_iterators(item) for item in value]
 
-    serialize_variables(variables)
-    return {} if variables is None else dict(variables)
+    return value
+
+
+def same_wire_value(left: Any, right: Any) -> bool:
+    """Compare serialized values using JavaScript value categories."""
+
+    if left is right:
+        return True
+    if isinstance(left, bool) or isinstance(right, bool):
+        return isinstance(left, bool) and isinstance(right, bool) and left == right
+    if isinstance(left, int | float) and isinstance(right, int | float):
+        left_number = float(left)
+        right_number = float(right)
+        if math.isnan(left_number) or math.isnan(right_number):
+            return math.isnan(left_number) and math.isnan(right_number)
+        if left_number == 0 and right_number == 0:
+            return math.copysign(1, left_number) == math.copysign(1, right_number)
+        return left_number == right_number
+    if type(left) is not type(right):
+        return False
+    if isinstance(left, list):
+        return len(left) == len(right) and all(
+            same_wire_value(left_item, right_item)
+            for left_item, right_item in zip(left, right, strict=True)
+        )
+    if isinstance(left, dict):
+        return left.keys() == right.keys() and all(
+            same_wire_value(left[key], right[key]) for key in left
+        )
+    return bool(left == right)
 
 
 def validate_variable_name(name: object) -> str:

@@ -1,152 +1,51 @@
-import type { RenderProps } from "@anywidget/types";
-import type { Cell, Notebook } from "@observablehq/notebook-kit";
-import type { NotebookRuntime } from "@observablehq/notebook-kit/runtime";
+import type { Notebook } from "@observablehq/notebook-kit";
 import {
 	notebookDefinedNamesFromAnalysis,
 	notebookDependencyIndexes,
 	type NotebookAnalysis,
 	type NotebookOptions,
-	type RuntimeVariablesSync,
 } from "@pyobservablejs/runtime";
-import { renderCellTarget, renderCellTargets, type CellRenderContext, type CellRenderTarget } from "./cell-renderer";
-import { readCellKeys } from "./composition-state";
+import { renderCellTargets, type CellRenderContext, type CellRenderTarget } from "./cell-renderer";
 import { appendCellWrapper } from "./dom";
-import type { WidgetModel } from "./model";
-import { type NotebookReadback, type ReadbackAttempt, syncNotebookGraph } from "./readback";
+import { type ReadbackAttempt, type ViewReadback } from "./readback";
+import type { NotebookRuntimeSession } from "./session";
 import { createCellStateSync } from "./variable-sync";
 
-type RenderNotebookCellsOptions = {
-	model: RenderProps<WidgetModel>["model"];
+type RenderNotebookViewOptions = {
 	root: HTMLElement;
 	notebook: Notebook;
+	selectedIndexes: ReadonlySet<number>;
+	renderIndexes: ReadonlySet<number>;
 	analysis: NotebookAnalysis;
-	runtime: NotebookRuntime;
+	session: NotebookRuntimeSession;
 	options: NotebookOptions;
-	variablesSync: RuntimeVariablesSync;
 	signal: AbortSignal;
-	readback: NotebookReadback;
+	readback: ViewReadback;
 	attempt: ReadbackAttempt;
+	cellKeys: readonly string[];
 };
 
-type RenderCellProjectionOptions = RenderNotebookCellsOptions & {
-	cellModel: RenderProps<WidgetModel>["model"];
-	cellIndex: number;
-};
-
-/** Render every logical cell through one Notebook-owned runtime. */
-export function renderNotebookCells({
-	model,
+/** Render selected cells and their hidden dependency closure in one view runtime. */
+export function renderNotebookView({
 	root,
 	notebook,
+	selectedIndexes,
+	renderIndexes,
 	analysis,
-	runtime,
+	session,
 	options,
-	variablesSync,
 	signal,
 	readback,
 	attempt,
-}: RenderNotebookCellsOptions): void {
+	cellKeys,
+}: RenderNotebookViewOptions): void {
 	const cells = notebook.cells;
-	const keys = readCellKeys(model);
-	const context = cellRenderContext(runtime, signal, options, analysis);
-	for (let index = 0; index < cells.length; index += 1) {
-		const cell = cells[index];
-		if (!cell) continue;
-		const sync = cellSync({
-			model,
-			index,
-			signal,
-			variablesSync,
-			readback,
-			attempt,
-			onPublish: () => readback.completeFullView(attempt, cells.length),
-		});
-		renderCellTarget(
-			{
-				index,
-				wrapper: appendCellWrapper(root),
-				cell,
-				showSource: options.showSource,
-				visible: true,
-				sync,
-				cellName: keys[index] || undefined,
-			},
-			context,
-		);
-	}
-	variablesSync.applyInitialViews();
-	readback.completeFullView(attempt, cells.length);
-}
-
-/** Render one cell plus the hidden dependency closure in a parent view. */
-export function renderCellProjection({
-	model,
-	cellModel,
-	root,
-	notebook,
-	cellIndex,
-	analysis,
-	runtime,
-	options,
-	variablesSync,
-	signal,
-	readback,
-	attempt,
-}: RenderCellProjectionOptions): void {
-	const cells = notebook.cells;
-	if (!Number.isInteger(cellIndex) || cellIndex < 0 || cellIndex >= cells.length) {
-		throw new Error(`NotebookCell index ${cellIndex} is outside the parent Notebook`);
-	}
-	syncNotebookGraph(model, notebook, readCellKeys(model), analysis);
-	const targets = projectionTargets({
-		model,
-		cellModel,
-		root,
-		cells,
-		cellIndex,
-		options,
-		variablesSync,
-		signal,
-		analysis,
-		readback,
-		attempt,
-	});
-	renderCellTargets(targets, cellRenderContext(runtime, signal, options, analysis));
-	variablesSync.applyInitialViews();
-}
-
-function projectionTargets({
-	model,
-	cellModel,
-	root,
-	cells,
-	cellIndex,
-	options,
-	variablesSync,
-	signal,
-	analysis,
-	readback,
-	attempt,
-}: {
-	model: RenderProps<WidgetModel>["model"];
-	cellModel: RenderProps<WidgetModel>["model"];
-	root: HTMLElement;
-	cells: readonly Cell[];
-	cellIndex: number;
-	options: NotebookOptions;
-	variablesSync: RuntimeVariablesSync;
-	signal: AbortSignal;
-	analysis: NotebookAnalysis;
-	readback: NotebookReadback;
-	attempt: ReadbackAttempt;
-}): CellRenderTarget[] {
-	const renderIndexes = notebookDependencyIndexes(analysis, cellIndex);
 	const targets: CellRenderTarget[] = [];
 	for (let index = 0; index < cells.length; index += 1) {
 		if (!renderIndexes.has(index)) continue;
 		const cell = cells[index];
 		if (!cell) continue;
-		const selected = index === cellIndex;
+		const selected = selectedIndexes.has(index);
 		const wrapper = appendCellWrapper(root);
 		if (!selected) {
 			wrapper.hidden = true;
@@ -158,55 +57,47 @@ function projectionTargets({
 			cell,
 			showSource: selected && options.showSource,
 			visible: selected,
-			sync: selected ? cellSync({ model, index, signal, variablesSync, readback, attempt }) : undefined,
-			variablesSync: selected ? undefined : variablesSync,
-			cellName: selected ? cellModel.get("key") || cellModel.get("name") : undefined,
+			sync: selected ? cellSync(index, readback, attempt, selectedIndexes.size) : undefined,
+			variablesSync: selected ? undefined : session.variablesSync,
+			cellName: selected ? cellKeys[index] || undefined : undefined,
 		});
 	}
-	return targets;
+	renderCellTargets(targets, cellRenderContext(session, signal, options, analysis));
+	session.variablesSync.applyInitialViews();
+	readback.complete(attempt, selectedIndexes.size);
 }
 
-function cellSync({
-	model,
-	index,
-	signal,
-	variablesSync,
-	readback,
-	attempt,
-	onPublish,
-}: {
-	model: RenderProps<WidgetModel>["model"];
-	index: number;
-	signal: AbortSignal;
-	variablesSync: RuntimeVariablesSync;
-	readback: NotebookReadback;
-	attempt: ReadbackAttempt;
-	onPublish?: () => void;
-}) {
+export function notebookViewIndexes(analysis: NotebookAnalysis, selectedIndexes: ReadonlySet<number>): Set<number> {
+	const indexes = new Set<number>();
+	for (const selected of selectedIndexes) {
+		for (const index of notebookDependencyIndexes(analysis, selected)) indexes.add(index);
+	}
+	return indexes;
+}
+
+function cellSync(index: number, readback: ViewReadback, attempt: ReadbackAttempt, selectedCellCount: number) {
 	return createCellStateSync({
-		model,
-		signal,
-		variablesSync,
 		read: () => readback.read(index),
 		publish(value) {
 			readback.publish(attempt, index, value);
-			onPublish?.();
+			readback.complete(attempt, selectedCellCount);
 		},
 	});
 }
 
 function cellRenderContext(
-	runtime: NotebookRuntime,
+	session: NotebookRuntimeSession,
 	signal: AbortSignal,
 	options: NotebookOptions,
 	analysis: NotebookAnalysis,
 ): CellRenderContext {
 	return {
-		runtime,
+		runtime: session.runtime,
 		signal,
 		pythonVariableNames: new Set(Object.keys(options.variables)),
 		analysis,
 		notebookNames: notebookDefinedNamesFromAnalysis(analysis),
 		runtimeCompatibility: options.runtimeCompatibility,
+		viewSync: session.viewSync,
 	};
 }

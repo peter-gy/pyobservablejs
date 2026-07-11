@@ -51,7 +51,8 @@ notebook = obs.Notebook(
     variables={"penguinCounts": penguin_counts},
 )
 
-mo.ui.anywidget(notebook)
+full_view = notebook.view()
+mo.ui.anywidget(full_view)
 ```
 
 Adelie is the largest species group in the dataset.
@@ -94,7 +95,8 @@ notebook = obs.Notebook(
     variables={"penguinCounts": penguin_counts},
 )
 
-mo.ui.anywidget(notebook)
+full_view = notebook.view()
+mo.ui.anywidget(full_view)
 ```
 
 ## Continue

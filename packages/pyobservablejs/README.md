@@ -6,8 +6,8 @@
 [![License](https://img.shields.io/pypi/l/pyobservablejs.svg)](https://github.com/peter-gy/pyobservablejs/blob/main/LICENSE)
 
 `pyobservablejs` renders Observable JavaScript notebooks in Jupyter and marimo.
-Python owns the notebook model. Observable Notebook Kit runs its reactive graph
-in the browser.
+`Notebook` stores the definition and shared session state. `NotebookView` runs
+its selected cells through Observable Notebook Kit in the browser.
 
 ```sh
 pip install pyobservablejs jupyterlab
@@ -43,18 +43,19 @@ notebook = obs.Notebook(
     )
 )
 
-notebook
+full_view = notebook.view()
+full_view
 ```
 
-In marimo, display the same model as an anywidget.
+In marimo, wrap the view with `mo.ui.anywidget`.
 
 ```python
 import marimo as mo
 
-mo.ui.anywidget(notebook)
+mo.ui.anywidget(full_view)
 ```
 
-## Notebook model
+## Notebooks and views
 
 `Notebook` accepts JavaScript, Observable JavaScript, Markdown, and HTML cells.
 
@@ -68,6 +69,9 @@ mo.ui.anywidget(notebook)
 Top-level JavaScript declarations form a reactive graph across cells. Use
 `view(...)` for browser-owned inputs.
 
+Create `notebook.view()` for the complete notebook, call `view()` on a
+`NotebookCell` selection, or pass `cells` for one composite runtime.
+
 Python values cross into that graph through `variables`.
 
 ```python
@@ -76,12 +80,15 @@ notebook = obs.Notebook(
     variables={"threshold": 0.75},
 )
 
+full_view = notebook.view()
 notebook.update_variables(threshold=0.9)
 ```
 
-After the browser renders the widget, `notebook.runtime_values`,
-`notebook.value(name)`, and `notebook.graph` expose synchronized values and
-dependency metadata.
+After the browser renders the view, `full_view.runtime_values`,
+`full_view.value(name)`, and `full_view.graph` expose synchronized values and
+dependency metadata. Create a cell view with `notebook.cell_at(0).view()` or
+render several selected cells through one runtime with
+`notebook.view(cells=[0, 1])`.
 
 ## Existing notebooks
 

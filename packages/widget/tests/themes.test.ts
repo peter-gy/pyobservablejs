@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
-import { createModel, renderProps, waitFor, widget } from "./testing";
+import { createNotebookFixture, renderProps, waitFor, widget } from "./testing";
 
 describe("widget themes", () => {
 	test("installs theme styles once in the widget owner root", async () => {
@@ -12,18 +12,19 @@ describe("widget themes", () => {
 		const secondController = new AbortController();
 		const headStyles = Array.from(document.head.querySelectorAll("style"));
 		const modelState = {
-			role: "notebook" as const,
 			_spec: { cells: [] },
 			_attachments: {},
 			_variables: {},
 			_options: {},
 		};
+		const firstFixture = createNotebookFixture(modelState);
+		const secondFixture = createNotebookFixture(modelState);
 
-		widget.render(renderProps(createModel(modelState), first, firstController.signal));
+		widget.render(renderProps(firstFixture.view, first, firstController.signal, firstFixture.host));
 		const themeStyle = await waitFor(() => shadow.querySelector("style") ?? undefined);
 		expect(themeStyle).toBeInstanceOf(HTMLStyleElement);
 
-		widget.render(renderProps(createModel(modelState), second, secondController.signal));
+		widget.render(renderProps(secondFixture.view, second, secondController.signal, secondFixture.host));
 
 		await waitFor(() => (second.firstElementChild ? second.firstElementChild : undefined));
 		expect(Array.from(shadow.querySelectorAll("style"))).toEqual([themeStyle]);
@@ -33,8 +34,7 @@ describe("widget themes", () => {
 	});
 
 	test("rerenders the scoped notebook root when the theme trait changes", async () => {
-		const model = createModel({
-			role: "notebook",
+		const { session, view, host } = createNotebookFixture({
 			_spec: { theme: "air", cells: [] },
 			theme: "air",
 			_attachments: {},
@@ -44,11 +44,11 @@ describe("widget themes", () => {
 		const controller = new AbortController();
 		const el = document.createElement("div");
 
-		widget.render(renderProps(model, el, controller.signal));
+		widget.render(renderProps(view, el, controller.signal, host));
 
 		expect(await waitFor(() => notebookRoot(el))).toHaveProperty("dataset.theme", "air");
 
-		model.set("theme", "slate");
+		session.set("theme", "slate");
 
 		expect(
 			await waitFor(() => {
@@ -59,9 +59,8 @@ describe("widget themes", () => {
 		controller.abort();
 	});
 
-	test("renders source-backed theme traits through the notebook widget", async () => {
-		const model = createModel({
-			role: "notebook",
+	test("renders source-backed theme traits through NotebookView", async () => {
+		const { view, host } = createNotebookFixture({
 			_source: '<!doctype html><notebook theme="air"></notebook>',
 			theme: { light: "cotton", dark: "slate" },
 			_attachments: {},
@@ -71,7 +70,7 @@ describe("widget themes", () => {
 		const controller = new AbortController();
 		const el = document.createElement("div");
 
-		widget.render(renderProps(model, el, controller.signal));
+		widget.render(renderProps(view, el, controller.signal, host));
 
 		const root = await waitFor(() => notebookRoot(el));
 

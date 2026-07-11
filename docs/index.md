@@ -6,8 +6,8 @@ description: Observable JavaScript notebooks from Python.
 # pyobservablejs
 
 `pyobservablejs` renders Observable JavaScript notebooks in Jupyter and marimo.
-Python owns the notebook model. Notebook Kit runs its reactive graph in the
-browser.
+`Notebook` stores the definition and shared session state. `NotebookView` runs
+its selected cells through Notebook Kit in the browser.
 
 The example uses Notebook Kit's built-in Palmer Penguins sample. Hover a dot to
 inspect a measurement.
@@ -46,7 +46,8 @@ notebook = obs.Notebook(
     ),
 )
 
-mo.ui.anywidget(notebook)
+full_view = notebook.view()
+mo.ui.anywidget(full_view)
 ```
 
 Adelie, Chinstrap, and Gentoo penguins form visibly different bill profiles.
@@ -70,7 +71,7 @@ It also accepts Python variables and local file attachments.
 :::{card} Build your first notebook
 :link: getting-started.md
 
-Create a reactive Plot chart and display it in Jupyter or marimo.
+Create a reactive Plot chart and render its view in Jupyter or marimo.
 :::
 
 :::{card} Pass Python data
@@ -88,7 +89,7 @@ Connect an Observable input to a dependent chart.
 :::{card} Update from Python
 :link: guides/python-variables.md
 
-Drive a mounted widget from a marimo control.
+Drive a mounted view from a marimo control.
 :::
 
 ::::

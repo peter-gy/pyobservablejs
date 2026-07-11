@@ -6,8 +6,9 @@ description: Render an existing Notebook Kit HTML document from Python.
 # Load notebook HTML
 
 `Notebook.from_html` turns an existing Notebook Kit document into a
-`pyobservablejs` widget. The source can use Notebook Kit cells and built-in
-libraries directly. This document uses Notebook Kit's built-in AAPL sample.
+`pyobservablejs` notebook session. The source can use Notebook Kit cells and
+built-in libraries directly. This document uses Notebook Kit's built-in AAPL
+sample.
 
 ```{marimo-config}
 :pyproject:
@@ -39,7 +40,8 @@ Plot.areaY(aapl, {x: "Date", y: "Close", tip: true}).plot({
 """
 
 notebook = obs.Notebook.from_html(source)
-mo.ui.anywidget(notebook)
+full_view = notebook.view()
+mo.ui.anywidget(full_view)
 ```
 
 The widget preserves the document theme and renders the built-in AAPL sample as

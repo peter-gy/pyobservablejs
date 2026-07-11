@@ -20,12 +20,12 @@ distribution and contributor environment.
                    PyPI pyobservablejs
 ```
 
-| Package                     | Contract                                                                             |
-| --------------------------- | ------------------------------------------------------------------------------------ |
-| `packages/runtime`          | Notebook Kit analysis, execution, attachments, variables, and browser runtime values |
-| `packages/widget`           | anywidget model resolution, rendering, composition, synchronization, and teardown    |
-| `packages/anywidget-bundle` | Vite plugin, manifest, module transport, and lifecycle protocol for a configured app |
-| `packages/pyobservablejs`   | Python API, traitlets, final widget assets, wheel, and sdist                         |
+| Package                     | Contract                                                                                 |
+| --------------------------- | ---------------------------------------------------------------------------------------- |
+| `packages/runtime`          | Notebook Kit analysis, execution, attachments, variables, and browser runtime values     |
+| `packages/widget`           | anywidget session resolution, view rendering, shared input synchronization, and teardown |
+| `packages/anywidget-bundle` | Vite plugin, manifest, module transport, and lifecycle protocol for a configured app     |
+| `packages/pyobservablejs`   | Python API, traitlets, final widget assets, wheel, and sdist                             |
 
 Cross-package TypeScript imports use package names. Internal dependencies use
 `workspace:*`. Shared external versions use the catalog in

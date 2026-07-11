@@ -59,10 +59,10 @@ compatibility helpers are active. Invalid identifiers and reserved names raise
 | pandas or Polars `Series`                                           | Array                          | pandas uses `tolist()`, Polars uses `to_list()`                                  |
 | NumPy array or scalar                                               | Array or scalar                | Uses `tolist()` or `item()`, then converts the result recursively                |
 
-Iterable inputs such as generators are consumed when serialized. Mapping keys
-with the same string form collapse to one JavaScript property. A mapping that
-contains `__observablejs_type__` is wrapped on the wire and revived as an
-ordinary user object.
+One-shot iterators such as generators are materialized once and stored as
+replayable lists. Mapping keys with the same string form collapse to one
+JavaScript property. A mapping that contains `__observablejs_type__` is wrapped
+on the wire and revived as an ordinary user object.
 
 `range` uses direct JSON number encoding. Elements outside the JavaScript
 safe-integer range can lose precision in the browser. Use a list when those
@@ -81,6 +81,18 @@ current = notebook.variables
 Returns a shallow copy of the current Python-owned variable mapping. Browser
 evaluation and readback remain separate from this mapping.
 
+## Python values and `viewof` inputs
+
+When a Python variable has the same name as a `viewof` input, the initial
+Python value seeds the control. A browser interaction then becomes shared
+session input state for current and future views.
+
+An `update_variables` or `replace_variables` call that includes the name clears
+the interacted value and applies the Python value to every active view. This
+also reasserts a configured Python value that has not changed in Python.
+Releasing the name through `replace_variables` or `reset_variables` restores
+the source-defined input default.
+
 ## `Notebook.update_variables(values=None, /, **kwargs)`
 
 ```python
@@ -89,8 +101,8 @@ notebook.update_variables({"threshold": 0.8}, label="selected")
 
 Merges a mapping or iterable of key-value pairs into the Python-owned
 environment. Keyword arguments are applied after `values` and win when a name
-appears in both. A displayed notebook receives a live `set` update. An empty
-update is a no-op.
+appears in both. Active views receive a live `set` update. An empty update is a
+no-op.
 
 The method returns `None`. Invalid names raise `ValueError`. A malformed
 key-value iterable or unsupported value raises `TypeError`.
@@ -102,9 +114,9 @@ notebook.replace_variables({"rows": rows})
 ```
 
 Replaces the complete Python-owned environment and returns `None`. Names absent
-from the replacement are released. A displayed notebook rebuilds its runtime,
-which restores notebook definitions for released names. Keyword arguments win
-over matching entries in `values`.
+from the replacement are released. Active views rebuild their runtimes, which
+restores notebook definitions for released names. Keyword arguments win over
+matching entries in `values`.
 
 ## `Notebook.reset_variables(*names)`
 
@@ -115,14 +127,14 @@ notebook.reset_variables("threshold", "label")
 Releases the listed names when Python currently owns them and returns `None`.
 An empty call and names outside the current environment are no-ops. Releasing
 at least one name follows the replacement lifecycle and restores the original
-notebook definitions in a displayed runtime.
+notebook definitions in each active runtime.
 
 ## Browser to Python readback
 
-`Notebook.runtime_values`, `Notebook.value`, `Notebook.cell_values`, and
-`NotebookCell.values` decode browser values back to Python after their render
-gate. See [`NotRenderedError`](values-and-graph.md#notrenderederror) for the
-required lifecycle state.
+`NotebookView.runtime_values`, `NotebookView.value`, and
+`NotebookView.cell_values()` decode browser values back to Python after the
+view renders. See [`NotRenderedError`](values-and-graph.md#notrenderederror) for
+the required lifecycle state.
 
 | Browser value                               | Python readback                                             |
 | ------------------------------------------- | ----------------------------------------------------------- |

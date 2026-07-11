@@ -1,61 +1,67 @@
 ---
 title: Notebook frontends
-description: Display pyobservablejs notebooks in Jupyter and marimo.
+description: Render pyobservablejs views in Jupyter and marimo.
 ---
 
 # Notebook frontends
 
-`Notebook` is an anywidget model. Jupyter can display the object directly. In
-marimo, wrap it with `mo.ui.anywidget`.
+`Notebook` stores the notebook definition and shared session state. Create a
+`NotebookView` for the cells you want to render.
 
-| Frontend   | Install                                 | Start                  | Display                     |
-| ---------- | --------------------------------------- | ---------------------- | --------------------------- |
-| JupyterLab | `pip install pyobservablejs jupyterlab` | `jupyter lab`          | `notebook`                  |
-| marimo     | `pip install pyobservablejs marimo`     | `marimo edit first.py` | `mo.ui.anywidget(notebook)` |
+```python
+import observablejs as obs
 
-Other frontends can display a full `Notebook` through the standard Anywidget
-Front-End Module (AFM) render lifecycle. `NotebookCell` uses the Python display
-protocol and the `host.getWidget` composition API available as of anywidget 0.11
-to ask its parent `Notebook` to render into the cell view.
+notebook = obs.Notebook(
+    obs.js("const answer = 42;", key="answer"),
+    obs.js('html`<p>Answer is ${answer}.</p>`', key="readout"),
+)
 
-| Display object | Frontend contract                                            |
-| -------------- | ------------------------------------------------------------ |
-| `Notebook`     | AFM render lifecycle                                         |
-| `NotebookCell` | Python display protocol and AFM `host.getWidget` composition |
+full_view = notebook.view()
+data_view = notebook.cell_at(0).view()
+summary_view = notebook.view(cells=[0, 1])
+```
+
+`notebook.view()` selects every cell. `NotebookCell.view()` selects one cell
+and its dependencies. Pass `cells` to create one composite view from a subset.
+
+| Frontend   | Install                                 | Start                  | Render                        |
+| ---------- | --------------------------------------- | ---------------------- | ----------------------------- |
+| JupyterLab | `pip install pyobservablejs jupyterlab` | `jupyter lab`          | Return a `NotebookView`       |
+| marimo     | `pip install pyobservablejs marimo`     | `marimo edit first.py` | Wrap each view with anywidget |
 
 ## Jupyter
 
-Display the notebook object as the last expression in a cell.
+Return a view as the last expression in a cell.
 
 ```python
 import observablejs as obs
 
 notebook = obs.Notebook(obs.js('html`<p>Hello from Observable</p>`'))
-notebook
+full_view = notebook.view()
+full_view
 ```
 
-Read synchronized values from a later Python cell after the browser has rendered
-the widget.
+Read synchronized values from that view after the browser has rendered it.
 
 ```python
-notebook.runtime_values
+full_view.runtime_values
 ```
 
 ## marimo
 
-Wrap the notebook in `mo.ui.anywidget`.
+Wrap each view separately with `mo.ui.anywidget`.
 
 ```python
 import marimo as mo
 import observablejs as obs
 
 notebook = obs.Notebook(obs.js('html`<p>Hello from Observable</p>`'))
-view = mo.ui.anywidget(notebook)
-view
+full_view = notebook.view()
+widget = mo.ui.anywidget(full_view)
+widget
 ```
 
-Keep the widget mounted when Python controls update variables. Create the widget
-once, then call `update_variables` from a dependent cell.
+Keep the wrapper mounted while Python controls update session variables.
 
 ```python
 slider = mo.ui.slider(0, 10, value=5)
@@ -64,30 +70,32 @@ notebook = obs.Notebook(
     obs.js('html`<p>Value is <strong>${value}</strong>.</p>`'),
     variables={"value": slider.value},
 )
-view = mo.ui.anywidget(notebook)
+full_view = notebook.view()
+widget = mo.ui.anywidget(full_view)
 ```
 
 ```python
 notebook.update_variables(value=slider.value)
-mo.vstack([slider, view])
+mo.vstack([slider, widget])
 ```
 
-## Direct cell display
-
-A `NotebookCell` is materialized when `cell_at`, `cell_by_key`,
-`cell_for_variable`, or `cells` requests it. The standalone view evaluates the
-selected cell and its dependencies in the parent notebook context.
+Create and wrap another view when the page needs a focused output.
 
 ```python
-notebook = obs.Notebook(
-    obs.js("const answer = 42;", key="answer"),
-    obs.js('html`<p>Answer is ${answer}.</p>`', key="readout"),
-)
-
-notebook.cell_by_key("readout")
+data_view = notebook.cell_at(0).view()
+data_widget = mo.ui.anywidget(data_view)
 ```
 
-The standalone display writes the cell values and graph metadata to the parent
-`Notebook` snapshot read by the projection handle. Display the parent
-`Notebook` when you want every cell output in notebook order. In marimo, pass a
-full `Notebook` to `mo.ui.anywidget` and display a `NotebookCell` directly.
+## Shared state and view-local runtime
+
+Views from the same notebook share named Python variables and browser-owned
+`viewof` input values. Each view owns its Notebook Kit runtime, graph snapshot,
+and value readback. Read a value from the view that rendered it.
+
+Use a composite view when selected cells need one runtime and one readback
+snapshot.
+
+```python
+summary_view = notebook.view(cells=[0, 1])
+summary_widget = mo.ui.anywidget(summary_view)
+```

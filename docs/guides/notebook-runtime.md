@@ -5,9 +5,9 @@ description: Use Notebook Kit display, inputs, files, builtins, imports, and rea
 
 # Notebook runtime
 
-`Notebook` evaluates its cells in one Observable Notebook Kit runtime. A
-top-level JavaScript declaration becomes a graph variable. Cells that reference
-that variable run again when its value changes.
+`NotebookView` evaluates its selected cells in one Observable Notebook Kit
+runtime. A top-level JavaScript declaration becomes a graph variable. Cells
+that reference that variable run again when its value changes.
 
 This live notebook uses the runtime-owned `Inputs`, `Plot`, and `penguins`
 builtins. Change the species to update the chart.
@@ -58,7 +58,8 @@ notebook = obs.Notebook(
     ),
 )
 
-mo.ui.anywidget(notebook)
+full_view = notebook.view()
+mo.ui.anywidget(full_view)
 ```
 
 The first cell defines `species` through a browser input. The Plot cell
@@ -228,7 +229,7 @@ obs.js(
 ## Python-owned variables
 
 `variables` defines Python-owned names in the same graph. Updating a name
-invalidates dependent cells while the widget stays mounted.
+invalidates dependent cells while the view stays mounted.
 
 | Python API               | Effect                                               |
 | ------------------------ | ---------------------------------------------------- |

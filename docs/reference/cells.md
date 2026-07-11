@@ -82,14 +82,14 @@ Each helper returns a `Cell` with a fixed mode:
 
 The keyword arguments have the following contracts:
 
-- `key` sets the Python `NotebookCell` handle. Observable variable names come
-  from the cell source.
+- `key` sets the Python `NotebookCell` selection handle. Observable variable
+  names come from the cell source.
 - `display=False` emits the Notebook Kit `hidden` attribute.
 - `raw=True` preserves the source string exactly.
 - `id` sets the Notebook Kit cell id. `Notebook` assigns one-based ids in
   notebook order when it is omitted.
-- `pinned=True` emits the Notebook Kit `pinned` attribute. The parent
-  `Notebook` renders pinned source when `show_pinned_source=True`.
+- `pinned=True` emits the Notebook Kit `pinned` attribute. Active views render
+  pinned source when `show_pinned_source=True`.
 - `output` sets the Notebook Kit `output` attribute.
 - `notebookkit_attrs` adds Notebook Kit attributes such as `name`, `database`,
   or `format`.

@@ -179,29 +179,22 @@ def browser_graph_cell() -> BrowserGraphCellBuilder:
 @pytest.fixture
 def browser_value_sync() -> BrowserValueSync:
     def sync(
-        widget: Any,
+        view: obs.NotebookView,
         values: dict[str, Any],
         value_names: Sequence[str] | None = None,
+        *,
+        index: int = 0,
     ) -> None:
-        if isinstance(widget, obs.NotebookCell):
-            notebook = widget._notebook
-            index = widget._index
-            full_render = False
-        else:
-            notebook = widget
-            index = 0
-            full_render = True
-        if not notebook.has_graph_snapshot:
-            notebook.set_trait("_graph", {"cells": [], "edges": []})
-        records = dict(notebook._cell_values)
+        if not view.has_graph_snapshot:
+            view.set_trait("_graph", {"cells": [], "edges": []})
+        records = dict(view._cell_values)
         records[str(index)] = {
             "rendered": True,
             "names": list(value_names if value_names is not None else values),
             "values": values,
         }
-        notebook.set_trait("_cell_values", records)
-        if full_render:
-            notebook.set_trait("_has_rendered", True)
+        view.set_trait("_cell_values", records)
+        view.set_trait("_has_rendered", True)
 
     return sync
 

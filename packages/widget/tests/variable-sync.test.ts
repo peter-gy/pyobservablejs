@@ -1,5 +1,14 @@
 import { describe, expect, test } from "vite-plus/test";
-import { alertText, composedText, createModel, renderProps, variableValue, waitFor, widget } from "./testing";
+import {
+	alertText,
+	composedText,
+	createNotebookFixture,
+	renderProps,
+	type TestModel,
+	variableValue,
+	waitFor,
+	widget,
+} from "./testing";
 
 const objectValuedSelectSource = `
 Select = (items, options = {}) => {
@@ -31,8 +40,7 @@ Select = (items, options = {}) => {
 
 describe("widget variable sync", () => {
 	test("updates existing Python variables through the runtime", async () => {
-		const model = createModel({
-			role: "notebook",
+		const { session, view, host } = createNotebookFixture({
 			_spec: {
 				cells: [
 					{ id: 1, mode: "ojs", value: "base_echo = base" },
@@ -46,22 +54,21 @@ describe("widget variable sync", () => {
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render(renderProps(model, el, controller.signal));
+		widget.render(renderProps(view, el, controller.signal, host));
 
-		expect(await waitFor(() => (variableValue(model, "doubled") === 4 ? 4 : undefined))).toBe(4);
+		expect(await waitFor(() => (variableValue(view, "doubled") === 4 ? 4 : undefined))).toBe(4);
 		await waitFor(() => composedText(el, "4"));
 
-		setVariables(model, 1, "set", { base: 5 });
+		setVariables(session, 1, "set", { base: 5 });
 
-		expect(await waitFor(() => (variableValue(model, "doubled") === 10 ? 10 : undefined))).toBe(10);
-		expect(variableValue(model, "base_echo")).toBe(5);
+		expect(await waitFor(() => (variableValue(view, "doubled") === 10 ? 10 : undefined))).toBe(10);
+		expect(variableValue(view, "base_echo")).toBe(5);
 		await waitFor(() => composedText(el, "10"));
 		controller.abort();
 	});
 
 	test("rejects live variables that collide with active compatibility builtins", async () => {
-		const model = createModel({
-			role: "notebook",
+		const { session, view, host } = createNotebookFixture({
 			_spec: {
 				cells: [{ id: 1, mode: "ojs", value: "answer = 42" }],
 			},
@@ -71,19 +78,18 @@ describe("widget variable sync", () => {
 		});
 		const controller = new AbortController();
 
-		widget.render(renderProps(model, document.createElement("div"), controller.signal));
+		widget.render(renderProps(view, document.createElement("div"), controller.signal, host));
 
-		await waitFor(() => (variableValue(model, "answer") === 42 ? 42 : undefined));
+		await waitFor(() => (variableValue(view, "answer") === 42 ? 42 : undefined));
 
-		expect(() => setVariables(model, 1, "set", { require: "shadowed" })).toThrow(
+		expect(() => setVariables(session, 1, "set", { require: "shadowed" })).toThrow(
 			"Python variables cannot override Observable runtime builtins: require",
 		);
 		controller.abort();
 	});
 
 	test("keeps Python-owned hidden cells hidden", async () => {
-		const model = createModel({
-			role: "notebook",
+		const { view, host } = createNotebookFixture({
 			_spec: {
 				cells: [{ id: 1, mode: "ojs", value: "answer = 1", hidden: true }],
 			},
@@ -94,16 +100,15 @@ describe("widget variable sync", () => {
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render(renderProps(model, el, controller.signal));
+		widget.render(renderProps(view, el, controller.signal, host));
 
-		expect(await waitFor(() => (variableValue(model, "answer") === 41 ? 41 : undefined))).toBe(41);
+		expect(await waitFor(() => (variableValue(view, "answer") === 41 ? 41 : undefined))).toBe(41);
 		expect(el.textContent.trim()).toBe("");
 		controller.abort();
 	});
 
 	test("uses Python-owned outputs from mixed JS declarations", async () => {
-		const model = createModel({
-			role: "notebook",
+		const { session, view, host } = createNotebookFixture({
 			_spec: {
 				cells: [
 					{
@@ -120,25 +125,24 @@ describe("widget variable sync", () => {
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render(renderProps(model, el, controller.signal));
+		widget.render(renderProps(view, el, controller.signal, host));
 
-		expect(await waitFor(() => (variableValue(model, "answer") === 41 ? 41 : undefined))).toBe(41);
-		expect(await waitFor(() => (variableValue(model, "label") === "source label" ? "source label" : undefined))).toBe(
+		expect(await waitFor(() => (variableValue(view, "answer") === 41 ? 41 : undefined))).toBe(41);
+		expect(await waitFor(() => (variableValue(view, "label") === "source label" ? "source label" : undefined))).toBe(
 			"source label",
 		);
-		expect(variableValue(model, "answer")).toBe(41);
-		expect(variableValue(model, "label")).toBe("source label");
+		expect(variableValue(view, "answer")).toBe(41);
+		expect(variableValue(view, "label")).toBe("source label");
 
-		setVariables(model, 1, "set", { answer: 43 });
+		setVariables(session, 1, "set", { answer: 43 });
 
-		expect(await waitFor(() => (variableValue(model, "answer") === 43 ? 43 : undefined))).toBe(43);
-		expect(variableValue(model, "label")).toBe("source label");
+		expect(await waitFor(() => (variableValue(view, "answer") === 43 ? 43 : undefined))).toBe(43);
+		expect(variableValue(view, "label")).toBe("source label");
 		controller.abort();
 	});
 
 	test("defines newly added Python variables through the runtime", async () => {
-		const model = createModel({
-			role: "notebook",
+		const { session, view, host } = createNotebookFixture({
 			_spec: {
 				cells: [
 					{ id: 1, mode: "ojs", value: "base_echo = base" },
@@ -152,17 +156,16 @@ describe("widget variable sync", () => {
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render(renderProps(model, el, controller.signal));
-		setVariables(model, 1, "set", { base: 6 });
+		widget.render(renderProps(view, el, controller.signal, host));
+		setVariables(session, 1, "set", { base: 6 });
 
-		expect(await waitFor(() => (variableValue(model, "doubled") === 12 ? 12 : undefined))).toBe(12);
-		expect(variableValue(model, "base_echo")).toBe(6);
+		expect(await waitFor(() => (variableValue(view, "doubled") === 12 ? 12 : undefined))).toBe(12);
+		expect(variableValue(view, "base_echo")).toBe(6);
 		controller.abort();
 	});
 
 	test("restores source definitions when Python variable replacement removes keys", async () => {
-		const model = createModel({
-			role: "notebook",
+		const { session, view, host } = createNotebookFixture({
 			_spec: {
 				cells: [
 					{ id: 1, mode: "ojs", value: "base = 1" },
@@ -176,19 +179,18 @@ describe("widget variable sync", () => {
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render(renderProps(model, el, controller.signal));
+		widget.render(renderProps(view, el, controller.signal, host));
 
-		expect(await waitFor(() => (variableValue(model, "doubled") === 10 ? 10 : undefined))).toBe(10);
+		expect(await waitFor(() => (variableValue(view, "doubled") === 10 ? 10 : undefined))).toBe(10);
 
-		setVariables(model, 1, "replace", {});
+		setVariables(session, 1, "replace", {});
 
-		expect(await waitFor(() => (variableValue(model, "doubled") === 2 ? 2 : undefined))).toBe(2);
+		expect(await waitFor(() => (variableValue(view, "doubled") === 2 ? 2 : undefined))).toBe(2);
 		controller.abort();
 	});
 
 	test("updates viewof variable values through the runtime", async () => {
-		const model = createModel({
-			role: "notebook",
+		const { session, view, host } = createNotebookFixture({
 			_spec: {
 				cells: [
 					{
@@ -214,25 +216,24 @@ viewof gain = {
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render(renderProps(model, el, controller.signal));
+		widget.render(renderProps(view, el, controller.signal, host));
 
 		await waitFor(() => {
 			const error = alertText(el);
 			if (error) throw new Error(error);
 			return rangeWithValue(el, 5);
 		});
-		expect(await waitFor(() => (variableValue(model, "doubled") === 10 ? 10 : undefined))).toBe(10);
+		expect(await waitFor(() => (variableValue(view, "doubled") === 10 ? 10 : undefined))).toBe(10);
 
-		setVariables(model, 1, "set", { gain: 7 });
+		setVariables(session, 1, "set", { gain: 7 });
 
 		await waitFor(() => rangeWithValue(el, 7));
-		expect(await waitFor(() => (variableValue(model, "doubled") === 14 ? 14 : undefined))).toBe(14);
+		expect(await waitFor(() => (variableValue(view, "doubled") === 14 ? 14 : undefined))).toBe(14);
 		controller.abort();
 	});
 
 	test("routes unsupported view writes through runtime variables", async () => {
-		const model = createModel({
-			role: "notebook",
+		const { view, host } = createNotebookFixture({
 			_spec: {
 				cells: [
 					{
@@ -258,16 +259,15 @@ viewof gain = {
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render(renderProps(model, el, controller.signal));
+		widget.render(renderProps(view, el, controller.signal, host));
 
 		await waitFor(() => rangeWithValue(el, 5));
-		expect(await waitFor(() => (variableValue(model, "gainKind") === "object" ? "object" : undefined))).toBe("object");
+		expect(await waitFor(() => (variableValue(view, "gainKind") === "object" ? "object" : undefined))).toBe("object");
 		controller.abort();
 	});
 
 	test("updates object-valued viewof variables through nested selects", async () => {
-		const model = createModel({
-			role: "notebook",
+		const { session, view, host } = createNotebookFixture({
 			_spec: {
 				cells: [
 					{
@@ -287,22 +287,21 @@ viewof gain = {
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render(renderProps(model, el, controller.signal));
+		widget.render(renderProps(view, el, controller.signal, host));
 
 		const select = await waitFor(() => onlySelect(el));
-		expect(await waitFor(() => (variableValue(model, "pointDensity") === 7 ? 7 : undefined))).toBe(7);
+		expect(await waitFor(() => (variableValue(view, "pointDensity") === 7 ? 7 : undefined))).toBe(7);
 
-		setVariables(model, 1, "set", { presets: { pointDensity: 21 } });
+		setVariables(session, 1, "set", { presets: { pointDensity: 21 } });
 
-		await waitFor(() => (variableValue(model, "pointDensity") === 21 ? 21 : undefined));
+		await waitFor(() => (variableValue(view, "pointDensity") === 21 ? 21 : undefined));
 		expect(select.selectedIndex).toBe(1);
 		expect(select.closest("form")?.value).toEqual({ pointDensity: 21 });
 		controller.abort();
 	});
 
 	test("keeps view controls unchanged for lossy element summaries", async () => {
-		const model = createModel({
-			role: "notebook",
+		const { view, host } = createNotebookFixture({
 			_spec: {
 				cells: [
 					{
@@ -325,24 +324,23 @@ viewof image = {
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render(renderProps(model, el, controller.signal));
+		widget.render(renderProps(view, el, controller.signal, host));
 
 		const form = await waitFor(() => el.querySelector("form") ?? undefined);
-		expect(await waitFor(() => (variableValue(model, "imageTag") === "IMG" ? "IMG" : undefined))).toBe("IMG");
-		expect(variableValue(model, "image")).toEqual({
+		expect(await waitFor(() => (variableValue(view, "imageTag") === "IMG" ? "IMG" : undefined))).toBe("IMG");
+		expect(variableValue(view, "image")).toEqual({
 			__observablejs_type__: "element",
 			value: "img",
 		});
 		expect((form as HTMLFormElement & { value: unknown }).value).toBeInstanceOf(Promise);
-		await waitFor(() => (model.get("_has_rendered") === true ? true : undefined));
+		await waitFor(() => (view.get("_has_rendered") === true ? true : undefined));
 		expect((form as HTMLFormElement & { value: unknown }).value).toBeInstanceOf(Promise);
-		expect(variableValue(model, "imageTag")).toBe("IMG");
+		expect(variableValue(view, "imageTag")).toBe("IMG");
 		controller.abort();
 	});
 
 	test("keeps Python-owned view values while dependencies change", async () => {
-		const model = createModel({
-			role: "notebook",
+		const { session, view, host } = createNotebookFixture({
 			_spec: {
 				cells: [
 					{
@@ -369,25 +367,24 @@ viewof gain = {
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render(renderProps(model, el, controller.signal));
+		widget.render(renderProps(view, el, controller.signal, host));
 
 		await waitFor(() => rangeWithValue(el, 5));
-		expect(await waitFor(() => (variableValue(model, "seedEcho") === 1 ? 1 : undefined))).toBe(1);
+		expect(await waitFor(() => (variableValue(view, "seedEcho") === 1 ? 1 : undefined))).toBe(1);
 
-		setVariables(model, 1, "set", { seed: 2 });
+		setVariables(session, 1, "set", { seed: 2 });
 		await waitFor(() => rangeWithValue(el, 5));
-		expect(await waitFor(() => (variableValue(model, "seedEcho") === 2 ? 2 : undefined))).toBe(2);
+		expect(await waitFor(() => (variableValue(view, "seedEcho") === 2 ? 2 : undefined))).toBe(2);
 
-		setVariables(model, 2, "set", { gain: 7 });
+		setVariables(session, 2, "set", { gain: 7 });
 
 		await waitFor(() => rangeWithValue(el, 7));
-		expect(await waitFor(() => (variableValue(model, "doubled") === 14 ? 14 : undefined))).toBe(14);
+		expect(await waitFor(() => (variableValue(view, "doubled") === 14 ? 14 : undefined))).toBe(14);
 		controller.abort();
 	});
 
 	test("preserves user-set view values across repeated dependency replacements", async () => {
-		const model = createModel({
-			role: "notebook",
+		const { session, view, host } = createNotebookFixture({
 			_spec: {
 				cells: [
 					{
@@ -414,29 +411,28 @@ viewof gain = {
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render(renderProps(model, el, controller.signal));
+		widget.render(renderProps(view, el, controller.signal, host));
 
 		const firstInput = await waitFor(() => rangeWithValue(el, 1));
-		expect(await waitFor(() => (variableValue(model, "seedEcho") === 1 ? 1 : undefined))).toBe(1);
+		expect(await waitFor(() => (variableValue(view, "seedEcho") === 1 ? 1 : undefined))).toBe(1);
 		firstInput.value = "5";
 		firstInput.dispatchEvent(new Event("input", { bubbles: true }));
 		firstInput.dispatchEvent(new Event("change", { bubbles: true }));
-		await waitFor(() => (variableValue(model, "gain") === 5 ? 5 : undefined));
+		await waitFor(() => (variableValue(view, "gain") === 5 ? 5 : undefined));
 
-		setVariables(model, 1, "set", { seed: 2 });
+		setVariables(session, 1, "set", { seed: 2 });
 		await waitFor(() => rangeWithValue(el, 5));
-		expect(await waitFor(() => (variableValue(model, "seedEcho") === 2 ? 2 : undefined))).toBe(2);
+		expect(await waitFor(() => (variableValue(view, "seedEcho") === 2 ? 2 : undefined))).toBe(2);
 
-		setVariables(model, 2, "set", { seed: 3 });
+		setVariables(session, 2, "set", { seed: 3 });
 		await waitFor(() => rangeWithValue(el, 5));
-		expect(await waitFor(() => (variableValue(model, "seedEcho") === 3 ? 3 : undefined))).toBe(3);
-		expect(await waitFor(() => (variableValue(model, "doubled") === 10 ? 10 : undefined))).toBe(10);
+		expect(await waitFor(() => (variableValue(view, "seedEcho") === 3 ? 3 : undefined))).toBe(3);
+		expect(await waitFor(() => (variableValue(view, "doubled") === 10 ? 10 : undefined))).toBe(10);
 		controller.abort();
 	});
 
 	test("uses replacement view defaults until the user changes the view", async () => {
-		const model = createModel({
-			role: "notebook",
+		const { session, view, host } = createNotebookFixture({
 			_spec: {
 				cells: [
 					{
@@ -462,30 +458,29 @@ viewof gain = {
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render(renderProps(model, el, controller.signal));
+		widget.render(renderProps(view, el, controller.signal, host));
 
-		await waitStep("initial view default", () => rangeWithValue(el, 1), model);
+		await waitStep("initial view default", () => rangeWithValue(el, 1), view);
 		expect(
-			await waitStep("initial derived value", () => (variableValue(model, "doubled") === 2 ? 2 : undefined), model),
+			await waitStep("initial derived value", () => (variableValue(view, "doubled") === 2 ? 2 : undefined), view),
 		).toBe(2);
 
-		setVariables(model, 1, "set", { seed: 2 });
-		await waitStep("first replacement default", () => rangeWithValue(el, 2), model);
+		setVariables(session, 1, "set", { seed: 2 });
+		await waitStep("first replacement default", () => rangeWithValue(el, 2), view);
 		expect(
-			await waitStep("first replacement value", () => (variableValue(model, "doubled") === 4 ? 4 : undefined), model),
+			await waitStep("first replacement value", () => (variableValue(view, "doubled") === 4 ? 4 : undefined), view),
 		).toBe(4);
 
-		setVariables(model, 2, "set", { seed: 3 });
-		await waitStep("second replacement default", () => rangeWithValue(el, 3), model);
+		setVariables(session, 2, "set", { seed: 3 });
+		await waitStep("second replacement default", () => rangeWithValue(el, 3), view);
 		expect(
-			await waitStep("second replacement value", () => (variableValue(model, "doubled") === 6 ? 6 : undefined), model),
+			await waitStep("second replacement value", () => (variableValue(view, "doubled") === 6 ? 6 : undefined), view),
 		).toBe(6);
 		controller.abort();
 	});
 
 	test("uses view defaults after Python replacement removes a view value", async () => {
-		const model = createModel({
-			role: "notebook",
+		const { session, view, host } = createNotebookFixture({
 			_spec: {
 				cells: [
 					{
@@ -511,31 +506,31 @@ viewof gain = {
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render(renderProps(model, el, controller.signal));
+		widget.render(renderProps(view, el, controller.signal, host));
 
-		const firstInput = await waitStep("Python-owned initial view", () => rangeWithValue(el, 5), model);
+		const firstInput = await waitStep("Python-owned initial view", () => rangeWithValue(el, 5), view);
 		expect(
 			await waitStep(
 				"Python-owned initial value",
-				() => (variableValue(model, "doubled") === 10 ? 10 : undefined),
-				model,
+				() => (variableValue(view, "doubled") === 10 ? 10 : undefined),
+				view,
 			),
 		).toBe(10);
 		firstInput.value = "6";
 		firstInput.dispatchEvent(new Event("input", { bubbles: true }));
 		firstInput.dispatchEvent(new Event("change", { bubbles: true }));
-		await waitStep("interaction value", () => (variableValue(model, "doubled") === 12 ? 12 : undefined), model);
+		await waitStep("interaction value", () => (variableValue(view, "doubled") === 12 ? 12 : undefined), view);
 
-		setVariables(model, 1, "replace", { seed: 2 });
-		await waitStep("replacement removes view override", () => rangeWithValue(el, 2), model);
+		setVariables(session, 1, "replace", { seed: 2 });
+		await waitStep("replacement removes view override", () => rangeWithValue(el, 2), view);
 		expect(
-			await waitStep("replacement default value", () => (variableValue(model, "doubled") === 4 ? 4 : undefined), model),
+			await waitStep("replacement default value", () => (variableValue(view, "doubled") === 4 ? 4 : undefined), view),
 		).toBe(4);
 
-		setVariables(model, 2, "set", { seed: 3 });
-		await waitStep("post-replacement view default", () => rangeWithValue(el, 3), model);
+		setVariables(session, 2, "set", { seed: 3 });
+		await waitStep("post-replacement view default", () => rangeWithValue(el, 3), view);
 		expect(
-			await waitStep("post-replacement value", () => (variableValue(model, "doubled") === 6 ? 6 : undefined), model),
+			await waitStep("post-replacement value", () => (variableValue(view, "doubled") === 6 ? 6 : undefined), view),
 		).toBe(6);
 		controller.abort();
 	});
@@ -556,12 +551,7 @@ function onlySelect(el: HTMLElement): HTMLSelectElement | undefined {
 	return selects[0]!;
 }
 
-function setVariables(
-	model: ReturnType<typeof createModel>,
-	seq: number,
-	kind: "set" | "replace",
-	values: Record<string, unknown>,
-): void {
+function setVariables(model: TestModel, seq: number, kind: "set" | "replace", values: Record<string, unknown>): void {
 	const previous = model.get("_variables");
 	model.set("_variable_update", { seq, kind, values });
 	model.set(
@@ -570,11 +560,7 @@ function setVariables(
 	);
 }
 
-async function waitStep<T>(
-	label: string,
-	read: () => T | undefined,
-	model: ReturnType<typeof createModel>,
-): Promise<T> {
+async function waitStep<T>(label: string, read: () => T | undefined, model: TestModel): Promise<T> {
 	try {
 		return await waitFor(read);
 	} catch (error) {

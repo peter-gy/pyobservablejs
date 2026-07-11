@@ -63,14 +63,15 @@ notebook = obs.Notebook(
     ),
 )
 
-mo.ui.anywidget(notebook)
+full_view = notebook.view()
+mo.ui.anywidget(full_view)
 ```
 
 The input defines `cylinders`. The hidden cell derives `filteredCars`. The chart
 references that derived value, so Notebook Kit records both graph edges.
 
-Python creates and displays the notebook once. No Python callback runs when the
-selection changes.
+Python creates one full view. Its browser runtime updates the selection and
+dependent cells.
 
 ## Continue
 

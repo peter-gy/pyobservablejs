@@ -7,7 +7,7 @@ export type ViewTarget = EventTarget & {
 
 export type RuntimeVariablesSync = {
 	applyInitialViews(): void;
-	setView(name: string, view: ViewTarget, onVariableRelease?: () => void): void;
+	setView(name: string, view: ViewTarget, options?: { applyInitialVariable?: boolean }): void;
 	deleteView(name: string, view: ViewTarget): void;
 };
 

@@ -1,6 +1,6 @@
 ---
 title: Getting started
-description: Build and display a pyobservablejs notebook.
+description: Build a pyobservablejs notebook and render a view.
 ---
 
 # Getting started
@@ -79,12 +79,14 @@ notebook = obs.Notebook(
         key="island_counts",
     ),
 )
+
+full_view = notebook.view()
 ```
 
 ```{marimo} python
 :echo: true
 
-mo.ui.anywidget(notebook)
+mo.ui.anywidget(full_view)
 ```
 
 The full sample contains three species across three islands. Choosing a species
@@ -92,19 +94,21 @@ narrows both the bars and the legend.
 
 ## Follow the graph
 
-`obs.Notebook(...)` creates the document. `obs.js(...)` adds standard JavaScript
-cells. A top-level variable such as `species` can be referenced by another cell.
+`obs.Notebook(...)` creates the document and its shared input session.
+`notebook.view()` creates the anywidget that runs every cell. `obs.js(...)` adds
+standard JavaScript cells. A top-level variable such as `species` can be
+referenced by another cell.
 
 `view(...)` displays the select input and yields its current value. Changing the
 selection invalidates the Plot cell, which runs again with the new value.
 
-In marimo, display `mo.ui.anywidget(notebook)`. In Jupyter, put `notebook` as the
-final expression in a cell.
+In marimo, wrap `full_view` with `mo.ui.anywidget`. In Jupyter, put `full_view`
+as the final expression in a cell.
 
 ## Next steps
 
 - [Python data to Plot](examples/python-data-plot.md) passes records from Python.
 - [Observable cells and reactivity](guides/author-cells.md) explains `obs.js`,
   `obs.ojs`, and cell dependencies.
-- [Python variables](guides/python-variables.md) updates a mounted widget from a
+- [Python variables](guides/python-variables.md) updates a mounted view from a
   marimo control.

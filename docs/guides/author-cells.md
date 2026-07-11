@@ -40,7 +40,8 @@ notebook = obs.Notebook(
     ),
 )
 
-mo.ui.anywidget(notebook)
+full_view = notebook.view()
+mo.ui.anywidget(full_view)
 ```
 
 The first cell defines `exponent`. The readout references it, so Notebook Kit
@@ -113,10 +114,11 @@ obs.js(
 )
 ```
 
-`key` names the Python `NotebookCell` handle. `display=False` hides the cell
-output while keeping its values in the graph. `pinned=True` exposes the source
-when the notebook enables `show_pinned_source`. `raw=True` preserves leading
-and trailing newlines.
+`key` names the Python `NotebookCell` selection handle. Call `view()` on that
+handle to create a view for the cell and its dependencies. `display=False`
+hides the cell output while keeping its values in the graph. `pinned=True`
+exposes the source when the notebook enables `show_pinned_source`. `raw=True`
+preserves leading and trailing newlines.
 
 See [Cells](../reference/cells.md) for the complete signature and error
 behavior.

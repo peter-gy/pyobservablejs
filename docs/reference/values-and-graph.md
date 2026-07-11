@@ -1,65 +1,71 @@
 ---
 title: Values and graph
-description: NotebookCell readback, CellValues records, render gates, and NotebookGraph metadata.
+description: NotebookView readback, CellValues records, render gates, and NotebookGraph metadata.
 ---
 
 # Values and graph
 
-The browser synchronizes rendered values and symbolic dependency metadata to
-Python. Value readback and graph readback have separate lifecycle gates.
+`NotebookView` synchronizes rendered values and symbolic dependency metadata to
+Python. Readback belongs to the view whose browser runtime produced it.
 
 ```python
-cell = notebook.cell_by_key("gain_control")
+full_view = notebook.view()
 
-if cell.has_rendered:
-    gain = cell.value("gain")
+if full_view.has_rendered:
+    gain = full_view.value("gain")
 
-if notebook.has_graph_snapshot:
-    dependencies = notebook.graph
+if full_view.has_graph_snapshot:
+    dependencies = full_view.graph
 ```
+
+## `NotebookView`
+
+A view can cover the complete notebook, one selected cell, or a composite
+selection.
+
+```python
+full_view = notebook.view()
+gain_view = notebook.cell_by_key("gain_control").view()
+summary_view = notebook.view(cells=[0, 1])
+```
+
+Views from one notebook share named Python variables. An interaction with a
+named `viewof` input is shared with current and future views. Untouched source
+defaults remain local to each runtime. Each view owns its runtime values,
+per-cell values, graph, and render gates. Its graph contains the selected cells
+and the dependency closure evaluated by that view. `cell_values()` contains the
+selected cells.
+
+### Readback members
+
+| Member               | Type                     | Contract                                                       |
+| -------------------- | ------------------------ | -------------------------------------------------------------- |
+| `has_rendered`       | `bool`                   | Whether this view has synchronized a completed browser render. |
+| `has_graph_snapshot` | `bool`                   | Whether this view has synchronized graph metadata.             |
+| `runtime_values`     | `dict[str, Any]`         | Decoded values with one owning cell in this view.              |
+| `cell_values()`      | `tuple[CellValues, ...]` | Per-cell decoded values in this view's logical cell order.     |
+| `value(name)`        | `Any`                    | One entry from `runtime_values`.                               |
+| `graph`              | `NotebookGraph`          | Static dependency graph for cells evaluated by this view.      |
+
+`runtime_values`, `cell_values()`, and `value(name)` require a completed view
+render. `graph` requires a graph snapshot. `value(name)` raises `KeyError` when
+the rendered value mapping has no matching name. A name produced by multiple
+selected cells is omitted from `runtime_values` because it has no unique owner.
 
 ## `NotebookCell`
 
-`NotebookCell` is a lazy, cached projection handle for one cell in a `Notebook`.
-Retrieve handles through `notebook.cells`, `notebook.cell_at`,
-`notebook.cell_by_key`, or `notebook.cell_for_variable`. A handle can display
-that cell with its dependency closure and read the parent-owned value snapshot
-for the cell.
-
-### Attributes
-
-| Attribute         | Type              | Contract                                                                  |
-| ----------------- | ----------------- | ------------------------------------------------------------------------- |
-| `key`             | `str`             | Python cell handle, or `""` when the authored cell has no key.            |
-| `name`            | `str`             | Notebook Kit cell name, or `""` when the source has no name.              |
-| `has_rendered`    | `bool`            | Whether the parent has synchronized a browser output for this cell.       |
-| `info`            | `CellInfo`        | Graph metadata for this cell. Requires a graph snapshot.                  |
-| `defines`         | `tuple[str, ...]` | Variables defined by the cell, delegated from `info`.                     |
-| `references`      | `tuple[str, ...]` | Variables read by the cell, delegated from `info`.                        |
-| `outputs`         | `tuple[str, ...]` | Notebook Kit output names, delegated from `info`.                         |
-| `runtime_outputs` | `tuple[str, ...]` | Raw runtime output names used for dependency edges.                       |
-| `output`          | `Optional[str]`   | Primary Notebook Kit output name.                                         |
-| `values`          | `dict[str, Any]`  | Latest decoded values synchronized for this cell. Requires a cell render. |
-
-### `NotebookCell.value(name)`
+`NotebookCell` is a cached selection handle for one cell in a `Notebook`.
+Retrieve handles through `notebook.cells`, `notebook.cell_at`, or
+`notebook.cell_by_key`. Call `view()` to create a renderable view for that cell
+and its dependencies.
 
 ```python
-value = cell.value("gain")
+cell = notebook.cell_by_key("gain_control")
+gain_view = cell.view()
 ```
 
-Returns the decoded synchronized value for `name`. It raises
-`NotRenderedError` before this cell renders and `KeyError` when the rendered
-cell has no synchronized value with that name.
-
-### `NotebookCell.only_value()`
-
-```python
-value = cell.only_value()
-```
-
-Returns the single value in `cell.values`. It raises `NotRenderedError` before
-this cell renders. It raises `KeyError` when the cell has zero values or more
-than one value.
+The handle exposes its `key` and Notebook Kit `name`. Browser values and graph
+metadata belong to `gain_view`.
 
 ## `CellValues`
 
@@ -67,8 +73,8 @@ than one value.
 obs.CellValues(index, key, values)
 ```
 
-`Notebook.cell_values()` returns one `CellValues` record per cell in notebook
-order.
+`NotebookView.cell_values()` returns one `CellValues` record per logical cell
+in the view.
 
 | Field    | Type             | Contract                                                |
 | -------- | ---------------- | ------------------------------------------------------- |
@@ -80,7 +86,7 @@ The data class is frozen. Its `values` field is a regular dictionary returned
 for that snapshot.
 
 ```python
-for cell_values in notebook.cell_values():
+for cell_values in full_view.cell_values():
     print(cell_values.index, cell_values.key, cell_values.values)
 ```
 
@@ -90,21 +96,16 @@ for cell_values in notebook.cell_values():
 obs.NotRenderedError(message)
 ```
 
-`NotRenderedError` is a `RuntimeError` raised when a readback member is accessed
-before the browser has synchronized the state that member requires.
+`NotRenderedError` is a `RuntimeError` raised when code reads synchronized state
+before the browser has produced the required snapshot.
 
-| Readback member                                                                      | Required state                                       |
-| ------------------------------------------------------------------------------------ | ---------------------------------------------------- |
-| `Notebook.runtime_values`, `Notebook.cell_values()`, `Notebook.value(name)`          | Full notebook render                                 |
-| `Notebook.graph`, `Notebook.cell_for_variable(name)`                                 | Graph snapshot from a notebook or direct cell render |
-| `NotebookCell.values`, `NotebookCell.value(name)`, `NotebookCell.only_value()`       | Parent snapshot for that cell                        |
-| `NotebookCell.info`, `defines`, `references`, `outputs`, `runtime_outputs`, `output` | Parent graph snapshot containing that cell           |
+| Readback member                                                   | Required state        |
+| ----------------------------------------------------------------- | --------------------- |
+| `NotebookView.runtime_values`, `cell_values()`, and `value(name)` | Completed view render |
+| `NotebookView.graph`                                              | View graph snapshot   |
 
-Displaying one `NotebookCell` can set `cell.has_rendered` and
-`notebook.has_graph_snapshot` while `notebook.has_rendered` remains false. A
-full notebook render also makes each materialized handle readable through the
-same parent-owned snapshots. Notebook-level value readback still requires the
-full notebook render gate.
+The gates are view-local. Rendering `full_view` leaves a newly created
+`summary_view` unreadable until `summary_view` renders.
 
 ## `NotebookGraph`
 
@@ -112,10 +113,9 @@ full notebook render gate.
 obs.NotebookGraph(cells, edges)
 ```
 
-`notebook.graph` returns a frozen `NotebookGraph` after graph metadata syncs.
-The browser may produce the snapshot during a full notebook render or a direct
-`NotebookCell` projection. Malformed browser entries are dropped while Python
-decodes the graph trait.
+`NotebookView.graph` returns a frozen `NotebookGraph` after graph metadata
+synchronizes. Malformed browser entries are dropped while Python decodes the
+graph trait.
 
 ### Attributes
 
@@ -146,8 +146,8 @@ Returns a Mermaid `flowchart LR` string for cell and external dependencies.
 Returns a D2 diagram string with `direction: right`.
 
 ```python
-if notebook.has_graph_snapshot:
-    graph = notebook.graph
+if full_view.has_graph_snapshot:
+    graph = full_view.graph
     print(graph.to_mermaid())
 ```
 

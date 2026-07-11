@@ -1,9 +1,11 @@
-import { describe, expect, test, vi } from "vite-plus/test";
+import { describe, expect, test } from "vite-plus/test";
 import {
 	alertText,
+	cellRecord,
 	composedText,
 	createHost,
-	createModel,
+	createSession,
+	createView,
 	graphValue,
 	renderProps,
 	variableValue,
@@ -11,244 +13,365 @@ import {
 	widget,
 } from "./testing";
 
-describe("NotebookCell projection", () => {
-	test("renders the selected cell and its dependency closure through the parent widget", async () => {
-		const parent = notebookModel([
-			{ id: 1, mode: "ojs", value: "answer = 42" },
-			{ id: 2, mode: "ojs", value: "double = answer * 2" },
-		]);
-		parent.set("_cell_keys", ["answer", "double"]);
-		const cell = cellModel("anywidget:notebook", 1, "double");
-		const host = createHost(new Map([["anywidget:notebook", parent]]));
+const cells = [
+	{ id: 1, mode: "ojs", value: "data = [1, 2, 3].map(i => x * i + z - y)" },
+	{
+		id: 2,
+		mode: "ojs",
+		value: `viewof x = {
+  const input = document.createElement("input");
+  input.type = "range";
+  input.min = "0";
+  input.max = "10";
+  input.value = "5";
+  return input;
+}`,
+	},
+];
+
+describe("NotebookView composition", () => {
+	test("full and projected views share interactions and keep derived readback isolated", async () => {
+		const session = createSession({
+			_spec: { cells },
+			_attachments: {},
+			_variables: { z: 100, y: 10 },
+			_options: {},
+			_cell_keys: ["data", "x"],
+		});
+		const full = createView("anywidget:session", null);
+		const dataView = createView("anywidget:session", [0]);
+		const inputView = createView("anywidget:session", [1]);
+		const host = createHost(new Map([["anywidget:session", session]]));
+		const fullController = new AbortController();
+		const dataController = new AbortController();
+		const inputController = new AbortController();
+		const fullEl = document.createElement("div");
+		const dataEl = document.createElement("div");
+		const inputEl = document.createElement("div");
+
+		widget.render(renderProps(full, fullEl, fullController.signal, host));
+		const fullInput = await waitFor(() => rangeWithValue(fullEl, 5));
+		await waitFor(() => (variableValue(full, "data") ? true : undefined));
+		widget.render(renderProps(dataView, dataEl, dataController.signal, host));
+		widget.render(renderProps(inputView, inputEl, inputController.signal, host));
+		const projectedInput = await waitFor(() => rangeWithValue(inputEl, 5));
+		await waitFor(() => (variableValue(dataView, "data") ? true : undefined));
+		expect(session.get("_view_values")).toEqual({});
+
+		setRange(fullInput, 8);
+
+		expect(await waitFor(() => (session.get("_view_values")?.x === 8 ? 8 : undefined))).toBe(8);
+		expect(session.saveCount()).toBe(1);
+		expect(await waitFor(() => rangeWithValue(inputEl, 8))).toBe(projectedInput);
+		expect(await waitFor(() => sameArray(variableValue(full, "data"), [98, 106, 114]))).toBe(true);
+		expect(await waitFor(() => sameArray(variableValue(dataView, "data"), [98, 106, 114]))).toBe(true);
+		expect(variableValue(inputView, "x")).toBe(8);
+
+		setRange(projectedInput, 3);
+
+		expect(await waitFor(() => rangeWithValue(fullEl, 3))).toBe(fullInput);
+		expect(await waitFor(() => sameArray(variableValue(full, "data"), [93, 96, 99]))).toBe(true);
+		expect(await waitFor(() => sameArray(variableValue(dataView, "data"), [93, 96, 99]))).toBe(true);
+		expect(cellRecord(full, 0)?.rendered).toBe(true);
+		expect(cellRecord(full, 1)?.rendered).toBe(true);
+		expect(cellRecord(dataView, 0)?.rendered).toBe(true);
+		expect(cellRecord(dataView, 1)).toBeUndefined();
+		expect(cellRecord(inputView, 0)).toBeUndefined();
+		expect(cellRecord(inputView, 1)?.values.x).toBe(3);
+		expect(session.get("_cell_values")).toBeUndefined();
+		expect(session.saveCount()).toBe(2);
+
+		const savesBeforeExternalUpdate = session.saveCount();
+		session.set("_view_values", { x: 6 });
+		expect(await waitFor(() => rangeWithValue(fullEl, 6))).toBe(fullInput);
+		expect(await waitFor(() => rangeWithValue(inputEl, 6))).toBe(projectedInput);
+		expect(await waitFor(() => sameArray(variableValue(dataView, "data"), [96, 102, 108]))).toBe(true);
+		expect(session.saveCount()).toBe(savesBeforeExternalUpdate);
+
+		fullController.abort();
+		dataController.abort();
+		inputController.abort();
+	});
+
+	test("shares real interactions after an initial Python view value and seeds fresh views", async () => {
+		const session = createSession({
+			_spec: { cells },
+			_attachments: {},
+			_variables: { x: 7, z: 100, y: 10 },
+			_options: {},
+		});
+		const first = createView("anywidget:session", [1]);
+		const second = createView("anywidget:session", [1]);
+		const host = createHost(new Map([["anywidget:session", session]]));
+		const firstController = new AbortController();
+		const secondController = new AbortController();
+		const firstEl = document.createElement("div");
+		const secondEl = document.createElement("div");
+		widget.render(renderProps(first, firstEl, firstController.signal, host));
+		widget.render(renderProps(second, secondEl, secondController.signal, host));
+		const firstInput = await waitFor(() => rangeWithValue(firstEl, 7));
+		const secondInput = await waitFor(() => rangeWithValue(secondEl, 7));
+		expect(session.get("_view_values")).toEqual({});
+
+		setRange(firstInput, 8);
+		expect(await waitFor(() => rangeWithValue(secondEl, 8))).toBe(secondInput);
+		expect(await waitFor(() => (session.get("_view_values")?.x === 8 ? 8 : undefined))).toBe(8);
+
+		const fresh = createView("anywidget:session", [1]);
+		const freshController = new AbortController();
+		const freshEl = document.createElement("div");
+		widget.render(renderProps(fresh, freshEl, freshController.signal, host));
+		expect(await waitFor(() => rangeWithValue(freshEl, 8))).toBeInstanceOf(HTMLInputElement);
+		expect(await waitFor(() => (variableValue(fresh, "x") === 8 ? 8 : undefined))).toBe(8);
+
+		session.set("_variable_update", { seq: 1, kind: "set", values: { x: 4 } });
+		session.set("_variables", { x: 4, z: 100, y: 10 });
+		expect(await waitFor(() => rangeWithValue(firstEl, 4))).toBe(firstInput);
+		expect(await waitFor(() => rangeWithValue(secondEl, 4))).toBe(secondInput);
+		expect(await waitFor(() => rangeWithValue(freshEl, 4))).toBeInstanceOf(HTMLInputElement);
+		expect(session.get("_view_values")).toEqual({});
+
+		firstController.abort();
+		secondController.abort();
+		freshController.abort();
+	});
+
+	test("reasserts the configured Python view value after a shared interaction", async () => {
+		const session = createSession({
+			_spec: { cells },
+			_attachments: {},
+			_variables: { x: 7, z: 100, y: 10 },
+			_options: {},
+		});
+		const first = createView("anywidget:session", [1]);
+		const second = createView("anywidget:session", [1]);
+		const host = createHost(new Map([["anywidget:session", session]]));
+		const firstController = new AbortController();
+		const secondController = new AbortController();
+		const firstEl = document.createElement("div");
+		const secondEl = document.createElement("div");
+		widget.render(renderProps(first, firstEl, firstController.signal, host));
+		widget.render(renderProps(second, secondEl, secondController.signal, host));
+		const firstInput = await waitFor(() => rangeWithValue(firstEl, 7));
+		const secondInput = await waitFor(() => rangeWithValue(secondEl, 7));
+
+		setRange(firstInput, 8);
+		expect(await waitFor(() => rangeWithValue(secondEl, 8))).toBe(secondInput);
+		expect(await waitFor(() => (session.get("_view_values")?.x === 8 ? 8 : undefined))).toBe(8);
+
+		session.set("_variable_update", { seq: 1, kind: "set", values: { x: 7 } });
+		expect(await waitFor(() => rangeWithValue(firstEl, 7))).toBe(firstInput);
+		expect(await waitFor(() => rangeWithValue(secondEl, 7))).toBe(secondInput);
+		expect(session.get("_view_values")).toEqual({});
+
+		firstController.abort();
+		secondController.abort();
+	});
+
+	test("a new selected view seeds from session state before its source default publishes", async () => {
+		const session = createSession({
+			_spec: { cells },
+			_attachments: {},
+			_variables: { z: 100, y: 10 },
+			_options: {},
+			_cell_keys: ["data", "x"],
+		});
+		const first = createView("anywidget:session", [1]);
+		const host = createHost(new Map([["anywidget:session", session]]));
+		const firstController = new AbortController();
+		const firstEl = document.createElement("div");
+		widget.render(renderProps(first, firstEl, firstController.signal, host));
+		setRange(await waitFor(() => rangeWithValue(firstEl, 5)), 9);
+		await waitFor(() => (session.get("_view_values")?.x === 9 ? 9 : undefined));
+
+		const second = createView("anywidget:session", [1]);
+		const secondController = new AbortController();
+		const secondEl = document.createElement("div");
+		widget.render(renderProps(second, secondEl, secondController.signal, host));
+
+		expect(await waitFor(() => rangeWithValue(secondEl, 9))).toBeInstanceOf(HTMLInputElement);
+		expect(await waitFor(() => (variableValue(second, "x") === 9 ? 9 : undefined))).toBe(9);
+		expect(session.get("_view_values")?.x).toBe(9);
+		firstController.abort();
+		secondController.abort();
+	});
+
+	test("stored browser interaction seeds a view when Python initialized the name", async () => {
+		const session = createSession({
+			_spec: { cells },
+			_attachments: {},
+			_variables: { x: 7, z: 100, y: 10 },
+			_view_values: { x: 2 },
+			_options: {},
+		});
+		const view = createView("anywidget:session", [1]);
 		const controller = new AbortController();
 		const el = document.createElement("div");
+		widget.render(renderProps(view, el, controller.signal, createHost(new Map([["anywidget:session", session]]))));
 
-		widget.render(renderProps(cell, el, controller.signal, host));
-
-		expect(await waitFor(() => composedText(el, "84"))).toBeInstanceOf(HTMLElement);
-		expect(variableValue(parent, "double")).toBe(84);
-		const graph = await waitFor(() => graphValue(parent));
-		expect(graph.edges).toContainEqual({ from: 1, to: 2, variable: "answer" });
-		expect(host.widgetLookups).toEqual(["anywidget:notebook"]);
-		expect(host.modelLookups).toEqual([]);
-		expect(host.renders).toHaveLength(1);
-		expect(host.renders[0]?.el).toBe(el);
-		expect(host.renders[0]?.signal.aborted).toBe(false);
+		expect(await waitFor(() => rangeWithValue(el, 2))).toBeInstanceOf(HTMLInputElement);
+		expect(await waitFor(() => (variableValue(view, "x") === 2 ? 2 : undefined))).toBe(2);
 		controller.abort();
-		expect(host.renders[0]?.signal.aborted).toBe(true);
 	});
 
-	test("uses Python-owned values in projected dependencies", async () => {
-		const source = vi.fn(() => 1);
-		Object.defineProperty(globalThis, "__pyobservablejsProjectedSource", { configurable: true, value: source });
-		const parent = notebookModel(
-			[
-				{ id: 1, mode: "ojs", value: "base = globalThis.__pyobservablejsProjectedSource()" },
-				{ id: 2, mode: "ojs", value: "doubled = base * 2" },
-			],
-			{ base: 5 },
-		);
-		parent.set("_cell_keys", ["base", "doubled"]);
-		const cell = cellModel("anywidget:notebook", 1, "doubled");
-		const controller = new AbortController();
-		try {
-			widget.render(
-				renderProps(
-					cell,
-					document.createElement("div"),
-					controller.signal,
-					createHost(new Map([["anywidget:notebook", parent]])),
-				),
-			);
-			expect(await waitFor(() => (variableValue(parent, "doubled") === 10 ? 10 : undefined))).toBe(10);
-			expect(source).not.toHaveBeenCalled();
-		} finally {
-			controller.abort();
-			Reflect.deleteProperty(globalThis, "__pyobservablejsProjectedSource");
-		}
-	});
-
-	test("does not evaluate unrelated cells outside the projected dependency closure", async () => {
-		const unrelated = vi.fn(() => "unused");
-		Object.defineProperty(globalThis, "__pyobservablejsUnrelatedCell", { configurable: true, value: unrelated });
-		const parent = notebookModel([
-			{ id: 1, mode: "ojs", value: "answer = 42" },
-			{ id: 2, mode: "ojs", value: "unrelated = globalThis.__pyobservablejsUnrelatedCell()" },
-			{ id: 3, mode: "ojs", value: "double = answer * 2" },
-		]);
-		parent.set("_cell_keys", ["answer", "unrelated", "double"]);
-		const cell = cellModel("anywidget:notebook", 2, "double");
+	test("teardown disconnects session updates", async () => {
+		const session = createSession({ _spec: { cells }, _variables: { z: 100, y: 10 }, _options: {} });
+		const view = createView("anywidget:session", [1]);
 		const controller = new AbortController();
 		const el = document.createElement("div");
-		try {
-			widget.render(renderProps(cell, el, controller.signal, createHost(new Map([["anywidget:notebook", parent]]))));
-			expect(await waitFor(() => composedText(el, "84"))).toBeInstanceOf(HTMLElement);
-			expect(unrelated).not.toHaveBeenCalled();
-		} finally {
-			controller.abort();
-			Reflect.deleteProperty(globalThis, "__pyobservablejsUnrelatedCell");
-		}
+		widget.render(renderProps(view, el, controller.signal, createHost(new Map([["anywidget:session", session]]))));
+		await waitFor(() => rangeWithValue(el, 5));
+		expect(session.listenerCount("change:_view_values")).toBeGreaterThan(0);
+
+		controller.abort();
+		expect(session.listenerCount("change:_view_values")).toBe(0);
+		expect(session.listenerCount("change:_variable_update")).toBe(0);
 	});
 
-	test("reports missing parent references and invalid cell indexes", async () => {
-		const missingParent = createModel({ role: "cell", name: "answer" });
-		const parent = notebookModel([{ id: 1, mode: "ojs", value: "answer = 42" }]);
-		const invalidIndex = cellModel("anywidget:notebook", 9, "answer");
-		const missingEl = document.createElement("div");
-		const invalidEl = document.createElement("div");
-		const missingController = new AbortController();
-		const invalidController = new AbortController();
+	test("canonicalizes selected cells to notebook order", async () => {
+		const session = createSession({
+			_spec: {
+				cells: [
+					{ id: 1, mode: "ojs", value: "a = 1" },
+					{ id: 2, mode: "ojs", value: "b = 2" },
+					{ id: 3, mode: "ojs", value: "c = 3" },
+				],
+			},
+			_variables: {},
+			_options: {},
+		});
+		const view = createView("anywidget:session", [2, 0]);
+		const controller = new AbortController();
+		const el = document.createElement("div");
+		widget.render(renderProps(view, el, controller.signal, createHost(new Map([["anywidget:session", session]]))));
+		await waitFor(() => (view.get("_has_rendered") === true ? true : undefined));
 
-		widget.render(renderProps(missingParent, missingEl, missingController.signal));
+		const visible = Array.from(el.querySelectorAll<HTMLElement>(".pyobservablejs-cell:not([hidden])"));
+		expect(visible.map((item) => item.textContent?.trim())).toEqual(["1", "3"]);
+		expect(cellRecord(view, 0)?.values.a).toBe(1);
+		expect(cellRecord(view, 1)).toBeUndefined();
+		expect(cellRecord(view, 2)?.values.c).toBe(3);
+		controller.abort();
+	});
+
+	test("scopes graph metadata to selected cells and their dependencies", async () => {
+		const session = createSession({
+			_spec: {
+				cells: [
+					{ id: 11, mode: "ojs", value: "base = 2" },
+					{ id: 22, mode: "ojs", value: "selected = base * 3" },
+					{ id: 33, mode: "ojs", value: "unrelated = 99" },
+				],
+			},
+			_variables: {},
+			_options: {},
+		});
+		const view = createView("anywidget:session", [1]);
+		const controller = new AbortController();
+		const el = document.createElement("div");
+		widget.render(renderProps(view, el, controller.signal, createHost(new Map([["anywidget:session", session]]))));
+		await waitFor(() => (view.get("_has_rendered") === true ? true : undefined));
+
+		const graph = await waitFor(() => graphValue(view));
+		expect(graph.cells.map(({ id, index }) => ({ id, index }))).toEqual([
+			{ id: 11, index: 0 },
+			{ id: 22, index: 1 },
+		]);
+		expect(graph.edges).toEqual([{ from: 11, to: 22, variable: "base" }]);
+		expect(cellRecord(view, 0)).toBeUndefined();
+		expect(cellRecord(view, 1)?.values.selected).toBe(6);
+		expect(cellRecord(view, 2)).toBeUndefined();
+		controller.abort();
+	});
+
+	test("rejects a second live mount and permits a sequential remount", async () => {
+		const session = createSession({
+			_spec: { cells: [{ id: 1, mode: "ojs", value: "answer = 42" }] },
+			_variables: {},
+			_options: {},
+		});
+		const view = createView();
+		const host = createHost(new Map([["anywidget:session", session]]));
+		const firstController = new AbortController();
+		const secondController = new AbortController();
+		const firstEl = document.createElement("div");
+		const secondEl = document.createElement("div");
+		widget.render(renderProps(view, firstEl, firstController.signal, host));
+		await waitFor(() => composedText(firstEl, "42"));
+
+		widget.render(renderProps(view, secondEl, secondController.signal, host));
+		expect(await waitFor(() => alertText(secondEl))).toBe("Error: NotebookView already has a live writable render");
+
+		firstController.abort();
+		const thirdController = new AbortController();
+		const thirdEl = document.createElement("div");
+		widget.render(renderProps(view, thirdEl, thirdController.signal, host));
+		expect(await waitFor(() => composedText(thirdEl, "42"))).toBeInstanceOf(HTMLElement);
+		secondController.abort();
+		thirdController.abort();
+	});
+
+	test("clears derived state before a delayed sequential remount", async () => {
+		const session = createSession({
+			_spec: { cells: [{ id: 1, mode: "ojs", value: "answer = 42" }] },
+			_variables: {},
+			_options: {},
+			_cell_keys: ["answer"],
+		});
+		const view = createView();
+		const firstController = new AbortController();
 		widget.render(
 			renderProps(
-				invalidIndex,
-				invalidEl,
-				invalidController.signal,
-				createHost(new Map([["anywidget:notebook", parent]])),
+				view,
+				document.createElement("div"),
+				firstController.signal,
+				createHost(new Map([["anywidget:session", session]])),
+			),
+		);
+		expect(await waitFor(() => (variableValue(view, "answer") === 42 ? 42 : undefined))).toBe(42);
+		firstController.abort();
+
+		session.set("_spec", { cells: [{ id: 2, mode: "ojs", value: "total = 7" }] });
+		session.set("_cell_keys", ["total"]);
+		let resolveSession!: (value: typeof session) => void;
+		const delayedSession = new Promise<typeof session>((resolve) => {
+			resolveSession = resolve;
+		});
+		const secondController = new AbortController();
+		widget.render(
+			renderProps(
+				view,
+				document.createElement("div"),
+				secondController.signal,
+				createHost(new Map([["anywidget:session", delayedSession]])),
 			),
 		);
 
-		expect(await waitFor(() => alertText(missingEl))).toBe("Error: NotebookCell has no parent Notebook reference");
-		expect(await waitFor(() => alertText(invalidEl))).toBe(
-			"Error: NotebookCell index 9 is outside the parent Notebook",
-		);
-		missingController.abort();
-		invalidController.abort();
-	});
+		expect(view.get("_has_rendered")).toBe(false);
+		expect(view.get("_cell_values")).toEqual({});
+		expect(view.get("_graph")).toEqual({});
 
-	test("reports parent references that resolve to a non-Notebook widget", async () => {
-		const parent = createModel({});
-		const cell = cellModel("anywidget:parent", 0, "answer");
-		const controller = new AbortController();
-		const el = document.createElement("div");
-
-		widget.render(renderProps(cell, el, controller.signal, createHost(new Map([["anywidget:parent", parent]]))));
-
-		expect(await waitFor(() => alertText(el))).toBe(
-			"Error: NotebookCell parent reference does not resolve to a Notebook",
-		);
-		controller.abort();
-	});
-
-	test("a newer parent reference wins over a pending host lookup", async () => {
-		let resolveSlow!: (model: ReturnType<typeof createModel>) => void;
-		const slow = new Promise<ReturnType<typeof createModel>>((resolve) => {
-			resolveSlow = resolve;
-		});
-		const fastParent = notebookModel([{ id: 1, mode: "ojs", value: "answer = 7" }]);
-		fastParent.set("_cell_keys", ["answer"]);
-		const slowParent = notebookModel([{ id: 1, mode: "ojs", value: "answer = 99" }]);
-		slowParent.set("_cell_keys", ["answer"]);
-		const cell = cellModel("anywidget:slow", 0, "answer");
-		const host = createHost(
-			new Map<string, ReturnType<typeof createModel> | Promise<ReturnType<typeof createModel>>>([
-				["anywidget:slow", slow],
-				["anywidget:fast", fastParent],
-			]),
-		);
-		const controller = new AbortController();
-		const el = document.createElement("div");
-		widget.render(renderProps(cell, el, controller.signal, host));
-
-		cell.set("_notebook_widget", "anywidget:fast");
-		expect(await waitFor(() => composedText(el, "7"))).toBeInstanceOf(HTMLElement);
-		resolveSlow(slowParent);
-		await waitFor(() => (host.widgetResolutions.includes("anywidget:slow") ? true : undefined));
-
-		expect(composedText(el, "7")).toBeInstanceOf(HTMLElement);
-		expect(variableValue(fastParent, "answer")).toBe(7);
-		expect(variableValue(slowParent, "answer")).toBeUndefined();
-		controller.abort();
-	});
-
-	test("a failed direct view preserves readback from a live full Notebook view", async () => {
-		const parent = notebookModel([{ id: 1, mode: "ojs", value: "answer = 42" }]);
-		parent.set("_cell_keys", ["answer"]);
-		const cell = cellModel("anywidget:notebook", 99, "answer");
-		const host = createHost(new Map([["anywidget:notebook", parent]]));
-		const fullController = new AbortController();
-		const directController = new AbortController();
-		const fullEl = document.createElement("div");
-		const directEl = document.createElement("div");
-
-		widget.render(renderProps(parent, fullEl, fullController.signal, host));
-		await waitFor(() => (variableValue(parent, "answer") === 42 ? 42 : undefined));
-		const graph = await waitFor(() => graphValue(parent));
-		widget.render(renderProps(cell, directEl, directController.signal, host));
-
-		expect(await waitFor(() => alertText(directEl))).toBe(
-			"Error: NotebookCell index 99 is outside the parent Notebook",
-		);
-		expect(variableValue(parent, "answer")).toBe(42);
-		expect(graphValue(parent)).toEqual(graph);
-		expect(parent.get("_has_rendered")).toBe(true);
-		directController.abort();
-		fullController.abort();
-	});
-
-	test("aborting a projected view leaves the full Notebook view reactive", async () => {
-		const parent = notebookModel([{ id: 1, mode: "ojs", value: "doubled = base * 2" }], { base: 2 });
-		parent.set("_cell_keys", ["doubled"]);
-		const cell = cellModel("anywidget:notebook", 0, "doubled");
-		const host = createHost(new Map([["anywidget:notebook", parent]]));
-		const fullController = new AbortController();
-		const directController = new AbortController();
-		widget.render(renderProps(parent, document.createElement("div"), fullController.signal, host));
-		widget.render(renderProps(cell, document.createElement("div"), directController.signal, host));
-		await waitFor(() => (variableValue(parent, "doubled") === 4 ? 4 : undefined));
-
-		directController.abort();
-		setVariables(parent, 1, { base: 5 });
-
-		expect(await waitFor(() => (variableValue(parent, "doubled") === 10 ? 10 : undefined))).toBe(10);
-		fullController.abort();
-	});
-
-	test("supports legacy Observable require in full Notebook rendering", async () => {
-		const parent = notebookModel(
-			[
-				{ id: 1, mode: "ojs", value: `module = require("${moduleUrl("export const line = 'ready';")}")` },
-				{ id: 2, mode: "ojs", value: "module.line" },
-			],
-			{},
-		);
-		parent.set("_options", { runtime_compatibility: { require: true } });
-		parent.set("_cell_keys", ["module", "readout"]);
-		const controller = new AbortController();
-		widget.render(renderProps(parent, document.createElement("div"), controller.signal));
-
-		expect(await waitFor(() => (variableValue(parent, "readout") === "ready" ? "ready" : undefined))).toBe("ready");
-		controller.abort();
+		resolveSession(session);
+		expect(await waitFor(() => (variableValue(view, "total") === 7 ? 7 : undefined))).toBe(7);
+		expect((await waitFor(() => graphValue(view))).cells[0]?.key).toBe("total");
+		secondController.abort();
 	});
 });
 
-function notebookModel(cells: Record<string, unknown>[], variables: Record<string, unknown> = {}) {
-	return createModel({
-		role: "notebook",
-		_spec: { cells },
-		_attachments: {},
-		_variables: variables,
-		_options: {},
-	});
+function rangeWithValue(el: HTMLElement, value: number): HTMLInputElement | undefined {
+	return Array.from(el.querySelectorAll<HTMLInputElement>("input[type='range']")).find(
+		(input) => input.valueAsNumber === value,
+	);
 }
 
-function cellModel(parentRef: string, index: number, name: string) {
-	return createModel({
-		role: "cell",
-		key: name,
-		name,
-		_notebook_widget: parentRef,
-		_notebook_index: index,
-	});
+function setRange(input: HTMLInputElement, value: number): void {
+	input.value = String(value);
+	input.dispatchEvent(new Event("input", { bubbles: true }));
+	input.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
-function setVariables(model: ReturnType<typeof createModel>, seq: number, values: Record<string, unknown>): void {
-	model.set("_variable_update", { seq, kind: "set", values });
-	const previous = model.get("_variables");
-	model.set("_variables", previous && typeof previous === "object" ? { ...previous, ...values } : values);
-}
-
-function moduleUrl(source: string): string {
-	return `data:text/javascript;charset=utf-8,${encodeURIComponent(source)}`;
+function sameArray(value: unknown, expected: number[]): true | undefined {
+	return Array.isArray(value) && value.length === expected.length && value.every((item, i) => item === expected[i])
+		? true
+		: undefined;
 }
