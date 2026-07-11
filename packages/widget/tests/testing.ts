@@ -1,25 +1,44 @@
-import type { Experimental, Host, InitializeProps, RenderProps } from "@anywidget/types";
+import type { Experimental, Host, InitializeProps, RenderProps, ResolvedWidget } from "@anywidget/types";
 import type { NotebookGraph } from "@pyobservablejs/runtime";
+import createWidget from "../src";
 import type { WidgetModel } from "../src/model";
 
 export type Model = RenderProps<WidgetModel>["model"];
 export type TestModel = Model & {
-	savedTraits: Set<string>;
 	listenerCount(name: string): number;
 };
+type WidgetDefinition = ReturnType<typeof createWidget>;
+type HostRender = { ref: string; el: HTMLElement; signal: AbortSignal };
+
 const experimental: Experimental = {
 	async invoke<T>(): Promise<[T, DataView[]]> {
 		return [undefined as T, []];
 	},
 };
 
+const definitions = new WeakMap<Model, WidgetDefinition>();
+
+function definitionFor(model: Model): WidgetDefinition {
+	let definition = definitions.get(model);
+	if (definition) return definition;
+	definition = createWidget();
+	definitions.set(model, definition);
+	definition.initialize(initializeProps(model, new AbortController().signal));
+	return definition;
+}
+
+export const widget = {
+	render(props: RenderProps<WidgetModel>) {
+		void definitionFor(props.model).render(props);
+	},
+};
+
 export function createModel(initial: Partial<WidgetModel>): TestModel {
-	const state = new Map<string, unknown>(Object.entries(initial));
-	const dirtyTraits = new Set<string>();
-	const savedTraits = new Set<string>();
+	const state = new Map<string, unknown>(
+		Object.entries({ _cell_values: {}, _has_rendered: false, ...initial } satisfies Partial<WidgetModel>),
+	);
 	const listeners = new Map<string, Set<() => void>>();
 	return {
-		savedTraits,
 		listenerCount(name: string) {
 			return listeners.get(name)?.size ?? 0;
 		},
@@ -28,13 +47,9 @@ export function createModel(initial: Partial<WidgetModel>): TestModel {
 		},
 		set(name: string, value: unknown) {
 			state.set(name, value);
-			dirtyTraits.add(name);
 			for (const listener of listeners.get(`change:${name}`) ?? []) listener();
 		},
-		save_changes() {
-			for (const name of dirtyTraits) savedTraits.add(name);
-			dirtyTraits.clear();
-		},
+		save_changes() {},
 		on(name: string, callback: () => void) {
 			const callbacks = listeners.get(name) ?? new Set();
 			callbacks.add(callback);
@@ -54,15 +69,44 @@ export function createModel(initial: Partial<WidgetModel>): TestModel {
 	} as unknown as TestModel;
 }
 
-export function createHost(childModels: ReadonlyMap<string, Model | Promise<Model>>): RenderProps<WidgetModel>["host"] {
-	const host: Host = {
+export type TestHost = Host & {
+	modelLookups: string[];
+	widgetLookups: string[];
+	widgetResolutions: string[];
+	renders: HostRender[];
+};
+
+export function createHost(models: ReadonlyMap<string, Model | Promise<Model>>): TestHost {
+	const modelLookups: string[] = [];
+	const widgetLookups: string[] = [];
+	const widgetResolutions: string[] = [];
+	const renders: HostRender[] = [];
+	const resolve = async (ref: string): Promise<Model> => {
+		const model = models.get(ref);
+		if (!model) throw new Error(`Unknown widget model ${ref}`);
+		return await model;
+	};
+	const host: TestHost = {
+		modelLookups,
+		widgetLookups,
+		widgetResolutions,
+		renders,
 		getModel: async (ref: string) => {
-			const model = childModels.get(ref);
-			if (!model) throw new Error(`Unknown widget model ${ref}`);
-			return (await model) as never;
+			modelLookups.push(ref);
+			return (await resolve(ref)) as never;
 		},
-		getWidget: async () => {
-			throw new Error("Test host does not render child widgets");
+		getWidget: async <T = unknown>(ref: string): Promise<ResolvedWidget<T>> => {
+			widgetLookups.push(ref);
+			const model = await resolve(ref);
+			widgetResolutions.push(ref);
+			return {
+				exports: {} as T,
+				render: async ({ el, signal }) => {
+					const renderSignal = signal ?? new AbortController().signal;
+					renders.push({ ref, el, signal: renderSignal });
+					await definitionFor(model).render(renderProps(model, el, renderSignal, host));
+				},
+			};
 		},
 	};
 	return host;
@@ -85,9 +129,27 @@ export function initializeProps<State extends Record<string, unknown>>(
 }
 
 export function variableValue(model: Model, name: string): unknown {
-	const variables = model.get("_values");
-	if (variables === null || typeof variables !== "object" || Array.isArray(variables)) return undefined;
-	return (variables as Record<string, unknown>)[name];
+	const owners = cellRecords(model).filter(
+		(record) => record.rendered && Object.prototype.hasOwnProperty.call(record.values, name),
+	);
+	return owners.length === 1 ? owners[0]?.values[name] : undefined;
+}
+
+export type CellRecord = {
+	rendered: boolean;
+	names: string[];
+	values: Record<string, unknown>;
+};
+
+export function cellRecord(model: Model, index: number): CellRecord | undefined {
+	return readCellRecord(readCellValues(model)[String(index)]);
+}
+
+export function cellRecords(model: Model): CellRecord[] {
+	return Object.values(readCellValues(model)).flatMap((value) => {
+		const record = readCellRecord(value);
+		return record ? [record] : [];
+	});
 }
 
 export function graphValue(model: Model): NotebookGraph | undefined {
@@ -139,4 +201,20 @@ export function alertText(el: HTMLElement): string | undefined {
 
 function isHidden(item: HTMLElement): boolean {
 	return item.closest("[hidden], [aria-hidden='true']") !== null;
+}
+
+function readCellValues(model: Model): Record<string, unknown> {
+	const value = model.get("_cell_values");
+	return value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function readCellRecord(value: unknown): CellRecord | undefined {
+	if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined;
+	const record = value as Partial<CellRecord>;
+	if (!Array.isArray(record.names) || record.values === null || typeof record.values !== "object") return undefined;
+	return {
+		rendered: record.rendered === true,
+		names: record.names.filter((name): name is string => typeof name === "string"),
+		values: record.values as Record<string, unknown>,
+	};
 }

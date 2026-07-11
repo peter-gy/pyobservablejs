@@ -20,9 +20,11 @@ if notebook.has_graph_snapshot:
 
 ## `NotebookCell`
 
-`NotebookCell` is a child widget owned by a `Notebook`. Retrieve instances
-through `notebook.cells`, `notebook.cell_at`, `notebook.cell_by_key`, or
-`notebook.cell_for_variable`.
+`NotebookCell` is a lazy, cached projection handle for one cell in a `Notebook`.
+Retrieve handles through `notebook.cells`, `notebook.cell_at`,
+`notebook.cell_by_key`, or `notebook.cell_for_variable`. A handle can display
+that cell with its dependency closure and read the parent-owned value snapshot
+for the cell.
 
 ### Attributes
 
@@ -30,7 +32,7 @@ through `notebook.cells`, `notebook.cell_at`, `notebook.cell_by_key`, or
 | ----------------- | ----------------- | ------------------------------------------------------------------------- |
 | `key`             | `str`             | Python cell handle, or `""` when the authored cell has no key.            |
 | `name`            | `str`             | Notebook Kit cell name, or `""` when the source has no name.              |
-| `has_rendered`    | `bool`            | Whether this child widget has synchronized a browser output.              |
+| `has_rendered`    | `bool`            | Whether the parent has synchronized a browser output for this cell.       |
 | `info`            | `CellInfo`        | Graph metadata for this cell. Requires a graph snapshot.                  |
 | `defines`         | `tuple[str, ...]` | Variables defined by the cell, delegated from `info`.                     |
 | `references`      | `tuple[str, ...]` | Variables read by the cell, delegated from `info`.                        |
@@ -95,13 +97,14 @@ before the browser has synchronized the state that member requires.
 | ------------------------------------------------------------------------------------ | ---------------------------------------------------- |
 | `Notebook.runtime_values`, `Notebook.cell_values()`, `Notebook.value(name)`          | Full notebook render                                 |
 | `Notebook.graph`, `Notebook.cell_for_variable(name)`                                 | Graph snapshot from a notebook or direct cell render |
-| `NotebookCell.values`, `NotebookCell.value(name)`, `NotebookCell.only_value()`       | Render of that child cell                            |
+| `NotebookCell.values`, `NotebookCell.value(name)`, `NotebookCell.only_value()`       | Parent snapshot for that cell                        |
 | `NotebookCell.info`, `defines`, `references`, `outputs`, `runtime_outputs`, `output` | Parent graph snapshot containing that cell           |
 
 Displaying one `NotebookCell` can set `cell.has_rendered` and
-`notebook.has_graph_snapshot` while `notebook.has_rendered` remains false. In
-that state, cell values and graph metadata are available, while notebook-level
-value readback raises `NotRenderedError`.
+`notebook.has_graph_snapshot` while `notebook.has_rendered` remains false. A
+full notebook render also makes each materialized handle readable through the
+same parent-owned snapshots. Notebook-level value readback still requires the
+full notebook render gate.
 
 ## `NotebookGraph`
 
@@ -111,7 +114,7 @@ obs.NotebookGraph(cells, edges)
 
 `notebook.graph` returns a frozen `NotebookGraph` after graph metadata syncs.
 The browser may produce the snapshot during a full notebook render or a direct
-`NotebookCell` render. Malformed browser entries are dropped while Python
+`NotebookCell` projection. Malformed browser entries are dropped while Python
 decodes the graph trait.
 
 ### Attributes

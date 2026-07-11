@@ -17,7 +17,8 @@ import {
 	type ViewWriteResult,
 	type ViewTarget,
 } from "@pyobservablejs/runtime";
-import { readModelVariables, type WidgetModel } from "./model";
+import type { WidgetModel } from "./model";
+import type { CellReadback } from "./readback";
 
 type ModelViewState = {
 	selects: NestedSelectState;
@@ -37,45 +38,99 @@ type RuntimeVariablesSyncOptions = {
 };
 
 export type CellVariableSync = {
-	model: RenderProps<WidgetModel>["model"];
 	signal: AbortSignal;
 	variablesSync?: RuntimeVariablesSync;
 	views: Map<string, ViewTarget>;
 	viewCleanups: Map<string, () => void>;
 	setVariableNames(names: string[]): void;
 	setVariable(name: string, value: unknown): void;
+	markRendered(): void;
 	currentVariables(): Record<string, unknown>;
 };
 
-const modelViewStates = new WeakMap<RenderProps<WidgetModel>["model"], Map<string, ModelViewState>>();
-const externalModelValues = new WeakMap<RenderProps<WidgetModel>["model"], Set<string>>();
-const modelValueOrigins = new WeakMap<RenderProps<WidgetModel>["model"], Map<string, ModelValueOrigin>>();
-const pendingViewInteractions = new WeakMap<RenderProps<WidgetModel>["model"], Set<string>>();
+const modelViewStates = new WeakMap<CellVariableSync, Map<string, ModelViewState>>();
+const externalModelValues = new WeakMap<CellVariableSync, Set<string>>();
+const modelValueOrigins = new WeakMap<CellVariableSync, Map<string, ModelValueOrigin>>();
+const pendingViewInteractions = new WeakMap<CellVariableSync, Set<string>>();
 const programmaticViewWrites = new WeakSet<ViewTarget>();
 
 /**
- * Create the sync adapter that publishes cell output names and wire values to
- * the child anywidget model.
+ * Buffer a render attempt until the cell settles, then publish its complete
+ * readback through the parent Notebook model. Successful snapshots from other
+ * views seed replacement controls and remain visible while this attempt runs.
  */
-export function createCellModelSync(
-	model: RenderProps<WidgetModel>["model"],
-	signal: AbortSignal,
-	variablesSync?: RuntimeVariablesSync,
-): CellVariableSync {
-	const sync = createBaseSync(model, signal, {
-		readNames: () => model.get("_value_names") ?? [],
-		writeNames: (names) => {
-			model.set("_value_names", names);
-			model.save_changes();
+export function createCellStateSync({
+	model,
+	signal,
+	variablesSync,
+	read,
+	publish,
+}: {
+	model: RenderProps<WidgetModel>["model"];
+	signal: AbortSignal;
+	variablesSync?: RuntimeVariablesSync;
+	read(): CellReadback;
+	publish(value: CellReadback): void;
+}): CellVariableSync {
+	const initial = read();
+	let names = [...initial.names];
+	let variables = { ...initial.values };
+	let rendered = false;
+	let writing = false;
+	const publishCurrent = () => publish({ rendered: true, names: [...names], values: { ...variables } });
+	const sync: CellVariableSync = {
+		signal,
+		variablesSync,
+		views: new Map(),
+		viewCleanups: new Map(),
+		setVariableNames(nextNames) {
+			if (sameWireValue(names, nextNames)) return;
+			names = [...nextNames];
+			if (rendered) publishCurrent();
 		},
-		readVars: () => readModelVariables(model),
-		writeVars: (variables) => {
-			model.set("_values", variables);
-			model.save_changes();
+		setVariable(name, value) {
+			if (sameWireValue(variables[name], value)) return;
+			const origin = consumeViewInteraction(sync, name) ? "interaction" : "default";
+			const before = variables[name];
+			writing = true;
+			try {
+				recordModelViewState(sync, name, value);
+				variables = { ...variables, [name]: value };
+				if (rendered) publishCurrent();
+			} finally {
+				writing = false;
+			}
+			if (!sameWireValue(before, variables[name])) {
+				clearExternalModelValue(sync, name);
+				recordModelValueOrigin(sync, name, origin);
+			}
 		},
-		changeEvent: "change:_values",
-	});
-	sync.variablesSync = variablesSync;
+		markRendered() {
+			if (rendered) return;
+			rendered = true;
+			writing = true;
+			try {
+				publishCurrent();
+			} finally {
+				writing = false;
+			}
+		},
+		currentVariables() {
+			return variables;
+		},
+	};
+	const apply = () => {
+		if (writing) return;
+		const external = read();
+		if (!external.rendered) return;
+		if (sameWireValue(external.names, names) && sameWireValue(external.values, variables)) return;
+		names = [...external.names];
+		variables = { ...external.values };
+		recordExternalModelValues(sync);
+		applyModelVariablesToViews(sync);
+	};
+	model.on("change:_cell_values", apply);
+	signal.addEventListener("abort", () => model.off("change:_cell_values", apply), { once: true });
 	return sync;
 }
 
@@ -132,60 +187,6 @@ export function applyModelVariablesToViews(sync: CellVariableSync): void {
 		if (sameWireValue(toWireValue(readViewValue(view)), wireValue)) continue;
 		writeProgrammaticViewValue(view, reviveSyncedValue(wireValue), readModelViewState(sync, name, wireValue));
 	}
-}
-
-function createBaseSync(
-	model: RenderProps<WidgetModel>["model"],
-	signal: AbortSignal,
-	adapter: {
-		readNames(): string[];
-		writeNames(names: string[]): void;
-		readVars(): Record<string, unknown>;
-		writeVars(variables: Record<string, unknown>): void;
-		changeEvent: string;
-	},
-): CellVariableSync {
-	const sync: CellVariableSync = {
-		model,
-		signal,
-		views: new Map(),
-		viewCleanups: new Map(),
-		setVariableNames(names) {
-			if (sameWireValue(adapter.readNames(), names)) return;
-			adapter.writeNames(names);
-		},
-		setVariable(name, value) {
-			const variables = adapter.readVars();
-			if (sameWireValue(variables[name], value)) return;
-			recordModelViewState(sync, name, value);
-			adapter.writeVars({ ...variables, [name]: value });
-		},
-		currentVariables: adapter.readVars,
-	};
-	let writing = false;
-	const apply = () => {
-		if (writing) return;
-		recordExternalModelValues(sync);
-		applyModelVariablesToViews(sync);
-	};
-	const originalSetVariable = sync.setVariable.bind(sync);
-	sync.setVariable = (name, value) => {
-		const origin = consumeViewInteraction(sync, name) ? "interaction" : "default";
-		const before = sync.currentVariables()[name];
-		writing = true;
-		try {
-			originalSetVariable(name, value);
-		} finally {
-			writing = false;
-		}
-		if (!sameWireValue(before, sync.currentVariables()[name])) {
-			clearExternalModelValue(sync, name);
-			recordModelValueOrigin(sync, name, origin);
-		}
-	};
-	model.on(adapter.changeEvent, apply);
-	signal.addEventListener("abort", () => model.off(adapter.changeEvent, apply), { once: true });
-	return sync;
 }
 
 export function createRuntimeVariablesSync({
@@ -279,10 +280,10 @@ function isProgrammaticViewWrite(view: ViewTarget): boolean {
 function recordModelViewState(sync: CellVariableSync, name: string, value: unknown): void {
 	const view = sync.views.get(name);
 	const selects = view ? readNestedSelectState(view) : undefined;
-	const states = modelViewStates.get(sync.model) ?? new Map<string, ModelViewState>();
+	const states = modelViewStates.get(sync) ?? new Map<string, ModelViewState>();
 	if (selects && selects.length > 0) {
 		states.set(name, { selects, value });
-		modelViewStates.set(sync.model, states);
+		modelViewStates.set(sync, states);
 	} else {
 		states.delete(name);
 	}
@@ -291,54 +292,54 @@ function recordModelViewState(sync: CellVariableSync, name: string, value: unkno
 function recordExternalModelValues(sync: CellVariableSync): void {
 	const names = Object.keys(sync.currentVariables());
 	if (names.length === 0) return;
-	const values = externalModelValues.get(sync.model) ?? new Set<string>();
+	const values = externalModelValues.get(sync) ?? new Set<string>();
 	for (const name of names) values.add(name);
-	externalModelValues.set(sync.model, values);
+	externalModelValues.set(sync, values);
 }
 
 function hasExternalModelValue(sync: CellVariableSync, name: string): boolean {
-	return externalModelValues.get(sync.model)?.has(name) === true;
+	return externalModelValues.get(sync)?.has(name) === true;
 }
 
 function clearExternalModelValue(sync: CellVariableSync, name: string): void {
-	const values = externalModelValues.get(sync.model);
+	const values = externalModelValues.get(sync);
 	if (!values) return;
 	values.delete(name);
-	if (values.size === 0) externalModelValues.delete(sync.model);
+	if (values.size === 0) externalModelValues.delete(sync);
 }
 
 function markViewInteraction(sync: CellVariableSync, name: string): void {
-	const values = pendingViewInteractions.get(sync.model) ?? new Set<string>();
+	const values = pendingViewInteractions.get(sync) ?? new Set<string>();
 	values.add(name);
-	pendingViewInteractions.set(sync.model, values);
+	pendingViewInteractions.set(sync, values);
 }
 
 function consumeViewInteraction(sync: CellVariableSync, name: string): boolean {
-	const values = pendingViewInteractions.get(sync.model);
+	const values = pendingViewInteractions.get(sync);
 	if (!values?.has(name)) return false;
 	values.delete(name);
-	if (values.size === 0) pendingViewInteractions.delete(sync.model);
+	if (values.size === 0) pendingViewInteractions.delete(sync);
 	return true;
 }
 
 function recordModelValueOrigin(sync: CellVariableSync, name: string, origin: ModelValueOrigin): void {
-	const values = modelValueOrigins.get(sync.model) ?? new Map<string, ModelValueOrigin>();
+	const values = modelValueOrigins.get(sync) ?? new Map<string, ModelValueOrigin>();
 	values.set(name, origin);
-	modelValueOrigins.set(sync.model, values);
+	modelValueOrigins.set(sync, values);
 }
 
 function readModelValueOrigin(sync: CellVariableSync, name: string): ModelValueOrigin | undefined {
-	return modelValueOrigins.get(sync.model)?.get(name);
+	return modelValueOrigins.get(sync)?.get(name);
 }
 
 function clearModelValueOrigin(sync: CellVariableSync, name: string): void {
-	const values = modelValueOrigins.get(sync.model);
+	const values = modelValueOrigins.get(sync);
 	if (!values) return;
 	values.delete(name);
-	if (values.size === 0) modelValueOrigins.delete(sync.model);
+	if (values.size === 0) modelValueOrigins.delete(sync);
 }
 
 function readModelViewState(sync: CellVariableSync, name: string, value: unknown): NestedSelectState | undefined {
-	const state = modelViewStates.get(sync.model)?.get(name);
+	const state = modelViewStates.get(sync)?.get(name);
 	return state && sameWireValue(state.value, value) ? state.selects : undefined;
 }

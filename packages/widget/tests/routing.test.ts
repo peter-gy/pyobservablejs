@@ -1,117 +1,57 @@
-import type { AnyWidget, Initialize, Render } from "@anywidget/types";
 import { describe, expect, test } from "vite-plus/test";
-import widget from "../src";
-import type { WidgetModel } from "../src/model";
+import createWidget from "../src";
 import { composedText, createHost, createModel, initializeProps, renderProps, variableValue, waitFor } from "./testing";
 
-type WidgetDefinition = {
-	initialize?: Initialize<WidgetModel>;
-	render?: Render<WidgetModel>;
-};
-
 describe("widget routing", () => {
-	test("renders direct child cells from the parent notebook model", async () => {
-		const parentModel = createModel({
+	test("the widget factory renders a Notebook model without host composition", async () => {
+		const model = createModel({
 			role: "notebook",
 			_spec: { cells: [{ id: 1, mode: "ojs", value: "answer = 42" }] },
 			_attachments: {},
 			_variables: {},
 			_options: {},
-			_cell_widgets: ["anywidget:answer"],
+			_cell_keys: ["answer"],
 		});
-		const model = createModel({
+		const host = createHost(new Map());
+		const controller = new AbortController();
+		const el = document.createElement("div");
+		const definition = createWidget();
+		definition.initialize(initializeProps(model, controller.signal));
+
+		await definition.render(renderProps(model, el, controller.signal, host));
+
+		expect(await waitFor(() => composedText(el, "42"))).toBeInstanceOf(HTMLElement);
+		expect(variableValue(model, "answer")).toBe(42);
+		expect(host.widgetLookups).toEqual([]);
+		controller.abort();
+	});
+
+	test("a NotebookCell delegates its view to the referenced Notebook widget", async () => {
+		const parent = createModel({
+			role: "notebook",
+			_spec: { cells: [{ id: 1, mode: "ojs", value: "answer = 42" }] },
+			_attachments: {},
+			_variables: {},
+			_options: {},
+			_cell_keys: ["answer"],
+		});
+		const cell = createModel({
 			role: "cell",
 			name: "answer",
 			_notebook_widget: "anywidget:notebook",
 			_notebook_index: 0,
-			_values: {},
-			_value_names: [],
 		});
-		const el = document.createElement("div");
-		const controller = new AbortController();
-
-		const definition = await initializeWidget(widget, model, controller.signal);
-		await definition.render?.(
-			renderProps(model, el, controller.signal, createHost(new Map([["anywidget:notebook", parentModel]]))),
-		);
-
-		await waitFor(() => composedText(el, "42"));
-		expect(variableValue(model, "answer")).toBe(42);
-		expect(model.get("_has_rendered")).toBe(true);
-		expect(parentModel.get("_has_rendered")).toBeUndefined();
-		controller.abort();
-	});
-
-	test("renders notebooks from the application module", async () => {
-		const model = createModel({
-			role: "notebook",
-			_spec: { cells: [{ id: 1, mode: "ojs", value: "answer = 42" }] },
-			_attachments: {},
-			_variables: {},
-			_options: {},
-			_cell_widgets: ["anywidget:answer"],
-		});
-		const childModel = createModel({
-			role: "cell",
-			name: "answer",
-			_values: {},
-			_value_names: [],
-		});
+		const host = createHost(new Map([["anywidget:notebook", parent]]));
 		const controller = new AbortController();
 		const el = document.createElement("div");
+		const definition = createWidget();
+		definition.initialize(initializeProps(cell, controller.signal));
 
-		const definition = await initializeWidget(widget, model, controller.signal);
-		await definition.render?.(
-			renderProps(model, el, controller.signal, createHost(new Map([["anywidget:answer", childModel]]))),
-		);
+		await definition.render(renderProps(cell, el, controller.signal, host));
 
-		await waitFor(() => (el.textContent.trim() === "42" ? true : undefined));
-
-		controller.abort();
-	});
-
-	test("renders with model-manager lookup when the render host is omitted", async () => {
-		const model = createModel({
-			role: "notebook",
-			_spec: { cells: [{ id: 1, mode: "ojs", value: "answer = 42" }] },
-			_attachments: {},
-			_variables: {},
-			_options: {},
-			_cell_widgets: ["anywidget:answer"],
-		});
-		const childModel = createModel({
-			role: "cell",
-			name: "answer",
-			_values: {},
-			_value_names: [],
-		});
-		const modelIds: string[] = [];
-		model.widget_manager = {
-			async get_model(modelId) {
-				modelIds.push(modelId);
-				if (modelId !== "answer") throw new Error(`Unknown widget model ${modelId}`);
-				return childModel as never;
-			},
-		};
-		const controller = new AbortController();
-		const el = document.createElement("div");
-		const definition = await initializeWidget(widget, model, controller.signal);
-		const props = renderProps(model, el, controller.signal);
-
-		await definition.render?.({ ...props, host: undefined as never });
-
-		expect(await waitFor(() => (variableValue(childModel, "answer") === 42 ? 42 : undefined))).toBe(42);
-		expect(modelIds).toEqual(["answer"]);
+		expect(await waitFor(() => composedText(el, "42"))).toBeInstanceOf(HTMLElement);
+		expect(variableValue(parent, "answer")).toBe(42);
+		expect(host.widgetLookups).toEqual(["anywidget:notebook"]);
 		controller.abort();
 	});
 });
-
-async function initializeWidget(
-	widget: AnyWidget<WidgetModel>,
-	model: ReturnType<typeof createModel>,
-	signal: AbortSignal,
-): Promise<WidgetDefinition> {
-	const definition = typeof widget === "function" ? await widget() : widget;
-	await definition.initialize?.(initializeProps(model, signal));
-	return definition;
-}

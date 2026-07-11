@@ -1,6 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
-import widget from "../src";
-import { alertText, composedText, createHost, createModel, renderProps, variableValue, waitFor } from "./testing";
+import { alertText, composedText, createModel, renderProps, variableValue, waitFor, widget } from "./testing";
 
 const objectValuedSelectSource = `
 Select = (items, options = {}) => {
@@ -43,16 +42,11 @@ describe("widget variable sync", () => {
 			_attachments: {},
 			_variables: { base: 2 },
 			_options: {},
-			_cell_widgets: ["anywidget:base", "anywidget:doubled"],
 		});
-		const childModels = new Map([
-			["anywidget:base", createModel({ role: "cell", name: "base_echo", _values: {}, _value_names: [] })],
-			["anywidget:doubled", createModel({ role: "cell", name: "doubled", _values: {}, _value_names: [] })],
-		]);
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render(renderProps(model, el, controller.signal, createHost(childModels)));
+		widget.render(renderProps(model, el, controller.signal));
 
 		expect(await waitFor(() => (variableValue(model, "doubled") === 4 ? 4 : undefined))).toBe(4);
 		await waitFor(() => composedText(el, "4"));
@@ -74,14 +68,10 @@ describe("widget variable sync", () => {
 			_attachments: {},
 			_variables: {},
 			_options: { runtime_compatibility: { require: true } },
-			_cell_widgets: ["anywidget:answer"],
 		});
-		const childModels = new Map([
-			["anywidget:answer", createModel({ role: "cell", name: "answer", _values: {}, _value_names: [] })],
-		]);
 		const controller = new AbortController();
 
-		widget.render(renderProps(model, document.createElement("div"), controller.signal, createHost(childModels)));
+		widget.render(renderProps(model, document.createElement("div"), controller.signal));
 
 		await waitFor(() => (variableValue(model, "answer") === 42 ? 42 : undefined));
 
@@ -100,15 +90,11 @@ describe("widget variable sync", () => {
 			_attachments: {},
 			_variables: { answer: 41 },
 			_options: {},
-			_cell_widgets: ["anywidget:answer"],
 		});
-		const childModels = new Map([
-			["anywidget:answer", createModel({ role: "cell", name: "answer", _values: {}, _value_names: [] })],
-		]);
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render(renderProps(model, el, controller.signal, createHost(childModels)));
+		widget.render(renderProps(model, el, controller.signal));
 
 		expect(await waitFor(() => (variableValue(model, "answer") === 41 ? 41 : undefined))).toBe(41);
 		expect(el.textContent.trim()).toBe("");
@@ -130,25 +116,23 @@ describe("widget variable sync", () => {
 			_attachments: {},
 			_variables: { answer: 41 },
 			_options: {},
-			_cell_widgets: ["anywidget:mixed"],
 		});
-		const childModel = createModel({ role: "cell", name: "mixed", _values: {}, _value_names: [] });
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render(renderProps(model, el, controller.signal, createHost(new Map([["anywidget:mixed", childModel]]))));
+		widget.render(renderProps(model, el, controller.signal));
 
-		expect(await waitFor(() => (variableValue(childModel, "answer") === 41 ? 41 : undefined))).toBe(41);
-		expect(
-			await waitFor(() => (variableValue(childModel, "label") === "source label" ? "source label" : undefined)),
-		).toBe("source label");
+		expect(await waitFor(() => (variableValue(model, "answer") === 41 ? 41 : undefined))).toBe(41);
+		expect(await waitFor(() => (variableValue(model, "label") === "source label" ? "source label" : undefined))).toBe(
+			"source label",
+		);
 		expect(variableValue(model, "answer")).toBe(41);
 		expect(variableValue(model, "label")).toBe("source label");
 
 		setVariables(model, 1, "set", { answer: 43 });
 
-		expect(await waitFor(() => (variableValue(childModel, "answer") === 43 ? 43 : undefined))).toBe(43);
-		expect(variableValue(childModel, "label")).toBe("source label");
+		expect(await waitFor(() => (variableValue(model, "answer") === 43 ? 43 : undefined))).toBe(43);
+		expect(variableValue(model, "label")).toBe("source label");
 		controller.abort();
 	});
 
@@ -164,16 +148,11 @@ describe("widget variable sync", () => {
 			_attachments: {},
 			_variables: {},
 			_options: {},
-			_cell_widgets: ["anywidget:base", "anywidget:doubled"],
 		});
-		const childModels = new Map([
-			["anywidget:base", createModel({ role: "cell", name: "base_echo", _values: {}, _value_names: [] })],
-			["anywidget:doubled", createModel({ role: "cell", name: "doubled", _values: {}, _value_names: [] })],
-		]);
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render(renderProps(model, el, controller.signal, createHost(childModels)));
+		widget.render(renderProps(model, el, controller.signal));
 		setVariables(model, 1, "set", { base: 6 });
 
 		expect(await waitFor(() => (variableValue(model, "doubled") === 12 ? 12 : undefined))).toBe(12);
@@ -193,16 +172,11 @@ describe("widget variable sync", () => {
 			_attachments: {},
 			_variables: { base: 5 },
 			_options: {},
-			_cell_widgets: ["anywidget:base", "anywidget:doubled"],
 		});
-		const childModels = new Map([
-			["anywidget:base", createModel({ role: "cell", name: "base", _values: {}, _value_names: [] })],
-			["anywidget:doubled", createModel({ role: "cell", name: "doubled", _values: {}, _value_names: [] })],
-		]);
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render(renderProps(model, el, controller.signal, createHost(childModels)));
+		widget.render(renderProps(model, el, controller.signal));
 
 		expect(await waitFor(() => (variableValue(model, "doubled") === 10 ? 10 : undefined))).toBe(10);
 
@@ -236,16 +210,11 @@ viewof gain = {
 			_attachments: {},
 			_variables: { gain: 5 },
 			_options: {},
-			_cell_widgets: ["anywidget:gain", "anywidget:doubled"],
 		});
-		const childModels = new Map([
-			["anywidget:gain", createModel({ role: "cell", name: "gain", _values: {}, _value_names: [] })],
-			["anywidget:doubled", createModel({ role: "cell", name: "doubled", _values: {}, _value_names: [] })],
-		]);
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render(renderProps(model, el, controller.signal, createHost(childModels)));
+		widget.render(renderProps(model, el, controller.signal));
 
 		await waitFor(() => {
 			const error = alertText(el);
@@ -285,16 +254,11 @@ viewof gain = {
 			_attachments: {},
 			_variables: { gain: { pointDensity: 21 } },
 			_options: {},
-			_cell_widgets: ["anywidget:gain", "anywidget:gain-kind"],
 		});
-		const childModels = new Map([
-			["anywidget:gain", createModel({ role: "cell", name: "gain", _values: {}, _value_names: [] })],
-			["anywidget:gain-kind", createModel({ role: "cell", name: "gainKind", _values: {}, _value_names: [] })],
-		]);
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render(renderProps(model, el, controller.signal, createHost(childModels)));
+		widget.render(renderProps(model, el, controller.signal));
 
 		await waitFor(() => rangeWithValue(el, 5));
 		expect(await waitFor(() => (variableValue(model, "gainKind") === "object" ? "object" : undefined))).toBe("object");
@@ -319,18 +283,11 @@ viewof gain = {
 			_attachments: {},
 			_variables: {},
 			_options: {},
-			_cell_widgets: ["anywidget:select", "anywidget:presets-array", "anywidget:presets", "anywidget:point-density"],
 		});
-		const childModels = new Map([
-			["anywidget:select", createModel({ role: "cell", name: "select", _values: {}, _value_names: [] })],
-			["anywidget:presets-array", createModel({ role: "cell", name: "presetsArray", _values: {}, _value_names: [] })],
-			["anywidget:presets", createModel({ role: "cell", name: "presets", _values: {}, _value_names: [] })],
-			["anywidget:point-density", createModel({ role: "cell", name: "pointDensity", _values: {}, _value_names: [] })],
-		]);
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render(renderProps(model, el, controller.signal, createHost(childModels)));
+		widget.render(renderProps(model, el, controller.signal));
 
 		const select = await waitFor(() => onlySelect(el));
 		expect(await waitFor(() => (variableValue(model, "pointDensity") === 7 ? 7 : undefined))).toBe(7);
@@ -364,16 +321,11 @@ viewof image = {
 			_attachments: {},
 			_variables: {},
 			_options: {},
-			_cell_widgets: ["anywidget:image", "anywidget:image-tag"],
 		});
-		const childModels = new Map([
-			["anywidget:image", createModel({ role: "cell", name: "image", _values: {}, _value_names: [] })],
-			["anywidget:image-tag", createModel({ role: "cell", name: "imageTag", _values: {}, _value_names: [] })],
-		]);
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render(renderProps(model, el, controller.signal, createHost(childModels)));
+		widget.render(renderProps(model, el, controller.signal));
 
 		const form = await waitFor(() => el.querySelector("form") ?? undefined);
 		expect(await waitFor(() => (variableValue(model, "imageTag") === "IMG" ? "IMG" : undefined))).toBe("IMG");
@@ -413,17 +365,11 @@ viewof gain = {
 			_attachments: {},
 			_variables: { seed: 1, gain: 5 },
 			_options: {},
-			_cell_widgets: ["anywidget:gain", "anywidget:seed-echo", "anywidget:doubled"],
 		});
-		const childModels = new Map([
-			["anywidget:gain", createModel({ role: "cell", name: "gain", _values: {}, _value_names: [] })],
-			["anywidget:seed-echo", createModel({ role: "cell", name: "seedEcho", _values: {}, _value_names: [] })],
-			["anywidget:doubled", createModel({ role: "cell", name: "doubled", _values: {}, _value_names: [] })],
-		]);
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render(renderProps(model, el, controller.signal, createHost(childModels)));
+		widget.render(renderProps(model, el, controller.signal));
 
 		await waitFor(() => rangeWithValue(el, 5));
 		expect(await waitFor(() => (variableValue(model, "seedEcho") === 1 ? 1 : undefined))).toBe(1);
@@ -464,17 +410,11 @@ viewof gain = {
 			_attachments: {},
 			_variables: { seed: 1 },
 			_options: {},
-			_cell_widgets: ["anywidget:gain", "anywidget:seed-echo", "anywidget:doubled"],
 		});
-		const childModels = new Map([
-			["anywidget:gain", createModel({ role: "cell", name: "gain", _values: {}, _value_names: [] })],
-			["anywidget:seed-echo", createModel({ role: "cell", name: "seedEcho", _values: {}, _value_names: [] })],
-			["anywidget:doubled", createModel({ role: "cell", name: "doubled", _values: {}, _value_names: [] })],
-		]);
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render(renderProps(model, el, controller.signal, createHost(childModels)));
+		widget.render(renderProps(model, el, controller.signal));
 
 		const firstInput = await waitFor(() => rangeWithValue(el, 1));
 		expect(await waitFor(() => (variableValue(model, "seedEcho") === 1 ? 1 : undefined))).toBe(1);
@@ -518,27 +458,28 @@ viewof gain = {
 			_attachments: {},
 			_variables: { seed: 1 },
 			_options: {},
-			_cell_widgets: ["anywidget:gain", "anywidget:doubled"],
 		});
-		const childModels = new Map([
-			["anywidget:gain", createModel({ role: "cell", name: "gain", _values: {}, _value_names: [] })],
-			["anywidget:doubled", createModel({ role: "cell", name: "doubled", _values: {}, _value_names: [] })],
-		]);
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render(renderProps(model, el, controller.signal, createHost(childModels)));
+		widget.render(renderProps(model, el, controller.signal));
 
-		await waitFor(() => rangeWithValue(el, 1));
-		expect(await waitFor(() => (variableValue(model, "doubled") === 2 ? 2 : undefined))).toBe(2);
+		await waitStep("initial view default", () => rangeWithValue(el, 1), model);
+		expect(
+			await waitStep("initial derived value", () => (variableValue(model, "doubled") === 2 ? 2 : undefined), model),
+		).toBe(2);
 
 		setVariables(model, 1, "set", { seed: 2 });
-		await waitFor(() => rangeWithValue(el, 2));
-		expect(await waitFor(() => (variableValue(model, "doubled") === 4 ? 4 : undefined))).toBe(4);
+		await waitStep("first replacement default", () => rangeWithValue(el, 2), model);
+		expect(
+			await waitStep("first replacement value", () => (variableValue(model, "doubled") === 4 ? 4 : undefined), model),
+		).toBe(4);
 
 		setVariables(model, 2, "set", { seed: 3 });
-		await waitFor(() => rangeWithValue(el, 3));
-		expect(await waitFor(() => (variableValue(model, "doubled") === 6 ? 6 : undefined))).toBe(6);
+		await waitStep("second replacement default", () => rangeWithValue(el, 3), model);
+		expect(
+			await waitStep("second replacement value", () => (variableValue(model, "doubled") === 6 ? 6 : undefined), model),
+		).toBe(6);
 		controller.abort();
 	});
 
@@ -566,31 +507,36 @@ viewof gain = {
 			_attachments: {},
 			_variables: { seed: 1, gain: 5 },
 			_options: {},
-			_cell_widgets: ["anywidget:gain", "anywidget:doubled"],
 		});
-		const childModels = new Map([
-			["anywidget:gain", createModel({ role: "cell", name: "gain", _values: {}, _value_names: [] })],
-			["anywidget:doubled", createModel({ role: "cell", name: "doubled", _values: {}, _value_names: [] })],
-		]);
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render(renderProps(model, el, controller.signal, createHost(childModels)));
+		widget.render(renderProps(model, el, controller.signal));
 
-		const firstInput = await waitFor(() => rangeWithValue(el, 5));
-		expect(await waitFor(() => (variableValue(model, "doubled") === 10 ? 10 : undefined))).toBe(10);
+		const firstInput = await waitStep("Python-owned initial view", () => rangeWithValue(el, 5), model);
+		expect(
+			await waitStep(
+				"Python-owned initial value",
+				() => (variableValue(model, "doubled") === 10 ? 10 : undefined),
+				model,
+			),
+		).toBe(10);
 		firstInput.value = "6";
 		firstInput.dispatchEvent(new Event("input", { bubbles: true }));
 		firstInput.dispatchEvent(new Event("change", { bubbles: true }));
-		await waitFor(() => (variableValue(model, "doubled") === 12 ? 12 : undefined));
+		await waitStep("interaction value", () => (variableValue(model, "doubled") === 12 ? 12 : undefined), model);
 
 		setVariables(model, 1, "replace", { seed: 2 });
-		await waitFor(() => rangeWithValue(el, 2));
-		expect(await waitFor(() => (variableValue(model, "doubled") === 4 ? 4 : undefined))).toBe(4);
+		await waitStep("replacement removes view override", () => rangeWithValue(el, 2), model);
+		expect(
+			await waitStep("replacement default value", () => (variableValue(model, "doubled") === 4 ? 4 : undefined), model),
+		).toBe(4);
 
 		setVariables(model, 2, "set", { seed: 3 });
-		await waitFor(() => rangeWithValue(el, 3));
-		expect(await waitFor(() => (variableValue(model, "doubled") === 6 ? 6 : undefined))).toBe(6);
+		await waitStep("post-replacement view default", () => rangeWithValue(el, 3), model);
+		expect(
+			await waitStep("post-replacement value", () => (variableValue(model, "doubled") === 6 ? 6 : undefined), model),
+		).toBe(6);
 		controller.abort();
 	});
 });
@@ -622,4 +568,16 @@ function setVariables(
 		"_variables",
 		kind === "set" && previous && typeof previous === "object" ? { ...previous, ...values } : values,
 	);
+}
+
+async function waitStep<T>(
+	label: string,
+	read: () => T | undefined,
+	model: ReturnType<typeof createModel>,
+): Promise<T> {
+	try {
+		return await waitFor(read);
+	} catch (error) {
+		throw new Error(`${label}: ${String(error)}; readback=${JSON.stringify(model.get("_cell_values"))}`);
+	}
 }

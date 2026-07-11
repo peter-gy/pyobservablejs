@@ -37,6 +37,7 @@ from ._anywidget_bundle import Bundle, BundledWidget
 
 _WIDGET_TRAIT = anywidget.WidgetTrait()
 _WIDGET_TO_JSON = _WIDGET_TRAIT.metadata["to_json"]
+_WIDGET_FROM_JSON = _WIDGET_TRAIT.metadata["from_json"]
 _OBSERVABLE_WIDGET_STATIC_DIR = pathlib.Path(__file__).parent / "static"
 _OBSERVABLE_WIDGET_DEV_SERVER_ENV = "OBSERVABLEJS_VITE_DEV_SERVER"
 _OBSERVABLE_WIDGET_BUNDLE = Bundle(
@@ -64,16 +65,6 @@ class CellValues:
     values: dict[str, Any]
 
 
-def _widgets_to_json(value: object, widget: object) -> object:
-    if not isinstance(value, list):
-        return value
-    return [_WIDGET_TO_JSON(item, widget) for item in value]
-
-
-def _widgets_from_json(value: object, _widget: object) -> object:
-    return value
-
-
 def validate_runtime_compatibility_variables(
     values: Mapping[str, Any],
     runtime_compatibility: object,
@@ -90,15 +81,6 @@ def validate_runtime_compatibility_variables(
         raise ValueError(f"Reserved Observable runtime name: {joined}")
 
 
-class _WidgetReferenceTrait(anywidget.WidgetTrait):
-    """WidgetTrait variant that also accepts anywidget wire references."""
-
-    def validate(self, obj: object, value: object) -> object:
-        if isinstance(value, str) and value.startswith("anywidget:"):
-            return value
-        return super().validate(obj, value)
-
-
 class _ObservableWidget(BundledWidget):
     """Shared anywidget base for the bundled frontend assets."""
 
@@ -106,30 +88,23 @@ class _ObservableWidget(BundledWidget):
 
 
 class NotebookCell(_ObservableWidget):
-    """Child anywidget model for one Observable cell.
+    """Displayable projection of one Observable cell.
 
-    The parent ``Notebook`` owns rendering and Observable runtime state.
-    ``NotebookCell`` exposes browser-synchronized values and graph metadata for
-    its matching cell.
+    The parent ``Notebook`` owns the Observable runtime state. A cell projection
+    exposes browser-synchronized values and graph metadata for its matching
+    cell.
     """
 
+    include_bundle_css = False
     role = traitlets.Unicode("cell").tag(sync=True)
     key = traitlets.Unicode("").tag(sync=True)
     name = traitlets.Unicode("").tag(sync=True)
-    _notebook_widget = _WidgetReferenceTrait().tag(sync=True)
+    _notebook_widget = traitlets.ForwardDeclaredInstance("Notebook").tag(
+        sync=True,
+        to_json=_WIDGET_TO_JSON,
+        from_json=_WIDGET_FROM_JSON,
+    )
     _notebook_index = traitlets.Int(-1).tag(sync=True)
-    _has_rendered = traitlets.Bool(False).tag(sync=True)
-    _value_names = traitlets.List(traitlets.Unicode(), default_value=[]).tag(sync=True)
-    _values = traitlets.Dict(default_value={}).tag(sync=True)
-
-    def __init__(self, **kwargs: Any) -> None:
-        self._notebook: Notebook | None = None
-        super().__init__(**kwargs)
-
-    def _bind_notebook(self, notebook: Notebook, index: int) -> None:
-        self._notebook = notebook
-        self.set_trait("_notebook_widget", notebook)
-        self.set_trait("_notebook_index", index)
 
     def _require_rendered(self) -> None:
         if not self.has_rendered:
@@ -141,16 +116,16 @@ class NotebookCell(_ObservableWidget):
     def has_rendered(self) -> bool:
         """Whether this cell has synced a rendered browser output."""
 
-        return self._has_rendered
+        return self._notebook_widget._cell_has_rendered(self._notebook_index)
 
     @property
     def info(self) -> CellInfo:
         """Notebook Kit metadata for this cell after browser render."""
 
-        if self._notebook is None or self._notebook_index < 0:
+        if self._notebook_index < 0:
             raise NotRenderedError("NotebookCell is not bound to a rendered Notebook")
-        self._notebook._require_graph_snapshot()
-        graph = self._notebook.graph
+        self._notebook_widget._require_graph_snapshot()
+        graph = self._notebook_widget.graph
         info = graph.cell(self._notebook_index)
         if info is None:
             raise KeyError(f"Unknown rendered cell index: {self._notebook_index}")
@@ -181,7 +156,7 @@ class NotebookCell(_ObservableWidget):
         """Latest browser-synchronized values exposed by this cell."""
 
         self._require_rendered()
-        return {name: deserialize_value(value) for name, value in self._values.items()}
+        return self._notebook_widget._cell_runtime_values(self._notebook_index)
 
     def value(self, name: str) -> Any:
         """Return this cell's synchronized value for ``name``."""
@@ -220,22 +195,9 @@ class Notebook(_ObservableWidget):
     _variable_update = traitlets.Dict(default_value={}).tag(sync=True)
     _has_rendered = traitlets.Bool(False).tag(sync=True)
     _graph = traitlets.Dict(default_value={}).tag(sync=True)
-    _values = traitlets.Dict(default_value={}).tag(sync=True)
+    _cell_values = traitlets.Dict(default_value={}).tag(sync=True)
     _options = traitlets.Dict().tag(sync=True)
     _cell_keys = traitlets.List(traitlets.Unicode(), default_value=[]).tag(sync=True)
-    _cell_widgets = traitlets.List(
-        anywidget.WidgetTrait(),
-        default_value=[],
-    ).tag(sync=True, to_json=_widgets_to_json, from_json=_widgets_from_json)
-
-    @traitlets.validate("_cell_widgets")
-    def _validate_cell_widgets(self, proposal: Any) -> list[NotebookCell]:
-        widgets = proposal["value"]
-        if not all(isinstance(item, NotebookCell) for item in widgets):
-            raise traitlets.TraitError(
-                "_cell_widgets must contain NotebookCell widgets"
-            )
-        return cast(list[NotebookCell], widgets)
 
     @traitlets.validate("theme")
     def _validate_theme(self, proposal: Any) -> Theme:
@@ -327,7 +289,7 @@ class Notebook(_ObservableWidget):
             show_pinned_source=show_pinned_source,
             runtime_compatibility=model.runtime_compatibility,
             cell_keys=model.cell_keys,
-            cell_widgets=_cell_widgets_for_model(model),
+            cell_names=model.cell_names,
         )
 
     def _initialize(
@@ -341,9 +303,11 @@ class Notebook(_ObservableWidget):
         show_pinned_source: bool,
         runtime_compatibility: Mapping[str, bool],
         cell_keys: Sequence[str],
-        cell_widgets: Sequence[NotebookCell],
+        cell_names: Sequence[str],
     ) -> None:
         self._variable_values = copy_variables(variables)
+        self._cell_names = tuple(cell_names)
+        self._cell_cache: dict[int, NotebookCell] = {}
         spec_dict = dict(spec)
         if not source:
             spec_dict["theme"] = theme
@@ -364,13 +328,9 @@ class Notebook(_ObservableWidget):
                 _variables=serialize_variables(self._variable_values),
                 _options=options,
                 _cell_keys=list(cell_keys),
-                _cell_widgets=list(cell_widgets),
             )
         finally:
             self._initializing_notebook = False
-        for index, cell_widget in enumerate(self._cell_widgets):
-            if isinstance(cell_widget, NotebookCell):
-                cell_widget._bind_notebook(self, index)
 
     @property
     def variables(self) -> dict[str, Any]:
@@ -544,21 +504,35 @@ class Notebook(_ObservableWidget):
 
     @property
     def cells(self) -> tuple[NotebookCell, ...]:
-        """Child cell widgets in notebook order."""
+        """Cell projection widgets in notebook order."""
 
-        return tuple(self._cell_widgets)
+        return tuple(self.cell_at(index) for index in range(len(self._cell_keys)))
 
     def cell_at(self, index: int) -> NotebookCell:
         """Return the cell widget at zero-based notebook order."""
 
-        return self.cells[index]
+        count = len(self._cell_keys)
+        normalized = index if index >= 0 else count + index
+        if normalized < 0 or normalized >= count:
+            raise IndexError("notebook cell index out of range")
+        cached = self._cell_cache.get(normalized)
+        if cached is not None:
+            return cached
+        cell = NotebookCell(
+            key=self._cell_keys[normalized],
+            name=self._cell_names[normalized],
+            _notebook_widget=self,
+            _notebook_index=normalized,
+        )
+        self._cell_cache[normalized] = cell
+        return cell
 
     def cell_by_key(self, key: str) -> NotebookCell:
         """Return the unique cell widget with Python handle ``key``."""
 
-        matches = [item for item in self.cells if item.key == key]
+        matches = [index for index, item in enumerate(self._cell_keys) if item == key]
         if len(matches) == 1:
-            return matches[0]
+            return self.cell_at(matches[0])
         if len(matches) > 1:
             raise KeyError(f"Ambiguous Observable cell key: {key!r}")
         raise KeyError(f"Unknown Observable cell key: {key!r}")
@@ -566,12 +540,11 @@ class Notebook(_ObservableWidget):
     def cell_for_variable(self, name: str) -> NotebookCell:
         """Return the unique cell that defines an Observable variable."""
 
-        cells = self.cells
         matches = [cell.index for cell in self.graph.cells if name in cell.defines]
         if len(matches) == 1:
             index = matches[0]
-            if 0 <= index < len(cells):
-                return cells[index]
+            if 0 <= index < len(self._cell_keys):
+                return self.cell_at(index)
         if len(matches) > 1:
             raise KeyError(f"Ambiguous Observable variable: {name!r}")
         raise KeyError(f"Unknown Observable variable: {name!r}")
@@ -581,21 +554,69 @@ class Notebook(_ObservableWidget):
         """Latest notebook-level browser values synchronized from the runtime."""
 
         self._require_rendered()
-        return {name: deserialize_value(value) for name, value in self._values.items()}
+        owners: dict[str, tuple[int, Any]] = {}
+        for record in self._cell_values.values():
+            if not isinstance(record, Mapping):
+                continue
+            values = record.get("values")
+            if not isinstance(values, Mapping):
+                continue
+            for name, value in values.items():
+                if not isinstance(name, str):
+                    continue
+                count, _previous = owners.get(name, (0, None))
+                owners[name] = (count + 1, value)
+        return {
+            name: deserialize_value(value)
+            for name, (count, value) in owners.items()
+            if count == 1
+        }
 
     def cell_values(self) -> tuple[CellValues, ...]:
         """Return browser-synchronized values in notebook order."""
 
         self._require_rendered()
         return tuple(
-            CellValues(index=index, key=cell.key or None, values=cell.values)
-            for index, cell in enumerate(self.cells)
+            CellValues(
+                index=index,
+                key=key or None,
+                values=self._cell_runtime_values(index),
+            )
+            for index, key in enumerate(self._cell_keys)
         )
 
     def value(self, name: str) -> Any:
         """Return the notebook-level browser value synchronized for ``name``."""
 
         return self.runtime_values[name]
+
+    def _cell_record(self, index: int) -> Mapping[str, Any]:
+        record = self._cell_values.get(str(index))
+        return record if isinstance(record, Mapping) else {}
+
+    def _cell_has_rendered(self, index: int) -> bool:
+        return self._cell_record(index).get("rendered") is True
+
+    def _cell_runtime_values(self, index: int) -> dict[str, Any]:
+        values = self._cell_record(index).get("values")
+        if not isinstance(values, Mapping):
+            return {}
+        return {
+            name: deserialize_value(value)
+            for name, value in values.items()
+            if isinstance(name, str)
+        }
+
+    def close(self) -> None:
+        """Close this notebook and any materialized cell projection widgets."""
+
+        cache = getattr(self, "_cell_cache", None)
+        cells = tuple(cache.values()) if cache is not None else ()
+        if cache is not None:
+            cache.clear()
+        for cell in cells:
+            cell.close()
+        super().close()
 
     @classmethod
     def from_html(
@@ -996,10 +1017,3 @@ class Notebook(_ObservableWidget):
         if self._source:
             return self._source
         return serialize(self._spec)
-
-
-def _cell_widgets_for_model(model: NotebookModel) -> list[NotebookCell]:
-    return [
-        NotebookCell(key=key, name=name)
-        for key, name in zip(model.cell_keys, model.cell_names, strict=True)
-    ]

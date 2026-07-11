@@ -17,7 +17,6 @@ import {
 	type RuntimeVariablesSync,
 } from "@pyobservablejs/runtime";
 import { createCellOutput, createTopLevelError, renderSource } from "./dom";
-import { markRendered } from "./readback";
 import { applyModelVariablesToViews, registerView, type CellVariableSync } from "./variable-sync";
 
 type RuntimeDefinition = Parameters<NotebookRuntime["define"]>[1];
@@ -159,7 +158,7 @@ function defineCell(
 		if (sync) applyModelVariablesToViews(sync);
 	} catch (error) {
 		root.appendChild(createTopLevelError(error));
-		if (sync) markRendered(sync.model);
+		sync?.markRendered();
 	}
 }
 
@@ -239,13 +238,13 @@ function createCellObserver(
 			const viewName = viewVariableName(definition);
 			if (viewName) registerView(sync, viewName, value);
 			if (displayName) sync.setVariable(displayName, toWireValue(value));
-			if (displayObserverCompletesReadback) markRendered(sync.model);
+			if (displayObserverCompletesReadback) sync.markRendered();
 			fulfilled(value);
 		};
 		const rejected = observer.rejected.bind(observer);
 		observer.rejected = (error: unknown) => {
 			if (displayName) sync.setVariable(displayName, toWireValue(error));
-			if (displayObserverCompletesReadback) markRendered(sync.model);
+			if (displayObserverCompletesReadback) sync.markRendered();
 			rejected(error);
 		};
 		return observer;
@@ -315,7 +314,7 @@ function defineSyncObservers(runtime: NotebookRuntime, sync: CellVariableSync, n
 	const pending = new Set(names);
 	const settle = (name: string) => {
 		pending.delete(name);
-		if (pending.size === 0) markRendered(sync.model);
+		if (pending.size === 0) sync.markRendered();
 	};
 	for (const name of names) {
 		observeRuntimeVariable(

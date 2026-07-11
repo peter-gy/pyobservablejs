@@ -217,13 +217,14 @@ class BundledWidget(anywidget.AnyWidget):
     """anywidget model that serves bundle modules over custom messages."""
 
     bundle: ClassVar[Bundle]
+    include_bundle_css: ClassVar[bool] = True
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         # AnyWidget snapshots instance-level _esm and _css when it creates their
         # synchronized traits, so materialize file paths before its initializer.
         esm, css = self.bundle.anywidget_assets()
         self._esm = _asset_text(esm)
-        self._css = _asset_text(css)
+        self._css = _asset_text(css) if self.include_bundle_css else ""
         super().__init__(*args, **kwargs)
         self.on_msg(self._handle_bundle_message)
 

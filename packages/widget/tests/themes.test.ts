@@ -1,9 +1,8 @@
 import { describe, expect, test } from "vite-plus/test";
-import widget from "../src";
-import { createHost, createModel, renderProps, waitFor } from "./testing";
+import { createModel, renderProps, waitFor, widget } from "./testing";
 
 describe("widget themes", () => {
-	test("installs theme styles once in the widget owner root", () => {
+	test("installs theme styles once in the widget owner root", async () => {
 		const host = document.createElement("div");
 		const shadow = host.attachShadow({ mode: "open" });
 		const first = document.createElement("div");
@@ -18,15 +17,15 @@ describe("widget themes", () => {
 			_attachments: {},
 			_variables: {},
 			_options: {},
-			_cell_widgets: [],
 		};
 
-		widget.render(renderProps(createModel(modelState), first, firstController.signal, createHost(new Map())));
-		const [themeStyle] = Array.from(shadow.querySelectorAll("style"));
+		widget.render(renderProps(createModel(modelState), first, firstController.signal));
+		const themeStyle = await waitFor(() => shadow.querySelector("style") ?? undefined);
 		expect(themeStyle).toBeInstanceOf(HTMLStyleElement);
 
-		widget.render(renderProps(createModel(modelState), second, secondController.signal, createHost(new Map())));
+		widget.render(renderProps(createModel(modelState), second, secondController.signal));
 
+		await waitFor(() => (second.firstElementChild ? second.firstElementChild : undefined));
 		expect(Array.from(shadow.querySelectorAll("style"))).toEqual([themeStyle]);
 		expect(Array.from(document.head.querySelectorAll("style"))).toEqual(headStyles);
 		firstController.abort();
@@ -41,12 +40,11 @@ describe("widget themes", () => {
 			_attachments: {},
 			_variables: {},
 			_options: {},
-			_cell_widgets: [],
 		});
 		const controller = new AbortController();
 		const el = document.createElement("div");
 
-		widget.render(renderProps(model, el, controller.signal, createHost(new Map())));
+		widget.render(renderProps(model, el, controller.signal));
 
 		expect(await waitFor(() => notebookRoot(el))).toHaveProperty("dataset.theme", "air");
 
@@ -69,12 +67,11 @@ describe("widget themes", () => {
 			_attachments: {},
 			_variables: {},
 			_options: {},
-			_cell_widgets: [],
 		});
 		const controller = new AbortController();
 		const el = document.createElement("div");
 
-		widget.render(renderProps(model, el, controller.signal, createHost(new Map())));
+		widget.render(renderProps(model, el, controller.signal));
 
 		const root = await waitFor(() => notebookRoot(el));
 

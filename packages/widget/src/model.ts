@@ -20,9 +20,15 @@ export type WidgetModel = {
 		values?: Record<string, unknown>;
 	};
 	_graph?: NotebookGraph;
-	_values?: Record<string, unknown>;
-	_value_names?: string[];
 	_has_rendered?: boolean;
+	_cell_values?: Record<
+		string,
+		{
+			rendered?: boolean;
+			names?: string[];
+			values?: Record<string, unknown>;
+		}
+	>;
 	_options?: {
 		runtime_compatibility?: {
 			display_view?: boolean;
@@ -34,7 +40,6 @@ export type WidgetModel = {
 		show_source?: boolean;
 	};
 	_cell_keys?: string[];
-	_cell_widgets?: string[];
 };
 
 export type AnyWidgetModel = RenderProps<WidgetModel>["model"];
@@ -47,14 +52,7 @@ export const NOTEBOOK_MODEL_CHANGE_EVENTS = [
 	"change:_base_url",
 	"change:_options",
 	"change:_cell_keys",
-	"change:_cell_widgets",
 ] as const;
-
-export function readModelVariables(model: AnyWidgetModel): Record<string, unknown> {
-	const value = model.get("_values");
-	if (value === null || typeof value !== "object" || Array.isArray(value)) return {};
-	return value;
-}
 
 export function readNotebookVariables(model: AnyWidgetModel): Record<string, unknown> {
 	const value = model.get("_variables");

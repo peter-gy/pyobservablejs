@@ -1,6 +1,5 @@
 import { expect, test } from "vite-plus/test";
-import widget from "../src";
-import { createHost, createModel, renderProps, variableValue, waitFor } from "./testing";
+import { createModel, renderProps, variableValue, waitFor, widget } from "./testing";
 
 test("ending the widget lifecycle stops runtime variable updates", async () => {
 	const model = createModel({
@@ -9,12 +8,10 @@ test("ending the widget lifecycle stops runtime variable updates", async () => {
 		_attachments: {},
 		_variables: { base: 2 },
 		_options: {},
-		_cell_widgets: ["anywidget:doubled"],
 	});
-	const child = createModel({ role: "cell", name: "doubled", _values: {}, _value_names: [] });
 	const controller = new AbortController();
 	const el = document.createElement("div");
-	widget.render(renderProps(model, el, controller.signal, createHost(new Map([["anywidget:doubled", child]]))));
+	widget.render(renderProps(model, el, controller.signal));
 	await waitFor(() => (variableValue(model, "doubled") === 4 ? 4 : undefined));
 	expect(model.listenerCount("change:_variable_update")).toBeGreaterThan(0);
 

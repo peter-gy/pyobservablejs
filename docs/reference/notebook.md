@@ -7,7 +7,8 @@ description: Notebook construction, public members, return values, errors, and b
 
 `Notebook` represents an Observable Notebook Kit document and displays as an
 anywidget in supported notebook frontends. It owns authored or source HTML, file
-attachments, Python variables, child cells, and browser-synchronized readback.
+attachments, Python variables, and browser-synchronized readback. A displayed
+notebook evaluates all of its logical cells through one Notebook Kit runtime.
 
 ```python
 import observablejs as obs
@@ -143,9 +144,13 @@ Returns a shallow copy of the Python-owned variable environment. See
 cells: tuple[obs.NotebookCell, ...] = notebook.cells
 ```
 
-Returns child `NotebookCell` widgets in notebook order. The tuple exists before
-browser render. Each child acquires values and graph metadata through the
-render lifecycle described in [Values and graph](values-and-graph.md).
+Returns cached `NotebookCell` projection handles in notebook order. Accessing
+this property materializes every handle. Each handle keeps object identity
+across later `cells` and lookup calls.
+
+Use `cell_at` or `cell_by_key` when code needs one cell. Full notebook display,
+`runtime_values`, and `cell_values()` read state stored on the `Notebook` and
+keep projection handles lazy.
 
 ## Variable mutation
 
@@ -179,9 +184,9 @@ documented on the [Variables](variables.md) page.
 cell = notebook.cell_at(0)
 ```
 
-Returns `notebook.cells[index]` with normal Python tuple indexing. Nonnegative
-indices count from the start, negative indices count from the end, and an
-out-of-range index raises `IndexError`.
+Returns the cached projection handle at `index`, materializing it on first
+access. Nonnegative indices count from the start, negative indices count from
+the end, and an out-of-range index raises `IndexError`.
 
 ### `Notebook.cell_by_key(key)`
 
@@ -189,8 +194,9 @@ out-of-range index raises `IndexError`.
 cell = notebook.cell_by_key("answer")
 ```
 
-Returns the unique child whose Python key equals `key`. It is available before
-render. Missing and ambiguous keys raise `KeyError`.
+Returns the cached projection handle whose Python key equals `key`,
+materializing it on first access. It is available before render. Missing and
+ambiguous keys raise `KeyError`.
 
 ### `Notebook.cell_for_variable(name)`
 
@@ -198,14 +204,15 @@ render. Missing and ambiguous keys raise `KeyError`.
 cell = notebook.cell_for_variable("answer")
 ```
 
-Returns the unique child whose synchronized graph record defines `name`. It
-requires a graph snapshot and raises `NotRenderedError` before one arrives.
-Unknown and ambiguous definitions raise `KeyError`.
+Returns the cached projection handle whose synchronized graph record defines
+`name`, materializing it on first access. It requires a graph snapshot and
+raises `NotRenderedError` before one arrives. Unknown and ambiguous definitions
+raise `KeyError`.
 
 ## Browser lifecycle
 
 `has_rendered` tracks a full notebook render. `has_graph_snapshot` tracks graph
-metadata produced by either a notebook render or a direct child-cell render.
+metadata produced by either a notebook render or a direct cell projection.
 
 | State                        | `has_rendered`    | `has_graph_snapshot` | Available readback                                         |
 | ---------------------------- | ----------------- | -------------------- | ---------------------------------------------------------- |
@@ -220,7 +227,7 @@ ready: bool = notebook.has_rendered
 ```
 
 Returns whether the browser has synchronized a full notebook render. Directly
-displaying a child `NotebookCell` leaves this value false.
+displaying a `NotebookCell` leaves this value false.
 
 ### `Notebook.has_graph_snapshot`
 
@@ -229,7 +236,7 @@ ready: bool = notebook.has_graph_snapshot
 ```
 
 Returns whether the synchronized graph trait contains `cells` and `edges`
-lists. A direct child-cell render can make this true before the full notebook
+lists. A direct cell projection can make this true before the full notebook
 renders.
 
 ### `Notebook.graph`
@@ -257,8 +264,9 @@ a full notebook render and raises `NotRenderedError` beforehand.
 values: tuple[obs.CellValues, ...] = notebook.cell_values()
 ```
 
-Returns one `CellValues` record per child in notebook order. It requires a full
-notebook render and raises `NotRenderedError` beforehand.
+Returns one `CellValues` record per logical cell in notebook order. It requires
+a full notebook render and raises `NotRenderedError` beforehand. Reading these
+records keeps `NotebookCell` handles lazy.
 
 ### `Notebook.value(name)`
 

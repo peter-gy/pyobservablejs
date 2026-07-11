@@ -73,11 +73,17 @@ def _write_bundle(
     )
 
 
-def _widget_class_for_static_dir(static_dir: pathlib.Path) -> type[_RecordingWidget]:
+def _widget_class_for_static_dir(
+    static_dir: pathlib.Path,
+    *,
+    include_bundle_css: bool = True,
+) -> type[_RecordingWidget]:
     bundle_config = Bundle(static_dir=static_dir)
+    include_css = include_bundle_css
 
     class StaticWidget(_RecordingWidget):
         bundle = bundle_config
+        include_bundle_css = include_css
 
     return StaticWidget
 
@@ -119,6 +125,25 @@ def test_bundle_supports_manifest_without_css(tmp_path: pathlib.Path) -> None:
 
     assert esm == static_dir / "index.js"
     assert css == ""
+
+
+def test_bundled_widget_can_leave_css_to_another_model(
+    tmp_path: pathlib.Path,
+) -> None:
+    static_dir = tmp_path / "static"
+    _write_bundle(static_dir)
+    owner = _widget_class_for_static_dir(static_dir)()
+    projection = _widget_class_for_static_dir(
+        static_dir,
+        include_bundle_css=False,
+    )()
+
+    owner_state = owner.get_state(["_esm", "_css"])
+    projection_state = projection.get_state(["_esm", "_css"])
+
+    assert projection_state["_esm"] == owner_state["_esm"]
+    assert owner_state["_css"] == ".widget {}"
+    assert projection_state["_css"] == ""
 
 
 @pytest.mark.parametrize(

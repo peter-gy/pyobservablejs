@@ -6,6 +6,7 @@ from typing import Any
 
 import observablejs as obs
 import pytest
+import traitlets
 from helpers import (
     BrowserGraphCellBuilder,
     BrowserGraphSync,
@@ -32,20 +33,36 @@ def test_notebook_rejects_list_wrapped_cells() -> None:
         obs.Notebook(bad_cells)
 
 
-def test_notebook_cell_accessors_return_child_widget_instances() -> None:
+def test_notebook_materializes_cell_widgets_on_demand(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    created: list[int] = []
+    original_init = obs.NotebookCell.__init__
+
+    def tracked_init(self: obs.NotebookCell, **kwargs: Any) -> None:
+        created.append(kwargs["_notebook_index"])
+        original_init(self, **kwargs)
+
+    monkeypatch.setattr(obs.NotebookCell, "__init__", tracked_init)
     widget = obs.Notebook(
         obs.md("# Title", key="title"),
         obs.ojs("answer = 42", key="answer"),
         title="Composed",
     )
 
+    assert created == []
+    answer = widget.cell_at(1)
+    assert created == [1]
+    assert widget.cell_at(1) is answer
+    assert widget.cell_by_key("answer") is answer
+    assert created == [1]
     assert len(widget.cells) == 2
+    assert len(created) == 2
     assert [widget.cell_at(index).key for index in range(2)] == ["title", "answer"]
     assert [cell.key for cell in widget.cells] == ["title", "answer"]
     assert [cell.name for cell in widget.cells] == ["", ""]
     assert widget.cell_by_key("answer").key == "answer"
-    assert widget.cell_at(1) is widget.cells[1]
-    assert widget.cell_by_key("answer") is widget.cells[1]
+    assert answer is widget.cells[1]
 
 
 def test_notebook_cells_receive_parent_transport_references() -> None:
@@ -55,19 +72,34 @@ def test_notebook_cells_receive_parent_transport_references() -> None:
     )
 
     assert widget.get_state(["_cell_keys"])["_cell_keys"] == ["title", "answer"]
-    child_state = widget.cell_at(1).get_state(["_notebook_widget", "_notebook_index"])
+    cell = widget.cell_at(1)
+    child_state = cell.get_state(["_notebook_widget", "_notebook_index"])
+    assert cell._notebook_widget is widget
     assert child_state["_notebook_widget"] == f"anywidget:{widget.model_id}"
     assert child_state["_notebook_index"] == 1
 
 
-def test_notebook_cell_parent_reference_accepts_browser_wire_state() -> None:
+def test_notebook_cell_shares_bundle_esm_without_repeating_css() -> None:
+    widget = obs.Notebook(obs.ojs("answer = 42", key="answer"))
+    cell = widget.cell_at(0)
+
+    notebook_assets = widget.get_state(["_esm", "_css"])
+    cell_assets = cell.get_state(["_esm", "_css"])
+
+    assert cell_assets["_esm"] == notebook_assets["_esm"]
+    assert notebook_assets["_css"]
+    assert cell_assets["_css"] == ""
+
+
+def test_notebook_cell_parent_reference_rejects_browser_wire_state() -> None:
     widget = obs.Notebook(obs.ojs("answer = 42", key="answer"))
     cell = widget.cell_at(0)
     ref = f"anywidget:{widget.model_id}"
 
-    cell.set_state({"_notebook_widget": ref})
+    with pytest.raises(traitlets.TraitError, match="expected a Notebook"):
+        cell.set_state({"_notebook_widget": ref})
 
-    assert cell.get_state(["_notebook_widget"])["_notebook_widget"] == ref
+    assert cell._notebook_widget is widget
 
 
 def test_notebook_graph_exposes_symbolic_cell_metadata(
@@ -463,6 +495,76 @@ def test_browser_values_are_exposed_to_notebook_values(
     assert widget.has_rendered is True
     assert widget.runtime_values == {"gain": 8}
     assert widget.value("gain") == 8
+
+
+def test_notebook_readback_does_not_materialize_cell_widgets(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    created = 0
+    original_init = obs.NotebookCell.__init__
+
+    def tracked_init(self: obs.NotebookCell, **kwargs: Any) -> None:
+        nonlocal created
+        created += 1
+        original_init(self, **kwargs)
+
+    monkeypatch.setattr(obs.NotebookCell, "__init__", tracked_init)
+    widget = obs.Notebook(
+        obs.ojs("shared = 1", key="first"),
+        obs.ojs("shared = 2", key="second"),
+    )
+    widget.set_trait(
+        "_cell_values",
+        {
+            "0": {
+                "rendered": True,
+                "names": ["first", "shared"],
+                "values": {"first": 1, "shared": 1},
+            },
+            "1": {
+                "rendered": True,
+                "names": ["second", "shared"],
+                "values": {"second": 2, "shared": 2},
+            },
+        },
+    )
+    widget.set_trait("_has_rendered", True)
+
+    assert widget.runtime_values == {"first": 1, "second": 2}
+    assert widget.cell_values() == (
+        obs.CellValues(index=0, key="first", values={"first": 1, "shared": 1}),
+        obs.CellValues(index=1, key="second", values={"second": 2, "shared": 2}),
+    )
+    assert created == 0
+
+
+def test_cell_handle_reads_parent_snapshot_created_before_it() -> None:
+    widget = obs.Notebook(obs.ojs("answer = 42", key="answer"))
+    widget.set_trait(
+        "_cell_values",
+        {
+            "0": {
+                "rendered": True,
+                "names": ["answer"],
+                "values": {"answer": 42},
+            }
+        },
+    )
+
+    cell = widget.cell_at(0)
+
+    assert cell.has_rendered is True
+    assert cell.values == {"answer": 42}
+
+
+def test_closing_notebook_closes_materialized_cell_widgets() -> None:
+    widget = obs.Notebook(obs.ojs("answer = 42", key="answer"))
+    cell = widget.cell_at(0)
+
+    widget.close()
+
+    assert widget.comm is None
+    assert cell.comm is None
 
 
 def test_script_end_tag_literal_stays_inside_script_cell(

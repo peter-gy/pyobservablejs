@@ -5,9 +5,10 @@ description: Read browser-synchronized values and graph metadata from Python.
 
 # Values back to Python
 
-`NotebookCell` values and graph metadata synchronize after the browser renders
-the widget. Try moving `gain`. The readout updates in the browser. A later
-Python cell can then read the synchronized `doubled` value.
+Cell values and graph metadata synchronize after the browser renders the
+`Notebook` or a direct `NotebookCell` projection. Try moving `gain`. The
+readout updates in the browser. A later Python cell can then read the
+synchronized `doubled` value.
 
 ```{marimo-config}
 :pyproject:
@@ -66,8 +67,10 @@ if notebook.has_graph_snapshot:
 `cell_for_variable(name)` raises `KeyError` when the graph has no unique owner
 for `name`.
 
-Displaying one `NotebookCell` synchronizes that cell and the parent graph.
-Display the parent `Notebook` when Python needs values from the full document.
+Displaying one `NotebookCell` synchronizes that cell and the parent graph. The
+projection handle reads the same parent-owned cell snapshot that a full
+notebook render produces. Display the parent `Notebook` when Python needs
+values from the full document.
 
 See [Values and graph](../reference/values-and-graph.md) for the complete
 lifecycle and lookup contracts.

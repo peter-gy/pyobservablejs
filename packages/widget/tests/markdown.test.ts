@@ -1,6 +1,5 @@
 import { describe, test } from "vite-plus/test";
-import widget from "../src";
-import { alertText, composedText, createHost, createModel, renderProps, waitFor } from "./testing";
+import { alertText, composedText, createModel, renderProps, waitFor, widget } from "./testing";
 
 describe("widget markdown rendering", () => {
 	test("renders Python-authored Notebook Kit markdown cells", async () => {
@@ -12,15 +11,11 @@ describe("widget markdown rendering", () => {
 			_attachments: {},
 			_variables: {},
 			_options: {},
-			_cell_widgets: ["anywidget:title"],
 		});
-		const childModels = new Map([
-			["anywidget:title", createModel({ role: "cell", name: "title", _values: {}, _value_names: [] })],
-		]);
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render(renderProps(model, el, controller.signal, createHost(childModels)));
+		widget.render(renderProps(model, el, controller.signal));
 
 		await waitFor(() => {
 			const error = alertText(el);
@@ -44,15 +39,11 @@ describe("widget markdown rendering", () => {
 			_attachments: {},
 			_variables: {},
 			_options: {},
-			_cell_widgets: ["anywidget:markdown"],
 		});
-		const childModels = new Map([
-			["anywidget:markdown", createModel({ role: "cell", name: "markdown", _values: {}, _value_names: [] })],
-		]);
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render(renderProps(model, el, controller.signal, createHost(childModels)));
+		widget.render(renderProps(model, el, controller.signal));
 
 		await waitFor(() => {
 			const error = alertText(el);
@@ -75,16 +66,11 @@ describe("widget markdown rendering", () => {
 			_attachments: {},
 			_variables: {},
 			_options: {},
-			_cell_widgets: ["anywidget:custom-md", "anywidget:custom-md-call"],
 		});
-		const childModels = new Map([
-			["anywidget:custom-md", createModel({ role: "cell", name: "customMd", _values: {}, _value_names: [] })],
-			["anywidget:custom-md-call", createModel({ role: "cell", name: "customMdCall", _values: {}, _value_names: [] })],
-		]);
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
-		widget.render(renderProps(model, el, controller.signal, createHost(childModels)));
+		widget.render(renderProps(model, el, controller.signal));
 
 		await waitFor(() => {
 			const error = alertText(el);

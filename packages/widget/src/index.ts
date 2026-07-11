@@ -1,123 +1,65 @@
-import type { RenderProps } from "@anywidget/types";
-import { analyzeNotebook } from "@pyobservablejs/runtime";
-import "./widget.css";
-import {
-	createCompositionHost,
-	renderComposedCells,
-	renderStandaloneCellProjection,
-	resolveNotebookModel,
-	type CompositionHost,
-} from "./composition";
-import { readCellCompositionState, readNotebookCompositionState } from "./composition-state";
-import { createTopLevelError } from "./dom";
-import { NOTEBOOK_MODEL_CHANGE_EVENTS, readNotebookFromModel, readNotebookOptions, type WidgetModel } from "./model";
-import {
-	markRendered,
-	resetGraphSnapshot,
-	resetRenderReadback,
-	syncNotebookGraph,
-	syncNotebookValues,
-} from "./readback";
-import { openNotebookRuntimeSession } from "./session";
-
-type RenderNotebookWidgetOptions = {
-	model: RenderProps<WidgetModel>["model"];
-	el: HTMLElement;
-	signal: AbortSignal;
-	host: CompositionHost;
-};
-
-type Rerender = (variables?: Record<string, unknown>) => void;
-type RenderAttempt = (
-	signal: AbortSignal,
-	rerender: Rerender,
-	variables: Record<string, unknown> | undefined,
-	isCurrent: () => boolean,
-) => Promise<void>;
+import type { InitializeProps, RenderProps, ResolvedWidget } from "@anywidget/types";
+import { readCellCompositionState } from "./composition-state";
+import type { WidgetModel } from "./model";
+import { installCellProjectionContext, readCellProjectionContext } from "./projection-context";
+import type { ParentRenderer } from "./parent";
 
 const CELL_MODEL_CHANGE_EVENTS = ["change:_notebook_widget", "change:_notebook_index"] as const;
-function render(props: RenderProps<WidgetModel>): void {
-	const signal = props.signal;
-	if (signal.aborted) return;
-	const options = {
-		model: props.model,
-		el: props.el,
-		signal,
-		host: createCompositionHost(props.host, props.model),
+
+export default function createWidget() {
+	let parentRenderer: Promise<ParentRenderer> | undefined;
+
+	const loadParentRenderer = (
+		model: InitializeProps<WidgetModel>["model"],
+		signal: AbortSignal,
+	): Promise<ParentRenderer> => {
+		// Cell models stay on this small dispatcher. Notebook Kit enters the model
+		// graph only when the referenced parent model initializes or renders.
+		parentRenderer ??= import("./parent").then((module) => {
+			signal.throwIfAborted();
+			return module.createParentRenderer(model, signal);
+		});
+		return parentRenderer;
 	};
-	if (props.model.get("role") === "cell") {
-		renderStandaloneCellWidget(options);
-	} else {
-		renderNotebookWidget(options);
-	}
-}
 
-export default { render };
-
-/**
- * Render the parent notebook widget and restart the runtime when model traits change.
- */
-function renderNotebookWidget({ model, el, signal, host }: RenderNotebookWidgetOptions): void {
-	let resolvedCells = new Set<RenderProps<WidgetModel>["model"]>();
-	renderOnModelChanges(
-		{ model, el, signal },
-		NOTEBOOK_MODEL_CHANGE_EVENTS,
-		(attemptSignal, rerender, variables, isCurrent) =>
-			renderCurrentNotebook(
-				model,
-				el,
-				attemptSignal,
-				host,
-				rerender,
-				(cell) => {
-					if (isCurrent()) resolvedCells.add(cell);
-				},
-				variables,
-			),
-		() => {
-			for (const cell of resolvedCells) resetRenderReadback(cell);
-			resolvedCells = new Set();
+	return {
+		initialize(props: InitializeProps<WidgetModel>) {
+			if (props.model.get("role") !== "cell") void loadParentRenderer(props.model, props.signal).catch(() => {});
 		},
-	);
+		async render(props: RenderProps<WidgetModel>) {
+			if (props.signal.aborted) return;
+			if (props.model.get("role") === "cell") {
+				renderCellProjection(props);
+				return;
+			}
+			const renderer = await loadParentRenderer(props.model, props.signal);
+			if (props.signal.aborted) return;
+			renderer.render(props, readCellProjectionContext(props.el));
+		},
+	};
 }
 
-/**
- * Render a child cell widget by resolving its explicit parent notebook model.
- */
-function renderStandaloneCellWidget({ model, el, signal, host }: RenderNotebookWidgetOptions): void {
-	renderOnModelChanges({ model, el, signal }, CELL_MODEL_CHANGE_EVENTS, (attemptSignal, rerender, variables) =>
-		renderCurrentStandaloneCell(model, el, attemptSignal, host, rerender, variables),
-	);
-}
-
-function renderOnModelChanges(
-	{ model, el, signal }: Pick<RenderNotebookWidgetOptions, "model" | "el" | "signal">,
-	events: readonly string[],
-	renderAttempt: RenderAttempt,
-	beforeRerender: () => void = () => {},
-): void {
+function renderCellProjection(props: RenderProps<WidgetModel>): void {
 	let current = new AbortController();
 	let version = 0;
-	const rerender: Rerender = (variables) => {
-		beforeRerender();
+	const rerender = () => {
 		current.abort();
 		current = new AbortController();
 		const attempt = current;
-		const attemptSignal = AbortSignal.any([signal, attempt.signal]);
+		const signal = AbortSignal.any([props.signal, attempt.signal]);
 		const renderVersion = ++version;
-		const isCurrent = () => !attemptSignal.aborted && renderVersion === version;
-		void renderAttempt(attemptSignal, rerender, variables, isCurrent).catch((error: unknown) => {
+		const isCurrent = () => !signal.aborted && renderVersion === version;
+		void renderCurrentCellProjection(props, signal).catch((error: unknown) => {
 			if (!isCurrent()) return;
 			attempt.abort();
-			el.replaceChildren(createTopLevelError(error));
+			props.el.replaceChildren(createTopLevelError(error));
 		});
 	};
-	const rerenderFromModel = () => rerender();
-	for (const event of events) model.on(event, rerenderFromModel);
-	signal.addEventListener(
+	for (const event of CELL_MODEL_CHANGE_EVENTS) props.model.on(event, rerender);
+	props.signal.addEventListener(
 		"abort",
 		() => {
-			for (const event of events) model.off(event, rerenderFromModel);
+			for (const event of CELL_MODEL_CHANGE_EVENTS) props.model.off(event, rerender);
 			current.abort();
 		},
 		{ once: true },
@@ -125,121 +67,60 @@ function renderOnModelChanges(
 	rerender();
 }
 
-/**
- * Build one notebook runtime for the current model snapshot.
- */
-async function renderCurrentNotebook(
-	model: RenderProps<WidgetModel>["model"],
-	el: HTMLElement,
-	signal: AbortSignal,
-	host: CompositionHost,
-	onInputReset: (variables: Record<string, unknown>) => void,
-	onCellResolved: (cell: RenderProps<WidgetModel>["model"]) => void,
-	variablesOverride?: Record<string, unknown>,
-): Promise<void> {
-	resetRenderReadback(model);
-	resetGraphSnapshot(model);
-
-	const composition = readNotebookCompositionState(model);
-	const notebook = readNotebookFromModel(model);
-	const analysis = analyzeNotebook(notebook);
-	if (composition.cellRefs.length > 0) {
-		if (composition.cellRefs.length !== notebook.cells.length) {
-			throw new Error(`Expected ${notebook.cells.length} cell widgets, received ${composition.cellRefs.length}`);
-		}
-	} else if (notebook.cells.length > 0) {
-		throw new Error(`Expected ${notebook.cells.length} cell widgets, received 0`);
-	}
-	if (composition.cellRefs.length === 0) {
-		syncNotebookGraph(model, notebook, composition.cellKeys, analysis);
-		syncNotebookValues(model, []);
-		markRendered(model);
-	}
-	const session = openNotebookRuntimeSession({
-		model,
-		el,
-		notebook,
-		analysis,
-		signal,
-		onInputReset,
-		variablesOverride,
-	});
-	if (!session) return;
-
-	try {
-		if (composition.cellRefs.length > 0) {
-			await renderComposedCells({
-				model,
-				root: session.root,
-				notebook,
-				composition,
-				analysis,
-				runtime: session.runtime,
-				options: session.options,
-				variablesSync: session.variablesSync,
-				signal: session.signal,
-				host,
-				onCellResolved,
-			});
-		}
-	} catch (error) {
-		session.cleanup();
-		throw error;
-	}
+async function renderCurrentCellProjection(props: RenderProps<WidgetModel>, signal: AbortSignal): Promise<void> {
+	const composition = readCellCompositionState(props.model);
+	installCellProjectionContext(props.el, props.model, composition.index, signal);
+	const parent = await resolveParentWidget(props, composition.parentRef, signal);
+	if (signal.aborted) return;
+	await parent.render({ el: props.el, signal });
 }
 
-/**
- * Build one projected runtime for a directly displayed NotebookCell.
- */
-async function renderCurrentStandaloneCell(
-	model: RenderProps<WidgetModel>["model"],
-	el: HTMLElement,
+function resolveParentWidget(
+	props: RenderProps<WidgetModel>,
+	ref: string,
 	signal: AbortSignal,
-	host: CompositionHost,
-	onInputReset: (variables: Record<string, unknown>) => void,
-	variablesOverride?: Record<string, unknown>,
-): Promise<void> {
-	const cellComposition = readCellCompositionState(model);
-	const parentModel = await resolveNotebookModel(host, cellComposition.parentRef, signal);
-	if (signal.aborted) return;
-
-	const notebook = readNotebookFromModel(parentModel);
-	const analysis = analyzeNotebook(notebook);
-	const session = openNotebookRuntimeSession({
-		model: parentModel,
-		el,
-		notebook,
-		analysis,
+): Promise<ResolvedWidget> {
+	const message = `Unable to resolve parent Notebook widget ${ref}`;
+	if (signal.aborted) return Promise.reject(new Error(message));
+	return abortable(
+		Promise.resolve().then(() => props.host.getWidget(ref)),
 		signal,
-		onInputReset,
-		variablesOverride,
-	});
-	if (!session) return;
-	const rerenderFromParent = () => onInputReset(readNotebookOptions(parentModel).variables);
-	for (const event of NOTEBOOK_MODEL_CHANGE_EVENTS) parentModel.on(event, rerenderFromParent);
-	session.signal.addEventListener(
-		"abort",
-		() => {
-			for (const event of NOTEBOOK_MODEL_CHANGE_EVENTS) parentModel.off(event, rerenderFromParent);
-		},
-		{ once: true },
+		message,
 	);
+}
 
-	try {
-		renderStandaloneCellProjection({
-			parentModel,
-			cellModel: model,
-			root: session.root,
-			notebook,
-			cellIndex: cellComposition.index,
-			analysis,
-			runtime: session.runtime,
-			options: session.options,
-			variablesSync: session.variablesSync,
-			signal: session.signal,
-		});
-	} catch (error) {
-		session.cleanup();
-		throw error;
-	}
+function abortable<T>(lookup: Promise<T>, signal: AbortSignal, abortMessage: string): Promise<T> {
+	return new Promise<T>((resolve, reject) => {
+		let settled = false;
+		const cleanup = () => signal.removeEventListener("abort", onAbort);
+		const onAbort = () => {
+			if (settled) return;
+			settled = true;
+			cleanup();
+			reject(new Error(abortMessage));
+		};
+		signal.addEventListener("abort", onAbort, { once: true });
+		lookup.then(
+			(value) => {
+				if (settled) return;
+				settled = true;
+				cleanup();
+				resolve(value);
+			},
+			(error: unknown) => {
+				if (settled) return;
+				settled = true;
+				cleanup();
+				reject(error);
+			},
+		);
+	});
+}
+
+function createTopLevelError(error: unknown): HTMLElement {
+	const pre = document.createElement("pre");
+	pre.className = "pyobservablejs-error";
+	pre.setAttribute("role", "alert");
+	pre.textContent = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+	return pre;
 }

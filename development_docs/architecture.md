@@ -8,38 +8,73 @@ The installed wheel includes the browser runtime used by Jupyter and marimo
 frontends.
 
 ```text
+Full Notebook view
+
 Python Notebook
   cells, variables, attachments, options
         |
         v
-anywidget trait model
+one anywidget parent model
         |
         v
-TypeScript renderer
+lightweight TypeScript dispatcher
         |
         v
-Notebook Kit runtime
+dynamically loaded parent renderer
         |
         v
-cell values and graph metadata
+one Notebook Kit runtime per view
         |
         v
-Python NotebookCell and NotebookGraph views
+parent-owned cell values and graph metadata
 ```
 
 ## Render lifecycle
 
 1. Python creates a `Notebook` from authored cells, Notebook Kit HTML, or an
    ObservableHQ document.
-2. The widget model sends source, specs, attachments, variables, and child cell
-   widget references through traitlets.
-3. The TypeScript renderer resolves child models from the anywidget host.
-4. Notebook Kit parses or transpiles the notebook and creates the Observable
-   runtime.
-5. The browser renders cell outputs and syncs graph metadata.
-6. Runtime values sync to `NotebookCell.values` and `Notebook.runtime_values`.
+2. The parent widget model sends source, specs, attachments, variables, and
+   cell keys through traitlets.
+3. The widget entry dispatcher loads the parent renderer on demand.
+4. Notebook Kit parses or transpiles the notebook and creates one Observable
+   runtime for the rendered view.
+5. The browser renders logical cells and writes graph metadata plus one
+   `_cell_values` snapshot on the parent model.
+6. Python decodes that snapshot through `Notebook.runtime_values`,
+   `Notebook.cell_values()`, and materialized `NotebookCell` handles.
 7. Teardown disposes the browser runtime, model listeners, and cell DOM owned by
-   that render.
+   that view.
+
+## Cell projection composition
+
+`NotebookCell` is a cached projection handle. `Notebook.cell_at`,
+`Notebook.cell_by_key`, and `Notebook.cell_for_variable` materialize one handle.
+`Notebook.cells` materializes every handle. Full notebook rendering and
+readback operate directly on the parent model.
+
+Each handle stores a typed `traitlets.ForwardDeclaredInstance("Notebook")`
+reference and a cell index. The Anywidget serializer sends the parent as an
+`anywidget:<model-id>` reference. A direct cell view resolves that reference
+through the Anywidget Front-End Module `host.getWidget` API available as of
+anywidget 0.11. It installs a small projection context on the target element
+and invokes the parent renderer. The parent evaluates the selected cell and
+its hidden dependency closure in one Notebook Kit runtime.
+
+The entry module stays small so cell handles can resolve their parent before
+the parent renderer loads. The dynamically imported parent module owns runtime
+construction, model listeners, readback, and teardown.
+
+## Readback ownership
+
+The parent model owns `_cell_values`, keyed by cell index. Each record carries
+the render flag, synchronized names, and serialized values. Full notebook views
+and direct cell projections publish through the same `NotebookReadback`
+coordinator.
+
+Each render attempt has a model generation and view version. Writes from an
+aborted or superseded attempt are dropped. Closing one view preserves snapshots
+published by another live view. Changes to notebook inputs invalidate the
+generation, graph, full-render gate, and cell snapshots together.
 
 ## Variable updates
 

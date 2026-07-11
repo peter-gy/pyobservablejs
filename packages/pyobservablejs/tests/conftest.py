@@ -182,22 +182,25 @@ def browser_value_sync() -> BrowserValueSync:
         values: dict[str, Any],
         value_names: Sequence[str] | None = None,
     ) -> None:
-        notebook = getattr(widget, "_notebook", None)
-        if notebook is not None and not notebook.has_graph_snapshot:
+        if widget.has_trait("_notebook_widget"):
+            notebook = widget._notebook_widget
+            index = widget._notebook_index
+            full_render = False
+        else:
+            notebook = widget
+            index = 0
+            full_render = True
+        if not notebook.has_graph_snapshot:
             notebook.set_trait("_graph", {"cells": [], "edges": []})
-        elif (
-            widget.has_trait("_graph")
-            and widget.has_trait("_has_rendered")
-            and not widget.has_graph_snapshot
-        ):
-            widget.set_trait("_graph", {"cells": [], "edges": []})
-        widget.set_trait("_values", values)
-        if widget.has_trait("_has_rendered"):
-            widget.set_trait("_has_rendered", True)
-        if widget.has_trait("_value_names"):
-            widget.set_trait(
-                "_value_names", list(value_names if value_names is not None else values)
-            )
+        records = dict(notebook._cell_values)
+        records[str(index)] = {
+            "rendered": True,
+            "names": list(value_names if value_names is not None else values),
+            "values": values,
+        }
+        notebook.set_trait("_cell_values", records)
+        if full_render:
+            notebook.set_trait("_has_rendered", True)
 
     return sync
 
