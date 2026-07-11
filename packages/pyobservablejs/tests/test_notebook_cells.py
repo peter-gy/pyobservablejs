@@ -33,31 +33,17 @@ def test_notebook_rejects_list_wrapped_cells() -> None:
         obs.Notebook(bad_cells)
 
 
-def test_notebook_materializes_cell_widgets_on_demand(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    created: list[int] = []
-    original_init = obs.NotebookCell.__init__
-
-    def tracked_init(self: obs.NotebookCell, **kwargs: Any) -> None:
-        created.append(kwargs["_notebook_index"])
-        original_init(self, **kwargs)
-
-    monkeypatch.setattr(obs.NotebookCell, "__init__", tracked_init)
+def test_notebook_returns_stable_cell_handles() -> None:
     widget = obs.Notebook(
         obs.md("# Title", key="title"),
         obs.ojs("answer = 42", key="answer"),
         title="Composed",
     )
 
-    assert created == []
     answer = widget.cell_at(1)
-    assert created == [1]
     assert widget.cell_at(1) is answer
     assert widget.cell_by_key("answer") is answer
-    assert created == [1]
     assert len(widget.cells) == 2
-    assert len(created) == 2
     assert [widget.cell_at(index).key for index in range(2)] == ["title", "answer"]
     assert [cell.key for cell in widget.cells] == ["title", "answer"]
     assert [cell.name for cell in widget.cells] == ["", ""]
@@ -65,35 +51,35 @@ def test_notebook_materializes_cell_widgets_on_demand(
     assert answer is widget.cells[1]
 
 
-def test_notebook_cells_receive_parent_transport_references() -> None:
+def test_notebook_cell_display_creates_a_fresh_model() -> None:
     widget = obs.Notebook(
         obs.md("# Title", key="title"),
         obs.ojs("answer = 42", key="answer"),
     )
 
-    assert widget.get_state(["_cell_keys"])["_cell_keys"] == ["title", "answer"]
     cell = widget.cell_at(1)
-    child_state = cell.get_state(["_notebook_widget", "_notebook_index"])
+    first_id = _widget_model_id(cell._repr_mimebundle_())
+    second_id = _widget_model_id(cell._repr_mimebundle_())
+
+    assert first_id != second_id
+
+
+def test_notebook_cell_display_serializes_its_parent_reference() -> None:
+    widget = obs.Notebook(
+        obs.md("# Title", key="title"),
+        obs.ojs("answer = 42", key="answer"),
+    )
+    cell = widget._new_cell_view(1)
+    state = cell.get_state(["_notebook_widget", "_notebook_index"])
+
     assert cell._notebook_widget is widget
-    assert child_state["_notebook_widget"] == f"anywidget:{widget.model_id}"
-    assert child_state["_notebook_index"] == 1
-
-
-def test_notebook_cell_shares_bundle_esm_without_repeating_css() -> None:
-    widget = obs.Notebook(obs.ojs("answer = 42", key="answer"))
-    cell = widget.cell_at(0)
-
-    notebook_assets = widget.get_state(["_esm", "_css"])
-    cell_assets = cell.get_state(["_esm", "_css"])
-
-    assert cell_assets["_esm"] == notebook_assets["_esm"]
-    assert notebook_assets["_css"]
-    assert cell_assets["_css"] == ""
+    assert state["_notebook_widget"] == f"anywidget:{widget.model_id}"
+    assert state["_notebook_index"] == 1
 
 
 def test_notebook_cell_parent_reference_rejects_browser_wire_state() -> None:
     widget = obs.Notebook(obs.ojs("answer = 42", key="answer"))
-    cell = widget.cell_at(0)
+    cell = widget._new_cell_view(0)
     ref = f"anywidget:{widget.model_id}"
 
     with pytest.raises(traitlets.TraitError, match="expected a Notebook"):
@@ -497,47 +483,6 @@ def test_browser_values_are_exposed_to_notebook_values(
     assert widget.value("gain") == 8
 
 
-def test_notebook_readback_does_not_materialize_cell_widgets(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    created = 0
-    original_init = obs.NotebookCell.__init__
-
-    def tracked_init(self: obs.NotebookCell, **kwargs: Any) -> None:
-        nonlocal created
-        created += 1
-        original_init(self, **kwargs)
-
-    monkeypatch.setattr(obs.NotebookCell, "__init__", tracked_init)
-    widget = obs.Notebook(
-        obs.ojs("shared = 1", key="first"),
-        obs.ojs("shared = 2", key="second"),
-    )
-    widget.set_trait(
-        "_cell_values",
-        {
-            "0": {
-                "rendered": True,
-                "names": ["first", "shared"],
-                "values": {"first": 1, "shared": 1},
-            },
-            "1": {
-                "rendered": True,
-                "names": ["second", "shared"],
-                "values": {"second": 2, "shared": 2},
-            },
-        },
-    )
-    widget.set_trait("_has_rendered", True)
-
-    assert widget.runtime_values == {"first": 1, "second": 2}
-    assert widget.cell_values() == (
-        obs.CellValues(index=0, key="first", values={"first": 1, "shared": 1}),
-        obs.CellValues(index=1, key="second", values={"second": 2, "shared": 2}),
-    )
-    assert created == 0
-
-
 def test_cell_handle_reads_parent_snapshot_created_before_it() -> None:
     widget = obs.Notebook(obs.ojs("answer = 42", key="answer"))
     widget.set_trait(
@@ -557,14 +502,37 @@ def test_cell_handle_reads_parent_snapshot_created_before_it() -> None:
     assert cell.values == {"answer": 42}
 
 
-def test_closing_notebook_closes_materialized_cell_widgets() -> None:
+def test_closing_notebook_closes_live_cell_display_models() -> None:
     widget = obs.Notebook(obs.ojs("answer = 42", key="answer"))
     cell = widget.cell_at(0)
+    cell._repr_mimebundle_()
+    cell._repr_mimebundle_()
+    views = tuple(widget._cell_views)
 
     widget.close()
 
     assert widget.comm is None
-    assert cell.comm is None
+    assert len(views) == 2
+    assert all(view.comm is None for view in views)
+
+
+def test_notebook_cell_display_rejects_a_closed_parent() -> None:
+    widget = obs.Notebook(obs.ojs("answer = 42", key="answer"))
+    cell = widget.cell_at(0)
+    widget.close()
+
+    with pytest.raises(RuntimeError, match="parent Notebook is closed"):
+        cell._repr_mimebundle_()
+
+
+def _widget_model_id(bundle: tuple[dict[str, Any], dict[str, Any]] | None) -> str:
+    assert bundle is not None
+    data, _metadata = bundle
+    widget_view = data["application/vnd.jupyter.widget-view+json"]
+    assert isinstance(widget_view, dict)
+    model_id = widget_view["model_id"]
+    assert isinstance(model_id, str)
+    return model_id
 
 
 def test_script_end_tag_literal_stays_inside_script_cell(

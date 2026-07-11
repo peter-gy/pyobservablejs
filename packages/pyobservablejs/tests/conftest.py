@@ -6,6 +6,7 @@ from html.parser import HTMLParser
 from typing import Any
 
 import pytest
+import observablejs as obs
 from helpers import (
     BrowserGraphCell,
     BrowserGraphCellBuilder,
@@ -182,9 +183,9 @@ def browser_value_sync() -> BrowserValueSync:
         values: dict[str, Any],
         value_names: Sequence[str] | None = None,
     ) -> None:
-        if widget.has_trait("_notebook_widget"):
-            notebook = widget._notebook_widget
-            index = widget._notebook_index
+        if isinstance(widget, obs.NotebookCell):
+            notebook = widget._notebook
+            index = widget._index
             full_render = False
         else:
             notebook = widget

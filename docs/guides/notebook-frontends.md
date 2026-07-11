@@ -14,14 +14,14 @@ marimo, wrap it with `mo.ui.anywidget`.
 | marimo     | `pip install pyobservablejs marimo`     | `marimo edit first.py` | `mo.ui.anywidget(notebook)` |
 
 Other frontends can display a full `Notebook` through the standard Anywidget
-Front-End Module (AFM) render lifecycle. Direct `NotebookCell` display also uses
-the `host.getWidget` composition API available as of anywidget 0.11 so the
-projection can ask its parent `Notebook` to render into the cell view.
+Front-End Module (AFM) render lifecycle. `NotebookCell` uses the Python display
+protocol and the `host.getWidget` composition API available as of anywidget 0.11
+to ask its parent `Notebook` to render into the cell view.
 
-| Display object | Frontend contract                          |
-| -------------- | ------------------------------------------ |
-| `Notebook`     | AFM render lifecycle                       |
-| `NotebookCell` | AFM `host.getWidget` composition from 0.11 |
+| Display object | Frontend contract                                            |
+| -------------- | ------------------------------------------------------------ |
+| `Notebook`     | AFM render lifecycle                                         |
+| `NotebookCell` | Python display protocol and AFM `host.getWidget` composition |
 
 ## Jupyter
 
@@ -84,9 +84,10 @@ notebook = obs.Notebook(
     obs.js('html`<p>Answer is ${answer}.</p>`', key="readout"),
 )
 
-mo.ui.anywidget(notebook.cell_by_key("readout"))
+notebook.cell_by_key("readout")
 ```
 
 The standalone display writes the cell values and graph metadata to the parent
 `Notebook` snapshot read by the projection handle. Display the parent
-`Notebook` when you want every cell output in notebook order.
+`Notebook` when you want every cell output in notebook order. In marimo, pass a
+full `Notebook` to `mo.ui.anywidget` and display a `NotebookCell` directly.

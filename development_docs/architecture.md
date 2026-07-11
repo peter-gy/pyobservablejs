@@ -52,13 +52,19 @@ parent-owned cell values and graph metadata
 `Notebook.cells` materializes every handle. Full notebook rendering and
 readback operate directly on the parent model.
 
-Each handle stores a typed `traitlets.ForwardDeclaredInstance("Notebook")`
-reference and a cell index. The Anywidget serializer sends the parent as an
-`anywidget:<model-id>` reference. A direct cell view resolves that reference
-through the Anywidget Front-End Module `host.getWidget` API available as of
-anywidget 0.11. It installs a small projection context on the target element
-and invokes the parent renderer. The parent evaluates the selected cell and
-its hidden dependency closure in one Notebook Kit runtime.
+The cached handle has no comm. Each display creates a private anywidget adapter
+whose lifetime belongs to that display. The adapter carries a typed
+`traitlets.Instance(Notebook)` reference and a cell index. The Anywidget
+serializer sends the parent as an `anywidget:<model-id>` reference. A direct
+cell view resolves that reference through the Anywidget Front-End Module
+`host.getWidget` API available as of anywidget 0.11. It installs a small
+projection context on the target element and invokes the parent renderer. The
+parent evaluates the selected cell and its hidden dependency closure in one
+Notebook Kit runtime.
+
+Reactive hosts may close a display adapter when its owning cell reruns. The
+next display creates a new adapter and model id while the public handle keeps
+its identity and reads the same parent-owned snapshot.
 
 The entry module stays small so cell handles can resolve their parent before
 the parent renderer loads. The dynamically imported parent module owns runtime

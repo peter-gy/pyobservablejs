@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import pathlib
 import dataclasses
+import pathlib
+import weakref
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any, cast
 
@@ -87,7 +88,7 @@ class _ObservableWidget(BundledWidget):
     bundle = _OBSERVABLE_WIDGET_BUNDLE
 
 
-class NotebookCell(_ObservableWidget):
+class NotebookCell:
     """Displayable projection of one Observable cell.
 
     The parent ``Notebook`` owns the Observable runtime state. A cell projection
@@ -95,16 +96,29 @@ class NotebookCell(_ObservableWidget):
     cell.
     """
 
-    include_bundle_css = False
-    role = traitlets.Unicode("cell").tag(sync=True)
-    key = traitlets.Unicode("").tag(sync=True)
-    name = traitlets.Unicode("").tag(sync=True)
-    _notebook_widget = traitlets.ForwardDeclaredInstance("Notebook").tag(
-        sync=True,
-        to_json=_WIDGET_TO_JSON,
-        from_json=_WIDGET_FROM_JSON,
-    )
-    _notebook_index = traitlets.Int(-1).tag(sync=True)
+    __slots__ = ("_notebook", "_index")
+
+    def __init__(self, notebook: Notebook, index: int) -> None:
+        self._notebook = notebook
+        self._index = index
+
+    @property
+    def key(self) -> str:
+        """Python handle assigned to this cell, or an empty string."""
+
+        return self._notebook._cell_keys[self._index]
+
+    @property
+    def name(self) -> str:
+        """Notebook Kit name assigned to this cell, or an empty string."""
+
+        return self._notebook._cell_names[self._index]
+
+    def _repr_mimebundle_(
+        self, **kwargs: Any
+    ) -> tuple[dict[str, Any], dict[str, Any]] | None:
+        view = self._notebook._new_cell_view(self._index)
+        return view._repr_mimebundle_(**kwargs)
 
     def _require_rendered(self) -> None:
         if not self.has_rendered:
@@ -116,19 +130,17 @@ class NotebookCell(_ObservableWidget):
     def has_rendered(self) -> bool:
         """Whether this cell has synced a rendered browser output."""
 
-        return self._notebook_widget._cell_has_rendered(self._notebook_index)
+        return self._notebook._cell_has_rendered(self._index)
 
     @property
     def info(self) -> CellInfo:
         """Notebook Kit metadata for this cell after browser render."""
 
-        if self._notebook_index < 0:
-            raise NotRenderedError("NotebookCell is not bound to a rendered Notebook")
-        self._notebook_widget._require_graph_snapshot()
-        graph = self._notebook_widget.graph
-        info = graph.cell(self._notebook_index)
+        self._notebook._require_graph_snapshot()
+        graph = self._notebook.graph
+        info = graph.cell(self._index)
         if info is None:
-            raise KeyError(f"Unknown rendered cell index: {self._notebook_index}")
+            raise KeyError(f"Unknown rendered cell index: {self._index}")
         return info
 
     @property
@@ -156,7 +168,7 @@ class NotebookCell(_ObservableWidget):
         """Latest browser-synchronized values exposed by this cell."""
 
         self._require_rendered()
-        return self._notebook_widget._cell_runtime_values(self._notebook_index)
+        return self._notebook._cell_runtime_values(self._index)
 
     def value(self, name: str) -> Any:
         """Return this cell's synchronized value for ``name``."""
@@ -308,6 +320,8 @@ class Notebook(_ObservableWidget):
         self._variable_values = copy_variables(variables)
         self._cell_names = tuple(cell_names)
         self._cell_cache: dict[int, NotebookCell] = {}
+        self._cell_views: weakref.WeakSet[_NotebookCellWidget] = weakref.WeakSet()
+        self._notebook_closed = False
         spec_dict = dict(spec)
         if not source:
             spec_dict["theme"] = theme
@@ -504,12 +518,12 @@ class Notebook(_ObservableWidget):
 
     @property
     def cells(self) -> tuple[NotebookCell, ...]:
-        """Cell projection widgets in notebook order."""
+        """Cell projection handles in notebook order."""
 
         return tuple(self.cell_at(index) for index in range(len(self._cell_keys)))
 
     def cell_at(self, index: int) -> NotebookCell:
-        """Return the cell widget at zero-based notebook order."""
+        """Return the cell handle at zero-based notebook order."""
 
         count = len(self._cell_keys)
         normalized = index if index >= 0 else count + index
@@ -518,17 +532,27 @@ class Notebook(_ObservableWidget):
         cached = self._cell_cache.get(normalized)
         if cached is not None:
             return cached
-        cell = NotebookCell(
-            key=self._cell_keys[normalized],
-            name=self._cell_names[normalized],
-            _notebook_widget=self,
-            _notebook_index=normalized,
-        )
+        cell = NotebookCell(self, normalized)
         self._cell_cache[normalized] = cell
         return cell
 
+    def _new_cell_view(self, index: int) -> _NotebookCellWidget:
+        if self._notebook_closed:
+            raise RuntimeError(
+                "Cannot display a NotebookCell after its parent Notebook is closed"
+            )
+        cell = self.cell_at(index)
+        view = _NotebookCellWidget(
+            key=cell.key,
+            name=cell.name,
+            _notebook_widget=self,
+            _notebook_index=index,
+        )
+        self._cell_views.add(view)
+        return view
+
     def cell_by_key(self, key: str) -> NotebookCell:
-        """Return the unique cell widget with Python handle ``key``."""
+        """Return the unique cell handle with Python key ``key``."""
 
         matches = [index for index, item in enumerate(self._cell_keys) if item == key]
         if len(matches) == 1:
@@ -608,14 +632,20 @@ class Notebook(_ObservableWidget):
         }
 
     def close(self) -> None:
-        """Close this notebook and any materialized cell projection widgets."""
+        """Close this notebook and its live cell display models."""
 
+        if getattr(self, "_notebook_closed", False):
+            return
+        self._notebook_closed = True
         cache = getattr(self, "_cell_cache", None)
-        cells = tuple(cache.values()) if cache is not None else ()
         if cache is not None:
             cache.clear()
-        for cell in cells:
-            cell.close()
+        views = getattr(self, "_cell_views", None)
+        cell_views = tuple(views) if views is not None else ()
+        if views is not None:
+            views.clear()
+        for view in cell_views:
+            view.close()
         super().close()
 
     @classmethod
@@ -1017,3 +1047,18 @@ class Notebook(_ObservableWidget):
         if self._source:
             return self._source
         return serialize(self._spec)
+
+
+class _NotebookCellWidget(_ObservableWidget):
+    """Per-display anywidget adapter for a cached ``NotebookCell`` handle."""
+
+    include_bundle_css = False
+    role = traitlets.Unicode("cell").tag(sync=True)
+    key = traitlets.Unicode("").tag(sync=True)
+    name = traitlets.Unicode("").tag(sync=True)
+    _notebook_widget = traitlets.Instance(Notebook).tag(
+        sync=True,
+        to_json=_WIDGET_TO_JSON,
+        from_json=_WIDGET_FROM_JSON,
+    )
+    _notebook_index = traitlets.Int(-1).tag(sync=True)
