@@ -13,9 +13,6 @@ describe("widget themes", () => {
 		const headStyles = Array.from(document.head.querySelectorAll("style"));
 		const modelState = {
 			_spec: { cells: [] },
-			_attachments: {},
-			_variables: {},
-			_options: {},
 		};
 		const firstFixture = createNotebookFixture(modelState);
 		const secondFixture = createNotebookFixture(modelState);
@@ -37,9 +34,6 @@ describe("widget themes", () => {
 		const { session, view, host } = createNotebookFixture({
 			_spec: { theme: "air", cells: [] },
 			theme: "air",
-			_attachments: {},
-			_variables: {},
-			_options: {},
 		});
 		const controller = new AbortController();
 		const el = document.createElement("div");
@@ -63,9 +57,6 @@ describe("widget themes", () => {
 		const { view, host } = createNotebookFixture({
 			_source: '<!doctype html><notebook theme="air"></notebook>',
 			theme: { light: "cotton", dark: "slate" },
-			_attachments: {},
-			_variables: {},
-			_options: {},
 		});
 		const controller = new AbortController();
 		const el = document.createElement("div");

@@ -1,4 +1,3 @@
-import type { RenderProps } from "@anywidget/types";
 import type { Notebook } from "@observablehq/notebook-kit";
 import type { NotebookRuntime } from "@observablehq/notebook-kit/runtime";
 import {
@@ -8,7 +7,7 @@ import {
 	type NotebookOptions,
 } from "@pyobservablejs/runtime";
 import { createNotebookRoot, prepareWidgetShell } from "./dom";
-import { readNotebookOptions, type WidgetModel } from "./model";
+import { readNotebookOptions, type AnyWidgetModel } from "./model";
 import { installNotebookThemeStyles } from "./themes";
 import {
 	createRuntimeVariablesSync,
@@ -17,8 +16,6 @@ import {
 	type RuntimeVariablesController,
 	type RuntimeViewSync,
 } from "./variable-sync";
-
-type AnyWidgetModel = RenderProps<WidgetModel>["model"];
 
 type NotebookRuntimeSessionOptions = {
 	model: AnyWidgetModel;

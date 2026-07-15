@@ -7,9 +7,6 @@ describe("widget markdown rendering", () => {
 			_spec: {
 				cells: [{ id: 1, mode: "md", value: "# Python rows drive an Observable Plot bar chart" }],
 			},
-			_attachments: {},
-			_variables: {},
-			_options: {},
 		});
 		const el = document.createElement("div");
 		const controller = new AbortController();
@@ -34,9 +31,6 @@ describe("widget markdown rendering", () => {
 			"</notebook>";
 		const { view, host } = createNotebookFixture({
 			_source: source,
-			_attachments: {},
-			_variables: {},
-			_options: {},
 		});
 		const el = document.createElement("div");
 		const controller = new AbortController();
@@ -60,9 +54,6 @@ describe("widget markdown rendering", () => {
 			"</notebook>";
 		const { view, host } = createNotebookFixture({
 			_source: source,
-			_attachments: {},
-			_variables: {},
-			_options: {},
 		});
 		const el = document.createElement("div");
 		const controller = new AbortController();

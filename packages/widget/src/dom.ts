@@ -15,15 +15,7 @@ export const CLASS_NAMES = {
 } as const;
 
 export const DATASET_KEYS = {
-	composed: "pyobservablejsComposed",
-	cellRef: "pyobservablejsCellRef",
 	sourceHighlight: "pyobservablejsSourceHighlight",
-} as const;
-
-export const DATA_ATTRIBUTES = {
-	composed: "data-pyobservablejs-composed",
-	cellRef: "data-pyobservablejs-cell-ref",
-	sourceHighlight: "data-pyobservablejs-source-highlight",
 } as const;
 
 export const CSS_VARIABLES = {
@@ -68,13 +60,9 @@ const SOURCE_MODE_BY_CELL_MODE = {
 
 let highlighterPromise: Promise<HighlighterCore> | undefined;
 
-export function markWidgetShell(el: HTMLElement): void {
-	el.classList.add(CLASS_NAMES.widget);
-}
-
 export function prepareWidgetShell(el: HTMLElement): void {
 	el.replaceChildren();
-	markWidgetShell(el);
+	el.classList.add(CLASS_NAMES.widget);
 }
 
 export function createNotebookRoot(parent: HTMLElement, theme: Notebook["theme"]): HTMLElement {
@@ -85,13 +73,9 @@ export function createNotebookRoot(parent: HTMLElement, theme: Notebook["theme"]
 	return root;
 }
 
-export function appendCellWrapper(root: HTMLElement, options: { composedCellRef?: string } = {}): HTMLElement {
+export function appendCellWrapper(root: HTMLElement): HTMLElement {
 	const wrapper = document.createElement("div");
 	wrapper.className = CLASS_NAMES.cell;
-	if (options.composedCellRef !== undefined) {
-		wrapper.dataset[DATASET_KEYS.composed] = "true";
-		wrapper.dataset[DATASET_KEYS.cellRef] = options.composedCellRef;
-	}
 	root.appendChild(wrapper);
 	return wrapper;
 }

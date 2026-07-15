@@ -133,17 +133,17 @@ def test_bundled_widget_can_leave_css_to_another_model(
     static_dir = tmp_path / "static"
     _write_bundle(static_dir)
     owner = _widget_class_for_static_dir(static_dir)()
-    projection = _widget_class_for_static_dir(
+    css_consumer = _widget_class_for_static_dir(
         static_dir,
         include_bundle_css=False,
     )()
 
     owner_state = owner.get_state(["_esm", "_css"])
-    projection_state = projection.get_state(["_esm", "_css"])
+    consumer_state = css_consumer.get_state(["_esm", "_css"])
 
-    assert projection_state["_esm"] == owner_state["_esm"]
+    assert consumer_state["_esm"] == owner_state["_esm"]
     assert owner_state["_css"] == ".widget {}"
-    assert projection_state["_css"] == ""
+    assert consumer_state["_css"] == ""
 
 
 @pytest.mark.parametrize(

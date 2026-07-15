@@ -449,11 +449,10 @@ class Notebook(_ObservableWidget):
         if self._notebook_closed:
             raise RuntimeError("Cannot create a view from a closed Notebook")
         indexes = None if cells is None else self._normalize_view_cells(cells)
-        view = NotebookView(
+        return NotebookView(
             notebook=self,
             cell_indexes=indexes,
         )
-        return view
 
     def _normalize_view_cells(
         self, cells: Sequence[int | str | NotebookCell]
@@ -505,11 +504,7 @@ class Notebook(_ObservableWidget):
         cache = getattr(self, "_cell_cache", None)
         if cache is not None:
             cache.clear()
-        views = getattr(self, "_views", None)
-        live_views = tuple(views) if views is not None else ()
-        if views is not None:
-            views.clear()
-        for view in live_views:
+        for view in tuple(getattr(self, "_views", ())):
             view.close()
         super().close()
 
