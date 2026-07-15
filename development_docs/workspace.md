@@ -41,9 +41,8 @@ helper scripts from the repository-local Python environment, and Node resolves
 their module type through ancestor manifests. Each TypeScript workspace package
 declares its own ESM boundary.
 
-The root `package.json` requires Node 22.18 or newer. CI selects the current
-Node 22 release through `setup-vp`, matching the development engine contract
-while receiving current security and runtime fixes.
+The root `package.json` requires Node 22.18 or newer. CI uses Node 22 through
+`setup-vp`.
 
 Run the complete JavaScript workspace checks directly:
 

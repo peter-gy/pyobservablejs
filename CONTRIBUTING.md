@@ -39,7 +39,7 @@ make check
 
 ## Browser checks
 
-Run the browser deep-check flow in
+Run the browser checks in
 [Development](development_docs/development.md) when a change touches the widget
 frontend, notebook rendering, Observable runtime, Jupyter or marimo integration,
 docs site rendering, or user-visible UI.

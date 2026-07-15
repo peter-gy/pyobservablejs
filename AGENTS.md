@@ -5,9 +5,6 @@ Python owns notebook models, serialization, attachments, and synchronized state.
 The TypeScript frontend owns Notebook Kit evaluation and rendering. Preserve
 that split.
 
-The PyPI distribution is named `pyobservablejs`. Python imports it as
-`observablejs`.
-
 ## Workspace boundaries
 
 - `packages/runtime/` owns Notebook Kit analysis and execution. It has no
@@ -21,7 +18,7 @@ The PyPI distribution is named `pyobservablejs`. Python imports it as
 - `packages/pyobservablejs/` owns the public Python API and composes the widget
   with the bundle plugin into the static assets shipped in the wheel.
 - `docs/` contains the published Jupyter Book. `development_docs/` contains
-  contributor and agent material outside the published site.
+  contributor documentation outside the published site.
 
 Use package names for cross-package imports. Do not import sibling source paths.
 The Python distribution depends on `widget` and `anywidget-bundle`. `widget`
@@ -49,9 +46,9 @@ The root `pyproject.toml` is a virtual uv workspace. The publishable project and
 Hatch configuration live in `packages/pyobservablejs/pyproject.toml`. Scope uv
 commands with `--package pyobservablejs`.
 
-Prefer dependency-provided types. The parser package does not publish types, so
-its declaration stays with its consumer at
-`packages/runtime/src/types/observablehq-parser.d.ts`.
+Prefer dependency-provided types. The parser and classic standard-library
+packages do not publish types, so their declarations stay with the runtime
+consumer in `packages/runtime/src/types/`.
 
 These paths are generated:
 
@@ -84,7 +81,7 @@ and accidental package-boundary violations.
 - Test TypeScript behavior through runtime, widget, Vite, DOM, and generated
   artifact contracts. Wait on observable state, not elapsed time.
 - Validate `scripts/docs.py` through a fresh wheel-backed build and a served
-  interactive page. Do not add a unit test for the helper.
+  interactive page.
 - Validate frontend, notebook, and docs changes with `$agent-browser`. Exercise
   JupyterLab, the marimo-backed docs pages, and Python variable synchronization.
   Check console and page errors, then stop every browser session and local
