@@ -27,13 +27,177 @@ describe("runtime environment", () => {
 					el,
 					{
 						...baseOptions,
-						variables: { FileAttachment: "shadowed", document: "shadowed" },
+						variables: { FileAttachment: "shadowed", document: "shadowed", invalidation: "shadowed" },
 					},
 					registry,
 				),
-			).toThrow("Python variables cannot override Observable runtime builtins: FileAttachment, document");
+			).toThrow("Python variables cannot override Observable runtime builtins: FileAttachment, document, invalidation");
 		} finally {
 			registry.cleanup();
+		}
+	});
+	test("rejects Python variables that collide with Observable stdlib builtins", () => {
+		const registry = registerAttachments({});
+
+		try {
+			expect(() =>
+				createRuntime(
+					document.createElement("div"),
+					document.createElement("div"),
+					{ ...baseOptions, runtimeProfile: "observable", variables: { require: "shadowed" } },
+					registry,
+				),
+			).toThrow("Python variables cannot override Observable runtime builtins: require");
+		} finally {
+			registry.cleanup();
+		}
+	});
+	test("executes checkbox exports from imported Observable modules", async () => {
+		const registry = registerAttachments({});
+		const runtime = createRuntime(
+			document.createElement("div"),
+			document.createElement("div"),
+			{ ...baseOptions, runtimeProfile: "observable" },
+			registry,
+		);
+
+		try {
+			const imported = runtime.runtime.module(
+				(observableRuntime: typeof runtime.runtime, observer: (name: string) => unknown) => {
+					const main = observableRuntime.module();
+					main
+						.variable(observer("checkbox"))
+						.define(
+							"checkbox",
+							["html"],
+							(html: (strings: TemplateStringsArray, ...values: unknown[]) => HTMLElement) => () =>
+								html` <form><input name="input" type="checkbox" /></form> `,
+						);
+					return main;
+				},
+			);
+			runtime.main.import("checkbox", imported);
+			runtime.main.define("checkboxFormProbe", ["checkbox"], (checkbox: () => HTMLFormElement) => checkbox());
+
+			const rendered = (await runtime.main.value("checkboxFormProbe")) as HTMLFormElement;
+			expect(rendered).toBeInstanceOf(HTMLFormElement);
+			const input = rendered.elements.namedItem("input") as HTMLInputElement;
+			expect(input).toBeInstanceOf(HTMLInputElement);
+			const value = () => input.checked;
+			expect(value()).toBe(false);
+			input.checked = true;
+			expect(value()).toBe(true);
+		} finally {
+			createRuntimeCleanup(runtime, registry)();
+		}
+	});
+	test("renders raw table rows with the Observable html builtin", async () => {
+		const registry = registerAttachments({});
+		const runtime = createRuntime(
+			document.createElement("div"),
+			document.createElement("div"),
+			{ ...baseOptions, runtimeProfile: "observable" },
+			registry,
+		);
+		const row = '<tr><td><a href="/story">Story</a></td></tr>';
+
+		try {
+			runtime.main.define(
+				"htmlProbe",
+				["html"],
+				(html: (strings: TemplateStringsArray, ...values: unknown[]) => HTMLElement) =>
+					html`<table>
+						<tbody>
+							${row}
+						</tbody>
+					</table>`,
+			);
+
+			const table = (await runtime.main.value("htmlProbe")) as HTMLTableElement;
+			expect(table).toBeInstanceOf(HTMLTableElement);
+			expect(table.querySelectorAll("tbody > tr")).toHaveLength(1);
+			expect(table.querySelector("a")?.getAttribute("href")).toBe("/story");
+		} finally {
+			createRuntimeCleanup(runtime, registry)();
+		}
+	});
+	test("resolves versioned modules and preloaded aliases with Observable require", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(
+				async () =>
+					new Response(JSON.stringify({ name: "d3-format", version: "1.4.5", unpkg: "dist/d3-format.min.js" }), {
+						status: 200,
+						headers: { "content-type": "application/json" },
+					}),
+			),
+		);
+		const registry = registerAttachments({});
+		const runtime = createRuntime(
+			document.createElement("div"),
+			document.createElement("div"),
+			{ ...baseOptions, runtimeProfile: "observable" },
+			registry,
+		);
+		const fixture = { ready: true };
+
+		try {
+			runtime.main.define(
+				"requireProbe",
+				["require"],
+				async (require: {
+					resolve(specifier: string): Promise<string>;
+					alias(aliases: Record<string, unknown>): (specifier: string) => Promise<unknown>;
+				}) => ({
+					resolved: await require.resolve("d3-format@1"),
+					fixture: await require.alias({ fixture })("fixture"),
+				}),
+			);
+
+			await expect(runtime.main.value("requireProbe")).resolves.toEqual({
+				resolved: "https://cdn.jsdelivr.net/npm/d3-format@1.4.5/dist/d3-format.min.js",
+				fixture,
+			});
+		} finally {
+			createRuntimeCleanup(runtime, registry)();
+		}
+	});
+	test("disposes values produced by classic Observable generators", async () => {
+		const registry = registerAttachments({});
+		const runtime = createRuntime(
+			document.createElement("div"),
+			document.createElement("div"),
+			{ ...baseOptions, runtimeProfile: "observable" },
+			registry,
+		);
+		const dispose = vi.fn();
+		const values: string[] = [];
+		const cleanup = createRuntimeCleanup(runtime, registry);
+
+		try {
+			runtime.main
+				.variable({
+					pending() {},
+					fulfilled(value: unknown) {
+						values.push(value as string);
+					},
+					rejected(error: unknown) {
+						throw error;
+					},
+				})
+				.define(
+					"generatorsProbe",
+					["Generators"],
+					(Generators: { disposable<T>(value: T, dispose: (value: T) => void): Iterable<T> }) =>
+						Generators.disposable("ready", dispose),
+				);
+
+			expect(await waitFor(() => (values.at(-1) === "ready" ? "ready" : undefined))).toBe("ready");
+			cleanup();
+			await waitFor(() => (dispose.mock.calls.length === 1 ? true : undefined));
+			expect(dispose).toHaveBeenCalledWith("ready");
+		} finally {
+			cleanup();
 		}
 	});
 	test("updates the Observable width builtin when the root resizes", async () => {
@@ -124,7 +288,7 @@ describe("runtime environment", () => {
 			disposed: false,
 			cleanup() {},
 		};
-		const runtime = createRuntime(root, el, { ...baseOptions, runtimeCompatibility: { generators: true } }, registry);
+		const runtime = createRuntime(root, el, baseOptions, registry);
 		runtime.main.define("directDarkProbe", ["dark"], (dark: boolean) => dark);
 		runtime.main.define("generatorDarkProbe", ["Generators"], (Generators: { dark(): AsyncGenerator<boolean> }) =>
 			Generators.dark(),

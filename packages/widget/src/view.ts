@@ -4,31 +4,30 @@ import { notebookViewIndexes, renderNotebookView } from "./composition";
 import { createTopLevelError } from "./dom";
 import {
 	readNotebookFromModel,
+	readNotebookSessionRef,
+	readSelectedCellIndexes,
+	readCellKeys,
 	SESSION_MODEL_CHANGE_EVENTS,
 	VIEW_MODEL_CHANGE_EVENTS,
 	type AnyWidgetModel,
 	type WidgetModel,
 } from "./model";
-import { ViewReadback, syncNotebookGraph, type ReadbackAttempt } from "./readback";
+import { ViewReadback, type ReadbackAttempt } from "./readback";
 import { openNotebookRuntimeSession } from "./session";
-import { readCellKeys, readNotebookViewState } from "./view-state";
 
 type Rerender = (variables?: Record<string, unknown>) => void;
 
 export function renderNotebookViewModel(props: RenderProps<WidgetModel>): void {
 	const readback = new ViewReadback(props.model, props.signal);
-	readback.invalidate();
 	let current = new AbortController();
-	let version = 0;
 
 	const rerender: Rerender = (variables) => {
 		current.abort();
 		current = new AbortController();
 		const attemptController = current;
 		const attemptSignal = AbortSignal.any([props.signal, attemptController.signal]);
-		const renderVersion = ++version;
 		const attempt = readback.start();
-		const isCurrent = () => !attemptSignal.aborted && renderVersion === version && readback.isCurrent(attempt);
+		const isCurrent = () => !attemptSignal.aborted && readback.isCurrent(attempt);
 		void renderCurrentView(props, attemptSignal, resetAndRerender, readback, attempt, variables).catch(
 			(error: unknown) => {
 				if (!isCurrent()) return;
@@ -66,8 +65,9 @@ async function renderCurrentView(
 	attempt: ReadbackAttempt,
 	variablesOverride?: Record<string, unknown>,
 ): Promise<void> {
-	const state = readNotebookViewState(props.model);
-	const sessionModel = await resolveSessionModel(props, state.sessionRef, signal);
+	const requestedIndexes = readSelectedCellIndexes(props.model);
+	const sessionRef = readNotebookSessionRef(props.model);
+	const sessionModel = await resolveSessionModel(props, sessionRef, signal);
 	if (signal.aborted) return;
 	if (sessionModel.get("role") !== "session") {
 		throw new Error("NotebookView reference does not resolve to a Notebook session");
@@ -85,10 +85,10 @@ async function renderCurrentView(
 
 	const notebook = readNotebookFromModel(sessionModel);
 	const analysis = analyzeNotebook(notebook);
-	const selectedIndexes = normalizeSelectedIndexes(state.cellIndexes, notebook.cells.length);
+	const selectedIndexes = resolveSelectedIndexes(requestedIndexes, notebook.cells.length);
 	const renderIndexes = notebookViewIndexes(analysis, selectedIndexes);
 	const cellKeys = readCellKeys(sessionModel);
-	syncNotebookGraph(props.model, analysis, renderIndexes, cellKeys);
+	readback.syncGraph(attempt, analysis, renderIndexes, cellKeys);
 	const session = openNotebookRuntimeSession({
 		model: sessionModel,
 		el: props.el,
@@ -101,14 +101,11 @@ async function renderCurrentView(
 	if (!session) return;
 	try {
 		renderNotebookView({
-			root: session.root,
 			notebook,
 			selectedIndexes,
 			renderIndexes,
 			analysis,
 			session,
-			options: session.options,
-			signal: session.signal,
 			readback,
 			attempt,
 			cellKeys,
@@ -119,52 +116,24 @@ async function renderCurrentView(
 	}
 }
 
-function normalizeSelectedIndexes(indexes: number[] | null, cellCount: number): Set<number> {
-	if (indexes === null) return new Set(Array.from({ length: cellCount }, (_, index) => index));
-	for (const index of indexes) {
-		if (index >= cellCount) throw new Error(`NotebookView cell index ${index} is outside the Notebook session`);
-	}
-	return new Set(indexes);
-}
-
 function resolveSessionModel(
 	props: RenderProps<WidgetModel>,
 	ref: string,
 	signal: AbortSignal,
 ): Promise<AnyWidgetModel> {
-	const message = `Unable to resolve Notebook session ${ref}`;
-	if (signal.aborted) return Promise.reject(new Error(message));
-	return abortable(
-		Promise.resolve().then(() => props.host.getModel<WidgetModel>(ref)),
-		signal,
-		message,
-	);
+	signal.throwIfAborted();
+	const lookup = Promise.resolve().then(() => props.host.getModel<WidgetModel>(ref));
+	return new Promise((resolve, reject) => {
+		const onAbort = () => reject(signal.reason);
+		signal.addEventListener("abort", onAbort, { once: true });
+		lookup.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+	});
 }
 
-function abortable<T>(lookup: Promise<T>, signal: AbortSignal, abortMessage: string): Promise<T> {
-	return new Promise<T>((resolve, reject) => {
-		let settled = false;
-		const cleanup = () => signal.removeEventListener("abort", onAbort);
-		const onAbort = () => {
-			if (settled) return;
-			settled = true;
-			cleanup();
-			reject(new Error(abortMessage));
-		};
-		signal.addEventListener("abort", onAbort, { once: true });
-		lookup.then(
-			(value) => {
-				if (settled) return;
-				settled = true;
-				cleanup();
-				resolve(value);
-			},
-			(error: unknown) => {
-				if (settled) return;
-				settled = true;
-				cleanup();
-				reject(error);
-			},
-		);
-	});
+function resolveSelectedIndexes(indexes: Set<number> | null, cellCount: number): Set<number> {
+	if (indexes === null) return new Set(Array.from({ length: cellCount }, (_, index) => index));
+	for (const index of indexes) {
+		if (index >= cellCount) throw new Error(`NotebookView cell index ${index} is outside the Notebook session`);
+	}
+	return indexes;
 }

@@ -1,4 +1,5 @@
 import { NotebookRuntime, library } from "@observablehq/notebook-kit/runtime";
+import { Library } from "@observablehq/stdlib";
 import {
 	createDuckDBClient,
 	createFileAttachment,
@@ -8,20 +9,16 @@ import {
 	type AttachmentInfo,
 	type AttachmentRegistry,
 } from "./attachments";
-import {
-	createGenerators,
-	createRuntimeCompatibilityBuiltins,
-	runtimeCompatibilityBuiltinNames,
-	type RuntimeCompatibilityOptions,
-} from "./compat";
 import { bindRuntimeScope, cleanupRuntimeScope, createRuntimeScope, createScopedGenerators } from "./scope";
 import { createVariableBuiltins } from "./values";
+
+export type RuntimeProfile = "notebook-kit" | "observable";
 
 export type RuntimeOptions = {
 	attachments: Record<string, AttachmentInfo>;
 	baseUrl: string;
 	variables: Record<string, unknown>;
-	runtimeCompatibility?: RuntimeCompatibilityOptions;
+	runtimeProfile?: RuntimeProfile;
 };
 
 export type NotebookOptions = RuntimeOptions & {
@@ -29,16 +26,8 @@ export type NotebookOptions = RuntimeOptions & {
 };
 
 type RuntimeBuiltins = NonNullable<ConstructorParameters<typeof NotebookRuntime>[0]>;
-type RuntimeBuiltinsWithVars = RuntimeBuiltins & Record<string, () => unknown>;
-const CORE_RUNTIME_NAMES = new Set([
-	...Object.keys(library),
-	"DuckDBClient",
-	"FileAttachment",
-	"SQLite",
-	"SQLiteDatabaseClient",
-	"document",
-	"width",
-]);
+const RUNTIME_CORE_NAMES = ["@variable", "invalidation", "visibility"] as const;
+const builtinNamesByRuntime = new WeakMap<NotebookRuntime, ReadonlySet<string>>();
 
 export function createRuntime(
 	root: HTMLElement,
@@ -46,18 +35,11 @@ export function createRuntime(
 	options: RuntimeOptions,
 	attachmentRegistry: AttachmentRegistry,
 ): NotebookRuntime {
-	// Python variables enter OJS as Observable builtins before Notebook Kit defines cells.
-	const collisions = runtimeBuiltinCollisions(options.variables, options.runtimeCompatibility);
-	if (collisions.length > 0)
-		throw new Error(`Python variables cannot override Observable runtime builtins: ${collisions.join(", ")}`);
 	const width = () => observeWidth(root, el);
 	const scope = createRuntimeScope(root);
 	const scopedGenerators = createScopedGenerators(root);
-	const runtimeGenerators = options.runtimeCompatibility?.generators
-		? createGenerators(scopedGenerators)
-		: scopedGenerators;
 	const builtins = {
-		...library,
+		...selectRuntimeLibrary(options.runtimeProfile),
 		DuckDBClient: () =>
 			Promise.resolve((library.DuckDBClient as () => unknown)()).then((DuckDBClient) =>
 				createDuckDBClient(DuckDBClient as object, attachmentRegistry),
@@ -67,25 +49,40 @@ export function createRuntime(
 		SQLiteDatabaseClient: () => SQLiteDatabaseClient,
 		document: () => scope.document,
 		width: width as RuntimeBuiltins["width"],
-		...createRuntimeCompatibilityBuiltins(options.runtimeCompatibility),
 		dark: () => scopedGenerators.dark(),
-		Generators: () => runtimeGenerators,
+		...(options.runtimeProfile === "observable" ? {} : { Generators: () => scopedGenerators }),
+	};
+	const builtinNames = new Set([...RUNTIME_CORE_NAMES, ...Object.keys(builtins)]);
+	assertNoBuiltinCollisions(options.variables, builtinNames);
+	// Observable Runtime accepts namespace objects as constants, while Notebook
+	// Kit narrows its constructor type to builtin factories.
+	const runtime = new NotebookRuntime({
+		...builtins,
 		...createVariableBuiltins(options.variables),
-	} as RuntimeBuiltinsWithVars;
-	const runtime = new NotebookRuntime(builtins);
+	} as RuntimeBuiltins);
+	builtinNamesByRuntime.set(runtime, builtinNames);
 	extendRuntimeFileAttachments(runtime);
 	bindRuntimeScope(runtime, scope);
 	return runtime;
 }
 
-function runtimeBuiltinCollisions(
-	variables: Record<string, unknown>,
-	compatibility: RuntimeCompatibilityOptions = {},
-): string[] {
-	const reserved = new Set([...CORE_RUNTIME_NAMES, ...runtimeCompatibilityBuiltinNames(compatibility)]);
-	return Object.keys(variables)
-		.filter((name) => reserved.has(name))
+export function assertNoRuntimeBuiltinCollisions(runtime: NotebookRuntime, variables: Record<string, unknown>): void {
+	const builtinNames = builtinNamesByRuntime.get(runtime);
+	if (!builtinNames) throw new Error("Runtime builtin metadata is unavailable");
+	assertNoBuiltinCollisions(variables, builtinNames);
+}
+
+function selectRuntimeLibrary(profile: RuntimeProfile = "notebook-kit"): Record<string, unknown> {
+	return profile === "observable" ? Object.assign({}, library, new Library()) : library;
+}
+
+function assertNoBuiltinCollisions(variables: Record<string, unknown>, builtinNames: ReadonlySet<string>): void {
+	const collisions = Object.keys(variables)
+		.filter((name) => builtinNames.has(name))
 		.sort();
+	if (collisions.length > 0) {
+		throw new Error(`Python variables cannot override Observable runtime builtins: ${collisions.join(", ")}`);
+	}
 }
 
 function observeWidth(root: HTMLElement, fallback: HTMLElement): AsyncGenerator<number, void, unknown> {

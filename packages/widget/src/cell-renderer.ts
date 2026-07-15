@@ -14,7 +14,6 @@ import {
 	type NotebookAnalysis,
 	type NotebookOptions,
 	type RuntimeCellDefinition,
-	type RuntimeVariablesSync,
 } from "@pyobservablejs/runtime";
 import { createCellOutput, createTopLevelError, renderSource } from "./dom";
 import type { CellVariableSync, RuntimeViewSync } from "./variable-sync";
@@ -31,7 +30,6 @@ export type CellRenderTarget = {
 	showSource: boolean;
 	visible: boolean;
 	sync?: CellVariableSync;
-	variablesSync?: RuntimeVariablesSync;
 	cellName?: string;
 };
 
@@ -41,13 +39,9 @@ export type CellRenderContext = {
 	pythonVariableNames: Set<string>;
 	analysis: NotebookAnalysis;
 	notebookNames: ReadonlySet<string>;
-	runtimeCompatibility: NotebookOptions["runtimeCompatibility"];
+	runtimeProfile: NotebookOptions["runtimeProfile"];
 	viewSync: RuntimeViewSync;
 };
-
-export function renderCellTargets(targets: readonly CellRenderTarget[], context: CellRenderContext): void {
-	for (const target of targets) renderCellTarget(target, context);
-}
 
 export function renderCellTarget(target: CellRenderTarget, context: CellRenderContext): void {
 	renderCell({
@@ -57,14 +51,13 @@ export function renderCellTarget(target: CellRenderTarget, context: CellRenderCo
 		showSource: target.visible && target.showSource,
 		visible: target.visible,
 		sync: target.sync,
-		variablesSync: target.variablesSync,
 		viewSync: context.viewSync,
 		signal: context.signal,
 		cellName: target.cellName,
 		pythonVariableNames: context.pythonVariableNames,
 		analysis: context.analysis.cells[target.index],
 		notebookNames: context.notebookNames,
-		runtimeCompatibility: context.runtimeCompatibility,
+		runtimeProfile: context.runtimeProfile,
 	});
 }
 
@@ -75,14 +68,13 @@ function renderCell({
 	showSource,
 	visible,
 	sync,
-	variablesSync,
 	viewSync,
 	signal,
 	cellName,
 	pythonVariableNames = new Set(),
 	analysis,
 	notebookNames,
-	runtimeCompatibility,
+	runtimeProfile,
 }: {
 	wrapper: HTMLElement;
 	runtime: NotebookRuntime;
@@ -90,14 +82,13 @@ function renderCell({
 	showSource: boolean;
 	visible: boolean;
 	sync?: CellVariableSync;
-	variablesSync?: RuntimeVariablesSync;
 	viewSync: RuntimeViewSync;
 	signal: AbortSignal;
 	cellName?: string;
 	pythonVariableNames?: Set<string>;
 	analysis?: CellAnalysis;
 	notebookNames?: ReadonlySet<string>;
-	runtimeCompatibility?: NotebookOptions["runtimeCompatibility"];
+	runtimeProfile?: NotebookOptions["runtimeProfile"];
 }): void {
 	wrapper.replaceChildren();
 	const output = createCellOutput(wrapper, cell);
@@ -106,13 +97,12 @@ function renderCell({
 		output,
 		cell,
 		sync,
-		variablesSync,
 		viewSync,
 		cellName,
 		pythonVariableNames,
 		definitionInputFromAnalysis(analysis),
 		notebookNames,
-		runtimeCompatibility,
+		runtimeProfile,
 		visible,
 	);
 	if (showSource && cell.pinned) appendSource(wrapper, cell, signal);
@@ -123,13 +113,12 @@ function defineCell(
 	root: HTMLDivElement,
 	cell: Cell,
 	sync: CellVariableSync | undefined,
-	variablesSync: RuntimeVariablesSync | undefined,
 	viewSync: RuntimeViewSync,
 	cellName?: string,
 	pythonVariableNames: Set<string> = new Set(),
 	definitionInput?: DefinitionInput,
 	notebookNames?: ReadonlySet<string>,
-	runtimeCompatibility?: NotebookOptions["runtimeCompatibility"],
+	runtimeProfile?: NotebookOptions["runtimeProfile"],
 	visible = true,
 ): void {
 	try {
@@ -152,11 +141,11 @@ function defineCell(
 			sourceDefinition,
 			sync
 				? createCellObserver(sync, viewSync, sourceDefinition, displayName, exposed.length > 0)
-				: createRuntimeInputObserver(observer, variablesSync, viewSync, sourceDefinition),
+				: createRuntimeInputObserver(observer, viewSync, sourceDefinition),
 			{
 				document: runtimeDocument(runtime),
 				notebookNames,
-				runtimeCompatibility,
+				runtimeProfile,
 			},
 		);
 		if (sync) defineSyncObservers(runtime, sync, exposed);
@@ -168,12 +157,11 @@ function defineCell(
 
 function createRuntimeInputObserver(
 	observer: typeof observe,
-	variablesSync: RuntimeVariablesSync | undefined,
 	viewSync: RuntimeViewSync,
 	definition: RuntimeCellDefinition,
 ): typeof observe {
 	const viewName = viewVariableName(definition);
-	if (!variablesSync || !viewName) return observer;
+	if (!viewName) return observer;
 	return (state, runtimeDefinition) => {
 		const runtimeObserver = observer(state, runtimeDefinition);
 		const fulfilled = runtimeObserver.fulfilled.bind(runtimeObserver);

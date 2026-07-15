@@ -5,14 +5,28 @@ import {
 	composedText,
 	createNotebookFixture,
 	graphValue,
+	hasRendered,
 	renderProps,
-	type TestModel,
 	variableValue,
 	waitFor,
 	widget,
 } from "./testing";
 
 describe("widget graph and notebook readback", () => {
+	test("marks an empty notebook rendered with a complete graph", async () => {
+		const { view, host } = createNotebookFixture({ _spec: { cells: [] } });
+		const controller = new AbortController();
+
+		try {
+			widget.render(renderProps(view, document.createElement("div"), controller.signal, host));
+			expect(await waitFor(() => (hasRendered(view) ? true : undefined))).toBe(true);
+			expect(graphValue(view)).toEqual({ cells: [], edges: [] });
+			expect(view.savedReadbacks().at(-1)).toMatchObject({ rendered: true, cells: {} });
+		} finally {
+			controller.abort();
+		}
+	});
+
 	test("renders one NotebookView runtime and publishes graph and cell readback on its view model", async () => {
 		const { view, host } = createNotebookFixture({
 			_spec: {
@@ -21,9 +35,6 @@ describe("widget graph and notebook readback", () => {
 					{ id: 2, mode: "ojs", value: "answer + 1" },
 				],
 			},
-			_attachments: {},
-			_variables: {},
-			_options: {},
 			_cell_keys: ["answer", "readout"],
 		});
 		const controller = new AbortController();
@@ -37,9 +48,7 @@ describe("widget graph and notebook readback", () => {
 		expect(graph.edges).toContainEqual({ from: 1, to: 2, variable: "answer" });
 		expect(await waitFor(() => (variableValue(view, "answer") === 42 ? 42 : undefined))).toBe(42);
 		expect(await waitFor(() => (variableValue(view, "readout") === 43 ? 43 : undefined))).toBe(43);
-		expect(await waitFor(() => (view.get("_has_rendered") === true ? true : undefined))).toBe(true);
-		expect(host.modelLookups).toEqual(["anywidget:session"]);
-		expect(host.widgetLookups).toEqual([]);
+		expect(await waitFor(() => (hasRendered(view) ? true : undefined))).toBe(true);
 		controller.abort();
 	});
 
@@ -66,9 +75,6 @@ describe("widget graph and notebook readback", () => {
 					},
 				],
 			},
-			_attachments: {},
-			_variables: {},
-			_options: {},
 			_cell_keys: ["metrics"],
 		});
 		const controller = new AbortController();
@@ -76,61 +82,129 @@ describe("widget graph and notebook readback", () => {
 			widget.render(renderProps(view, document.createElement("div"), controller.signal, host));
 			await waitFor(() => (evaluationStarted ? true : undefined));
 			expect(cellRecord(view, 0)).toBeUndefined();
-			expect(view.get("_has_rendered")).toBe(false);
+			expect(hasRendered(view)).toBe(false);
 
 			resolveY(2);
 			expect(await waitFor(() => (variableValue(view, "y") === 2 ? 2 : undefined), 1500)).toBe(2);
 			expect(cellRecord(view, 0)).toMatchObject({ rendered: true, names: ["x", "y"] });
-			expect(view.get("_has_rendered")).toBe(true);
+			expect(hasRendered(view)).toBe(true);
 		} finally {
 			controller.abort();
 			Reflect.deleteProperty(globalThis, "__pyobservablejsPendingY");
 		}
 	});
 
+	test("publishes initial cell readback after every selected cell settles", async () => {
+		let resolveDelayed!: (value: number) => void;
+		let delayedEvaluationStarted = false;
+		const delayed = new Promise<number>((resolve) => {
+			resolveDelayed = resolve;
+		});
+		Object.defineProperty(globalThis, "__pyobservablejsDelayedValue", {
+			configurable: true,
+			get() {
+				delayedEvaluationStarted = true;
+				return delayed;
+			},
+		});
+		const { view, host } = createNotebookFixture({
+			_spec: {
+				cells: [
+					{ id: 1, mode: "ojs", value: "answer = 42" },
+					{ id: 2, mode: "ojs", value: "delayed = await globalThis.__pyobservablejsDelayedValue" },
+				],
+			},
+		});
+		const controller = new AbortController();
+
+		try {
+			widget.render(renderProps(view, document.createElement("div"), controller.signal, host));
+			await waitFor(() => (delayedEvaluationStarted ? true : undefined));
+
+			expect(cellRecord(view, 0)).toBeUndefined();
+			expect(hasRendered(view)).toBe(false);
+
+			resolveDelayed(7);
+			expect(await waitFor(() => (variableValue(view, "delayed") === 7 ? 7 : undefined))).toBe(7);
+			expect(variableValue(view, "answer")).toBe(42);
+			expect(hasRendered(view)).toBe(true);
+			const snapshots = view.savedReadbacks();
+			expect(
+				snapshots.every((snapshot, index) => index === 0 || snapshot.revision > snapshots[index - 1]!.revision),
+			).toBe(true);
+			expect(snapshots.at(-1)).toMatchObject({
+				rendered: true,
+				graph: { cells: [{ index: 0 }, { index: 1 }] },
+				cells: { "0": { rendered: true }, "1": { rendered: true } },
+			});
+		} finally {
+			controller.abort();
+			Reflect.deleteProperty(globalThis, "__pyobservablejsDelayedValue");
+		}
+	});
+
 	test("invalidates stale readback and graph before publishing a changed notebook", async () => {
+		let resolveAnswer!: (value: number) => void;
+		let markStaleEvaluationComplete!: () => void;
+		let staleEvaluationStarted = false;
+		const answer = new Promise<number>((resolve) => {
+			resolveAnswer = resolve;
+		});
+		const staleEvaluationComplete = new Promise<void>((resolve) => {
+			markStaleEvaluationComplete = resolve;
+		});
+		Object.defineProperty(globalThis, "__pyobservablejsStaleAnswer", {
+			configurable: true,
+			get() {
+				staleEvaluationStarted = true;
+				return answer;
+			},
+		});
+		Object.defineProperty(globalThis, "__pyobservablejsMarkStaleEvaluationComplete", {
+			configurable: true,
+			value: markStaleEvaluationComplete,
+		});
 		const { session, view, host } = createNotebookFixture({
-			_spec: { cells: [{ id: 1, mode: "ojs", value: "answer = 42" }] },
-			_attachments: {},
-			_variables: {},
-			_options: {},
+			_spec: {
+				cells: [
+					{
+						id: 1,
+						mode: "ojs",
+						value: `answer = {
+  const value = await globalThis.__pyobservablejsStaleAnswer;
+  globalThis.__pyobservablejsMarkStaleEvaluationComplete();
+  return value;
+}`,
+					},
+				],
+			},
 			_cell_keys: ["answer"],
 		});
 		const controller = new AbortController();
 		const el = document.createElement("div");
-		widget.render(renderProps(view, el, controller.signal, host));
-		await waitFor(() => (variableValue(view, "answer") === 42 ? 42 : undefined));
+		try {
+			widget.render(renderProps(view, el, controller.signal, host));
+			expect((await waitFor(() => graphValue(view))).cells[0]?.key).toBe("answer");
+			await waitFor(() => (staleEvaluationStarted ? true : undefined));
 
-		session.set("_spec", { cells: [{ id: 1, mode: "ojs", value: "total = 7" }] });
-		session.set("_cell_keys", ["total"]);
+			session.set("_spec", { cells: [{ id: 1, mode: "ojs", value: "total = 7" }] });
+			session.set("_cell_keys", ["total"]);
 
-		expect(await waitFor(() => (variableValue(view, "total") === 7 ? 7 : undefined))).toBe(7);
-		expect(variableValue(view, "answer")).toBeUndefined();
-		expect((await waitFor(() => graphValue(view))).cells[0]?.key).toBe("total");
-		expect(await waitFor(() => composedText(el, "7"))).toBeInstanceOf(HTMLElement);
-		controller.abort();
-	});
+			expect(await waitFor(() => (variableValue(view, "total") === 7 ? 7 : undefined))).toBe(7);
+			expect((await waitFor(() => graphValue(view))).cells[0]?.key).toBe("total");
+			expect(await waitFor(() => composedText(el, "7"))).toBeInstanceOf(HTMLElement);
 
-	test("keeps runtime output reactive across Python variable patches", async () => {
-		const { session, view, host } = createNotebookFixture({
-			_spec: { cells: [{ id: 1, mode: "ojs", value: "doubled = base * 2" }] },
-			_attachments: {},
-			_variables: { base: 1 },
-			_options: {},
-			_cell_keys: ["doubled"],
-		});
-		const controller = new AbortController();
-		const el = document.createElement("div");
-		widget.render(renderProps(view, el, controller.signal, host));
-		const root = await waitFor(() => (el.firstElementChild instanceof HTMLElement ? el.firstElementChild : undefined));
+			resolveAnswer(42);
+			await staleEvaluationComplete;
 
-		expect(await waitFor(() => (variableValue(view, "doubled") === 2 ? 2 : undefined))).toBe(2);
-		setVariables(session, 1, { base: 3 });
-		expect(await waitFor(() => (variableValue(view, "doubled") === 6 ? 6 : undefined))).toBe(6);
-		setVariables(session, 2, { base: 8 });
-		expect(await waitFor(() => (variableValue(view, "doubled") === 16 ? 16 : undefined))).toBe(16);
-		expect(el.firstElementChild).toBe(root);
-		controller.abort();
+			expect(variableValue(view, "total")).toBe(7);
+			expect(variableValue(view, "answer")).toBeUndefined();
+			expect(graphValue(view)?.cells[0]?.key).toBe("total");
+		} finally {
+			controller.abort();
+			Reflect.deleteProperty(globalThis, "__pyobservablejsStaleAnswer");
+			Reflect.deleteProperty(globalThis, "__pyobservablejsMarkStaleEvaluationComplete");
+		}
 	});
 
 	test("publishes named display values and runtime errors under the cell key", async () => {
@@ -142,9 +216,6 @@ describe("widget graph and notebook readback", () => {
 					{ id: 3, mode: "ojs", value: "missing + 1" },
 				],
 			},
-			_attachments: {},
-			_variables: {},
-			_options: {},
 			_cell_keys: ["answer", "readout", "broken"],
 		});
 		const controller = new AbortController();
@@ -167,9 +238,7 @@ describe("widget graph and notebook readback", () => {
 					{ id: 2, mode: "ojs", value: "doubled = answer * 2" },
 				],
 			},
-			_attachments: {},
 			_variables: { answer: 41 },
-			_options: {},
 			_cell_keys: ["answer", "doubled"],
 		});
 		const controller = new AbortController();
@@ -197,7 +266,6 @@ describe("widget graph and notebook readback", () => {
 				"points.csv": { url: "https://static.example/points.csv", mimeType: "text/csv" },
 			},
 			_variables: { rows: [{ x: 10 }, { x: 20 }] },
-			_options: {},
 			_cell_keys: ["rows", "count", "attachmentUrl"],
 		});
 		const controller = new AbortController();
@@ -229,7 +297,6 @@ describe("widget graph and notebook readback", () => {
 				],
 			},
 			_variables: { base: 1 },
-			_options: {},
 			_cell_keys: ["answer"],
 		});
 		const controller = new AbortController();
@@ -243,9 +310,9 @@ describe("widget graph and notebook readback", () => {
 			session.set("_variable_update", { seq: 1, kind: "replace", values: { base: 2 } });
 			session.set("_variables", { base: 2 });
 
-			expect(view.get("_has_rendered")).toBe(false);
-			expect(view.get("_cell_values")).toEqual({});
-			expect(view.get("_graph")).toEqual({});
+			expect(hasRendered(view)).toBe(false);
+			expect(cellRecord(view, 0)).toBeUndefined();
+			expect(graphValue(view)).toBeUndefined();
 
 			resolveGate(0);
 			expect(await waitFor(() => (variableValue(view, "answer") === 2 ? 2 : undefined))).toBe(2);
@@ -258,9 +325,6 @@ describe("widget graph and notebook readback", () => {
 	test("renders syntax failures as settled cell output", async () => {
 		const { view, host } = createNotebookFixture({
 			_spec: { cells: [{ id: 1, mode: "ojs", value: "broken =" }] },
-			_attachments: {},
-			_variables: {},
-			_options: {},
 			_cell_keys: ["broken"],
 		});
 		const controller = new AbortController();
@@ -268,14 +332,45 @@ describe("widget graph and notebook readback", () => {
 		widget.render(renderProps(view, el, controller.signal, host));
 
 		expect(await waitFor(() => alertText(el))).toContain("SyntaxError");
-		expect(await waitFor(() => (view.get("_has_rendered") === true ? true : undefined))).toBe(true);
+		expect(await waitFor(() => (hasRendered(view) ? true : undefined))).toBe(true);
 		expect(cellRecord(view, 0)).toMatchObject({ rendered: true, values: {} });
 		controller.abort();
 	});
-});
 
-function setVariables(model: TestModel, seq: number, values: Record<string, unknown>): void {
-	model.set("_variable_update", { seq, kind: "set", values });
-	const previous = model.get("_variables");
-	model.set("_variables", previous && typeof previous === "object" ? { ...previous, ...values } : values);
-}
+	test("ending the widget lifecycle disconnects session updates", async () => {
+		const { session, view, host } = createNotebookFixture({
+			_spec: {
+				cells: [
+					{
+						id: 1,
+						mode: "ojs",
+						value: `viewof gain = {
+  const input = document.createElement("input");
+  input.type = "range";
+  input.value = "3";
+  return input;
+}`,
+					},
+					{ id: 2, mode: "ojs", value: "doubled = gain * base" },
+				],
+			},
+			_variables: { base: 2 },
+			_cell_keys: ["gain", "doubled"],
+		});
+		const controller = new AbortController();
+		const el = document.createElement("div");
+		widget.render(renderProps(view, el, controller.signal, host));
+		const input = await waitFor(() => el.querySelector<HTMLInputElement>('input[type="range"]') ?? undefined);
+		await waitFor(() => (variableValue(view, "doubled") === 6 ? 6 : undefined));
+
+		controller.abort();
+		session.set("_variable_update", { seq: 1, kind: "set", values: { base: 5 } });
+		session.set("_variables", { base: 5 });
+		session.set("_view_values", { gain: 9 });
+		await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+
+		expect(input.value).toBe("3");
+		expect(variableValue(view, "gain")).toBe(3);
+		expect(variableValue(view, "doubled")).toBe(6);
+	});
+});

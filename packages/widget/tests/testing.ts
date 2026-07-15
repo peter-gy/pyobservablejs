@@ -5,8 +5,8 @@ import type { WidgetModel } from "../src/model";
 
 export type Model = RenderProps<WidgetModel>["model"];
 export type TestModel = Model & {
-	listenerCount(name: string): number;
 	saveCount(): number;
+	savedReadbacks(): NonNullable<WidgetModel["_readback"]>[];
 };
 type WidgetDefinition = ReturnType<typeof createWidget>;
 
@@ -37,10 +37,8 @@ export function createModel(initial: Partial<WidgetModel>): TestModel {
 	const state = new Map<string, unknown>(Object.entries(initial));
 	const listeners = new Map<string, Set<() => void>>();
 	let saves = 0;
+	const savedReadbacks: NonNullable<WidgetModel["_readback"]>[] = [];
 	return {
-		listenerCount(name: string) {
-			return listeners.get(name)?.size ?? 0;
-		},
 		get(name: string) {
 			return state.get(name);
 		},
@@ -51,8 +49,15 @@ export function createModel(initial: Partial<WidgetModel>): TestModel {
 		saveCount() {
 			return saves;
 		},
+		savedReadbacks() {
+			return savedReadbacks;
+		},
 		save_changes() {
 			saves += 1;
+			const readback = state.get("_readback");
+			if (readback !== null && typeof readback === "object" && !Array.isArray(readback)) {
+				savedReadbacks.push(structuredClone(readback) as NonNullable<WidgetModel["_readback"]>);
+			}
 		},
 		on(name: string, callback: () => void) {
 			const callbacks = listeners.get(name) ?? new Set();
@@ -75,12 +80,10 @@ export function createModel(initial: Partial<WidgetModel>): TestModel {
 
 export type TestHost = Host & {
 	modelLookups: string[];
-	widgetLookups: string[];
 };
 
 export function createHost(models: ReadonlyMap<string, Model | Promise<Model>>): TestHost {
 	const modelLookups: string[] = [];
-	const widgetLookups: string[] = [];
 	const resolve = async (ref: string): Promise<Model> => {
 		const model = models.get(ref);
 		if (!model) throw new Error(`Unknown widget model ${ref}`);
@@ -88,13 +91,11 @@ export function createHost(models: ReadonlyMap<string, Model | Promise<Model>>):
 	};
 	const host: TestHost = {
 		modelLookups,
-		widgetLookups,
 		getModel: async (ref: string) => {
 			modelLookups.push(ref);
 			return (await resolve(ref)) as never;
 		},
 		getWidget: async (ref: string) => {
-			widgetLookups.push(ref);
 			throw new Error(`Unexpected reverse widget lookup ${ref}`);
 		},
 	};
@@ -102,7 +103,14 @@ export function createHost(models: ReadonlyMap<string, Model | Promise<Model>>):
 }
 
 export function createSession(initial: Omit<Partial<WidgetModel>, "role">): TestModel {
-	return createModel({ role: "session", _view_values: {}, ...initial });
+	return createModel({
+		role: "session",
+		_attachments: {},
+		_variables: {},
+		_view_values: {},
+		_options: {},
+		...initial,
+	});
 }
 
 export function createView(ref = "anywidget:session", cellIndexes: number[] | null = null): TestModel {
@@ -110,9 +118,7 @@ export function createView(ref = "anywidget:session", cellIndexes: number[] | nu
 		role: "view",
 		_notebook: ref,
 		_cell_indexes: cellIndexes,
-		_graph: {},
-		_has_rendered: false,
-		_cell_values: {},
+		_readback: { revision: 0, rendered: false, graph: {}, cells: {} },
 	});
 }
 
@@ -125,6 +131,26 @@ export function createNotebookFixture(initial: Omit<Partial<WidgetModel>, "role"
 	const view = createView();
 	const host = createHost(new Map([["anywidget:session", session]]));
 	return { session, view, host };
+}
+
+export function setVariables(
+	model: TestModel,
+	seq: number,
+	kind: "set" | "replace",
+	values: Record<string, unknown>,
+): void {
+	const previous = model.get("_variables");
+	model.set("_variable_update", { seq, kind, values });
+	model.set(
+		"_variables",
+		kind === "set" && previous && typeof previous === "object" ? { ...previous, ...values } : values,
+	);
+}
+
+export function setRange(input: HTMLInputElement, value: number): void {
+	input.value = String(value);
+	input.dispatchEvent(new Event("input", { bubbles: true }));
+	input.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
 export function renderProps<State extends Record<string, unknown>>(
@@ -168,10 +194,14 @@ export function cellRecords(model: Model): CellRecord[] {
 }
 
 export function graphValue(model: Model): NotebookGraph | undefined {
-	const graph = model.get("_graph");
+	const graph = readbackValue(model).graph;
 	if (graph === null || typeof graph !== "object" || Array.isArray(graph)) return undefined;
 	const value = graph as Partial<NotebookGraph>;
 	return Array.isArray(value.cells) && Array.isArray(value.edges) ? (graph as NotebookGraph) : undefined;
+}
+
+export function hasRendered(model: Model): boolean {
+	return readbackValue(model).rendered === true;
 }
 
 export async function waitFor<T>(read: () => T | undefined, timeoutMs = 1000): Promise<T> {
@@ -219,8 +249,13 @@ function isHidden(item: HTMLElement): boolean {
 }
 
 function readCellValues(model: Model): Record<string, unknown> {
-	const value = model.get("_cell_values");
+	const value = readbackValue(model).cells;
 	return value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function readbackValue(model: Model): Partial<NonNullable<WidgetModel["_readback"]>> {
+	const value = model.get("_readback");
+	return value !== null && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 
 function readCellRecord(value: unknown): CellRecord | undefined {

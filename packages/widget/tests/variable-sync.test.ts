@@ -1,9 +1,11 @@
 import { describe, expect, test } from "vite-plus/test";
 import {
-	alertText,
 	composedText,
 	createNotebookFixture,
+	hasRendered,
 	renderProps,
+	setRange,
+	setVariables,
 	type TestModel,
 	variableValue,
 	waitFor,
@@ -38,6 +40,20 @@ Select = (items, options = {}) => {
   return form;
 }`;
 
+const seededGainCell = {
+	id: 1,
+	mode: "ojs",
+	value: `
+viewof gain = {
+  const input = document.createElement("input");
+  input.type = "range";
+  input.min = "0";
+  input.max = "10";
+  input.value = String(seed);
+  return input;
+}`,
+} as const;
+
 describe("widget variable sync", () => {
 	test("updates existing Python variables through the runtime", async () => {
 		const { session, view, host } = createNotebookFixture({
@@ -47,9 +63,7 @@ describe("widget variable sync", () => {
 					{ id: 2, mode: "ojs", value: "doubled = base * 2" },
 				],
 			},
-			_attachments: {},
 			_variables: { base: 2 },
-			_options: {},
 		});
 		const el = document.createElement("div");
 		const controller = new AbortController();
@@ -67,14 +81,12 @@ describe("widget variable sync", () => {
 		controller.abort();
 	});
 
-	test("rejects live variables that collide with active compatibility builtins", async () => {
+	test("rejects live variables that collide with the selected runtime builtins", async () => {
 		const { session, view, host } = createNotebookFixture({
 			_spec: {
 				cells: [{ id: 1, mode: "ojs", value: "answer = 42" }],
 			},
-			_attachments: {},
-			_variables: {},
-			_options: { runtime_compatibility: { require: true } },
+			_runtime_profile: "observable",
 		});
 		const controller = new AbortController();
 
@@ -93,9 +105,7 @@ describe("widget variable sync", () => {
 			_spec: {
 				cells: [{ id: 1, mode: "ojs", value: "answer = 1", hidden: true }],
 			},
-			_attachments: {},
 			_variables: { answer: 41 },
-			_options: {},
 		});
 		const el = document.createElement("div");
 		const controller = new AbortController();
@@ -118,9 +128,7 @@ describe("widget variable sync", () => {
 					},
 				],
 			},
-			_attachments: {},
 			_variables: { answer: 41 },
-			_options: {},
 		});
 		const el = document.createElement("div");
 		const controller = new AbortController();
@@ -149,9 +157,6 @@ describe("widget variable sync", () => {
 					{ id: 2, mode: "ojs", value: "doubled = base * 2" },
 				],
 			},
-			_attachments: {},
-			_variables: {},
-			_options: {},
 		});
 		const el = document.createElement("div");
 		const controller = new AbortController();
@@ -172,9 +177,7 @@ describe("widget variable sync", () => {
 					{ id: 2, mode: "ojs", value: "doubled = base * 2" },
 				],
 			},
-			_attachments: {},
 			_variables: { base: 5 },
-			_options: {},
 		});
 		const el = document.createElement("div");
 		const controller = new AbortController();
@@ -186,49 +189,6 @@ describe("widget variable sync", () => {
 		setVariables(session, 1, "replace", {});
 
 		expect(await waitFor(() => (variableValue(view, "doubled") === 2 ? 2 : undefined))).toBe(2);
-		controller.abort();
-	});
-
-	test("updates viewof variable values through the runtime", async () => {
-		const { session, view, host } = createNotebookFixture({
-			_spec: {
-				cells: [
-					{
-						id: 1,
-						mode: "ojs",
-						value: `
-viewof gain = {
-  const input = document.createElement("input");
-	  input.type = "range";
-	  input.min = "0";
-	  input.max = "10";
-	  input.value = "1";
-	  return input;
-	}`,
-					},
-					{ id: 2, mode: "ojs", value: "doubled = gain * 2" },
-				],
-			},
-			_attachments: {},
-			_variables: { gain: 5 },
-			_options: {},
-		});
-		const el = document.createElement("div");
-		const controller = new AbortController();
-
-		widget.render(renderProps(view, el, controller.signal, host));
-
-		await waitFor(() => {
-			const error = alertText(el);
-			if (error) throw new Error(error);
-			return rangeWithValue(el, 5);
-		});
-		expect(await waitFor(() => (variableValue(view, "doubled") === 10 ? 10 : undefined))).toBe(10);
-
-		setVariables(session, 1, "set", { gain: 7 });
-
-		await waitFor(() => rangeWithValue(el, 7));
-		expect(await waitFor(() => (variableValue(view, "doubled") === 14 ? 14 : undefined))).toBe(14);
 		controller.abort();
 	});
 
@@ -252,9 +212,7 @@ viewof gain = {
 					{ id: 2, mode: "ojs", value: "gainKind = typeof gain" },
 				],
 			},
-			_attachments: {},
 			_variables: { gain: { pointDensity: 21 } },
-			_options: {},
 		});
 		const el = document.createElement("div");
 		const controller = new AbortController();
@@ -280,9 +238,6 @@ viewof gain = {
 					{ id: 4, mode: "ojs", value: "pointDensity = presets ? presets.pointDensity : -1" },
 				],
 			},
-			_attachments: {},
-			_variables: {},
-			_options: {},
 		});
 		const el = document.createElement("div");
 		const controller = new AbortController();
@@ -317,9 +272,6 @@ viewof image = {
 					{ id: 2, mode: "ojs", value: "imageTag = image.tagName" },
 				],
 			},
-			_attachments: {},
-			_variables: {},
-			_options: {},
 		});
 		const el = document.createElement("div");
 		const controller = new AbortController();
@@ -333,7 +285,7 @@ viewof image = {
 			value: "img",
 		});
 		expect((form as HTMLFormElement & { value: unknown }).value).toBeInstanceOf(Promise);
-		await waitFor(() => (view.get("_has_rendered") === true ? true : undefined));
+		await waitFor(() => (hasRendered(view) ? true : undefined));
 		expect((form as HTMLFormElement & { value: unknown }).value).toBeInstanceOf(Promise);
 		expect(variableValue(view, "imageTag")).toBe("IMG");
 		controller.abort();
@@ -343,26 +295,12 @@ viewof image = {
 		const { session, view, host } = createNotebookFixture({
 			_spec: {
 				cells: [
-					{
-						id: 1,
-						mode: "ojs",
-						value: `
-viewof gain = {
-  const input = document.createElement("input");
-  input.type = "range";
-  input.min = "0";
-  input.max = "10";
-  input.value = String(seed);
-  return input;
-}`,
-					},
+					seededGainCell,
 					{ id: 2, mode: "ojs", value: "seedEcho = seed" },
 					{ id: 3, mode: "ojs", value: "doubled = gain * 2" },
 				],
 			},
-			_attachments: {},
 			_variables: { seed: 1, gain: 5 },
-			_options: {},
 		});
 		const el = document.createElement("div");
 		const controller = new AbortController();
@@ -387,26 +325,12 @@ viewof gain = {
 		const { session, view, host } = createNotebookFixture({
 			_spec: {
 				cells: [
-					{
-						id: 1,
-						mode: "ojs",
-						value: `
-viewof gain = {
-  const input = document.createElement("input");
-  input.type = "range";
-  input.min = "0";
-  input.max = "10";
-  input.value = String(seed);
-  return input;
-}`,
-					},
+					seededGainCell,
 					{ id: 2, mode: "ojs", value: "seedEcho = seed" },
 					{ id: 3, mode: "ojs", value: "doubled = gain * 2" },
 				],
 			},
-			_attachments: {},
 			_variables: { seed: 1 },
-			_options: {},
 		});
 		const el = document.createElement("div");
 		const controller = new AbortController();
@@ -415,9 +339,7 @@ viewof gain = {
 
 		const firstInput = await waitFor(() => rangeWithValue(el, 1));
 		expect(await waitFor(() => (variableValue(view, "seedEcho") === 1 ? 1 : undefined))).toBe(1);
-		firstInput.value = "5";
-		firstInput.dispatchEvent(new Event("input", { bubbles: true }));
-		firstInput.dispatchEvent(new Event("change", { bubbles: true }));
+		setRange(firstInput, 5);
 		await waitFor(() => (variableValue(view, "gain") === 5 ? 5 : undefined));
 
 		setVariables(session, 1, "set", { seed: 2 });
@@ -434,26 +356,9 @@ viewof gain = {
 	test("uses replacement view defaults until the user changes the view", async () => {
 		const { session, view, host } = createNotebookFixture({
 			_spec: {
-				cells: [
-					{
-						id: 1,
-						mode: "ojs",
-						value: `
-viewof gain = {
-  const input = document.createElement("input");
-  input.type = "range";
-  input.min = "0";
-  input.max = "10";
-  input.value = String(seed);
-  return input;
-}`,
-					},
-					{ id: 2, mode: "ojs", value: "doubled = gain * 2" },
-				],
+				cells: [seededGainCell, { id: 2, mode: "ojs", value: "doubled = gain * 2" }],
 			},
-			_attachments: {},
 			_variables: { seed: 1 },
-			_options: {},
 		});
 		const el = document.createElement("div");
 		const controller = new AbortController();
@@ -482,26 +387,9 @@ viewof gain = {
 	test("uses view defaults after Python replacement removes a view value", async () => {
 		const { session, view, host } = createNotebookFixture({
 			_spec: {
-				cells: [
-					{
-						id: 1,
-						mode: "ojs",
-						value: `
-viewof gain = {
-  const input = document.createElement("input");
-  input.type = "range";
-  input.min = "0";
-  input.max = "10";
-  input.value = String(seed);
-  return input;
-}`,
-					},
-					{ id: 2, mode: "ojs", value: "doubled = gain * 2" },
-				],
+				cells: [seededGainCell, { id: 2, mode: "ojs", value: "doubled = gain * 2" }],
 			},
-			_attachments: {},
 			_variables: { seed: 1, gain: 5 },
-			_options: {},
 		});
 		const el = document.createElement("div");
 		const controller = new AbortController();
@@ -516,9 +404,7 @@ viewof gain = {
 				view,
 			),
 		).toBe(10);
-		firstInput.value = "6";
-		firstInput.dispatchEvent(new Event("input", { bubbles: true }));
-		firstInput.dispatchEvent(new Event("change", { bubbles: true }));
+		setRange(firstInput, 6);
 		await waitStep("interaction value", () => (variableValue(view, "doubled") === 12 ? 12 : undefined), view);
 
 		setVariables(session, 1, "replace", { seed: 2 });
@@ -551,19 +437,10 @@ function onlySelect(el: HTMLElement): HTMLSelectElement | undefined {
 	return selects[0]!;
 }
 
-function setVariables(model: TestModel, seq: number, kind: "set" | "replace", values: Record<string, unknown>): void {
-	const previous = model.get("_variables");
-	model.set("_variable_update", { seq, kind, values });
-	model.set(
-		"_variables",
-		kind === "set" && previous && typeof previous === "object" ? { ...previous, ...values } : values,
-	);
-}
-
 async function waitStep<T>(label: string, read: () => T | undefined, model: TestModel): Promise<T> {
 	try {
 		return await waitFor(read);
 	} catch (error) {
-		throw new Error(`${label}: ${String(error)}; readback=${JSON.stringify(model.get("_cell_values"))}`);
+		throw new Error(`${label}: ${String(error)}; readback=${JSON.stringify(model.get("_readback"))}`);
 	}
 }

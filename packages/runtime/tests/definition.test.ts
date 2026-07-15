@@ -10,12 +10,13 @@ const baseOptions: NotebookOptions = {
 	variables: {},
 	showSource: false,
 };
+const observableOptions: NotebookOptions = { ...baseOptions, runtimeProfile: "observable" };
 
 describe("runtime definitions", () => {
 	test("resolves notebook-defined view template tags before Notebook Kit display helpers", async () => {
 		const registry = registerAttachments({});
 		const root = document.createElement("div");
-		const runtime = createRuntime(root, document.createElement("div"), baseOptions, registry);
+		const runtime = createRuntime(root, document.createElement("div"), observableOptions, registry);
 		const notebookNames = new Set(["view"]);
 		const view = vi.fn((strings: TemplateStringsArray) => {
 			const node = document.createElement("div") as HTMLDivElement & { value: number };
@@ -43,7 +44,7 @@ describe("runtime definitions", () => {
 						autoview: true,
 						automutable: false,
 					} as ReturnType<typeof transpile>,
-					{ notebookNames, runtimeCompatibility: { displayView: true } },
+					{ notebookNames, runtimeProfile: "observable" },
 				),
 			);
 
@@ -57,7 +58,7 @@ describe("runtime definitions", () => {
 	test("resolves notebook-defined display functions before Notebook Kit display helpers", async () => {
 		const registry = registerAttachments({});
 		const root = document.createElement("div");
-		const runtime = createRuntime(root, document.createElement("div"), baseOptions, registry);
+		const runtime = createRuntime(root, document.createElement("div"), observableOptions, registry);
 		const notebookNames = new Set(["display"]);
 		const display = vi.fn((value: string) => `notebook display: ${value}`);
 
@@ -74,7 +75,7 @@ describe("runtime definitions", () => {
 					autoview: false,
 					automutable: false,
 				} as ReturnType<typeof transpile>,
-				{ notebookNames, runtimeCompatibility: { displayView: true } },
+				{ notebookNames, runtimeProfile: "observable" },
 			);
 			expect(definition.display).toBe(false);
 			runtime.define(
@@ -106,7 +107,7 @@ describe("runtime definitions", () => {
 				autoview: false,
 				automutable: false,
 			} as ReturnType<typeof transpile>,
-			{ notebookNames, runtimeCompatibility: { displayView: true } },
+			{ notebookNames, runtimeProfile: "observable" },
 		);
 		const viewDefinition = createRuntimeDefinition(
 			{ id: 2, mode: "ojs", value: "" } as Cell,
@@ -119,14 +120,14 @@ describe("runtime definitions", () => {
 				autoview: true,
 				automutable: false,
 			} as ReturnType<typeof transpile>,
-			{ notebookNames, runtimeCompatibility: { displayView: true } },
+			{ notebookNames, runtimeProfile: "observable" },
 		);
 
 		expect(displayDefinition.display).toBeUndefined();
 		expect(viewDefinition.display).toBeUndefined();
 	});
 
-	test("keeps Notebook Kit display helpers outside legacy display compatibility", () => {
+	test("keeps Notebook Kit display helpers in the Notebook Kit profile", () => {
 		const definition = createRuntimeDefinition(
 			{ id: 1, mode: "ojs", value: "" } as Cell,
 			{

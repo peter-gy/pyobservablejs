@@ -22,6 +22,9 @@ Mode = Literal[
     "python",
     "r",
 ]
+RuntimeProfile = Literal["notebook-kit", "observable"]
+
+RUNTIME_PROFILE_ATTRIBUTE = "data-pyobservablejs-runtime-profile"
 
 SCRIPT_TYPES = {
     "js": "module",
@@ -38,13 +41,20 @@ SCRIPT_TYPES = {
 }
 
 
-def serialize(spec: Mapping[str, Any]) -> str:
+def serialize(
+    spec: Mapping[str, Any],
+    *,
+    runtime_profile: RuntimeProfile = "notebook-kit",
+) -> str:
     """Render a Notebook Kit HTML document from the Python cell spec."""
 
     theme_value = serialize_theme(spec.get("theme", "air"))
+    notebook_attrs = [f'theme="{_html.escape(theme_value, quote=True)}"']
+    if runtime_profile == "observable":
+        notebook_attrs.append(f'{RUNTIME_PROFILE_ATTRIBUTE}="observable"')
     parts = [
         "<!doctype html>",
-        f'<notebook theme="{_html.escape(theme_value, quote=True)}">',
+        f"<notebook {' '.join(notebook_attrs)}>",
         f"  <title>{_html.escape(str(spec.get('title', 'Untitled')))}</title>",
     ]
     for item in spec.get("cells", []):

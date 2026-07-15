@@ -32,12 +32,13 @@ from ._observable import (
 from ._serialize import serialize
 from ._themes import Theme, normalize_theme
 from ._variables import (
+    OBSERVABLE_RESERVED_VARIABLE_NAMES,
     deserialize_value,
     prepare_variables,
     same_wire_value,
     validate_variable_name,
+    variable_updates_from_args,
 )
-from ._variables import variable_updates_from_args
 from ._anywidget_bundle import Bundle, BundledWidget
 
 
@@ -50,12 +51,6 @@ _OBSERVABLE_WIDGET_BUNDLE = Bundle(
     static_dir=_OBSERVABLE_WIDGET_STATIC_DIR,
     dev_server_env=_OBSERVABLE_WIDGET_DEV_SERVER_ENV,
 )
-_RUNTIME_COMPATIBILITY_VARIABLE_NAMES = {
-    "generators": "Generators",
-    "html": "html",
-    "mutable": "Mutable",
-    "require": "require",
-}
 _MISSING_VARIABLE = object()
 
 
@@ -75,22 +70,6 @@ class CellValues:
     index: int
     key: str | None
     values: dict[str, Any]
-
-
-def validate_runtime_compatibility_variables(
-    values: Mapping[str, Any],
-    runtime_compatibility: object,
-) -> None:
-    if not isinstance(runtime_compatibility, Mapping):
-        return
-    collisions = sorted(
-        name
-        for option, name in _RUNTIME_COMPATIBILITY_VARIABLE_NAMES.items()
-        if runtime_compatibility.get(option) is True and name in values
-    )
-    if collisions:
-        joined = ", ".join(repr(name) for name in collisions)
-        raise ValueError(f"Reserved Observable runtime name: {joined}")
 
 
 class _ObservableWidget(BundledWidget):
@@ -134,6 +113,10 @@ class Notebook(_ObservableWidget):
     """
 
     role = traitlets.Unicode("session").tag(sync=True)
+    _runtime_profile = traitlets.Enum(
+        values=["notebook-kit", "observable"],
+        default_value="notebook-kit",
+    ).tag(sync=True)
     _source = traitlets.Unicode("").tag(sync=True)
     _spec = traitlets.Dict().tag(sync=True)
     theme = traitlets.Any(default_value="air").tag(sync=True)
@@ -227,56 +210,32 @@ class Notebook(_ObservableWidget):
         variables: Mapping[str, Any] | None,
         show_pinned_source: bool,
     ) -> None:
-        self._initialize(
-            source=model.source,
-            spec=model.spec,
-            theme=model.theme,
-            attachments=model.attachments,
-            variables=variables,
-            show_pinned_source=show_pinned_source,
-            runtime_compatibility=model.runtime_compatibility,
-            cell_keys=model.cell_keys,
-            cell_names=model.cell_names,
+        self._reserved_variable_names = (
+            OBSERVABLE_RESERVED_VARIABLE_NAMES
+            if model.runtime_profile == "observable"
+            else frozenset()
         )
-
-    def _initialize(
-        self,
-        *,
-        source: str,
-        spec: Mapping[str, Any],
-        theme: Theme,
-        attachments: Mapping[str, FileAttachment],
-        variables: Mapping[str, Any] | None,
-        show_pinned_source: bool,
-        runtime_compatibility: Mapping[str, bool],
-        cell_keys: Sequence[str],
-        cell_names: Sequence[str],
-    ) -> None:
-        self._variable_values, variable_wire = prepare_variables(variables)
-        self._cell_names = tuple(cell_names)
+        self._variable_values, variable_wire = self._prepare_variables(variables)
+        self._cell_names = tuple(model.cell_names)
         self._cell_cache: dict[int, NotebookCell] = {}
         self._views: weakref.WeakSet[NotebookView] = weakref.WeakSet()
         self._notebook_closed = False
-        spec_dict = dict(spec)
-        if not source:
-            spec_dict["theme"] = theme
+        spec = dict(model.spec)
+        if not model.source:
+            spec["theme"] = model.theme
         options: dict[str, Any] = {"show_source": show_pinned_source}
-        if runtime_compatibility:
-            options["runtime_compatibility"] = dict(runtime_compatibility)
-        validate_runtime_compatibility_variables(
-            self._variable_values, options.get("runtime_compatibility")
-        )
         self._variable_update_seq = 0
         self._initializing_notebook = True
         try:
             super().__init__(
-                _source=source,
-                _spec=spec_dict,
-                theme=theme,
-                _attachments=dict(attachments),
+                _runtime_profile=model.runtime_profile,
+                _source=model.source,
+                _spec=spec,
+                theme=model.theme,
+                _attachments=dict(model.attachments),
                 _variables=variable_wire,
                 _options=options,
-                _cell_keys=list(cell_keys),
+                _cell_keys=list(model.cell_keys),
             )
         finally:
             self._initializing_notebook = False
@@ -350,10 +309,9 @@ class Notebook(_ObservableWidget):
         """
 
         self._require_open()
-        self._replace_variables(
-            variable_updates_from_args("replace_variables", values, kwargs),
-            update_kind="replace",
-        )
+        replacement = variable_updates_from_args("replace_variables", values, kwargs)
+        prepared, serialized = self._prepare_variables(replacement)
+        self._apply_variable_replacement(prepared, serialized)
 
     def reset_variables(self, *names: str) -> None:
         """Release Python ownership for names that are currently overridden.
@@ -366,7 +324,7 @@ class Notebook(_ObservableWidget):
         self._require_open()
         if not names:
             return
-        validated_names = tuple(validate_variable_name(name) for name in names)
+        validated_names = tuple(self._validate_variable_name(name) for name in names)
         values = dict(self._variable_values)
         serialized = dict(self._variables)
         changed = False
@@ -379,7 +337,6 @@ class Notebook(_ObservableWidget):
             self._apply_variable_replacement(
                 values,
                 serialized,
-                update_kind="replace",
             )
 
     def _require_open(self) -> None:
@@ -387,8 +344,7 @@ class Notebook(_ObservableWidget):
             raise RuntimeError("Cannot mutate a closed Notebook")
 
     def _patch_variables(self, updates: Mapping[str, Any]) -> None:
-        self._validate_runtime_compatibility_variables(updates)
-        prepared_updates, serialized_updates = prepare_variables(updates)
+        prepared_updates, serialized_updates = self._prepare_variables(updates)
         cleared_view_names = self._clear_view_values(serialized_updates)
         changed = {
             name: value
@@ -413,26 +369,21 @@ class Notebook(_ObservableWidget):
         )
         self.set_trait("_variables", {**self._variables, **changed_wire})
 
-    def _replace_variables(
-        self,
-        value: Mapping[str, Any],
-        *,
-        update_kind: str = "replace",
-    ) -> None:
-        self._validate_runtime_compatibility_variables(value)
-        prepared, serialized = prepare_variables(value)
-        self._apply_variable_replacement(
-            prepared,
-            serialized,
-            update_kind=update_kind,
+    def _prepare_variables(
+        self, values: Mapping[str, Any] | None
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        return prepare_variables(values, reserved_names=self._reserved_variable_names)
+
+    def _validate_variable_name(self, name: object) -> str:
+        return validate_variable_name(
+            name,
+            reserved_names=self._reserved_variable_names,
         )
 
     def _apply_variable_replacement(
         self,
         values: Mapping[str, Any],
         serialized: Mapping[str, Any],
-        *,
-        update_kind: str,
     ) -> None:
         python_names = set(self._variable_values).union(serialized)
         cleared_view_names = self._clear_view_values(python_names)
@@ -445,7 +396,7 @@ class Notebook(_ObservableWidget):
             "_variable_update",
             {
                 "seq": self._variable_update_seq,
-                "kind": update_kind,
+                "kind": "replace",
                 "values": wire,
             },
         )
@@ -463,13 +414,6 @@ class Notebook(_ObservableWidget):
                 },
             )
         return cleared_names
-
-    def _validate_runtime_compatibility_variables(
-        self, values: Mapping[str, Any]
-    ) -> None:
-        validate_runtime_compatibility_variables(
-            values, self._options.get("runtime_compatibility")
-        )
 
     @property
     def cells(self) -> tuple[NotebookCell, ...]:
@@ -980,9 +924,14 @@ class NotebookView(_ObservableWidget):
         from_json=_WIDGET_FROM_JSON,
     )
     _cell_indexes = traitlets.Any(default_value=None, allow_none=True).tag(sync=True)
-    _has_rendered = traitlets.Bool(False).tag(sync=True)
-    _graph = traitlets.Dict(default_value={}).tag(sync=True)
-    _cell_values = traitlets.Dict(default_value={}).tag(sync=True)
+    _readback = traitlets.Dict(
+        default_value={
+            "revision": 0,
+            "rendered": False,
+            "graph": {},
+            "cells": {},
+        }
+    ).tag(sync=True)
 
     def __init__(
         self,
@@ -1025,6 +974,32 @@ class NotebookView(_ObservableWidget):
         if len(value) != len(set(value)):
             raise traitlets.TraitError("_cell_indexes must contain unique indexes")
         return sorted(value)
+
+    @traitlets.validate("_readback")
+    def _validate_readback(self, proposal: Any) -> dict[str, Any]:
+        value = proposal["value"]
+        revision = value.get("revision")
+        if (
+            not isinstance(revision, int)
+            or isinstance(revision, bool)
+            or revision < 0
+            or revision > (1 << 53) - 1
+            or not isinstance(value.get("rendered"), bool)
+            or not isinstance(value.get("graph"), Mapping)
+            or not isinstance(value.get("cells"), Mapping)
+        ):
+            raise traitlets.TraitError(
+                "_readback must be a revisioned browser snapshot"
+            )
+        current = self._trait_values.get("_readback")
+        current_revision = (
+            current.get("revision") if isinstance(current, Mapping) else -1
+        )
+        # Marimo transports model saves as independent requests, so a delayed
+        # snapshot must not replace one that Python has already accepted.
+        if isinstance(current_revision, int) and revision <= current_revision:
+            return cast(dict[str, Any], current)
+        return cast(dict[str, Any], value)
 
     @property
     def notebook(self) -> Notebook:
@@ -1081,17 +1056,13 @@ class NotebookView(_ObservableWidget):
     def has_rendered(self) -> bool:
         """Whether this view has synchronized a complete browser render."""
 
-        return self._has_rendered
+        return self._readback.get("rendered") is True
 
     @property
     def has_graph_snapshot(self) -> bool:
         """Whether this view has synchronized notebook graph metadata."""
 
-        return (
-            isinstance(self._graph, Mapping)
-            and isinstance(self._graph.get("cells"), list)
-            and isinstance(self._graph.get("edges"), list)
-        )
+        return graph_from_raw(self._readback.get("graph")) is not None
 
     def _require_rendered(self) -> None:
         if not self.has_rendered:
@@ -1099,20 +1070,15 @@ class NotebookView(_ObservableWidget):
                 "NotebookView readback is available after the view renders in a browser"
             )
 
-    def _require_graph_snapshot(self) -> None:
-        if not self.has_graph_snapshot:
-            raise NotRenderedError(
-                "NotebookView graph metadata is available after the view renders in a browser"
-            )
-
     @property
     def graph(self) -> NotebookGraph:
         """Symbolic cell graph synchronized from this browser view."""
 
-        self._require_graph_snapshot()
-        graph = graph_from_raw(self._graph)
+        graph = graph_from_raw(self._readback.get("graph"))
         if graph is None:
-            raise NotRenderedError("Browser graph snapshot is unavailable")
+            raise NotRenderedError(
+                "NotebookView graph metadata is available after the view renders in a browser"
+            )
         return graph
 
     @property
@@ -1121,7 +1087,8 @@ class NotebookView(_ObservableWidget):
 
         self._require_rendered()
         owners: dict[str, tuple[int, Any]] = {}
-        for record in self._cell_values.values():
+        cells = self._readback.get("cells")
+        for record in cells.values() if isinstance(cells, Mapping) else ():
             if not isinstance(record, Mapping):
                 continue
             values = record.get("values")
@@ -1161,12 +1128,10 @@ class NotebookView(_ObservableWidget):
 
         return self.runtime_values[name]
 
-    def _cell_record(self, index: int) -> Mapping[str, Any]:
-        record = self._cell_values.get(str(index))
-        return record if isinstance(record, Mapping) else {}
-
     def _cell_runtime_values(self, index: int) -> dict[str, Any]:
-        values = self._cell_record(index).get("values")
+        cells = self._readback.get("cells")
+        record = cells.get(str(index)) if isinstance(cells, Mapping) else None
+        values = record.get("values") if isinstance(record, Mapping) else None
         if not isinstance(values, Mapping):
             return {}
         return {

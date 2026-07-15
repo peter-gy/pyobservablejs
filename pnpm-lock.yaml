@@ -15,6 +15,9 @@ catalogs:
     '@observablehq/parser':
       specifier: ^6.1.0
       version: 6.1.0
+    '@observablehq/stdlib':
+      specifier: ^5.8.8
+      version: 5.8.8
     '@shikijs/core':
       specifier: ^4.3.1
       version: 4.3.1
@@ -115,6 +118,9 @@ importers:
       '@observablehq/parser':
         specifier: 'catalog:'
         version: 6.1.0
+      '@observablehq/stdlib':
+        specifier: 'catalog:'
+        version: 5.8.8
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
@@ -509,6 +515,10 @@ packages:
 
   '@observablehq/runtime@6.0.0':
     resolution: {integrity: sha512-t3UXP69O0JK20HY/neF4/DDDSDorwo92As806Y1pNTgTmj1NtoPyVpesYzfH31gTFOFrXC2cArV+wLpebMk9eA==}
+
+  '@observablehq/stdlib@5.8.8':
+    resolution: {integrity: sha512-XxVfXX4N+8QYqg308+KT2cpXcsiL6yFphrYNOyCNReqezeoK0Zd9xOdSvo/0NX8NJ8HypIZdTQNwPeOvQWOm2Q==}
+    engines: {node: '>=14.5.0'}
 
   '@oxc-project/runtime@0.138.0':
     resolution: {integrity: sha512-yHhoXsN8tYxgdJCdD91PbySNjEEaBX/tH2OQRDXJpsQv5b184oC4/qVbU7qlblvfil/JP15Lh2HW7+HN5DS90Q==}
@@ -1080,6 +1090,10 @@ packages:
   comma-separated-tokens@2.0.3:
     resolution: {integrity: sha512-Fu4hJdvzeylCfQPp9SGWidpzrMs7tTrlu6Vb8XGaRGck8QSNZJJp538Wrb60Lax4fPwR64ViY468OIUTbRlGZg==}
 
+  commander@7.2.0:
+    resolution: {integrity: sha512-QrWXB+ZQSVPmIWIhtEO9H+gwHaMGYiF5ChvoJ+K9ZGHG/sVsa6yiesAD1GC/x46sET00Xlwo1u49RVVVzvcSkw==}
+    engines: {node: '>= 10'}
+
   convert-source-map@2.0.0:
     resolution: {integrity: sha512-Kvp459HrV2FEJ1CAsi1Ku+MY3kasH19TFykTz2xWmMeq6bk2NU3XXvfJ+Q61m0xktWwt+1HSYf3JZsTms3aRJg==}
 
@@ -1090,6 +1104,18 @@ packages:
   cssstyle@4.6.0:
     resolution: {integrity: sha512-2z+rWdzbbSZv6/rhtvzvqeZQHrBaqgogqt85sqFNbabZOuFbCVFb8kPeEtZjiKkbrm395irpNKiYeFeLiQnFPg==}
     engines: {node: '>=18'}
+
+  d3-array@3.2.4:
+    resolution: {integrity: sha512-tdQAmyA18i4J7wprpYq8ClcxZy3SC31QMeByyCFyRt7BVHdREQZ5lpzoe5mFEYZUWe+oq8HBvk9JjpibyEV4Jg==}
+    engines: {node: '>=12'}
+
+  d3-dsv@3.0.1:
+    resolution: {integrity: sha512-UG6OvdI5afDIFP9w4G0mNq50dSOsXHJaRE8arAS5o9ApWnIElp8GZw1Dun8vP8OyHOZ/QJUKUJwxiiCCnUwm+Q==}
+    engines: {node: '>=12'}
+    hasBin: true
+
+  d3-require@1.3.0:
+    resolution: {integrity: sha512-XaNc2azaAwXhGjmCMtxlD+AowpMfLimVsAoTMpqrvb8CWoA4QqyV12mc4Ue6KSoDvfuS831tsumfhDYxGd4FGA==}
 
   data-urls@5.0.0:
     resolution: {integrity: sha512-ZYP5VBHshaDAiVZxjbRVcFJpc+4xGgT0bK3vzy1HLN8jTO975HEbuYzZJcHoQEY5K1a0z8YayJkyVETa08eNTg==}
@@ -1198,6 +1224,10 @@ packages:
   iconv-lite@0.6.3:
     resolution: {integrity: sha512-4fCk79wshMdzMp2rH06qWrJE4iolqLhCUH+OiuIgU++RB0+94NlDL81atO7GX55uUKueo0txHNtvEyI6D7WdMw==}
     engines: {node: '>=0.10.0'}
+
+  internmap@2.0.3:
+    resolution: {integrity: sha512-5Hh7Y1wQbvY5ooGgPbDaL5iYLAPzMTUrjMulskHLH6wnv/A+1q5rgEaiuqEjB+oxGXIVZs1FF+R/KPN3ZSQYYg==}
+    engines: {node: '>=12'}
 
   is-potential-custom-element-name@1.0.1:
     resolution: {integrity: sha512-bCYeRA2rVibKZd+s2625gGnGF/t7DSqDs4dP7CrLA1m7jKWz6pps0LpYLJN8Q64HtmPKJ1hrN3nzPNKFEKOUiQ==}
@@ -1467,6 +1497,9 @@ packages:
 
   rrweb-cssom@0.8.0:
     resolution: {integrity: sha512-guoltQEx+9aMf2gDZ0s62EcV8lsXR+0w8915TC3ITdn2YueuNjdAYh/levpU9nFaoChh9RUS5ZdQMrKfVEN9tw==}
+
+  rw@1.3.3:
+    resolution: {integrity: sha512-PdhdWy89SiZogBLaw42zdeqtRJ//zFd2PgQavcICDUgJT5oW10QCRKbJ6bg4r0/UY2M6BWd5tkxuGFRvCkgfHQ==}
 
   safer-buffer@2.1.2:
     resolution: {integrity: sha512-YZo3K82SD7Riyi0E1EQPojLz7kpepnSQI9IyPbHHg1XXXevb5dJI7tpyN2ADxGcQbHG7vcyRHk0cbwqcQriUtg==}
@@ -1988,6 +2021,12 @@ snapshots:
 
   '@observablehq/runtime@6.0.0': {}
 
+  '@observablehq/stdlib@5.8.8':
+    dependencies:
+      d3-array: 3.2.4
+      d3-dsv: 3.0.1
+      d3-require: 1.3.0
+
   '@oxc-project/runtime@0.138.0': {}
 
   '@oxc-project/types@0.138.0': {}
@@ -2379,6 +2418,8 @@ snapshots:
 
   comma-separated-tokens@2.0.3: {}
 
+  commander@7.2.0: {}
+
   convert-source-map@2.0.0: {}
 
   css-tree@3.2.1:
@@ -2390,6 +2431,18 @@ snapshots:
     dependencies:
       '@asamuzakjp/css-color': 3.2.0
       rrweb-cssom: 0.8.0
+
+  d3-array@3.2.4:
+    dependencies:
+      internmap: 2.0.3
+
+  d3-dsv@3.0.1:
+    dependencies:
+      commander: 7.2.0
+      iconv-lite: 0.6.3
+      rw: 1.3.3
+
+  d3-require@1.3.0: {}
 
   data-urls@5.0.0:
     dependencies:
@@ -2519,6 +2572,8 @@ snapshots:
   iconv-lite@0.6.3:
     dependencies:
       safer-buffer: 2.1.2
+
+  internmap@2.0.3: {}
 
   is-potential-custom-element-name@1.0.1: {}
 
@@ -2817,6 +2872,8 @@ snapshots:
   require-from-string@2.0.2: {}
 
   rrweb-cssom@0.8.0: {}
+
+  rw@1.3.3: {}
 
   safer-buffer@2.1.2: {}
 

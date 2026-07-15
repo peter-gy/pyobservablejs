@@ -9,7 +9,7 @@ from typing import Any, cast
 
 from ._cells import Cell, NotebookCellInput, NotebookCellSpec, coerce_cell
 from ._files import FileAttachment, FileInput, normalize_files, prepare_source
-from ._html import parse_html_cells, parse_html_theme
+from ._html import parse_html_cells, parse_html_runtime_profile, parse_html_theme
 from ._observable import (
     ObservableDocument,
     ObservableFileInput,
@@ -17,10 +17,11 @@ from ._observable import (
     ObservableNodeInput,
     ObservablePageData,
     fetch_observablehq_document,
+    observable_document_import_resolution,
     observable_files_to_attachments,
     observable_nodes_to_cells,
 )
-from ._serialize import SCRIPT_TYPES, Mode, serialize
+from ._serialize import SCRIPT_TYPES, Mode, RuntimeProfile, serialize
 from ._themes import Theme, normalize_theme
 
 
@@ -98,7 +99,7 @@ class NotebookModel:
     nodes: tuple[NotebookNode, ...] = ()
     source: str = ""
     attachments: Mapping[str, FileAttachment] = dataclasses.field(default_factory=dict)
-    runtime_compatibility: Mapping[str, bool] = dataclasses.field(default_factory=dict)
+    runtime_profile: RuntimeProfile = "notebook-kit"
 
     @property
     def spec(self) -> dict[str, Any]:
@@ -169,6 +170,7 @@ def notebook_model_from_html(
         nodes=_validate_unique_keys(nodes),
         source=source,
         attachments={**discovered, **normalized},
+        runtime_profile=parse_html_runtime_profile(source),
     )
 
 
@@ -199,6 +201,7 @@ def notebook_model_from_observablehq_document(
         files=_document_files(typed_document),
         title=title or _document_title(typed_document),
         local_files=files,
+        import_resolution=observable_document_import_resolution(typed_document),
     )
 
 
@@ -222,10 +225,11 @@ def notebook_model_from_observablehq_nodes(
     files: ObservableFilesInput = None,
     title: str = "Untitled",
     local_files: Mapping[str, FileInput] | None = None,
+    import_resolution: str | None = None,
 ) -> NotebookModel:
     if not isinstance(nodes, Sequence) or isinstance(nodes, (str, bytes, bytearray)):
         raise TypeError("ObservableHQ nodes must be a sequence of node mappings")
-    cells = observable_nodes_to_cells(nodes)
+    cells = observable_nodes_to_cells(nodes, import_resolution=import_resolution)
     spec = {"title": title, "theme": "air", "cells": cells}
     discovered = observable_files_to_attachments(files)
     normalized = normalize_files(local_files, base_path=None)
@@ -234,15 +238,9 @@ def notebook_model_from_observablehq_nodes(
         title=title,
         theme="air",
         nodes=_validate_unique_keys(model_nodes),
-        source=serialize(spec),
+        source=serialize(spec, runtime_profile="observable"),
         attachments={**discovered, **normalized},
-        runtime_compatibility={
-            "display_view": True,
-            "generators": True,
-            "html": True,
-            "mutable": True,
-            "require": True,
-        },
+        runtime_profile="observable",
     )
 
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from collections.abc import Sequence
 from html.parser import HTMLParser
-from typing import Any
+from typing import Any, cast
 
 import pytest
 import observablejs as obs
@@ -128,9 +128,9 @@ def browser_graph_sync() -> BrowserGraphSync:
             cell.key: cell.id if cell.id is not None else index + 1
             for index, cell in enumerate(cells)
         }
-        widget.set_trait(
-            "_graph",
-            {
+        _sync_browser_readback(
+            widget,
+            graph={
                 "cells": [
                     _browser_graph_cell(index=index, id=index + 1, cell=cell)
                     for index, cell in enumerate(cells)
@@ -185,18 +185,40 @@ def browser_value_sync() -> BrowserValueSync:
         *,
         index: int = 0,
     ) -> None:
-        if not view.has_graph_snapshot:
-            view.set_trait("_graph", {"cells": [], "edges": []})
-        records = dict(view._cell_values)
+        current = cast(dict[str, Any], view._readback)
+        graph = (
+            cast(dict[str, Any], current["graph"])
+            if view.has_graph_snapshot
+            else {"cells": [], "edges": []}
+        )
+        records = dict(cast(dict[str, Any], current["cells"]))
         records[str(index)] = {
             "rendered": True,
             "names": list(value_names if value_names is not None else values),
             "values": values,
         }
-        view.set_trait("_cell_values", records)
-        view.set_trait("_has_rendered", True)
+        _sync_browser_readback(view, rendered=True, graph=graph, cells=records)
 
     return sync
+
+
+def _sync_browser_readback(
+    view: obs.NotebookView,
+    *,
+    rendered: bool | None = None,
+    graph: dict[str, Any] | None = None,
+    cells: dict[str, Any] | None = None,
+) -> None:
+    current = cast(dict[str, Any], view._readback)
+    view.set_trait(
+        "_readback",
+        {
+            "revision": current["revision"] + 1,
+            "rendered": current["rendered"] if rendered is None else rendered,
+            "graph": current["graph"] if graph is None else graph,
+            "cells": current["cells"] if cells is None else cells,
+        },
+    )
 
 
 def _browser_graph_cell(

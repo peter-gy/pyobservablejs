@@ -92,11 +92,13 @@ class NotebookGraph:
 
 
 def graph_from_raw(raw: Any) -> NotebookGraph | None:
-    """Decode the synced graph trait into immutable public objects."""
+    """Decode synced graph metadata into immutable public objects."""
 
-    if not isinstance(raw, Mapping):
-        return None
-    if not raw:
+    if (
+        not isinstance(raw, Mapping)
+        or not isinstance(raw.get("cells"), list | tuple)
+        or not isinstance(raw.get("edges"), list | tuple)
+    ):
         return None
     cells = tuple(
         cell

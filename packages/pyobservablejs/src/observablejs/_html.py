@@ -7,7 +7,12 @@ from html.parser import HTMLParser
 from typing import Any, cast
 
 from ._cells import Cell
-from ._serialize import SCRIPT_TYPES, Mode
+from ._serialize import (
+    RUNTIME_PROFILE_ATTRIBUTE,
+    SCRIPT_TYPES,
+    Mode,
+    RuntimeProfile,
+)
 from ._themes import Theme, deserialize_theme_attribute
 
 
@@ -23,6 +28,7 @@ class _NotebookHTMLParser(HTMLParser):
         super().__init__(convert_charrefs=True)
         self.cells: list[Cell] = []
         self.theme: Theme | None = None
+        self.runtime_profile: RuntimeProfile | None = None
         self._inside_notebook = False
         self._script_attrs: dict[str, str | None] | None = None
         self._script_parts: list[str] = []
@@ -33,6 +39,9 @@ class _NotebookHTMLParser(HTMLParser):
             attrs_by_name = {name.lower(): value for name, value in attrs}
             if self.theme is None:
                 self.theme = deserialize_theme_attribute(attrs_by_name.get("theme"))
+                self.runtime_profile = _runtime_profile(
+                    attrs_by_name.get(RUNTIME_PROFILE_ATTRIBUTE)
+                )
             self._inside_notebook = True
             return
         if tag != "script" or not self._inside_notebook:
@@ -103,6 +112,20 @@ def parse_html_theme(source: str) -> Theme:
     parser = _NotebookHTMLParser()
     parser.feed(source)
     return parser.theme or "air"
+
+
+def parse_html_runtime_profile(source: str) -> RuntimeProfile:
+    parser = _NotebookHTMLParser()
+    parser.feed(source)
+    return parser.runtime_profile or "notebook-kit"
+
+
+def _runtime_profile(value: str | None) -> RuntimeProfile:
+    if value is None or value == "notebook-kit":
+        return "notebook-kit"
+    if value == "observable":
+        return "observable"
+    raise ValueError(f"Unsupported pyobservablejs runtime profile: {value!r}")
 
 
 def _optional_int(value: str | None) -> int | None:

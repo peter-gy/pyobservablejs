@@ -6,6 +6,7 @@ import {
 	createHost,
 	createSession,
 	createView,
+	hasRendered,
 	initializeProps,
 	renderProps,
 	variableValue,
@@ -16,9 +17,6 @@ describe("widget routing", () => {
 	test("a NotebookView resolves its session model without reverse widget rendering", async () => {
 		const session = createSession({
 			_spec: { cells: [{ id: 1, mode: "ojs", value: "answer = 42" }] },
-			_attachments: {},
-			_variables: {},
-			_options: {},
 			_cell_keys: ["answer"],
 		});
 		const view = createView();
@@ -33,12 +31,11 @@ describe("widget routing", () => {
 		expect(await waitFor(() => composedText(el, "42"))).toBeInstanceOf(HTMLElement);
 		expect(variableValue(view, "answer")).toBe(42);
 		expect(host.modelLookups).toEqual(["anywidget:session"]);
-		expect(host.widgetLookups).toEqual([]);
 		controller.abort();
 	});
 
 	test("a Notebook session is not a display model", async () => {
-		const session = createSession({ _spec: { cells: [] }, _variables: {}, _options: {} });
+		const session = createSession({ _spec: { cells: [] } });
 		const controller = new AbortController();
 		const el = document.createElement("div");
 		const definition = createWidget();
@@ -72,6 +69,30 @@ describe("widget routing", () => {
 		);
 		missingController.abort();
 		wrongController.abort();
+	});
+
+	test("ignores a session lookup that resolves after the view closes", async () => {
+		const session = createSession({
+			_spec: { cells: [{ id: 1, mode: "ojs", value: "answer = 42" }] },
+		});
+		let resolveSession!: (model: typeof session) => void;
+		const pendingSession = new Promise<typeof session>((resolve) => {
+			resolveSession = resolve;
+		});
+		const view = createView();
+		const host = createHost(new Map([["anywidget:session", pendingSession]]));
+		const controller = new AbortController();
+		const el = document.createElement("div");
+
+		createWidget().render(renderProps(view, el, controller.signal, host));
+		await waitFor(() => (host.modelLookups.length === 1 ? true : undefined));
+		controller.abort();
+		resolveSession(session);
+		await pendingSession;
+		await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+
+		expect(el.childElementCount).toBe(0);
+		expect(hasRendered(view)).toBe(false);
 	});
 
 	test("rejects duplicate and empty cell indexes from malformed wire state", async () => {

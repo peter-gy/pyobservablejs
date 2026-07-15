@@ -13,7 +13,7 @@ import datetime as _dt
 import math
 import re
 import sys
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Collection, Iterable, Iterator, Mapping
 from typing import Any
 
 TYPE_KEY = "__observablejs_type__"
@@ -57,6 +57,7 @@ RESERVED_VARIABLE_NAMES = frozenset(
         "htl",
         "html",
         "industries",
+        "invalidation",
         "mapboxgl",
         "md",
         "mermaid",
@@ -69,14 +70,18 @@ RESERVED_VARIABLE_NAMES = frozenset(
         "tex",
         "topojson",
         "vl",
+        "visibility",
         "weather",
         "width",
     }
 )
+OBSERVABLE_RESERVED_VARIABLE_NAMES = frozenset({"__query", "require", "resolve"})
 
 
 def prepare_variables(
     values: Mapping[str, Any] | None,
+    *,
+    reserved_names: Collection[str] = (),
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Return replayable Python values and their serialized wire snapshot."""
 
@@ -89,7 +94,7 @@ def prepare_variables(
     prepared: dict[str, Any] = {}
     serialized: dict[str, Any] = {}
     for name, value in values.items():
-        validate_variable_name(name)
+        validate_variable_name(name, reserved_names=reserved_names)
         prepared_value = _materialize_iterators(value)
         prepared[name] = prepared_value
         serialized[name] = serialize_value(prepared_value)
@@ -138,10 +143,14 @@ def same_wire_value(left: Any, right: Any) -> bool:
     return bool(left == right)
 
 
-def validate_variable_name(name: object) -> str:
+def validate_variable_name(
+    name: object,
+    *,
+    reserved_names: Collection[str] = (),
+) -> str:
     if not isinstance(name, str) or not _IDENTIFIER_RE.match(name):
         raise ValueError(f"Invalid Observable variable name: {name!r}")
-    if name in RESERVED_VARIABLE_NAMES:
+    if name in RESERVED_VARIABLE_NAMES or name in reserved_names:
         raise ValueError(f"Reserved Observable runtime name: {name!r}")
     return name
 

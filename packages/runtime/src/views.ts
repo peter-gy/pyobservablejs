@@ -11,11 +11,6 @@ export type RuntimeVariablesSync = {
 	deleteView(name: string, view: ViewTarget): void;
 };
 
-export type NestedSelectState = Array<{
-	selectedIndex: number;
-	value: string;
-}>;
-
 export type ViewWriteResult = "applied" | "unsupported";
 
 export function isViewTarget(value: unknown): value is ViewTarget {
@@ -34,16 +29,7 @@ export function readViewValue(view: ViewTarget): unknown {
 	return view.value;
 }
 
-export function readNestedSelectState(view: ViewTarget): NestedSelectState | undefined {
-	const selects = nestedSelects(view);
-	if (selects.length === 0) return undefined;
-	return selects.map((select) => ({
-		selectedIndex: select.selectedIndex,
-		value: select.value,
-	}));
-}
-
-export function writeViewValue(view: ViewTarget, value: unknown, nestedState?: NestedSelectState): ViewWriteResult {
+export function writeViewValue(view: ViewTarget, value: unknown): ViewWriteResult {
 	const expected = expectedWireValue(view, value);
 	if (view instanceof HTMLInputElement) {
 		if (view.type === "checkbox") {
@@ -62,7 +48,7 @@ export function writeViewValue(view: ViewTarget, value: unknown, nestedState?: N
 		for (const option of view.options) option.selected = selected.has(option.value);
 	} else {
 		view.value = value;
-		restoreNestedSelectValue(view, value, nestedState);
+		restoreNestedSelectValue(view, value);
 	}
 	if (!sameWireValue(toWireValue(readViewValue(view)), expected)) return "unsupported";
 	view.dispatchEvent(new Event("input", { bubbles: true }));
@@ -70,11 +56,10 @@ export function writeViewValue(view: ViewTarget, value: unknown, nestedState?: N
 	return "applied";
 }
 
-function restoreNestedSelectValue(view: ViewTarget, value: unknown, nestedState?: NestedSelectState): void {
+function restoreNestedSelectValue(view: ViewTarget, value: unknown): void {
 	if (!(view instanceof Element)) return;
 	const expected = toWireValue(value);
 	if (sameWireValue(toWireValue(readViewValue(view)), expected)) return;
-	if (nestedState && applyNestedSelectState(view, nestedState, expected)) return;
 	const selects = nestedSelects(view);
 	const fallback = selects.map((select) => [select, select.selectedIndex] as const);
 	for (const select of selects) {
@@ -97,25 +82,6 @@ function nestedSelects(view: ViewTarget): HTMLSelectElement[] {
 	const selects = Array.from(view.querySelectorAll("select"));
 	if (view instanceof HTMLSelectElement) selects.unshift(view);
 	return selects;
-}
-
-function applyNestedSelectState(view: ViewTarget, state: NestedSelectState, expected: unknown): boolean {
-	const selects = nestedSelects(view);
-	let applied = false;
-	for (let index = 0; index < state.length; index++) {
-		const select = selects[index];
-		const selected = state[index];
-		if (!select || !selected) continue;
-		const selectedIndex =
-			select.options[selected.selectedIndex]?.value === selected.value
-				? selected.selectedIndex
-				: Array.from(select.options).findIndex((option) => option.value === selected.value);
-		if (selectedIndex < 0) continue;
-		select.selectedIndex = selectedIndex;
-		dispatchSelectEvents(select);
-		applied = true;
-	}
-	return applied && sameWireValue(toWireValue(readViewValue(view)), expected);
 }
 
 function dispatchSelectEvents(select: HTMLSelectElement): void {

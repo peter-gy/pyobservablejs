@@ -2,8 +2,13 @@ export { createDuckDBClient, createFileAttachment, registerAttachments, SQLiteDa
 export type { AttachmentInfo, AttachmentRegistry } from "./attachments";
 export { createRuntimeDefinition, exposedVariableNames, unprefix, viewVariableName } from "./definition";
 export type { RuntimeCellDefinition, RuntimeDefinitionOptions } from "./definition";
-export { createRuntime, createRuntimeCleanup, setRuntimeVariables } from "./environment";
-export type { NotebookOptions, RuntimeOptions } from "./environment";
+export {
+	assertNoRuntimeBuiltinCollisions,
+	createRuntime,
+	createRuntimeCleanup,
+	setRuntimeVariables,
+} from "./environment";
+export type { NotebookOptions, RuntimeOptions, RuntimeProfile } from "./environment";
 export { defineCompiledRuntimeCell, defineRuntimeCell, observeRuntimeVariable } from "./execution";
 export type { DefinedCell } from "./execution";
 export {
@@ -21,14 +26,8 @@ export type { RuntimeInputs } from "./inputs";
 export { createRuntimeSession } from "./session";
 export type { RuntimeSession } from "./session";
 
-export type { NestedSelectState, RuntimeVariablesSync, ViewTarget, ViewWriteResult } from "./views";
+export type { RuntimeVariablesSync, ViewTarget, ViewWriteResult } from "./views";
 export { runtimeDocument } from "./scope";
-export {
-	createGenerators,
-	createObservableHtml,
-	createRuntimeCompatibilityBuiltins,
-	runtimeCompatibilityBuiltinNames,
-} from "./compat";
 export {
 	createVariableBuiltins,
 	isWritableSyncedViewValue,
@@ -37,4 +36,4 @@ export {
 	sameWireValue,
 	toWireValue,
 } from "./values";
-export { isViewTarget, readNestedSelectState, readViewValue, writeViewValue } from "./views";
+export { isViewTarget, readViewValue, writeViewValue } from "./views";

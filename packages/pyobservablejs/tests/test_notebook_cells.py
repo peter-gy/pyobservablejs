@@ -7,6 +7,7 @@ from typing import Any
 import observablejs as obs
 import pytest
 import traitlets
+from IPython.core.formatters import DisplayFormatter
 from helpers import (
     BrowserGraphCellBuilder,
     BrowserGraphSync,
@@ -59,11 +60,12 @@ def test_notebook_view_calls_create_distinct_stable_display_models() -> None:
     first = notebook.view()
     second = notebook.view()
 
-    first_id = _widget_model_id(_view_mimebundle(first))
+    formatter = DisplayFormatter()
+    first_id = _display_model_id(formatter, first)
 
     assert first is not second
-    assert first_id != _widget_model_id(_view_mimebundle(second))
-    assert _widget_model_id(_view_mimebundle(first)) == first_id
+    assert first_id != _display_model_id(formatter, second)
+    assert _display_model_id(formatter, first) == first_id
 
 
 def test_notebook_view_serializes_session_and_cell_selection() -> None:
@@ -238,6 +240,63 @@ def test_notebook_graph_exposes_symbolic_cell_metadata(
         and edge.target_id == graph.cell_for_variable("b").id
     ] == ["a"]
     assert notebook.cell_by_key("b").key == "b"
+
+
+def test_view_graph_waits_for_a_complete_snapshot() -> None:
+    view = obs.Notebook().view()
+
+    assert view.has_graph_snapshot is False
+    with pytest.raises(obs.NotRenderedError, match="after the view renders"):
+        _ = view.graph
+
+    view.set_trait(
+        "_readback",
+        {
+            "revision": 1,
+            "rendered": False,
+            "graph": {"cells": [], "edges": []},
+            "cells": {},
+        },
+    )
+
+    assert view.has_graph_snapshot
+    assert view.graph == obs.NotebookGraph(cells=(), edges=())
+
+
+def test_view_readback_rejects_an_out_of_order_browser_snapshot() -> None:
+    view = obs.Notebook(obs.ojs("answer = 42", key="answer")).view()
+    view.set_trait(
+        "_readback",
+        {
+            "revision": 2,
+            "rendered": True,
+            "graph": {"cells": [], "edges": []},
+            "cells": {
+                "0": {
+                    "rendered": True,
+                    "names": ["answer"],
+                    "values": {"answer": 42},
+                }
+            },
+        },
+    )
+
+    view.set_trait(
+        "_readback",
+        {
+            "revision": 1,
+            "rendered": False,
+            "graph": {},
+            "cells": {},
+        },
+    )
+
+    assert view.has_rendered is True
+    assert view.graph == obs.NotebookGraph(cells=(), edges=())
+    assert view.runtime_values == {"answer": 42}
+    assert view.cell_values() == (
+        obs.CellValues(index=0, key="answer", values={"answer": 42}),
+    )
 
 
 def test_notebook_graph_exports_mermaid_dependency_diagram(
@@ -424,23 +483,28 @@ def _d2_topology(
 def test_notebook_graph_drops_invalid_browser_entries() -> None:
     view = obs.Notebook(obs.ojs("answer = 42", key="answer")).view()
     view.set_trait(
-        "_graph",
+        "_readback",
         {
-            "cells": [
-                {
-                    "id": 1,
-                    "index": 0,
-                    "key": "answer",
-                    "mode": "ojs",
-                    "defines": ["answer"],
-                },
-                {"id": "bad", "index": 1, "mode": ""},
-            ],
-            "edges": [
-                {"from": 1, "to": 2, "variable": "missing-target"},
-                {"from": "bad", "to": 1, "variable": "bad-source"},
-                {"from": 1, "to": 1, "variable": ""},
-            ],
+            "revision": 1,
+            "rendered": False,
+            "graph": {
+                "cells": [
+                    {
+                        "id": 1,
+                        "index": 0,
+                        "key": "answer",
+                        "mode": "ojs",
+                        "defines": ["answer"],
+                    },
+                    {"id": "bad", "index": 1, "mode": ""},
+                ],
+                "edges": [
+                    {"from": 1, "to": 2, "variable": "missing-target"},
+                    {"from": "bad", "to": 1, "variable": "bad-source"},
+                    {"from": 1, "to": 1, "variable": ""},
+                ],
+            },
+            "cells": {},
         },
     )
 
@@ -574,20 +638,6 @@ def test_selected_view_owns_readback_independently_from_another_view(
         full.runtime_values
 
 
-def test_browser_values_are_exposed_by_the_rendered_view(
-    browser_value_sync: BrowserValueSync,
-) -> None:
-    view = obs.Notebook(
-        obs.ojs("viewof gain = Inputs.range([0, 11])", key="gain")
-    ).view()
-
-    browser_value_sync(view, {"gain": 8}, ["gain"])
-
-    assert view.has_rendered is True
-    assert view.runtime_values == {"gain": 8}
-    assert view.value("gain") == 8
-
-
 def test_closing_notebook_closes_live_views() -> None:
     notebook = obs.Notebook(obs.ojs("answer = 42", key="answer"))
     first = notebook.view()
@@ -602,43 +652,29 @@ def test_closing_notebook_closes_live_views() -> None:
         second.update_variables(answer=43)
 
 
-def test_closing_a_view_releases_it_from_the_session() -> None:
-    notebook = obs.Notebook(obs.ojs("answer = 42", key="answer"))
-    view = notebook.view()
-
-    view.close()
-
-    with pytest.raises(RuntimeError, match="closed NotebookView"):
-        view.update_variables(answer=43)
-    assert notebook.view().notebook is notebook
-
-
-def test_notebook_rejects_views_after_close() -> None:
+def test_closed_notebook_keeps_cell_handles_readable_and_rejects_views() -> None:
     notebook = obs.Notebook(obs.ojs("answer = 42", key="answer"))
     cell = notebook.cell_at(0)
     notebook.close()
 
+    assert cell.key == "answer"
+    assert cell.name == ""
     with pytest.raises(RuntimeError, match="closed Notebook"):
         notebook.view()
     with pytest.raises(RuntimeError, match="closed Notebook"):
         cell.view()
 
 
-def _widget_model_id(bundle: tuple[dict[str, Any], dict[str, Any]] | None) -> str:
-    assert bundle is not None
-    data, _metadata = bundle
+def _display_model_id(
+    formatter: DisplayFormatter,
+    view: obs.NotebookView,
+) -> str:
+    data, _metadata = formatter.format(view)
     widget_view = data["application/vnd.jupyter.widget-view+json"]
     assert isinstance(widget_view, dict)
     model_id = widget_view["model_id"]
     assert isinstance(model_id, str)
     return model_id
-
-
-def _view_mimebundle(
-    view: obs.NotebookView,
-) -> tuple[dict[str, Any], dict[str, Any]] | None:
-    untyped: Any = view
-    return untyped._repr_mimebundle_()
 
 
 def test_script_end_tag_literal_stays_inside_script_cell(

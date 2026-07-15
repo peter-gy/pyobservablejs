@@ -3,23 +3,19 @@ import {
 	notebookDefinedNamesFromAnalysis,
 	notebookDependencyIndexes,
 	type NotebookAnalysis,
-	type NotebookOptions,
 } from "@pyobservablejs/runtime";
-import { renderCellTargets, type CellRenderContext, type CellRenderTarget } from "./cell-renderer";
+import { renderCellTarget, type CellRenderContext, type CellRenderTarget } from "./cell-renderer";
 import { appendCellWrapper } from "./dom";
 import { type ReadbackAttempt, type ViewReadback } from "./readback";
 import type { NotebookRuntimeSession } from "./session";
 import { createCellStateSync } from "./variable-sync";
 
 type RenderNotebookViewOptions = {
-	root: HTMLElement;
 	notebook: Notebook;
 	selectedIndexes: ReadonlySet<number>;
 	renderIndexes: ReadonlySet<number>;
 	analysis: NotebookAnalysis;
 	session: NotebookRuntimeSession;
-	options: NotebookOptions;
-	signal: AbortSignal;
 	readback: ViewReadback;
 	attempt: ReadbackAttempt;
 	cellKeys: readonly string[];
@@ -27,19 +23,26 @@ type RenderNotebookViewOptions = {
 
 /** Render selected cells and their hidden dependency closure in one view runtime. */
 export function renderNotebookView({
-	root,
 	notebook,
 	selectedIndexes,
 	renderIndexes,
 	analysis,
 	session,
-	options,
-	signal,
 	readback,
 	attempt,
 	cellKeys,
 }: RenderNotebookViewOptions): void {
+	const { options, root } = session;
 	const cells = notebook.cells;
+	const context: CellRenderContext = {
+		runtime: session.runtime,
+		signal: session.signal,
+		pythonVariableNames: new Set(Object.keys(options.variables)),
+		analysis,
+		notebookNames: notebookDefinedNamesFromAnalysis(analysis),
+		runtimeProfile: options.runtimeProfile,
+		viewSync: session.viewSync,
+	};
 	const targets: CellRenderTarget[] = [];
 	for (let index = 0; index < cells.length; index += 1) {
 		if (!renderIndexes.has(index)) continue;
@@ -58,11 +61,10 @@ export function renderNotebookView({
 			showSource: selected && options.showSource,
 			visible: selected,
 			sync: selected ? cellSync(index, readback, attempt, selectedIndexes.size) : undefined,
-			variablesSync: selected ? undefined : session.variablesSync,
 			cellName: selected ? cellKeys[index] || undefined : undefined,
 		});
 	}
-	renderCellTargets(targets, cellRenderContext(session, signal, options, analysis));
+	for (const target of targets) renderCellTarget(target, context);
 	session.variablesSync.applyInitialViews();
 	readback.complete(attempt, selectedIndexes.size);
 }
@@ -83,21 +85,4 @@ function cellSync(index: number, readback: ViewReadback, attempt: ReadbackAttemp
 			readback.complete(attempt, selectedCellCount);
 		},
 	});
-}
-
-function cellRenderContext(
-	session: NotebookRuntimeSession,
-	signal: AbortSignal,
-	options: NotebookOptions,
-	analysis: NotebookAnalysis,
-): CellRenderContext {
-	return {
-		runtime: session.runtime,
-		signal,
-		pythonVariableNames: new Set(Object.keys(options.variables)),
-		analysis,
-		notebookNames: notebookDefinedNamesFromAnalysis(analysis),
-		runtimeCompatibility: options.runtimeCompatibility,
-		viewSync: session.viewSync,
-	};
 }

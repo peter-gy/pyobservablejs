@@ -88,14 +88,60 @@ def test_notebook_from_observablehq_fetches_source_and_remote_attachments(
     assert set(widget.attachments) == {"data.csv", "local.csv"}
     assert widget.attachments["data.csv"]["url"] == "https://static.example/data.csv"
     assert widget.attachments["local.csv"]["url"] == "https://example.test/local.csv"
-    assert widget.options["runtime_compatibility"] == {
-        "display_view": True,
-        "generators": True,
-        "html": True,
-        "mutable": True,
-        "require": True,
-    }
+    assert widget.options == {"show_source": False}
+    assert widget.get_state(["_runtime_profile"]) == {"_runtime_profile": "observable"}
     assert len(widget.cells) == 1
+
+
+def test_observablehq_document_pins_imports_to_its_revision(
+    script_tags: ScriptTags,
+) -> None:
+    notebook = obs.Notebook.from_observablehq_document(
+        {
+            "id": "0123456789abcdef",
+            "version": 42,
+            "title": "Imported modules",
+            "nodes": [
+                {
+                    "id": 1,
+                    "mode": "js",
+                    "value": 'import {checkbox} from "@jashkenas/inputs"',
+                },
+                {
+                    "id": 2,
+                    "mode": "js",
+                    "value": (
+                        'import {footer} from "https://api.observablehq.com/'
+                        '@tomlarkworthy/footer.js?v=4"'
+                    ),
+                },
+            ],
+        }
+    )
+
+    assert [
+        script["text"].strip() for script in script_tags(notebook.to_notebook_html())
+    ] == [
+        'import {checkbox} from "https://api.observablehq.com/@jashkenas/'
+        'inputs.js?v=4&resolutions=0123456789abcdef@42"',
+        'import {footer} from "https://api.observablehq.com/@tomlarkworthy/'
+        'footer.js?v=4&resolutions=0123456789abcdef@42"',
+    ]
+
+
+def test_observablehq_document_preserves_imports_without_a_valid_revision(
+    script_tags: ScriptTags,
+) -> None:
+    source = 'import {checkbox} from "@jashkenas/inputs"'
+    notebook = obs.Notebook.from_observablehq_document(
+        {
+            "title": "Imported module",
+            "nodes": [{"id": 1, "mode": "js", "value": source}],
+        }
+    )
+
+    [script] = script_tags(notebook.to_notebook_html())
+    assert script["text"].strip() == source
 
 
 def test_notebook_from_observablehq_converts_table_nodes(
@@ -884,19 +930,6 @@ def test_notebook_from_observablehq_accepts_initial_variables(
     )
 
     assert widget.variables == {"py_answer": 7}
-
-
-@pytest.mark.parametrize("name", ["Generators", "Mutable", "html", "require"])
-def test_notebook_from_observablehq_rejects_runtime_compatibility_variable_updates(
-    observablehq_response: ObservableHQResponseInstaller,
-    name: str,
-) -> None:
-    observablehq_response({"title": "Remote", "nodes": []})
-
-    widget = obs.Notebook.from_observablehq("@d3/bar-chart", timeout=1)
-
-    with pytest.raises(ValueError, match=f"Reserved Observable runtime name: {name!r}"):
-        widget.update_variables({name: "shadowed"})
 
 
 def test_notebook_from_observablehq_initial_variables_serialize_to_frontend_state(

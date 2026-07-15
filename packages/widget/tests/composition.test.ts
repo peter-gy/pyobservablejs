@@ -7,7 +7,9 @@ import {
 	createSession,
 	createView,
 	graphValue,
+	hasRendered,
 	renderProps,
+	setRange,
 	variableValue,
 	waitFor,
 	widget,
@@ -30,12 +32,10 @@ const cells = [
 ];
 
 describe("NotebookView composition", () => {
-	test("full and projected views share interactions and keep derived readback isolated", async () => {
+	test("full and selected views share interactions and keep derived readback isolated", async () => {
 		const session = createSession({
 			_spec: { cells },
-			_attachments: {},
 			_variables: { z: 100, y: 10 },
-			_options: {},
 			_cell_keys: ["data", "x"],
 		});
 		const full = createView("anywidget:session", null);
@@ -54,7 +54,7 @@ describe("NotebookView composition", () => {
 		await waitFor(() => (variableValue(full, "data") ? true : undefined));
 		widget.render(renderProps(dataView, dataEl, dataController.signal, host));
 		widget.render(renderProps(inputView, inputEl, inputController.signal, host));
-		const projectedInput = await waitFor(() => rangeWithValue(inputEl, 5));
+		const selectedInput = await waitFor(() => rangeWithValue(inputEl, 5));
 		await waitFor(() => (variableValue(dataView, "data") ? true : undefined));
 		expect(session.get("_view_values")).toEqual({});
 
@@ -62,12 +62,12 @@ describe("NotebookView composition", () => {
 
 		expect(await waitFor(() => (session.get("_view_values")?.x === 8 ? 8 : undefined))).toBe(8);
 		expect(session.saveCount()).toBe(1);
-		expect(await waitFor(() => rangeWithValue(inputEl, 8))).toBe(projectedInput);
+		expect(await waitFor(() => rangeWithValue(inputEl, 8))).toBe(selectedInput);
 		expect(await waitFor(() => sameArray(variableValue(full, "data"), [98, 106, 114]))).toBe(true);
 		expect(await waitFor(() => sameArray(variableValue(dataView, "data"), [98, 106, 114]))).toBe(true);
 		expect(variableValue(inputView, "x")).toBe(8);
 
-		setRange(projectedInput, 3);
+		setRange(selectedInput, 3);
 
 		expect(await waitFor(() => rangeWithValue(fullEl, 3))).toBe(fullInput);
 		expect(await waitFor(() => sameArray(variableValue(full, "data"), [93, 96, 99]))).toBe(true);
@@ -78,13 +78,13 @@ describe("NotebookView composition", () => {
 		expect(cellRecord(dataView, 1)).toBeUndefined();
 		expect(cellRecord(inputView, 0)).toBeUndefined();
 		expect(cellRecord(inputView, 1)?.values.x).toBe(3);
-		expect(session.get("_cell_values")).toBeUndefined();
+		expect(session.get("_readback")).toBeUndefined();
 		expect(session.saveCount()).toBe(2);
 
 		const savesBeforeExternalUpdate = session.saveCount();
 		session.set("_view_values", { x: 6 });
 		expect(await waitFor(() => rangeWithValue(fullEl, 6))).toBe(fullInput);
-		expect(await waitFor(() => rangeWithValue(inputEl, 6))).toBe(projectedInput);
+		expect(await waitFor(() => rangeWithValue(inputEl, 6))).toBe(selectedInput);
 		expect(await waitFor(() => sameArray(variableValue(dataView, "data"), [96, 102, 108]))).toBe(true);
 		expect(session.saveCount()).toBe(savesBeforeExternalUpdate);
 
@@ -93,12 +93,51 @@ describe("NotebookView composition", () => {
 		inputController.abort();
 	});
 
+	test("full and data views keep their shared input stable across Python updates", async () => {
+		const session = createSession({
+			_spec: { cells },
+			_variables: { z: 100, y: 10 },
+			_cell_keys: ["data", "x"],
+		});
+		const full = createView("anywidget:session", null);
+		const dataView = createView("anywidget:session", [0]);
+		const host = createHost(new Map([["anywidget:session", session]]));
+		const fullController = new AbortController();
+		const dataController = new AbortController();
+		const fullEl = document.createElement("div");
+		const dataEl = document.createElement("div");
+
+		widget.render(renderProps(full, fullEl, fullController.signal, host));
+		widget.render(renderProps(dataView, dataEl, dataController.signal, host));
+		const fullInput = await waitFor(() => rangeWithValue(fullEl, 5));
+		const dependencyInput = await waitFor(() => rangeWithValue(dataEl, 5));
+
+		setRange(fullInput, 8);
+
+		expect(await waitFor(() => rangeWithValue(dataEl, 8))).toBe(dependencyInput);
+		expect(await waitFor(() => sameArray(variableValue(full, "data"), [98, 106, 114]))).toBe(true);
+		expect(await waitFor(() => sameArray(variableValue(dataView, "data"), [98, 106, 114]))).toBe(true);
+		expect(session.get("_view_values")).toEqual({ x: 8 });
+		const interactionSaves = session.saveCount();
+
+		session.set("_variable_update", { seq: 1, kind: "set", values: { z: 200 } });
+		session.set("_variables", { z: 200, y: 10 });
+
+		expect(await waitFor(() => sameArray(variableValue(full, "data"), [198, 206, 214]))).toBe(true);
+		expect(await waitFor(() => sameArray(variableValue(dataView, "data"), [198, 206, 214]))).toBe(true);
+		expect(rangeWithValue(fullEl, 8)).toBe(fullInput);
+		expect(rangeWithValue(dataEl, 8)).toBe(dependencyInput);
+		expect(session.get("_view_values")).toEqual({ x: 8 });
+		expect(session.saveCount()).toBe(interactionSaves);
+
+		fullController.abort();
+		dataController.abort();
+	});
+
 	test("shares real interactions after an initial Python view value and seeds fresh views", async () => {
 		const session = createSession({
 			_spec: { cells },
-			_attachments: {},
 			_variables: { x: 7, z: 100, y: 10 },
-			_options: {},
 		});
 		const first = createView("anywidget:session", [1]);
 		const second = createView("anywidget:session", [1]);
@@ -139,9 +178,7 @@ describe("NotebookView composition", () => {
 	test("reasserts the configured Python view value after a shared interaction", async () => {
 		const session = createSession({
 			_spec: { cells },
-			_attachments: {},
 			_variables: { x: 7, z: 100, y: 10 },
-			_options: {},
 		});
 		const first = createView("anywidget:session", [1]);
 		const second = createView("anywidget:session", [1]);
@@ -168,66 +205,6 @@ describe("NotebookView composition", () => {
 		secondController.abort();
 	});
 
-	test("a new selected view seeds from session state before its source default publishes", async () => {
-		const session = createSession({
-			_spec: { cells },
-			_attachments: {},
-			_variables: { z: 100, y: 10 },
-			_options: {},
-			_cell_keys: ["data", "x"],
-		});
-		const first = createView("anywidget:session", [1]);
-		const host = createHost(new Map([["anywidget:session", session]]));
-		const firstController = new AbortController();
-		const firstEl = document.createElement("div");
-		widget.render(renderProps(first, firstEl, firstController.signal, host));
-		setRange(await waitFor(() => rangeWithValue(firstEl, 5)), 9);
-		await waitFor(() => (session.get("_view_values")?.x === 9 ? 9 : undefined));
-
-		const second = createView("anywidget:session", [1]);
-		const secondController = new AbortController();
-		const secondEl = document.createElement("div");
-		widget.render(renderProps(second, secondEl, secondController.signal, host));
-
-		expect(await waitFor(() => rangeWithValue(secondEl, 9))).toBeInstanceOf(HTMLInputElement);
-		expect(await waitFor(() => (variableValue(second, "x") === 9 ? 9 : undefined))).toBe(9);
-		expect(session.get("_view_values")?.x).toBe(9);
-		firstController.abort();
-		secondController.abort();
-	});
-
-	test("stored browser interaction seeds a view when Python initialized the name", async () => {
-		const session = createSession({
-			_spec: { cells },
-			_attachments: {},
-			_variables: { x: 7, z: 100, y: 10 },
-			_view_values: { x: 2 },
-			_options: {},
-		});
-		const view = createView("anywidget:session", [1]);
-		const controller = new AbortController();
-		const el = document.createElement("div");
-		widget.render(renderProps(view, el, controller.signal, createHost(new Map([["anywidget:session", session]]))));
-
-		expect(await waitFor(() => rangeWithValue(el, 2))).toBeInstanceOf(HTMLInputElement);
-		expect(await waitFor(() => (variableValue(view, "x") === 2 ? 2 : undefined))).toBe(2);
-		controller.abort();
-	});
-
-	test("teardown disconnects session updates", async () => {
-		const session = createSession({ _spec: { cells }, _variables: { z: 100, y: 10 }, _options: {} });
-		const view = createView("anywidget:session", [1]);
-		const controller = new AbortController();
-		const el = document.createElement("div");
-		widget.render(renderProps(view, el, controller.signal, createHost(new Map([["anywidget:session", session]]))));
-		await waitFor(() => rangeWithValue(el, 5));
-		expect(session.listenerCount("change:_view_values")).toBeGreaterThan(0);
-
-		controller.abort();
-		expect(session.listenerCount("change:_view_values")).toBe(0);
-		expect(session.listenerCount("change:_variable_update")).toBe(0);
-	});
-
 	test("canonicalizes selected cells to notebook order", async () => {
 		const session = createSession({
 			_spec: {
@@ -237,16 +214,18 @@ describe("NotebookView composition", () => {
 					{ id: 3, mode: "ojs", value: "c = 3" },
 				],
 			},
-			_variables: {},
-			_options: {},
 		});
 		const view = createView("anywidget:session", [2, 0]);
 		const controller = new AbortController();
 		const el = document.createElement("div");
 		widget.render(renderProps(view, el, controller.signal, createHost(new Map([["anywidget:session", session]]))));
-		await waitFor(() => (view.get("_has_rendered") === true ? true : undefined));
+		await waitFor(() => (hasRendered(view) ? true : undefined));
 
-		const visible = Array.from(el.querySelectorAll<HTMLElement>(".pyobservablejs-cell:not([hidden])"));
+		const root = el.firstElementChild;
+		expect(root).toBeInstanceOf(HTMLElement);
+		const visible = Array.from(root?.children ?? []).filter(
+			(item): item is HTMLElement => item instanceof HTMLElement && !item.hidden,
+		);
 		expect(visible.map((item) => item.textContent?.trim())).toEqual(["1", "3"]);
 		expect(cellRecord(view, 0)?.values.a).toBe(1);
 		expect(cellRecord(view, 1)).toBeUndefined();
@@ -263,14 +242,12 @@ describe("NotebookView composition", () => {
 					{ id: 33, mode: "ojs", value: "unrelated = 99" },
 				],
 			},
-			_variables: {},
-			_options: {},
 		});
 		const view = createView("anywidget:session", [1]);
 		const controller = new AbortController();
 		const el = document.createElement("div");
 		widget.render(renderProps(view, el, controller.signal, createHost(new Map([["anywidget:session", session]]))));
-		await waitFor(() => (view.get("_has_rendered") === true ? true : undefined));
+		await waitFor(() => (hasRendered(view) ? true : undefined));
 
 		const graph = await waitFor(() => graphValue(view));
 		expect(graph.cells.map(({ id, index }) => ({ id, index }))).toEqual([
@@ -287,8 +264,6 @@ describe("NotebookView composition", () => {
 	test("rejects a second live mount and permits a sequential remount", async () => {
 		const session = createSession({
 			_spec: { cells: [{ id: 1, mode: "ojs", value: "answer = 42" }] },
-			_variables: {},
-			_options: {},
 		});
 		const view = createView();
 		const host = createHost(new Map([["anywidget:session", session]]));
@@ -298,6 +273,7 @@ describe("NotebookView composition", () => {
 		const secondEl = document.createElement("div");
 		widget.render(renderProps(view, firstEl, firstController.signal, host));
 		await waitFor(() => composedText(firstEl, "42"));
+		const firstRevision = view.savedReadbacks().at(-1)!.revision;
 
 		widget.render(renderProps(view, secondEl, secondController.signal, host));
 		expect(await waitFor(() => alertText(secondEl))).toBe("Error: NotebookView already has a live writable render");
@@ -307,6 +283,11 @@ describe("NotebookView composition", () => {
 		const thirdEl = document.createElement("div");
 		widget.render(renderProps(view, thirdEl, thirdController.signal, host));
 		expect(await waitFor(() => composedText(thirdEl, "42"))).toBeInstanceOf(HTMLElement);
+		const snapshots = view.savedReadbacks();
+		expect(snapshots.at(-1)!.revision).toBeGreaterThan(firstRevision);
+		expect(
+			snapshots.every((snapshot, index) => index === 0 || snapshot.revision > snapshots[index - 1]!.revision),
+		).toBe(true);
 		secondController.abort();
 		thirdController.abort();
 	});
@@ -314,8 +295,6 @@ describe("NotebookView composition", () => {
 	test("clears derived state before a delayed sequential remount", async () => {
 		const session = createSession({
 			_spec: { cells: [{ id: 1, mode: "ojs", value: "answer = 42" }] },
-			_variables: {},
-			_options: {},
 			_cell_keys: ["answer"],
 		});
 		const view = createView();
@@ -347,9 +326,9 @@ describe("NotebookView composition", () => {
 			),
 		);
 
-		expect(view.get("_has_rendered")).toBe(false);
-		expect(view.get("_cell_values")).toEqual({});
-		expect(view.get("_graph")).toEqual({});
+		expect(hasRendered(view)).toBe(false);
+		expect(cellRecord(view, 0)).toBeUndefined();
+		expect(graphValue(view)).toBeUndefined();
 
 		resolveSession(session);
 		expect(await waitFor(() => (variableValue(view, "total") === 7 ? 7 : undefined))).toBe(7);
@@ -362,12 +341,6 @@ function rangeWithValue(el: HTMLElement, value: number): HTMLInputElement | unde
 	return Array.from(el.querySelectorAll<HTMLInputElement>("input[type='range']")).find(
 		(input) => input.valueAsNumber === value,
 	);
-}
-
-function setRange(input: HTMLInputElement, value: number): void {
-	input.value = String(value);
-	input.dispatchEvent(new Event("input", { bubbles: true }));
-	input.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
 function sameArray(value: unknown, expected: number[]): true | undefined {

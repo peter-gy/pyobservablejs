@@ -68,6 +68,8 @@ ObservableFileInput = ObservableFileRecord | Mapping[str, Any]
 
 
 class ObservableDocument(TypedDict, total=False):
+    id: str
+    version: int
     title: str
     nodes: Sequence[ObservableNodeInput]
     files: Sequence[ObservableFileInput]
@@ -229,11 +231,29 @@ def fetch_observablehq_document(
 
 def observable_nodes_to_cells(
     nodes: Sequence[ObservableNodeInput],
+    *,
+    import_resolution: str | None = None,
 ) -> list[NotebookCellSpec]:
     """Convert ObservableHQ document nodes to Notebook Kit cell specs."""
 
     normalized = [_normalize_node(node, index) for index, node in enumerate(nodes)]
-    return _lower_nodes(normalized)
+    return _lower_nodes(normalized, import_resolution=import_resolution)
+
+
+def observable_document_import_resolution(document: Mapping[str, Any]) -> str | None:
+    """Return the document revision used to resolve imported notebooks."""
+
+    notebook_id = document.get("id")
+    version = document.get("version")
+    if (
+        not isinstance(notebook_id, str)
+        or not re.fullmatch(r"[0-9a-f]{16}", notebook_id)
+        or not isinstance(version, int)
+        or isinstance(version, bool)
+        or version < 0
+    ):
+        return None
+    return f"{notebook_id}@{version}"
 
 
 def observable_files_to_attachments(
@@ -263,7 +283,11 @@ def _normalize_node(node: ObservableNodeInput, index: int) -> ObservableNode:
     )
 
 
-def _lower_nodes(nodes: list[ObservableNode]) -> list[NotebookCellSpec]:
+def _lower_nodes(
+    nodes: list[ObservableNode],
+    *,
+    import_resolution: str | None,
+) -> list[NotebookCellSpec]:
     cells: list[NotebookCellSpec] = []
     used_names: set[str] = set()
     use_builtin_duckdb = _can_use_builtin_duckdb_client(nodes)
@@ -285,6 +309,7 @@ def _lower_nodes(nodes: list[ObservableNode]) -> list[NotebookCellSpec]:
                 node,
                 sql_database=sql_plan.database,
                 use_builtin_duckdb=use_builtin_duckdb,
+                import_resolution=import_resolution,
             )
         )
     return cells
@@ -314,6 +339,7 @@ def _lower_node(
     *,
     sql_database: str | None = None,
     use_builtin_duckdb: bool = False,
+    import_resolution: str | None = None,
 ) -> NotebookCellSpec:
     if node.mode == "table":
         return _table_node_to_cell(node, sql_database=sql_database)
@@ -323,6 +349,7 @@ def _lower_node(
         node,
         sql_database=sql_database,
         use_builtin_duckdb=use_builtin_duckdb,
+        import_resolution=import_resolution,
     )
 
 
@@ -331,6 +358,7 @@ def _code_node_to_cell(
     *,
     sql_database: str | None = None,
     use_builtin_duckdb: bool = False,
+    import_resolution: str | None = None,
 ) -> NotebookCellSpec:
     value = "" if node.value is None else str(node.value)
     uses_builtin_duckdb = (
@@ -340,7 +368,11 @@ def _code_node_to_cell(
     )
     cell: dict[str, Any] = {
         "id": node.id,
-        "value": "undefined" if uses_builtin_duckdb else value,
+        "value": (
+            "undefined"
+            if uses_builtin_duckdb
+            else _pin_observable_import(value, import_resolution)
+        ),
         # ObservableHQ hosted notebooks label OJS cells as "js". Notebook Kit
         # reserves "js" for ES modules, so imported cells keep OJS semantics.
         "mode": "ojs" if node.mode == "js" else node.mode,
@@ -357,6 +389,39 @@ def _code_node_to_cell(
         if value is not None and key not in cell:
             cell[key] = value
     return cast(NotebookCellSpec, cell)
+
+
+def _pin_observable_import(source: str, resolution: str | None) -> str:
+    if resolution is None or re.match(r"^\s*import\b", source) is None:
+        return source
+    match = re.search(
+        r"(?P<prefix>\bfrom\s*)(?P<quote>[\"'])(?P<specifier>[^\"']+)(?P=quote)",
+        source,
+    )
+    if match is None:
+        return source
+    specifier = match.group("specifier")
+    if specifier.startswith("observable:"):
+        specifier = specifier.removeprefix("observable:")
+    parsed = urllib.parse.urlsplit(specifier)
+    if parsed.scheme:
+        if parsed.hostname != "api.observablehq.com":
+            return source
+    path = parsed.path.lstrip("/")
+    if not path:
+        return source
+    if re.match(r"^[0-9a-f]{16}(?:@|$)", path):
+        path = f"d/{path}"
+    if not path.endswith(".js"):
+        path += ".js"
+    # The full API URL keeps Notebook Kit's Observable import type while
+    # carrying the parent revision that a bare specifier cannot express.
+    query = urllib.parse.urlencode({"v": "4", "resolutions": resolution}, safe="@")
+    resolved = urllib.parse.urlunsplit(
+        ("https", "api.observablehq.com", f"/{path}", query, "")
+    )
+    start, end = match.span("specifier")
+    return f"{source[:start]}{resolved}{source[end:]}"
 
 
 def _can_use_builtin_duckdb_client(nodes: list[ObservableNode]) -> bool:

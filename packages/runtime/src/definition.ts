@@ -1,6 +1,6 @@
 import { transpile, type Cell } from "@observablehq/notebook-kit";
 import type { NotebookRuntime } from "@observablehq/notebook-kit/runtime";
-import { runtimeDefinitionCompatibility, type RuntimeCompatibilityOptions } from "./compat";
+import type { RuntimeProfile } from "./environment";
 
 type NotebookKitDefinition = ReturnType<typeof transpile>;
 type RuntimeBody = (...values: unknown[]) => unknown;
@@ -13,7 +13,7 @@ export type RuntimeCellDefinition = Omit<NotebookKitDefinition, "body"> & {
 export type RuntimeDefinitionOptions = {
 	document?: Document;
 	notebookNames?: ReadonlySet<string>;
-	runtimeCompatibility?: RuntimeCompatibilityOptions;
+	runtimeProfile?: RuntimeProfile;
 };
 
 const TEMPLATE_MODES = new Set<Cell["mode"]>(["dot", "html", "md", "sql", "tex"]);
@@ -23,7 +23,7 @@ export function createRuntimeDefinition(
 	definition: RuntimeCellDefinition,
 	options: RuntimeDefinitionOptions = {},
 ): RuntimeDefinition {
-	const { notebookNames, runtimeCompatibility, ...globals } = options;
+	const { notebookNames, runtimeProfile, ...globals } = options;
 	const body = compileRuntimeBody(definition.body, globals);
 	return {
 		id: cell.id,
@@ -35,7 +35,7 @@ export function createRuntimeDefinition(
 		autoview: definition.autoview,
 		automutable: definition.automutable,
 		display: (definition as RuntimeDefinition).display,
-		...runtimeDefinitionCompatibility(definition, notebookNames, runtimeCompatibility),
+		...observableDisplayOverride(definition, notebookNames, runtimeProfile),
 	};
 }
 
@@ -77,4 +77,30 @@ function awaitTemplateInputs(body: RuntimeBody): RuntimeBody {
 	return async function (this: unknown, ...values: unknown[]) {
 		return body.call(this, ...(await Promise.all(values)));
 	} as RuntimeBody;
+}
+
+function observableDisplayOverride(
+	definition: RuntimeCellDefinition,
+	notebookNames: ReadonlySet<string> | undefined,
+	profile: RuntimeProfile | undefined,
+): { display?: false } {
+	if (profile !== "observable" || !notebookNames) return {};
+	const ownNames = definitionNames(definition);
+	const usesNotebookDisplayName = (definition.inputs ?? []).some(
+		(name) => (name === "display" || name === "view") && notebookNames.has(name) && !ownNames.has(name),
+	);
+	return usesNotebookDisplayName ? { display: false } : {};
+}
+
+function definitionNames(definition: RuntimeCellDefinition): Set<string> {
+	const names = new Set(definition.outputs ?? []);
+	if (!definition.output) return names;
+	names.add(definition.output);
+	if (definition.autoview) names.add(unprefix(definition.output, "viewof$"));
+	if (definition.automutable) {
+		const name = unprefix(definition.output, "mutable ");
+		names.add(name);
+		names.add(`mutable$${name}`);
+	}
+	return names;
 }

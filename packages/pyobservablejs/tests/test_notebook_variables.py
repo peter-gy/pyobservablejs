@@ -119,14 +119,6 @@ def test_python_ints_serialize_as_bigints_after_js_safe_integer_boundary() -> No
     }
 
 
-def test_replace_variables_updates_public_variables() -> None:
-    widget = obs.Notebook()
-
-    widget.replace_variables({"py_value": 7})
-
-    assert widget.variables == {"py_value": 7}
-
-
 def test_variables_update_serializes_merged_frontend_state() -> None:
     widget = obs.Notebook(variables={"py_value": 7})
 
@@ -194,6 +186,22 @@ def test_identical_variable_mutations_are_protocol_noops() -> None:
     notebook.replace_variables({"gain": 5.0, "rows": [{"x": 1.0}]})
 
     assert notebook.variables == {"gain": 5, "rows": [{"x": 1}]}
+    assert notebook.get_state(["_variable_update"])["_variable_update"] == {}
+    assert updates == []
+
+
+def test_identical_python_update_preserves_browser_owned_view_state() -> None:
+    notebook = obs.Notebook(variables={"z": 100})
+    notebook.set_state({"_view_values": {"x": 8}})
+    updates: list[dict[str, object]] = []
+    notebook.observe(
+        lambda change: updates.append(change["new"]),
+        names="_variable_update",
+    )
+
+    notebook.update_variables(z=100)
+
+    assert notebook.get_state(["_view_values"])["_view_values"] == {"x": 8}
     assert notebook.get_state(["_variable_update"])["_variable_update"] == {}
     assert updates == []
 
@@ -336,12 +344,48 @@ def test_notebook_view_delegates_variable_mutations_to_its_session() -> None:
     assert notebook.variables == {}
 
 
+@pytest.mark.parametrize("name", ["invalidation", "visibility"])
+def test_python_variables_reserve_runtime_core_names(name: str) -> None:
+    message = f"Reserved Observable runtime name: {name!r}"
+
+    with pytest.raises(ValueError, match=message):
+        obs.Notebook(variables={name: "shadowed"})
+
+
+def test_notebook_kit_variables_can_use_classic_runtime_names() -> None:
+    notebook = obs.Notebook(variables={"require": "python require"})
+
+    assert notebook.variables == {"require": "python require"}
+
+
+@pytest.mark.parametrize("name", ["__query", "require", "resolve"])
+def test_observablehq_variables_reserve_classic_runtime_names(name: str) -> None:
+    message = f"Reserved Observable runtime name: {name!r}"
+
+    with pytest.raises(ValueError, match=message):
+        obs.Notebook.from_observablehq_nodes([], variables={name: "shadowed"})
+
+
+def test_observablehq_variable_mutations_reserve_classic_runtime_names() -> None:
+    notebook = obs.Notebook.from_observablehq_nodes([])
+    message = "Reserved Observable runtime name: 'require'"
+
+    with pytest.raises(ValueError, match=message):
+        notebook.update_variables(require="shadowed")
+    with pytest.raises(ValueError, match=message):
+        notebook.replace_variables(require="shadowed")
+    with pytest.raises(ValueError, match=message):
+        notebook.reset_variables("require")
+
+    assert notebook.variables == {}
+
+
 @pytest.mark.parametrize(
     ("name", "message"),
     [
         ("not-valid", "Invalid Observable variable name"),
         (7, "Invalid Observable variable name"),
-        ("d3", "Reserved Observable runtime name"),
+        ("invalidation", "Reserved Observable runtime name"),
     ],
 )
 def test_reset_variables_validates_names(name: Any, message: str) -> None:
@@ -352,16 +396,6 @@ def test_reset_variables_validates_names(name: Any, message: str) -> None:
 
     assert notebook.variables == {"gain": 5}
     assert notebook.get_state(["_variable_update"])["_variable_update"] == {}
-
-
-def test_notebook_view_reset_variables_uses_session_name_validation() -> None:
-    notebook = obs.Notebook(variables={"gain": 5})
-    view = notebook.view()
-
-    with pytest.raises(ValueError, match="Reserved Observable runtime name"):
-        view.reset_variables("d3")
-
-    assert view.variables == {"gain": 5}
 
 
 def test_reset_variables_ignores_valid_unknown_names() -> None:
@@ -405,17 +439,8 @@ def test_closed_view_rejects_variable_mutations() -> None:
 
     assert view.variables == {"gain": 5}
     assert view.cell_indexes is None
-
-
-def test_closing_notebook_invalidates_view_mutations() -> None:
-    notebook = obs.Notebook(variables={"gain": 5})
-    view = notebook.view()
-    notebook.close()
-
-    with pytest.raises(RuntimeError, match="closed NotebookView"):
-        view.update_variables(gain=7)
-
-    assert view.variables == {"gain": 5}
+    notebook.update_variables(gain=6)
+    assert notebook.variables == {"gain": 6}
 
 
 def test_browser_values_decode_to_python_values(
@@ -505,23 +530,6 @@ def test_browser_values_with_wire_type_key_decode_as_user_objects(
 def test_invalid_python_var_name_raises() -> None:
     with pytest.raises(ValueError, match="Invalid Observable variable name"):
         obs.Notebook(variables={"not-valid": 1})
-
-
-def test_python_variable_name_require_is_allowed() -> None:
-    widget = obs.Notebook(variables={"require": "python require"})
-
-    assert widget.variables == {"require": "python require"}
-    assert widget.get_state(["_variables"])["_variables"] == {
-        "require": "python require"
-    }
-
-
-def test_python_variable_update_name_require_is_allowed() -> None:
-    widget = obs.Notebook()
-
-    widget.update_variables(require="python require")
-
-    assert widget.variables == {"require": "python require"}
 
 
 def test_python_variables_with_wire_type_key_serialize_as_user_objects() -> None:

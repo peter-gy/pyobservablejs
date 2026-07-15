@@ -57,107 +57,111 @@ def test_notebook_themes_match_notebook_kit_theme_names() -> None:
     )
 
 
-def test_public_api_signatures_keep_keyword_only_options() -> None:
-    assert [
-        (name, param.kind)
-        for name, param in inspect.signature(obs.Notebook).parameters.items()
-    ] == [
-        ("cells", inspect.Parameter.VAR_POSITIONAL),
-        ("title", inspect.Parameter.KEYWORD_ONLY),
-        ("theme", inspect.Parameter.KEYWORD_ONLY),
-        ("files", inspect.Parameter.KEYWORD_ONLY),
-        ("base_path", inspect.Parameter.KEYWORD_ONLY),
-        ("variables", inspect.Parameter.KEYWORD_ONLY),
-        ("show_pinned_source", inspect.Parameter.KEYWORD_ONLY),
-    ]
-    assert [
-        (name, param.kind)
-        for name, param in inspect.signature(obs.Notebook.from_html).parameters.items()
-    ] == [
-        ("source", inspect.Parameter.POSITIONAL_OR_KEYWORD),
-        ("files", inspect.Parameter.KEYWORD_ONLY),
-        ("base_path", inspect.Parameter.KEYWORD_ONLY),
-        ("embed_file_attachments", inspect.Parameter.KEYWORD_ONLY),
-        ("rewrite_imports", inspect.Parameter.KEYWORD_ONLY),
-        ("variables", inspect.Parameter.KEYWORD_ONLY),
-        ("show_pinned_source", inspect.Parameter.KEYWORD_ONLY),
-    ]
-    assert [
-        (name, param.kind)
-        for name, param in inspect.signature(
-            obs.Notebook.from_html_file
-        ).parameters.items()
-    ] == [
-        ("path", inspect.Parameter.POSITIONAL_OR_KEYWORD),
-        ("files", inspect.Parameter.KEYWORD_ONLY),
-        ("embed_file_attachments", inspect.Parameter.KEYWORD_ONLY),
-        ("rewrite_imports", inspect.Parameter.KEYWORD_ONLY),
-        ("variables", inspect.Parameter.KEYWORD_ONLY),
-        ("show_pinned_source", inspect.Parameter.KEYWORD_ONLY),
-    ]
-    assert [
-        (name, param.kind)
-        for name, param in inspect.signature(
-            obs.Notebook.from_observablehq
-        ).parameters.items()
-    ] == [
-        ("specifier", inspect.Parameter.POSITIONAL_OR_KEYWORD),
-        ("variables", inspect.Parameter.KEYWORD_ONLY),
-        ("files", inspect.Parameter.KEYWORD_ONLY),
-        ("show_pinned_source", inspect.Parameter.KEYWORD_ONLY),
-        ("timeout", inspect.Parameter.KEYWORD_ONLY),
-    ]
-    assert [
-        (name, param.kind)
-        for name, param in inspect.signature(
-            obs.Notebook.from_observablehq_document
-        ).parameters.items()
-    ] == [
-        ("document", inspect.Parameter.POSITIONAL_OR_KEYWORD),
-        ("title", inspect.Parameter.KEYWORD_ONLY),
-        ("variables", inspect.Parameter.KEYWORD_ONLY),
-        ("files", inspect.Parameter.KEYWORD_ONLY),
-        ("show_pinned_source", inspect.Parameter.KEYWORD_ONLY),
-    ]
-    assert [
-        (name, param.kind)
-        for name, param in inspect.signature(
-            obs.Notebook.from_observablehq_page_data
-        ).parameters.items()
-    ] == [
-        ("page_data", inspect.Parameter.POSITIONAL_OR_KEYWORD),
-        ("title", inspect.Parameter.KEYWORD_ONLY),
-        ("variables", inspect.Parameter.KEYWORD_ONLY),
-        ("files", inspect.Parameter.KEYWORD_ONLY),
-        ("show_pinned_source", inspect.Parameter.KEYWORD_ONLY),
-    ]
-    assert [
-        (name, param.kind)
-        for name, param in inspect.signature(
-            obs.Notebook.from_observablehq_nodes
-        ).parameters.items()
-    ] == [
-        ("nodes", inspect.Parameter.POSITIONAL_OR_KEYWORD),
-        ("observable_files", inspect.Parameter.KEYWORD_ONLY),
-        ("title", inspect.Parameter.KEYWORD_ONLY),
-        ("variables", inspect.Parameter.KEYWORD_ONLY),
-        ("files", inspect.Parameter.KEYWORD_ONLY),
-        ("show_pinned_source", inspect.Parameter.KEYWORD_ONLY),
-    ]
-    for helper in (obs.ojs, obs.js, obs.md, obs.html):
-        assert [
-            (name, param.kind)
-            for name, param in inspect.signature(helper).parameters.items()
-        ] == [
-            ("source", inspect.Parameter.POSITIONAL_OR_KEYWORD),
-            ("key", inspect.Parameter.KEYWORD_ONLY),
-            ("display", inspect.Parameter.KEYWORD_ONLY),
-            ("raw", inspect.Parameter.KEYWORD_ONLY),
-            ("id", inspect.Parameter.KEYWORD_ONLY),
-            ("pinned", inspect.Parameter.KEYWORD_ONLY),
-            ("output", inspect.Parameter.KEYWORD_ONLY),
-            ("notebookkit_attrs", inspect.Parameter.KEYWORD_ONLY),
-        ]
+@pytest.mark.parametrize(
+    ("apis", "parameter_names", "first_kind"),
+    [
+        pytest.param(
+            (obs.Notebook,),
+            (
+                "cells",
+                "title",
+                "theme",
+                "files",
+                "base_path",
+                "variables",
+                "show_pinned_source",
+            ),
+            inspect.Parameter.VAR_POSITIONAL,
+            id="Notebook",
+        ),
+        pytest.param(
+            (obs.Notebook.from_html,),
+            (
+                "source",
+                "files",
+                "base_path",
+                "embed_file_attachments",
+                "rewrite_imports",
+                "variables",
+                "show_pinned_source",
+            ),
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            id="from_html",
+        ),
+        pytest.param(
+            (obs.Notebook.from_html_file,),
+            (
+                "path",
+                "files",
+                "embed_file_attachments",
+                "rewrite_imports",
+                "variables",
+                "show_pinned_source",
+            ),
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            id="from_html_file",
+        ),
+        pytest.param(
+            (obs.Notebook.from_observablehq,),
+            ("specifier", "variables", "files", "show_pinned_source", "timeout"),
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            id="from_observablehq",
+        ),
+        pytest.param(
+            (obs.Notebook.from_observablehq_document,),
+            ("document", "title", "variables", "files", "show_pinned_source"),
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            id="from_observablehq_document",
+        ),
+        pytest.param(
+            (obs.Notebook.from_observablehq_page_data,),
+            ("page_data", "title", "variables", "files", "show_pinned_source"),
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            id="from_observablehq_page_data",
+        ),
+        pytest.param(
+            (obs.Notebook.from_observablehq_nodes,),
+            (
+                "nodes",
+                "observable_files",
+                "title",
+                "variables",
+                "files",
+                "show_pinned_source",
+            ),
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            id="from_observablehq_nodes",
+        ),
+        pytest.param(
+            (obs.ojs, obs.js, obs.md, obs.html),
+            (
+                "source",
+                "key",
+                "display",
+                "raw",
+                "id",
+                "pinned",
+                "output",
+                "notebookkit_attrs",
+            ),
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            id="cell_helpers",
+        ),
+    ],
+)
+def test_public_api_signatures_keep_keyword_only_options(
+    apis: tuple[Any, ...],
+    parameter_names: tuple[str, ...],
+    first_kind: Any,
+) -> None:
+    for api in apis:
+        parameters = tuple(inspect.signature(api).parameters.values())
+        assert tuple(parameter.name for parameter in parameters) == parameter_names
+        assert parameters[0].kind is first_kind
+        assert all(
+            parameter.kind is inspect.Parameter.KEYWORD_ONLY
+            for parameter in parameters[1:]
+        )
 
 
 def test_cell_options_serialize_to_notebook_html(
@@ -196,7 +200,34 @@ def test_show_pinned_source_sets_renderer_option() -> None:
         show_pinned_source=True,
     )
 
-    assert notebook.options["show_source"] is True
+    assert notebook.options == {"show_source": True}
+
+
+def test_notebook_kit_sources_sync_notebook_kit_runtime_profile() -> None:
+    notebooks = [
+        obs.Notebook(),
+        obs.Notebook.from_html("<!doctype html><notebook></notebook>"),
+    ]
+
+    assert [notebook.get_state(["_runtime_profile"]) for notebook in notebooks] == [
+        {"_runtime_profile": "notebook-kit"},
+        {"_runtime_profile": "notebook-kit"},
+    ]
+
+
+def test_observablehq_html_round_trip_preserves_classic_runtime_profile() -> None:
+    notebook = obs.Notebook.from_observablehq_document(
+        {
+            "id": "0123456789abcdef",
+            "version": 1,
+            "nodes": [{"id": 1, "mode": "js", "value": "answer = 42"}],
+        }
+    )
+
+    restored = obs.Notebook.from_html(notebook.to_notebook_html())
+
+    with pytest.raises(ValueError, match="Reserved Observable runtime name: 'require'"):
+        restored.update_variables(require="shadowed")
 
 
 def test_cell_notebookkit_attrs_reject_first_class_option_collisions() -> None:
@@ -308,15 +339,6 @@ def test_cell_raw_controls_serialized_source_dedenting(
         - line_indent(dedented_script, "answer = 42")
         == 2
     )
-
-
-def test_notebook_constructor_accepts_initial_variables() -> None:
-    notebook = obs.Notebook(
-        obs.ojs("py_answer + 1"),
-        variables={"py_answer": 7},
-    )
-
-    assert notebook.variables == {"py_answer": 7}
 
 
 def test_public_api_rejects_unknown_constructor_options() -> None:

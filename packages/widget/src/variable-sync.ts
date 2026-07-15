@@ -1,12 +1,11 @@
-import type { RenderProps } from "@anywidget/types";
 import type { NotebookRuntime } from "@observablehq/notebook-kit/runtime";
 import {
+	assertNoRuntimeBuiltinCollisions,
 	createRuntimeInputs,
 	isViewTarget,
 	isWritableSyncedViewValue,
 	readViewValue,
 	reviveSyncedValue,
-	runtimeCompatibilityBuiltinNames,
 	sameWireValue,
 	toWireValue,
 	writeViewValue as writeRawViewValue,
@@ -15,11 +14,11 @@ import {
 	type ViewTarget,
 	type ViewWriteResult,
 } from "@pyobservablejs/runtime";
-import type { WidgetModel } from "./model";
+import { isRecord, type AnyWidgetModel, type WidgetModel } from "./model";
 import type { CellReadback } from "./readback";
 
 type RuntimeVariablesSyncOptions = {
-	model: RenderProps<WidgetModel>["model"];
+	model: AnyWidgetModel;
 	runtime: NotebookRuntime;
 	options: NotebookOptions;
 	viewNames: Set<string>;
@@ -86,7 +85,7 @@ export function createRuntimeViewSync({
 	variables,
 	signal,
 }: {
-	model: RenderProps<WidgetModel>["model"];
+	model: AnyWidgetModel;
 	variables: RuntimeVariablesController;
 	signal: AbortSignal;
 }): RuntimeViewSync {
@@ -100,10 +99,15 @@ export function createRuntimeViewSync({
 		model.set("_view_values", sharedValues);
 		model.save_changes();
 	};
-	const clear = (name: string) => {
-		if (!Object.prototype.hasOwnProperty.call(sharedValues, name)) return;
+	const clear = (names: ReadonlySet<string>) => {
 		const next = { ...sharedValues };
-		delete next[name];
+		let changed = false;
+		for (const name of names) {
+			if (!Object.prototype.hasOwnProperty.call(next, name)) continue;
+			delete next[name];
+			changed = true;
+		}
+		if (!changed) return;
 		sharedValues = next;
 		model.set("_view_values", sharedValues);
 		model.save_changes();
@@ -119,10 +123,7 @@ export function createRuntimeViewSync({
 		}
 	};
 
-	const clearPatchedValues = (names: ReadonlySet<string>) => {
-		for (const name of names) clear(name);
-	};
-	const unsubscribeVariables = variables.subscribe(clearPatchedValues);
+	const unsubscribeVariables = variables.subscribe(clear);
 	model.on("change:_view_values", apply);
 	signal.addEventListener(
 		"abort",
@@ -198,14 +199,14 @@ export function createRuntimeVariablesSync({
 		lastPatchSeq = patchSeq;
 		if (patch.kind === "set") {
 			const values = patch.values ?? {};
-			assertNoRuntimeCompatibilityCollisions(values, options.runtimeCompatibility);
+			assertNoRuntimeBuiltinCollisions(runtime, values);
 			notifyViewStateClears(listeners, Object.keys(values));
 			inputs.set(values);
 			return;
 		}
 		if (patch.kind === "replace") {
 			const values = patch.values ?? {};
-			assertNoRuntimeCompatibilityCollisions(values, options.runtimeCompatibility);
+			assertNoRuntimeBuiltinCollisions(runtime, values);
 			notifyViewStateClears(listeners, [...Object.keys(options.variables), ...Object.keys(values)]);
 			inputs.replace(values);
 		}
@@ -235,26 +236,14 @@ function hasSharedViewValue(values: Record<string, unknown>, name: string): bool
 	return Object.prototype.hasOwnProperty.call(values, name) && isWritableSyncedViewValue(values[name]);
 }
 
-function assertNoRuntimeCompatibilityCollisions(
-	variables: Record<string, unknown>,
-	compatibility: NotebookOptions["runtimeCompatibility"],
-): void {
-	const collisions = runtimeCompatibilityBuiltinNames(compatibility).filter((name) =>
-		Object.prototype.hasOwnProperty.call(variables, name),
-	);
-	if (collisions.length > 0) {
-		throw new Error(`Python variables cannot override Observable runtime builtins: ${collisions.sort().join(", ")}`);
-	}
-}
-
-function readVariableUpdate(model: RenderProps<WidgetModel>["model"]): NonNullable<WidgetModel["_variable_update"]> {
+function readVariableUpdate(model: AnyWidgetModel): NonNullable<WidgetModel["_variable_update"]> {
 	const value = model.get("_variable_update");
-	return value === null || typeof value !== "object" || Array.isArray(value) ? {} : value;
+	return isRecord(value) ? (value as NonNullable<WidgetModel["_variable_update"]>) : {};
 }
 
-function readViewValues(model: RenderProps<WidgetModel>["model"]): Record<string, unknown> {
+function readViewValues(model: AnyWidgetModel): Record<string, unknown> {
 	const value = model.get("_view_values");
-	return value !== null && typeof value === "object" && !Array.isArray(value) ? value : {};
+	return isRecord(value) ? value : {};
 }
 
 /** Dispatch Observable input events without publishing them as interactions. */
