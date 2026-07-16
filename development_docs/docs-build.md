@@ -1,45 +1,37 @@
 # Documentation build
 
-The docs execute every `{marimo}` page against a freshly built wheel. The same
-wheel ships with the static site, so browser examples run the package revision
-that produced the docs.
+The published site is a Jupyter Book with executable marimo pages. Each page
+with a `{marimo-config}` block declares the Python environment used for its
+examples.
 
 ```sh
-uv run --package pyobservablejs python scripts/docs.py build
+make docs
 ```
 
-The command builds the wheel into `dist/docs/`, points each marimo page at that
-local file while Jupyter Book executes it, and generates static HTML. It then
-copies the wheel into a content-addressed public path and writes its same-origin
-path into the generated browser notebook metadata. Browser examples resolve
-that path against the current site origin.
+The command runs Jupyter Book in strict HTML mode and writes the site to
+`docs/_build/html`. The marimo plugin executes each page in the uv environment
+declared by its page-level `pyproject` metadata. It also embeds that metadata in
+the generated notebook so the interactive page resolves the same dependencies
+in the browser.
+
+The live pages declare `pyobservablejs` as a package dependency. Their build and
+browser environments therefore resolve the published package from the package
+index. Exercise worktree widget changes through the JupyterLab workflow in
+[Development](development.md#browser-checks).
 
 Set `BASE_URL` when the site is published below the origin root:
 
 ```sh
-BASE_URL=/pyobservablejs uv run --package pyobservablejs python scripts/docs.py build
+BASE_URL=/pyobservablejs make docs
 ```
 
-The build uses that path for Jupyter Book assets and the wheel URL. For example,
-the command above publishes the wheel at
-`/pyobservablejs/public/wheels/<sha256>/pyobservablejs-<version>.whl`. Leave
-`BASE_URL` unset for a site served from `/`.
+The build uses that path for Jupyter Book assets. Leave `BASE_URL` unset for a
+site served from `/`.
 
-Source Markdown keeps the package dependency as `pyobservablejs`. The build
-restores every temporary edit before publishing the HTML artifact.
-
-Preview the same static artifact locally:
+Build and preview the root-hosted site locally:
 
 ```sh
-uv run --package pyobservablejs python scripts/docs.py serve
+make docs-serve
 ```
 
-The preview keeps wheel requests on the preview origin. To exercise a prefixed
-deployment locally, pass the same path used by the deployment:
-
-```sh
-BASE_URL=/pyobservablejs uv run --package pyobservablejs python scripts/docs.py serve
-```
-
-Open `http://127.0.0.1:27331/pyobservablejs/`. Pass `--port` to choose a
-different port.
+Open `http://127.0.0.1:27331/`.

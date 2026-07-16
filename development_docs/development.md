@@ -7,21 +7,23 @@
 - `packages/runtime/` owns Notebook Kit analysis and execution.
 - `packages/widget/` adapts notebook sessions and view-owned runtimes to
   anywidget rendering and synchronization.
-- `packages/anywidget-bundle/` and
-  `packages/pyobservablejs/src/observablejs/_anywidget_bundle/` own the
-  cross-language build and module-transport boundary.
+- The npm and Python `anywidget-bundle` packages own the cross-language build
+  and module-transport boundary consumed by the frontend build and Python
+  widget models.
 - `docs/` contains the published Jupyter Book source and live marimo pages.
 - `development_docs/` contains contributor documentation that stays outside the
   published site.
-- `scripts/docs.py` builds the wheel and static documentation artifact.
+- `make docs` builds the static documentation artifact.
 
 Read [Architecture](architecture.md) before changing runtime ownership. See
-[Workspace](workspace.md) for package commands and build ownership, and
-[Documentation build](docs-build.md) for the wheel-backed docs workflow.
+[View composition](view-composition.md) before changing selections, shared
+inputs, view readback, or teardown. See [Workspace](workspace.md) for package
+commands and build ownership, and [Documentation build](docs-build.md) for the
+Jupyter Book workflow.
 
 ## Setup
 
-Install Python and JavaScript dependencies:
+Install the Python and JavaScript dependencies:
 
 ```sh
 uv sync --package pyobservablejs --group dev
@@ -53,18 +55,17 @@ Use the local URL printed by Vite if it starts on another port.
 Build the docs site:
 
 ```sh
-uv run --package pyobservablejs python scripts/docs.py build
+make docs
 ```
 
 Preview it locally:
 
 ```sh
-uv run --package pyobservablejs python scripts/docs.py serve
+make docs-serve
 ```
 
-Rendered docs pages use a fresh wheel from `dist/docs/`. The build copies that
-wheel into `docs/_build/html/public/wheels/<sha256>/` and writes a base-aware,
-same-origin path into the browser notebook metadata. Set
+The build executes marimo pages in the uv environments declared by their
+`{marimo-config}` blocks and writes the site to `docs/_build/html`. Set
 `BASE_URL=/pyobservablejs` for a site published below that path.
 
 ## Checks
@@ -78,8 +79,8 @@ make check
 ## Browser checks
 
 For widget frontend, notebook rendering, Observable runtime, Jupyter or marimo
-integration, docs site rendering, or user-visible UI changes, run the local
-frontends and verify them with `agent-browser`.
+integration, docs site rendering, or other user-visible changes, verify the
+affected workflow in a browser.
 
 Start JupyterLab in one shell:
 
@@ -90,25 +91,11 @@ uv run --package pyobservablejs jupyter lab --no-browser --port 27273 --ServerAp
 Start the documentation server in another shell:
 
 ```sh
-uv run --package pyobservablejs python scripts/docs.py serve
+make docs-serve
 ```
 
-Verify:
-
-- `example.ipynb` can restart and run all in JupyterLab, then renders the
-  Observable title plus Plot output.
-- docs pages with `{marimo}` blocks render their pyobservablejs widgets.
-- `guides/python-variables` updates the Observable Plot when the Python slider
-  changes and preserves the mounted widget model.
-- a full view and a cell view can stay mounted together in marimo, share a
-  named `viewof` input, and preserve both view model ids through interaction.
-- after one input interaction, shared state and both rendered outputs settle
-  and remain stable during an idle observation window.
-- a composite view evaluates its selected cells in one runtime and exposes one
-  coherent value and graph snapshot.
-- Jupyter can render two views from one notebook while preserving independent
-  readback for each view.
-
-Use `agent-browser console`, `agent-browser errors`, DOM or shadow-DOM
-inspection, and screenshots where they expose the failure. Stop local servers
-and browser sessions before handoff.
+Run `example.ipynb` from a fresh kernel for Jupyter changes. Exercise the live
+marimo pages for documentation changes. When a change affects view composition,
+mount the relevant full, focused, or composite views together and exercise
+shared inputs, Python updates, and view-local readback. Inspect console errors,
+the rendered DOM, and screenshots where they expose the behavior under test.

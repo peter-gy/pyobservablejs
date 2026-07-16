@@ -20,13 +20,13 @@ pnpm --filter @pyobservablejs/python build
 Build the Jupyter Book docs:
 
 ```sh
-uv run --package pyobservablejs python scripts/docs.py build
+make docs
 ```
 
 Preview them locally:
 
 ```sh
-uv run --package pyobservablejs python scripts/docs.py serve
+make docs-serve
 ```
 
 ## Checks

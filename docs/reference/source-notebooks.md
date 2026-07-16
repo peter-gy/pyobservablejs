@@ -5,7 +5,12 @@ description: Notebook.from_html, Notebook.from_html_file, Notebook.from_observab
 
 # Source notebooks
 
-Source-backed notebooks use Notebook Kit HTML as their source.
+`Notebook.from_html` and `from_html_file` load Notebook Kit HTML. The
+`from_observablehq*` constructors convert ObservableHQ document records to
+Notebook Kit HTML and select the classic Observable standard library.
+
+Treat every source notebook as executable code. Its cells run JavaScript in the
+notebook page and can load remote modules or data.
 
 ## `Notebook.from_html`
 
@@ -42,6 +47,10 @@ notebook = obs.Notebook.from_html(source)
 base used when `rewrite_imports=True`. `files` registers explicit Python file
 inputs and local paths are normalized against `base_path`.
 
+HTML returned by an ObservableHQ notebook's `to_notebook_html()` method keeps
+its classic Observable standard-library semantics when loaded through
+`from_html` or `from_html_file`.
+
 `embed_file_attachments=True` registers existing local `FileAttachment`
 references as data URLs.
 `rewrite_imports=True` embeds existing local modules referenced by quoted
@@ -53,11 +62,11 @@ Explicit `files` override discovered files with the same name.
 See [File attachments](file-attachments.md) for accepted `files` values,
 construction-time data URLs, and discovery boundaries.
 
-A non-string `source` raises `TypeError`. Unsupported Notebook Kit theme
-attributes raise `ValueError`. Explicit local files can raise
-`FileNotFoundError` or `OSError` when files are missing or unreadable. Import
-rewriting raises `ValueError` for a circular local graph. Reading an imported
-module can raise an `OSError` or `UnicodeError` subclass.
+A non-string `source` raises `TypeError`. Unsupported theme or runtime-profile
+attributes and duplicate nonempty cell names raise `ValueError`. Explicit local
+files can raise `FileNotFoundError` or `OSError` when files are missing or
+unreadable. Import rewriting raises `ValueError` for a circular local graph.
+Reading an imported module can raise an `OSError` or `UnicodeError` subclass.
 
 ## `Notebook.from_html_file`
 
@@ -98,7 +107,8 @@ obs.Notebook.from_observablehq(
 )
 ```
 
-Fetches a public ObservableHQ notebook through the document API.
+Fetches a public ObservableHQ notebook through the document API and evaluates
+its cells with the classic Observable standard library.
 
 ```python
 import observablejs as obs
@@ -106,12 +116,17 @@ import observablejs as obs
 notebook = obs.Notebook.from_observablehq("@d3/bar-chart", timeout=10)
 ```
 
-The specifier may be an ObservableHQ URL, slug, notebook id, or document API URL.
-Remote uploaded files become URL-backed attachments.
+The specifier may be an ObservableHQ URL, slug, notebook id, or document API
+URL. Remote uploaded files become URL-backed attachments. The fetched
+document's `id` and `version` pin imported Observable notebooks to the
+dependency revisions selected by that source revision.
+
+`timeout` is the network timeout in seconds. `None` disables the per-request
+timeout.
 
 Invalid specifiers, non-JSON responses, unsupported document API shapes, and
 conversion failures raise `ValueError`. HTTP and network failures raise
-`OSError`.
+`OSError`. Response text decoding failures raise `UnicodeError`.
 
 ## `Notebook.from_observablehq_document`
 
@@ -126,12 +141,15 @@ obs.Notebook.from_observablehq_document(
 )
 ```
 
-Creates a notebook from an already-fetched ObservableHQ document API mapping.
+Creates a notebook from an already-fetched ObservableHQ document API mapping
+and evaluates its cells with the classic Observable standard library.
 
 ```python
 import observablejs as obs
 
 document = {
+    "id": "1234567890abcdef",
+    "version": 7,
     "title": "Report",
     "nodes": [
         {"id": 1, "mode": "js", "name": "answer", "value": "answer = 42"}
@@ -142,7 +160,10 @@ notebook = obs.Notebook.from_observablehq_document(document)
 
 Document `files` become URL-backed file records. Explicit `files` override
 uploaded files with the same name. `title=None` uses the document title, then
-falls back to `"Untitled"`.
+falls back to `"Untitled"`. An empty title follows the same fallback. Preserve
+the document `id` as 16 lowercase hexadecimal characters and `version` as a
+nonnegative integer so imported Observable notebooks stay pinned to the source
+revision. Other shapes leave imports unpinned.
 
 ## `Notebook.from_observablehq_page_data`
 
@@ -165,6 +186,8 @@ import observablejs as obs
 page_data = {
     "pageProps": {
         "initialNotebook": {
+            "id": "1234567890abcdef",
+            "version": 7,
             "title": "Report",
             "nodes": [
                 {"id": 1, "mode": "js", "value": "answer = 42"}
@@ -176,7 +199,8 @@ notebook = obs.Notebook.from_observablehq_page_data(page_data)
 ```
 
 `page_data` must contain `pageProps.initialNotebook` or top-level
-`initialNotebook`.
+`initialNotebook`. The nested document uses the same classic standard library
+and source-revision import resolution as `from_observablehq_document`.
 
 ## `Notebook.from_observablehq_nodes`
 
@@ -206,25 +230,43 @@ notebook = obs.Notebook.from_observablehq_nodes(
 )
 ```
 
-ObservableHQ `js` nodes are imported with Observable JavaScript semantics.
-Remote uploaded files become URL-backed file records. Explicit `files` override
-uploaded files with the same name.
+Each node is a mapping. These fields are recognized:
 
-The resulting records follow the contract described in
-[File attachments](file-attachments.md).
+| Field                              | Contract                                                                                                        |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `id`                               | Integer cell id. Integer-form strings are converted. Missing or invalid values use the one-based node position. |
+| `mode`                             | Cell mode. The default is `"js"`. See the accepted modes below.                                                 |
+| `value`                            | Code-cell source.                                                                                               |
+| `name`                             | A string names a code cell. A table or chart name is used only when it is a valid JavaScript identifier.        |
+| `pinned`, `hidden`                 | Enabled when the value is exactly `true`.                                                                       |
+| `database`, `format`, and `output` | Notebook Kit metadata copied from code nodes to the resulting cell.                                             |
+| `data`                             | Table, chart, and SQL source or configuration metadata.                                                         |
 
-Unsupported document, page-data, or node shapes raise `TypeError` or
-`ValueError`.
+Accepted modes are `js`, `ts`, `ojs`, `md`, `html`, `tex`, `dot`, `sql`,
+`node`, `python`, `r`, `table`, and `chart`. ObservableHQ `js`, `table`, and
+`chart` records are lowered to Observable JavaScript cells. Unsupported modes
+raise `ValueError`.
 
-## Imported runtime compatibility
+`observable_files` accepts a sequence of mappings. Each usable record has a
+string `name` and `download_url`. Optional `mime_type`, integer `size`, and ISO
+8601 `create_time` values become attachment metadata. Records with a missing or
+non-string name or URL are skipped. String names and URLs are retained as
+supplied, including empty names and URLs that the browser cannot load.
 
-ObservableHQ documents can depend on helpers from the classic Observable
-runtime. Imported cells receive these compatibility behaviors:
+ObservableHQ `js` nodes are imported with Observable JavaScript semantics and
+use the classic Observable standard library. Remote uploaded files become
+URL-backed file records. Explicit `files` override uploaded files with the same
+name.
 
-| Behavior                                     | Contract                                                                                                                                                 |
-| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `require`                                    | Resolves npm package specifiers through jsDelivr, supports `require.resolve`, `require.alias`, preloaded aliases, multiple loads, and default promotion. |
-| `Mutable`                                    | Keeps Notebook Kit's async mutable generator with a `.value` setter and adds a `generator` alias for older code.                                         |
-| `Generators.observe`, `.queue`, and `.input` | Keep Notebook Kit's async generator shape and expose a sync iterator for older consumers.                                                                |
-| `html`                                       | Accepts simple form and text markup in legacy string interpolations. Event handlers, URL attributes, inline styles, and other tags stay as text.         |
-| notebook-defined `display` and `view`        | Lets cells call variables named `display` or `view` when the notebook defines those variables.                                                           |
+Node records resolve imported notebooks from the supplied import specifiers at
+render time. Use `from_observablehq_document` with the source `id` and
+`version` when imported notebooks must stay pinned to a published revision.
+
+The resulting attachments follow the contract described in [File
+attachments](file-attachments.md).
+
+A non-mapping document or page-data value raises `TypeError`. A document
+without a node list and page data without `initialNotebook` raise `ValueError`.
+`from_observablehq_nodes` requires a non-string sequence. A node that is not a
+mapping, lowers to an unsupported cell mode, or produces a duplicate nonempty
+cell key raises `ValueError`.

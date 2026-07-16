@@ -6,8 +6,12 @@ description: Use a Notebook Kit input to filter a cars scatter plot.
 # Filter in Observable
 
 Notebook Kit inputs can own interaction entirely in the browser. Try choosing a
-cylinder count. The scatter plot updates immediately. `cars` is a sample dataset
-provided by Notebook Kit.
+cylinder count. The scatter plot updates when the selection changes. `cars` is
+a sample dataset provided by Notebook Kit.
+
+The browser loads the libraries and sample data used here. See [Notebook
+runtime](../guides/notebook-runtime.md#builtins) for network and content
+security policy requirements.
 
 ```{marimo-config}
 :pyproject:
@@ -68,10 +72,7 @@ mo.ui.anywidget(full_view)
 ```
 
 The input defines `cylinders`. The hidden cell derives `filteredCars`. The chart
-references that derived value, so Notebook Kit records both graph edges.
-
-Python creates one full view. Its browser runtime updates the selection and
-dependent cells.
+references that derived value, so the graph contains both dependency edges.
 
 ## Continue
 

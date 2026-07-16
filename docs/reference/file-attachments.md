@@ -26,7 +26,6 @@ notebook = obs.Notebook(
         'rows = FileAttachment("rows.csv").csv({typed: true})',
         key="rows",
     ),
-    obs.ojs("Plot.plot({x: {type: \"utc\"}, marks: [Plot.lineY(rows, {x: \"date\", y: \"value\"})]})"),
     files={"rows.csv": "rows.csv"},
     base_path=data_dir,
 )
@@ -43,30 +42,63 @@ obs.Notebook(..., files={name: value}, base_path=None)
 
 Each value can be one of these forms:
 
-| Value                                            | Resulting attachment record                                                     |
-| ------------------------------------------------ | ------------------------------------------------------------------------------- |
-| Local `str` or `pathlib.Path`                    | A data URL plus inferred `mimeType` and byte `size`.                            |
-| URL string such as `https:`, `data:`, or `blob:` | The URL plus a `mimeType` inferred from the mapping key.                        |
-| Mapping                                          | A copied record with `url` and optional `mimeType`, `lastModified`, and `size`. |
+| Value                                            | Resulting attachment record                              |
+| ------------------------------------------------ | -------------------------------------------------------- |
+| Local `str` or `pathlib.Path`                    | A data URL plus inferred `mimeType` and byte `size`.     |
+| URL string such as `https:`, `data:`, or `blob:` | The URL plus a `mimeType` inferred from the mapping key. |
+| Mapping                                          | A shallow-copied attachment record.                      |
 
 `FileAttachment` records use camelCase field names.
 
 ```python
 notebook = obs.Notebook(
-    obs.ojs('metadata = FileAttachment("metadata.json").json()'),
+    obs.ojs('countries = FileAttachment("countries.json").json()'),
     files={
-        "metadata.json": {
-            "url": "https://example.test/metadata.json",
+        "countries.json": {
+            "url": "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json",
             "mimeType": "application/json",
         }
     },
 )
 ```
 
+A mapping used by `FileAttachment` needs a `url`. `mimeType`, `lastModified`,
+and `size` are optional. Python preserves other mapping fields and does not
+validate the record. A missing or invalid URL therefore fails when the browser
+registers or loads the attachment.
+
+## Browser access
+
+`FileAttachment(name)` returns Notebook Kit's browser attachment object. Its
+`href`, `name`, `mimeType`, `lastModified`, and `size` properties are always
+present. `lastModified` and `size` are `undefined` when the registered record
+omits them.
+
+| Data                          | Methods                                                     |
+| ----------------------------- | ----------------------------------------------------------- |
+| URL                           | `.href`, `.url()`                                           |
+| Raw response                  | `.blob()`, `.arrayBuffer()`, `.stream()`, `.text()`         |
+| JSON and delimited text       | `.json()`, `.csv()`, `.tsv()`, `.dsv()`                     |
+| Documents and images          | `.image()`, `.xml()`, `.html()`                             |
+| Arrow, Parquet, and workbooks | `.arrow()`, `.arquero()`, `.parquet()`, `.zip()`, `.xlsx()` |
+
+`.href` contains the attachment URL. Notebook Kit's deprecated `.url()` method
+returns the same value asynchronously. Use `.href` in new cells.
+
+The widget also adds `.sqlite()`, which returns a `SQLiteDatabaseClient` with
+`query`, `queryRow`, `sql`, and schema-inspection methods. Before calling it,
+set `globalThis.observablejsSqlite` to an object with `initSqlJs` and an
+optional `locateFile`, or assign the loader directly to
+`globalThis.initSqlJs`.
+
 ## Path and base resolution
 
 Local paths are expanded with `Path.expanduser()` and resolved to absolute
 paths during construction.
+
+`base_path` supplies a resolution base. It is not a filesystem boundary, so a
+relative path containing `..` can resolve outside that directory. Embed files
+and imports only from sources whose local paths you trust.
 
 | Call                                      | Base for a relative `files` value              |
 | ----------------------------------------- | ---------------------------------------------- |
@@ -120,9 +152,9 @@ notebook = obs.Notebook.from_html(
 `embed_file_attachments=True` registers existing local files referenced by
 literal `FileAttachment("name")` calls inside JavaScript notebook cells. Static
 template literals such as ``FileAttachment(`rows.csv`)`` and imported aliases
-from `observablehq:stdlib` are also recognized. Calls in comments, strings,
-regular-expression literals, Markdown cells, and scripts outside the
-`<notebook>` element stay outside discovery.
+from `observablehq:stdlib` are also recognized. Discovery ignores calls in
+comments, string literals, regular-expression literals, Markdown cells, and
+scripts outside the `<notebook>` element.
 
 Discovery populates `notebook.attachments` with data URLs and keeps each
 `FileAttachment` call in `notebook.source`. Explicit `files` entries take

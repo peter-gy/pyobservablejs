@@ -10,8 +10,8 @@ distribution and contributor environment.
 @pyobservablejs/runtime
           |
           v
-@pyobservablejs/widget       @pyobservablejs/anywidget-bundle
-          |                              |
+@pyobservablejs/widget       anywidget-bundle
+          |                  npm plugin + Python runtime
           +---------------+--------------+
                           v
                 @pyobservablejs/python
@@ -20,16 +20,17 @@ distribution and contributor environment.
                    PyPI pyobservablejs
 ```
 
-| Package                     | Contract                                                                                 |
-| --------------------------- | ---------------------------------------------------------------------------------------- |
-| `packages/runtime`          | Notebook Kit analysis, execution, attachments, variables, and browser runtime values     |
-| `packages/widget`           | anywidget session resolution, view rendering, shared input synchronization, and teardown |
-| `packages/anywidget-bundle` | Vite plugin, manifest, module transport, and lifecycle protocol for a configured app     |
-| `packages/pyobservablejs`   | Python API, traitlets, final widget assets, wheel, and sdist                             |
+| Package                   | Contract                                                                                 |
+| ------------------------- | ---------------------------------------------------------------------------------------- |
+| `packages/runtime`        | Notebook Kit analysis, execution, attachments, variables, and browser runtime values     |
+| `packages/widget`         | anywidget session resolution, view rendering, shared input synchronization, and teardown |
+| `anywidget-bundle`        | Vite plugin, manifest, module transport, lifecycle protocol, and Python response runtime |
+| `packages/pyobservablejs` | Python API, traitlets, final widget assets, wheel, and sdist                             |
 
 Cross-package TypeScript imports use package names. Internal dependencies use
-`workspace:*`. Shared external versions use the catalog in
-`pnpm-workspace.yaml`.
+`workspace:*`. The frontend pins the npm `anywidget-bundle` release, and the
+Python distribution pins the matching PyPI release. Shared external versions
+use the catalog in `pnpm-workspace.yaml`.
 
 ## Toolchain
 
@@ -41,8 +42,10 @@ helper scripts from the repository-local Python environment, and Node resolves
 their module type through ancestor manifests. Each TypeScript workspace package
 declares its own ESM boundary.
 
-The root `package.json` requires Node 22.18 or newer. CI uses Node 22 through
-`setup-vp`.
+The root `package.json` requires Node 22.18 or newer. `.node-version` pins Node
+22.18.0 for local version managers and CI. `.python-version` pins Python 3.12
+for uv and the default CI jobs. The Python compatibility matrix installs its
+supported versions explicitly.
 
 Run the complete JavaScript workspace checks directly:
 
@@ -57,7 +60,6 @@ Use a package filter while iterating:
 ```sh
 pnpm --filter @pyobservablejs/runtime test
 pnpm --filter @pyobservablejs/widget build
-pnpm --filter @pyobservablejs/anywidget-bundle test
 pnpm --filter @pyobservablejs/python build
 ```
 

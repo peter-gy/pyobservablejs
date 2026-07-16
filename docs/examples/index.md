@@ -1,12 +1,11 @@
 ---
-title: Example gallery
+title: Examples
 description: Live pyobservablejs workflows with source and output.
 ---
 
-# Example gallery
+# Examples
 
-Each example includes source, a rendered view, and links to the relevant API
-reference.
+Each example includes source and a rendered view.
 
 ::::{grid} 1 1 2 2
 
@@ -36,5 +35,5 @@ Use a marimo slider to update a mounted Observable chart.
 
 ::::
 
-The [getting started tutorial](../getting-started.md) introduces notebook
-definitions, renderable views, and shared session state.
+The [getting started tutorial](../getting-started.md) builds a reactive notebook
+and mounts its view.

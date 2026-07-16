@@ -94,13 +94,14 @@ narrows both the bars and the legend.
 
 ## Follow the graph
 
-`obs.Notebook(...)` creates the document and its shared input session.
-`notebook.view()` creates the anywidget that runs every cell. `obs.js(...)` adds
-standard JavaScript cells. A top-level variable such as `species` can be
-referenced by another cell.
+`obs.Notebook(...)` stores the cells and shared variables. `notebook.view()`
+selects every cell and returns a `NotebookView`. Browser evaluation starts when
+marimo mounts that view through `mo.ui.anywidget`. `obs.js(...)` adds standard
+JavaScript cells, and top-level variables can be referenced by other cells.
 
-`view(...)` displays the select input and yields its current value. Changing the
-selection invalidates the Plot cell, which runs again with the new value.
+Inside the JavaScript cell, `view(...)` displays the select input and yields its
+current value. Changing the selection invalidates the Plot cell, which runs
+again with the new value.
 
 In marimo, wrap `full_view` with `mo.ui.anywidget`. In Jupyter, put `full_view`
 as the final expression in a cell.
@@ -110,5 +111,7 @@ as the final expression in a cell.
 - [Python data to Plot](examples/python-data-plot.md) passes records from Python.
 - [Observable cells and reactivity](guides/author-cells.md) explains `obs.js`,
   `obs.ojs`, and cell dependencies.
+- [Views and composition](guides/views-and-composition.md) explains full,
+  focused, and composite views.
 - [Python variables](guides/python-variables.md) updates a mounted view from a
   marimo control.

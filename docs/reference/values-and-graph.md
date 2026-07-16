@@ -9,8 +9,19 @@ description: NotebookView readback, CellValues records, render gates, and Notebo
 Python. Readback belongs to the view whose browser runtime produced it.
 
 ```python
-full_view = notebook.view()
+import observablejs as obs
 
+notebook = obs.Notebook(
+    obs.ojs("gain = 0.8", key="gain"),
+    obs.ojs("doubled = gain * 2", key="doubled"),
+)
+full_view = notebook.view()
+full_view
+```
+
+After the view renders:
+
+```python
 if full_view.has_rendered:
     gain = full_view.value("gain")
 
@@ -18,32 +29,14 @@ if full_view.has_graph_snapshot:
     dependencies = full_view.graph
 ```
 
-## `NotebookView`
-
-A view can cover the complete notebook, one selected cell, or a composite
-selection.
-
-```python
-full_view = notebook.view()
-gain_view = notebook.cell_by_key("gain_control").view()
-summary_view = notebook.view(cells=[0, 1])
-```
-
-Views from one notebook share named Python variables. An interaction with a
-named `viewof` input is shared with current and future views. Untouched source
-defaults remain local to each runtime. Each view owns its runtime values,
-per-cell values, graph, and render gates. Its graph contains the selected cells
-and the dependency closure evaluated by that view. `cell_values()` contains the
-selected cells.
-
-### Readback members
+## Readback members
 
 | Member               | Type                     | Contract                                                       |
 | -------------------- | ------------------------ | -------------------------------------------------------------- |
 | `has_rendered`       | `bool`                   | Whether this view has synchronized a completed browser render. |
 | `has_graph_snapshot` | `bool`                   | Whether this view has synchronized graph metadata.             |
 | `runtime_values`     | `dict[str, Any]`         | Decoded values with one owning cell in this view.              |
-| `cell_values()`      | `tuple[CellValues, ...]` | Per-cell decoded values in this view's logical cell order.     |
+| `cell_values()`      | `tuple[CellValues, ...]` | Decoded values for selected cells in notebook order.           |
 | `value(name)`        | `Any`                    | One entry from `runtime_values`.                               |
 | `graph`              | `NotebookGraph`          | Static dependency graph for cells evaluated by this view.      |
 
@@ -52,29 +45,14 @@ render. `graph` requires a graph snapshot. `value(name)` raises `KeyError` when
 the rendered value mapping has no matching name. A name produced by multiple
 selected cells is omitted from `runtime_values` because it has no unique owner.
 
-## `NotebookCell`
-
-`NotebookCell` is a cached selection handle for one cell in a `Notebook`.
-Retrieve handles through `notebook.cells`, `notebook.cell_at`, or
-`notebook.cell_by_key`. Call `view()` to create a renderable view for that cell
-and its dependencies.
-
-```python
-cell = notebook.cell_by_key("gain_control")
-gain_view = cell.view()
-```
-
-The handle exposes its `key` and Notebook Kit `name`. Browser values and graph
-metadata belong to `gain_view`.
-
 ## `CellValues`
 
 ```python
 obs.CellValues(index, key, values)
 ```
 
-`NotebookView.cell_values()` returns one `CellValues` record per logical cell
-in the view.
+`NotebookView.cell_values()` returns one `CellValues` record per selected cell
+in notebook order.
 
 | Field    | Type             | Contract                                                |
 | -------- | ---------------- | ------------------------------------------------------- |
@@ -115,7 +93,7 @@ obs.NotebookGraph(cells, edges)
 
 `NotebookView.graph` returns a frozen `NotebookGraph` after graph metadata
 synchronizes. Malformed browser entries are dropped while Python decodes the
-graph trait.
+graph snapshot.
 
 ### Attributes
 
@@ -174,22 +152,22 @@ obs.CellInfo(
 
 `CellInfo` is a frozen record for one cell in a graph snapshot.
 
-| Field             | Type              | Contract                                             |
-| ----------------- | ----------------- | ---------------------------------------------------- |
-| `id`              | `int`             | Notebook Kit cell id.                                |
-| `index`           | `int`             | Zero-based cell position.                            |
-| `mode`            | `str`             | Cell mode such as `ojs`, `js`, `md`, or `html`.      |
-| `key`             | `Optional[str]`   | Python cell handle.                                  |
-| `name`            | `Optional[str]`   | Notebook Kit cell name.                              |
-| `defines`         | `tuple[str, ...]` | Variables defined by the cell.                       |
-| `references`      | `tuple[str, ...]` | Variables read by the cell.                          |
-| `output`          | `Optional[str]`   | Primary Notebook Kit output name.                    |
-| `outputs`         | `tuple[str, ...]` | Notebook Kit output names.                           |
-| `runtime_outputs` | `tuple[str, ...]` | Raw runtime output names used for edges.             |
-| `autodisplay`     | `bool`            | Whether Notebook Kit auto-displays the output.       |
-| `autoview`        | `bool`            | Whether Notebook Kit generated a `viewof` output.    |
-| `automutable`     | `bool`            | Whether Notebook Kit generated a mutable output.     |
-| `error`           | `Optional[str]`   | Graph-level error text when the browser reports one. |
+| Field             | Type              | Contract                                          |
+| ----------------- | ----------------- | ------------------------------------------------- |
+| `id`              | `int`             | Notebook Kit cell id.                             |
+| `index`           | `int`             | Zero-based cell position.                         |
+| `mode`            | `str`             | Cell mode such as `ojs`, `js`, `md`, or `html`.   |
+| `key`             | `Optional[str]`   | Python cell handle.                               |
+| `name`            | `Optional[str]`   | Notebook Kit cell name.                           |
+| `defines`         | `tuple[str, ...]` | Variables defined by the cell.                    |
+| `references`      | `tuple[str, ...]` | Variables read by the cell.                       |
+| `output`          | `Optional[str]`   | Primary Notebook Kit output name.                 |
+| `outputs`         | `tuple[str, ...]` | Notebook Kit output names.                        |
+| `runtime_outputs` | `tuple[str, ...]` | Raw runtime output names used for edges.          |
+| `autodisplay`     | `bool`            | Whether Notebook Kit auto-displays the output.    |
+| `autoview`        | `bool`            | Whether Notebook Kit generated a `viewof` output. |
+| `automutable`     | `bool`            | Whether Notebook Kit generated a mutable output.  |
+| `error`           | `Optional[str]`   | Cell transpilation error text.                    |
 
 ## `DependencyEdge`
 

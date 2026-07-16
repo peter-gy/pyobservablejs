@@ -6,7 +6,12 @@ description: Apply Notebook Kit themes and show selected cell source.
 # Themes and pinned source
 
 `theme` accepts a Notebook Kit theme name or a light and dark mapping. Pinned
-cells appear in a source panel when `show_pinned_source=True`.
+cells selected by the view appear in a source panel when
+`show_pinned_source=True`.
+
+The browser loads Plot and the AAPL sample used here. See [Notebook
+runtime](notebook-runtime.md#builtins) for network and content security policy
+requirements.
 
 ```{marimo-config}
 :pyproject:
@@ -43,8 +48,8 @@ full_view = notebook.view()
 mo.ui.anywidget(full_view)
 ```
 
-The rendered view follows the page color scheme and exposes the chart source in
-its source panel.
+The rendered view switches between `cotton` and `slate` with the browser color
+scheme preference. It also exposes the chart source in its source panel.
 
 ## Theme names
 
@@ -59,7 +64,11 @@ obs.NOTEBOOK_THEMES
 Source-backed HTML can also carry a Notebook Kit theme attribute.
 
 ```html
-<notebook theme="light-dark(cotton, slate)"> ... </notebook>
+<notebook theme="light-dark(cotton, slate)">
+	<script type="text/markdown">
+		# Report
+	</script>
+</notebook>
 ```
 
 See [Notebook themes](../reference/notebook-themes.md) for accepted names and

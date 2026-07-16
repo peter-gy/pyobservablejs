@@ -6,11 +6,23 @@ description: Observable JavaScript notebooks from Python.
 # pyobservablejs
 
 `pyobservablejs` renders Observable JavaScript notebooks in Jupyter and marimo.
-`Notebook` stores the definition and shared session state. `NotebookView` runs
-its selected cells through Notebook Kit in the browser.
+`Notebook` collects cells, variables, and attachments. Call `view()` to create
+a renderable view of the notebook or a selected group of cells.
+
+Install the package in the same environment as your notebook frontend.
+
+```sh
+pip install pyobservablejs jupyterlab
+```
+
+For marimo, replace `jupyterlab` with `marimo`.
 
 The example uses Notebook Kit's built-in Palmer Penguins sample. Hover a dot to
 inspect a measurement.
+
+The browser loads the library and sample data used here. See [Notebook
+runtime](guides/notebook-runtime.md#builtins) for network and content security
+policy requirements.
 
 ```{marimo-config}
 :pyproject:
@@ -50,19 +62,7 @@ full_view = notebook.view()
 mo.ui.anywidget(full_view)
 ```
 
-Adelie, Chinstrap, and Gentoo penguins form visibly different bill profiles.
-
-Install the package in the same environment as your notebook frontend.
-
-```sh
-pip install pyobservablejs jupyterlab
-```
-
-The distribution is named `pyobservablejs`. Python code imports it as
-`observablejs`.
-
 `Notebook` accepts JavaScript, Observable JavaScript, Markdown, and HTML cells.
-It also accepts Python variables and local file attachments.
 
 ## Start with a workflow
 
@@ -77,7 +77,7 @@ Create a reactive Plot chart and render its view in Jupyter or marimo.
 :::{card} Pass Python data
 :link: examples/python-data-plot.md
 
-Serialize Python records into a Notebook Kit cell.
+Publish Python records as a JavaScript variable and render them with Plot.
 :::
 
 :::{card} React in the browser
@@ -94,5 +94,8 @@ Drive a mounted view from a marimo control.
 
 ::::
 
-Use the [examples](examples/index.md) for complete workflows and the
-[reference](reference/index.md) for signatures, defaults, and lifecycle rules.
+Use the [examples](examples/index.md) for complete workflows. The [views and
+composition guide](guides/views-and-composition.md) explains cell selection,
+mounting, variable sharing, and readback. The
+[reference](reference/index.md) covers signatures, defaults, and lifecycle
+rules.

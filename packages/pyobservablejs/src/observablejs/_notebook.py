@@ -526,68 +526,6 @@ class Notebook(_ObservableWidget):
         Either option requires ``base_path``. Explicit ``files`` override
         discovered files with the same name. ``variables`` sets Python-owned OJS
         variables for the rendered notebook.
-
-        Examples:
-            Create a notebook from literal Notebook Kit HTML:
-
-            .. code-block:: python
-
-                import observablejs as obs
-
-                source = '''
-                <!doctype html>
-                <notebook theme="air">
-                  <script
-                    id="1"
-                    type="application/vnd.observable.javascript"
-                    name="answer"
-                  >answer = 42</script>
-                </notebook>
-                '''
-
-                notebook = obs.Notebook.from_html(source)
-                assert notebook.cells[0].key == "answer"
-
-            Resolve local ``FileAttachment`` calls and relative imports from a
-            known directory:
-
-            .. code-block:: python
-
-                import pathlib
-                import tempfile
-
-                import observablejs as obs
-
-                source = '''
-                <!doctype html>
-                <notebook>
-                  <script id="1" type="module" name="scale">
-                    import {scale} from "./scale.js";
-                    export default scale;
-                  </script>
-                  <script
-                    id="2"
-                    type="application/vnd.observable.javascript"
-                    name="rows"
-                  >rows = FileAttachment("rows.csv").csv()</script>
-                </notebook>
-                '''
-
-                with tempfile.TemporaryDirectory() as directory:
-                    base_path = pathlib.Path(directory)
-                    (base_path / "scale.js").write_text(
-                        "export const scale = 2;",
-                        encoding="utf-8",
-                    )
-                    (base_path / "rows.csv").write_text("x\\n1\\n", encoding="utf-8")
-
-                    notebook = obs.Notebook.from_html(
-                        source,
-                        base_path=base_path,
-                        embed_file_attachments=True,
-                        rewrite_imports=True,
-                    )
-                    assert "rows.csv" in notebook.attachments
         """
 
         model = notebook_model_from_html(
@@ -619,35 +557,6 @@ class Notebook(_ObservableWidget):
         The HTML file's parent directory is used as ``base_path`` when
         ``embed_file_attachments`` or ``rewrite_imports`` is enabled. Explicit
         ``files`` override discovered files with the same name.
-
-        Examples:
-            Load a Notebook Kit file from disk:
-
-            .. code-block:: python
-
-                import pathlib
-                import tempfile
-
-                import observablejs as obs
-
-                with tempfile.TemporaryDirectory() as directory:
-                    path = pathlib.Path(directory) / "report.html"
-                    path.write_text(
-                        '''
-                        <!doctype html>
-                        <notebook>
-                          <script
-                            id="1"
-                            type="application/vnd.observable.javascript"
-                            name="answer"
-                          >answer = 42</script>
-                        </notebook>
-                        ''',
-                        encoding="utf-8",
-                    )
-
-                    notebook = obs.Notebook.from_html_file(path)
-                    assert notebook.cells[0].key == "answer"
         """
 
         source_path = pathlib.Path(path)
@@ -678,30 +587,6 @@ class Notebook(_ObservableWidget):
         files become URL-backed attachments. ``timeout`` controls the network
         request. Invalid specifiers or non-JSON responses raise ``ValueError``.
         HTTP and network failures raise ``OSError``.
-
-        Examples:
-            Fetch by slug:
-
-            .. code-block:: python
-
-                import observablejs as obs
-
-                notebook = obs.Notebook.from_observablehq(
-                    "@d3/bar-chart",
-                    timeout=10,
-                )
-
-            Accepted specifier shapes:
-
-            .. code-block:: python
-
-                specifiers = [
-                    "@d3/bar-chart",
-                    "https://observablehq.com/@d3/bar-chart",
-                    "1234567890abcdef",
-                    "https://observablehq.com/d/1234567890abcdef",
-                    "https://api.observablehq.com/document/@d3/bar-chart",
-                ]
         """
 
         model = notebook_model_from_observablehq(
@@ -731,37 +616,6 @@ class Notebook(_ObservableWidget):
         API. It must contain a ``nodes`` sequence. Optional ``files`` records
         become URL-backed attachments. Explicit ``files`` override uploaded
         files with the same name.
-
-        Examples:
-            Build from an already-fetched document mapping:
-
-            .. code-block:: python
-
-                import observablejs as obs
-
-                document = {
-                    "title": "Fetched notebook",
-                    "nodes": [
-                        {
-                            "id": 1,
-                            "mode": "js",
-                            "name": "answer",
-                            "value": "answer = 42",
-                            "pinned": True,
-                        }
-                    ],
-                    "files": [
-                        {
-                            "name": "rows.csv",
-                            "download_url": "https://example.test/rows.csv",
-                            "mime_type": "text/csv",
-                        }
-                    ],
-                }
-
-                notebook = obs.Notebook.from_observablehq_document(document)
-                assert notebook.cells[0].key == "answer"
-                assert notebook.attachments["rows.csv"]["mimeType"] == "text/csv"
         """
 
         model = notebook_model_from_observablehq_document(
@@ -791,32 +645,6 @@ class Notebook(_ObservableWidget):
         ``initialNotebook`` mapping. The nested notebook mapping uses the same
         ``title``, ``nodes``, and ``files`` shape accepted by
         ``from_observablehq_document``.
-
-        Examples:
-            Build from page data captured from an Observable page:
-
-            .. code-block:: python
-
-                import observablejs as obs
-
-                page_data = {
-                    "pageProps": {
-                        "initialNotebook": {
-                            "title": "Page notebook",
-                            "nodes": [
-                                {
-                                    "id": 1,
-                                    "mode": "js",
-                                    "name": "answer",
-                                    "value": "answer = 42",
-                                }
-                            ],
-                        }
-                    }
-                }
-
-                notebook = obs.Notebook.from_observablehq_page_data(page_data)
-                assert notebook.cells[0].key == "answer"
         """
 
         model = notebook_model_from_observablehq_page_data(
@@ -847,45 +675,6 @@ class Notebook(_ObservableWidget):
         JavaScript nodes use OJS semantics after import. ``observable_files``
         accepts uploaded file records with ``name`` and ``download_url``.
         Explicit ``files`` override uploaded files with the same name.
-
-        Examples:
-            Build directly from raw node and file records:
-
-            .. code-block:: python
-
-                import observablejs as obs
-
-                nodes = [
-                    {
-                        "id": 1,
-                        "mode": "js",
-                        "name": "rows",
-                        "value": "rows = [{x: 1}, {x: 2}]",
-                    },
-                    {
-                        "id": 2,
-                        "mode": "js",
-                        "name": "answer",
-                        "value": "answer = rows.length",
-                        "pinned": True,
-                    },
-                ]
-                observable_files = [
-                    {
-                        "name": "rows.csv",
-                        "download_url": "https://example.test/rows.csv",
-                        "mime_type": "text/csv",
-                    }
-                ]
-
-                notebook = obs.Notebook.from_observablehq_nodes(
-                    nodes,
-                    observable_files=observable_files,
-                    title="Imported notebook",
-                    variables={"scale": 2},
-                )
-                assert notebook.cells[1].key == "answer"
-                assert notebook.attachments["rows.csv"]["url"].startswith("https://")
         """
 
         model = notebook_model_from_observablehq_nodes(

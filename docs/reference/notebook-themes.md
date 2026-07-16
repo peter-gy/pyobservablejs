@@ -10,14 +10,18 @@ description: Notebook Kit theme names accepted by pyobservablejs.
 ```python
 import observablejs as obs
 
-notebook = obs.Notebook(..., theme="glacier")
+notebook = obs.Notebook(
+    obs.md("# Report"),
+    theme="glacier",
+)
 ```
 
-It also accepts a light and dark mapping.
+The default is `"air"`. A light and dark mapping selects a theme for each
+browser color scheme.
 
 ```python
 notebook = obs.Notebook(
-    ...,
+    obs.md("# Report"),
     theme={"light": "cotton", "dark": "slate"},
 )
 ```

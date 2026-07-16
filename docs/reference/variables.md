@@ -32,13 +32,15 @@ The Observable runtime owns these names, so Python variables cannot use them:
 Arrow DOM DatabaseClient DuckDBClient FileAttachment Files Generators Inputs
 Interpreter L Mutable Plot Promises React ReactDOM SQLite SQLiteDatabaseClient
 _ __ojs_observer aapl alphabet aq cars citywages d3 dark diamonds document dot
-duckdb echarts flare htl html industries mapboxgl md mermaid miserables now
-olympians penguins pizza svg tex topojson vl weather width
+duckdb echarts flare htl html industries invalidation mapboxgl md mermaid
+miserables now olympians penguins pizza svg tex topojson visibility vl weather
+width
 ```
 
-ObservableHQ imports also reserve `require` while their classic runtime
-compatibility helpers are active. Invalid identifiers and reserved names raise
-`ValueError` during construction or a variable update.
+The classic Observable standard library also owns `__query`, `require`, and
+`resolve`. ObservableHQ constructors reserve these names for classic source
+execution. Invalid identifiers and reserved names raise `ValueError` during
+construction or a variable update.
 
 ## Python to browser
 
@@ -61,16 +63,17 @@ compatibility helpers are active. Invalid identifiers and reserved names raise
 
 One-shot iterators such as generators are materialized once and stored as
 replayable lists. Mapping keys with the same string form collapse to one
-JavaScript property. A mapping that contains `__observablejs_type__` is wrapped
-on the wire and revived as an ordinary user object.
+JavaScript property. A mapping that contains `__observablejs_type__` uses tagged
+serialization and revives as an ordinary user object.
 
 `range` uses direct JSON number encoding. Elements outside the JavaScript
 safe-integer range can lose precision in the browser. Use a list when those
 elements need `BigInt` conversion.
 
-Values outside these contracts raise `TypeError` before display. Use
-[file attachments](file-attachments.md) for large tables and binary data that
-the browser can load through `FileAttachment`.
+Values outside these contracts raise `TypeError` during construction or
+mutation, before synchronized state changes. Use [file
+attachments](file-attachments.md) for large tables and binary data that the
+browser can load through `FileAttachment`.
 
 ## `Notebook.variables`
 
@@ -85,7 +88,19 @@ evaluation and readback remain separate from this mapping.
 
 When a Python variable has the same name as a `viewof` input, the initial
 Python value seeds the control. A browser interaction then becomes shared
-session input state for current and future views.
+input state for current and future views when its value has a supported
+shared shape. Another view attempts to write that state to an input with the
+same name. A successful round trip dispatches `input` and `change` events. A
+failed round trip suppresses those events, though the attempted property write
+can still coerce or clear the target. Use the same input type for a shared name
+across views.
+
+Shared input state accepts `null`, booleans, strings, numbers including special
+numeric values, `BigInt`, valid dates, arrays, plain objects, maps, and sets.
+Container values must contain supported values recursively. Values such as
+`undefined`, functions, DOM elements, files, blobs, regular expressions,
+errors, binary buffers, circular references, and depth or size summaries remain
+local to the view that produced them.
 
 An `update_variables` or `replace_variables` call that includes the name clears
 the interacted value and applies the Python value to every active view. This
@@ -101,8 +116,9 @@ notebook.update_variables({"threshold": 0.8}, label="selected")
 
 Merges a mapping or iterable of key-value pairs into the Python-owned
 environment. Keyword arguments are applied after `values` and win when a name
-appears in both. Active views receive a live `set` update. An empty update is a
-no-op.
+appears in both. Active views receive a live `set` update for wire-level changes
+and names whose interacted input state is cleared. A wire-identical update with
+no interacted state is a no-op. An empty update is also a no-op.
 
 The method returns `None`. Invalid names raise `ValueError`. A malformed
 key-value iterable or unsupported value raises `TypeError`.
@@ -114,9 +130,11 @@ notebook.replace_variables({"rows": rows})
 ```
 
 Replaces the complete Python-owned environment and returns `None`. Names absent
-from the replacement are released. Active views rebuild their runtimes, which
-restores notebook definitions for released names. Keyword arguments win over
-matching entries in `values`.
+from the replacement are released. Active views rebuild when the serialized
+environment changes or the replacement clears interacted input state. This
+restores notebook definitions for released names. A wire-identical replacement
+with no interacted state is a no-op. Keyword arguments win over matching
+entries in `values`.
 
 ## `Notebook.reset_variables(*names)`
 

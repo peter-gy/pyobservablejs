@@ -9,6 +9,10 @@ description: Read browser-synchronized values and graph metadata from a rendered
 renders. Try moving `gain`. The readout updates in the browser, and a later
 Python cell can read `doubled` from the same view.
 
+The browser loads `Inputs` for this example. See [Notebook
+runtime](notebook-runtime.md#builtins) for network and content security policy
+requirements.
+
 ```{marimo-config}
 :pyproject:
 
@@ -25,8 +29,8 @@ import marimo as mo
 import observablejs as obs
 
 notebook = obs.Notebook(
-    obs.js(
-        'const gain = view(Inputs.range([0, 12], {value: 5, step: 1, label: "Gain"}));',
+    obs.ojs(
+        'viewof gain = Inputs.range([0, 12], {value: 5, step: 1, label: "Gain"})',
         key="gain_control",
     ),
     obs.js("const doubled = gain * 2;", key="doubled", display=False),
@@ -41,13 +45,14 @@ widget = mo.ui.anywidget(full_view)
 widget
 ```
 
-Read values from the rendered view.
+Read values after `full_view.has_rendered` becomes true.
 
 ```python
-gain_value = full_view.value("gain")
-doubled_value = full_view.value("doubled")
-runtime_values = full_view.runtime_values
-cell_values = full_view.cell_values()
+if full_view.has_rendered:
+    gain_value = full_view.value("gain")
+    doubled_value = full_view.value("doubled")
+    runtime_values = full_view.runtime_values
+    cell_values = full_view.cell_values()
 ```
 
 ## Inspect one cell
@@ -62,12 +67,15 @@ gain_widget
 ```
 
 ```python
-gain_value = gain_view.value("gain")
+if gain_view.has_rendered:
+    gain_value = gain_view.value("gain")
 ```
 
-When the user changes the named `viewof` input, `full_view` and `gain_view`
-receive the interacted value through their shared session. They keep separate
-runtimes and readback snapshots. Wrap each view independently in marimo and
+When the user changes `viewof gain`, `full_view` and `gain_view`
+share the interacted numeric value through their notebook session. They keep
+separate runtimes and readback snapshots. The [variables
+reference](../reference/variables.md#python-values-and-viewof-inputs) lists the
+value shapes that can be shared. Wrap each view independently in marimo and
 keep both wrappers mounted when both outputs belong on the page.
 
 ## Keep selected cells in one runtime
@@ -78,6 +86,7 @@ runtime.
 ```python
 summary_view = notebook.view(cells=[0, 1])
 summary_widget = mo.ui.anywidget(summary_view)
+summary_widget
 ```
 
 Read the composite graph and values from `summary_view`.

@@ -1,12 +1,13 @@
 ---
 title: Notebook
-description: Notebook definitions, renderable views, session state, and browser lifecycle.
+description: Notebook definitions, renderable views, shared values, and browser lifecycle.
 ---
 
 # `Notebook`
 
-`Notebook` stores an Observable Notebook Kit definition and the session state
-shared by its views. Create a view to start a browser runtime and render cells.
+`Notebook` stores cells, variables, attachments, and display options. Call
+`view()` to create a renderable view of the complete notebook or a selected
+group of cells.
 
 ```python
 import observablejs as obs
@@ -18,6 +19,7 @@ notebook = obs.Notebook(
 )
 
 full_view = notebook.view()
+full_view
 ```
 
 ## `Notebook(*cells, ...)`
@@ -46,9 +48,7 @@ Creates a Python-authored notebook definition and session. See [Cells](cells.md)
 | `files`              | `None`       | Named local paths, URLs, or attachment records for `FileAttachment`.                                    |
 | `base_path`          | `None`       | Base directory for relative local paths in `files`. The current working directory is used when omitted. |
 | `variables`          | `None`       | Mapping of Python-owned Observable variable names to serializable values.                               |
-| `show_pinned_source` | `False`      | Sends `show_source=True` to the renderer so pinned cells appear in the source panel.                    |
-
-Construction returns a `Notebook` instance.
+| `show_pinned_source` | `False`      | Sends `show_source=True` to the renderer so selected pinned cells appear in the source panel.           |
 
 ### Construction errors
 
@@ -70,14 +70,24 @@ summary_view = notebook.view(cells=[0, 1])
 keyed_view = notebook.view(cells=["answer"])
 ```
 
-Returns a new `NotebookView`. With `cells=None`, the view renders the complete
+Returns a new `NotebookView`. With `cells=None`, the view selects the complete
 notebook in cell order. `cells` accepts a sequence of cell indices, Python cell
 keys, or `NotebookCell` handles. The selected cells and their dependencies
-evaluate in one Notebook Kit runtime. Negative indices count from the end.
+evaluate in one Notebook Kit runtime after a frontend mounts the view. Negative
+indices count from the end. Dependency cells evaluate with hidden output unless
+they are also selected.
 
 Each call creates a view with its own runtime and readback state. Views from
 the same notebook share named Python variables. A browser interaction with a
-named `viewof` input becomes session state for current and future views.
+named `viewof` input becomes shared state for current and future views when
+its value has a [supported shared shape](variables.md#python-values-and-viewof-inputs).
+A sibling attempts to write that state to its matching input and dispatches
+`input` and `change` events when the value round-trips unchanged. A target that
+coerces an incompatible value may still change before those events are
+suppressed.
+
+See [Views and composition](../guides/views-and-composition.md) for the full,
+focused, and composite selection patterns.
 
 An empty selection, a duplicate selection, or a handle from another notebook
 raises `ValueError`. An invalid selection type raises `TypeError`. Unknown keys
@@ -112,14 +122,15 @@ cells: tuple[obs.NotebookCell, ...] = notebook.cells
 ```
 
 Returns cached selection handles in notebook order. Accessing this property
-materializes every handle. Each handle keeps object identity across later
-`cells` and lookup calls.
+materializes every handle. While the notebook is open, each handle keeps object
+identity across later `cells` and lookup calls.
 
 ## `NotebookCell`
 
 `NotebookCell` identifies one cell in a notebook definition. Its `key` and
-`name` attributes expose the Python key and Notebook Kit name. Call `view()` to
-create a renderable view for the cell and its dependencies.
+`name` attributes expose the Python key and Notebook Kit name as strings. An
+unset value is `""`. Call `view()` to create a renderable view for the cell and
+its dependencies.
 
 ```python
 cell = notebook.cell_by_key("answer")
@@ -129,23 +140,26 @@ answer_view = cell.view()
 ### `NotebookCell.view()`
 
 Returns a new `NotebookView` selected to this cell. The view owns its browser
-runtime, graph, and synchronized values.
+runtime, graph, and synchronized values. The selected cell renders while its
+dependency closure evaluates with hidden output.
 
 ## `NotebookView`
 
-`NotebookView` is the anywidget display object for a full, single-cell, or
-composite selection.
+`NotebookView` is the anywidget display object for a full, focused, or composite
+selection. Its browser runtime starts when Jupyter displays it or marimo mounts
+it through `mo.ui.anywidget`.
 
 ```python
 obs.NotebookView(notebook, cell_indexes=None)
 ```
 
-The constructor accepts a `Notebook` session and optional zero-based cell
-indices. `Notebook.view()` and `NotebookCell.view()` provide normalized
-selection lookup by index, key, or handle.
+The constructor accepts a `Notebook` session and an optional sequence of
+zero-based cell indices. `Notebook.view()` and `NotebookCell.view()` provide
+normalized selection lookup by index, key, or handle.
 
-Invalid, duplicate, or out-of-range `cell_indexes` raise
-`traitlets.TraitError`. A closed notebook raises `RuntimeError`.
+A non-sequence `cell_indexes` value raises `TypeError`. Invalid, duplicate, or
+out-of-range entries raise `traitlets.TraitError`. A closed notebook raises
+`RuntimeError`.
 
 ```python
 full_view = notebook.view()
@@ -155,6 +169,8 @@ full_view
 In marimo, wrap each view separately.
 
 ```python
+import marimo as mo
+
 widget = mo.ui.anywidget(full_view)
 ```
 
@@ -182,6 +198,9 @@ render again after its previous output is torn down.
 | Created                 | `False`        | `False`              | View selection                              |
 | Graph synchronized      | `False`        | `True`               | Graph metadata                              |
 | Selected cells rendered | `True`         | `True`               | Values, per-cell values, and graph metadata |
+
+A variable replacement or release that triggers a runtime rebuild clears both
+gates until the replacement graph and render snapshots synchronize.
 
 ### `NotebookView.has_rendered`
 
@@ -217,7 +236,7 @@ property raises `NotRenderedError` before the view renders.
 values: tuple[obs.CellValues, ...] = full_view.cell_values()
 ```
 
-Returns one `CellValues` record per logical cell in this view. It raises
+Returns one `CellValues` record per selected cell in notebook order. It raises
 `NotRenderedError` before the view renders.
 
 ### `NotebookView.value(name)`
@@ -232,15 +251,14 @@ the view renders and `KeyError` when no rendered value matches `name`.
 ### `NotebookView.close()`
 
 Closes this display model and removes it from the session's active views. Other
-views from the notebook remain active. Variable mutators on the closed view
-raise `RuntimeError`.
+views from the notebook remain active. Repeated calls are no-ops, and
+previously synchronized readback remains available. Variable mutators on the
+closed view raise `RuntimeError`.
 
 See [Values and graph](values-and-graph.md) for decoded value types and graph
 records.
 
 ## Construction-time state
-
-These members are available immediately after construction.
 
 ### `Notebook.source`
 
@@ -251,7 +269,10 @@ source: str = notebook.source
 Returns Notebook Kit HTML owned by a source-backed notebook. Python-authored
 notebooks return `""`. `from_html` returns its prepared source, including local
 JavaScript import rewrites when requested. ObservableHQ constructors return the
-Notebook Kit HTML generated from imported nodes.
+Notebook Kit HTML generated from imported nodes. Document-based constructors
+pin Observable notebook imports when the source includes its `id` and
+`version`. Generated ObservableHQ source preserves its classic standard-library
+semantics through `from_html` and `from_html_file`.
 
 ### `Notebook.spec`
 
@@ -290,8 +311,7 @@ options: dict[str, object] = notebook.options
 ```
 
 Returns a shallow copy of renderer options. Every notebook includes
-`{"show_source": bool}`. ObservableHQ imports also include a
-`runtime_compatibility` mapping for classic Observable helpers.
+`{"show_source": bool}`.
 
 ### `Notebook.theme`
 
@@ -319,15 +339,18 @@ Returns a shallow copy of the Python-owned variable environment. See
 ### `Notebook.update_variables(values=None, /, **kwargs)`
 
 Merges a mapping or iterable of key-value pairs into the Python-owned
-environment and returns `None`. Active views receive a live `set` update.
-Keyword arguments win over matching entries in `values`. Empty updates are
-no-ops.
+environment and returns `None`. Active views receive a live `set` update for
+wire-level changes and names whose interacted input state is cleared. Keyword
+arguments win over matching entries in `values`. Empty updates are no-ops. A
+wire-identical update is also a no-op when it clears no interacted state.
 
 ### `Notebook.replace_variables(values=None, /, **kwargs)`
 
 Replaces the Python-owned environment and returns `None`. Omitted names are
-released. Active views rebuild their runtimes so notebook definitions resume
-ownership of released names.
+released. Active views rebuild when the serialized environment changes or the
+replacement clears interacted input state, so notebook definitions resume
+ownership of released names. A wire-identical replacement with no interacted
+state is a no-op.
 
 ### `Notebook.reset_variables(*names)`
 
@@ -355,7 +378,9 @@ Returns Notebook Kit HTML. Python-authored notebooks serialize the current
 `spec`. Source-backed notebooks return `source`, including explicit source
 rewrites. File attachment records and Python variables remain session state, as
 described by [File attachments](file-attachments.md) and
-[Variables](variables.md).
+[Variables](variables.md). ObservableHQ-derived HTML preserves classic
+standard-library semantics when loaded again through `from_html` or
+`from_html_file`.
 
 ## Alternative constructors
 
@@ -370,6 +395,7 @@ Notebook.from_observablehq_page_data(page_data, *, title=None, variables=None, f
 Notebook.from_observablehq_nodes(nodes, *, observable_files=None, title="Untitled", variables=None, files=None, show_pinned_source=False)
 ```
 
-Each method returns a source-backed `Notebook`. See
+Each method returns a source-backed `Notebook`. ObservableHQ constructors use
+the classic Observable standard library. See
 [Source notebooks](source-notebooks.md) for accepted source shapes, defaults,
-network failures, file precedence, and import compatibility.
+network failures, file precedence, and source-revision import resolution.

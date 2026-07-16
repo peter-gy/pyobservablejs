@@ -59,8 +59,8 @@ spec = cell.to_spec(1)
 
 Returns a new Notebook Kit cell dictionary. `notebookkit_attrs` takes
 precedence when it contains a key also set by a direct `Cell` field. Its `id`
-takes precedence over the method's `id`. `key` remains a Python handle and is
-excluded from the returned dictionary.
+takes precedence over the method's `id`. The direct `Cell.key` field remains a
+Python handle and is excluded from the returned dictionary.
 
 ## Cell helpers
 
@@ -88,8 +88,8 @@ The keyword arguments have the following contracts:
 - `raw=True` preserves the source string exactly.
 - `id` sets the Notebook Kit cell id. `Notebook` assigns one-based ids in
   notebook order when it is omitted.
-- `pinned=True` emits the Notebook Kit `pinned` attribute. Active views render
-  pinned source when `show_pinned_source=True`.
+- `pinned=True` emits the Notebook Kit `pinned` attribute. An active view
+  renders source for a selected pinned cell when `show_pinned_source=True`.
 - `output` sets the Notebook Kit `output` attribute.
 - `notebookkit_attrs` adds Notebook Kit attributes such as `name`, `database`,
   or `format`.

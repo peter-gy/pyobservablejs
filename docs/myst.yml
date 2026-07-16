@@ -26,15 +26,15 @@ project:
         - file: examples/python-data-plot.md
         - file: examples/reactive-inputs.md
         - file: examples/html-notebook-files.md
-    - title: Learn
+    - title: Guides
       children:
         - file: guides/index.md
+        - file: guides/views-and-composition.md
         - file: guides/notebook-runtime.md
         - file: guides/author-cells.md
         - file: guides/python-variables.md
         - file: guides/cell-values.md
         - file: guides/source-html.md
-        - file: guides/notebook-frontends.md
         - file: guides/observablehq.md
         - file: guides/themes.md
     - title: Reference

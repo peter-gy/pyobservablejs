@@ -11,6 +11,10 @@ description: Update a mounted Observable chart from a Python control.
 Try moving the minimum body mass slider. The chart filters the built-in Palmer
 Penguins sample.
 
+The browser loads Plot and the sample data used here. See [Notebook
+runtime](notebook-runtime.md#builtins) for network and content security policy
+requirements.
+
 ```{marimo-config}
 :pyproject:
 
@@ -86,15 +90,16 @@ invalidates the two JavaScript cells that depend on `minimumMass`.
 
 ## Update, replace, or release
 
-`update_variables` merges values into the current environment.
+`update_variables` merges values into the current set of Python-owned names.
 
 ```python
 notebook.update_variables({"minimumMass": 3500})
 notebook.update_variables(minimumMass=4500)
 ```
 
-`replace_variables` replaces the Python-owned environment. Names omitted from
-the mapping return to the Observable runtime.
+`replace_variables` replaces the complete set of Python-owned names. An
+omitted name is released, which lets a notebook definition with the same name
+own it again.
 
 ```python
 notebook.replace_variables({"minimumMass": 4000})

@@ -9,6 +9,10 @@ description: Author Notebook Kit cells and connect them through the reactive gra
 share values with other cells. Try moving the exponent control. The readout
 recomputes in the browser.
 
+The browser loads `Inputs` for this example. See [Notebook
+runtime](notebook-runtime.md#builtins) for network and content security policy
+requirements.
+
 ```{marimo-config}
 :pyproject:
 
@@ -57,7 +61,7 @@ obs.js("Plot.lineY(aapl, {x: 'Date', y: 'Close'}).plot()")
 ```
 
 A program cell contains declarations or statements. Call `display(...)` when a
-program cell should render an additional value.
+program cell should render a value.
 
 ```python
 obs.js(
@@ -78,8 +82,9 @@ obs.js(
 
 ## Observable JavaScript cells
 
-`obs.ojs` creates a classic Observable JavaScript cell. Use it for existing OJS
-source, `viewof` declarations, and imported Observable notebook code.
+`obs.ojs` creates a classic Observable JavaScript cell. Use it for existing
+Observable JavaScript source, `viewof` declarations, and imported Observable
+notebook code.
 
 ```python
 obs.ojs(
@@ -106,19 +111,19 @@ Every helper accepts the same options.
 
 ```python
 obs.js(
-    "const filtered = rows.filter((d) => d.value >= threshold);",
+    "const filtered = [1, 2, 3].filter((value) => value >= 2);",
     key="filtered_rows",
     display=False,
     pinned=True,
-    output="filtered",
 )
 ```
 
 `key` names the Python `NotebookCell` selection handle. Call `view()` on that
 handle to create a view for the cell and its dependencies. `display=False`
 hides the cell output while keeping its values in the graph. `pinned=True`
-exposes the source when the notebook enables `show_pinned_source`. `raw=True`
-preserves leading and trailing newlines.
+exposes the source when the cell is selected and the notebook enables
+`show_pinned_source`. `raw=True` preserves the source string exactly, including
+indentation and surrounding newlines.
 
 See [Cells](../reference/cells.md) for the complete signature and error
 behavior.

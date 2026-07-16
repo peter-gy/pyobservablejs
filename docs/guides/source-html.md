@@ -9,6 +9,13 @@ description: Load Notebook Kit HTML with local FileAttachment files.
 `embed_file_attachments=True` to embed local `FileAttachment` calls and
 `rewrite_imports=True` to inline relative JavaScript imports.
 
+Treat source notebooks as executable code. Their cells run JavaScript in the
+notebook page and can load remote modules or data.
+
+The browser loads Plot for this example. See [Notebook
+runtime](notebook-runtime.md#builtins) for network and content security policy
+requirements.
+
 ```{marimo-config}
 :pyproject:
 
@@ -81,12 +88,14 @@ files at the same relative paths.
 notebook = obs.Notebook.from_html(source)
 ```
 
-Explicit `files` override discovered files with the same name.
+Register an attachment directly with `files`.
 
 ```python
 notebook = obs.Notebook.from_html(
     source,
-    base_path=base,
-    files={"penguins.csv": "https://example.test/penguins.csv"},
+    files={"penguins.csv": base / "penguins.csv"},
 )
 ```
+
+When discovery is enabled, an explicit `files` entry takes precedence over a
+discovered file with the same name.

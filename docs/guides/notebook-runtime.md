@@ -1,189 +1,100 @@
 ---
 title: Notebook runtime
-description: Use Notebook Kit display, inputs, files, builtins, imports, and reactive lifecycle.
+description: Runtime profiles, builtins, display, and invalidation for mounted views.
 ---
 
 # Notebook runtime
 
-`NotebookView` evaluates its selected cells in one Observable Notebook Kit
-runtime. A top-level JavaScript declaration becomes a graph variable. Cells
-that reference that variable run again when its value changes.
+Each mounted `NotebookView` evaluates its selected cells and their dependencies
+in one Observable runtime. Cells share a reactive graph inside that view. A
+top-level declaration defines a graph variable, and a cell that references the
+variable runs again when its value changes.
 
-This live notebook uses the runtime-owned `Inputs`, `Plot`, and `penguins`
-builtins. Change the species to update the chart.
+The browser loads `Inputs` for this example. See [Builtins](#builtins) for
+network and content security policy requirements.
 
-```{marimo-config}
-:pyproject:
-
-  requires-python = ">=3.11"
-  dependencies = [
-      "pyobservablejs",
-  ]
-```
-
-```{marimo} python
-:echo: true
-
-import marimo as mo
+```python
 import observablejs as obs
 
 notebook = obs.Notebook(
     obs.js(
         """
-        const species = view(Inputs.select(
-          ["All", ...new Set(penguins.map((d) => d.species))],
-          {label: "Species", value: "All"}
+        const threshold = view(Inputs.range(
+          [0, 1],
+          {label: "Threshold", step: 0.05, value: 0.5}
         ));
         """
     ),
-    obs.js(
-        """
-        Plot.dot(
-          species === "All"
-            ? penguins
-            : penguins.filter((d) => d.species === species),
-          {
-            x: "culmen_length_mm",
-            y: "culmen_depth_mm",
-            fill: "species",
-            tip: true
-          }
-        ).plot({
-          height: 300,
-          color: {legend: true},
-          x: {grid: true, label: "Bill length (mm)"},
-          y: {grid: true, label: "Bill depth (mm)"}
-        })
-        """
-    ),
+    obs.js('html`<p>Threshold: <strong>${threshold}</strong></p>`'),
 )
 
 full_view = notebook.view()
-mo.ui.anywidget(full_view)
+full_view
 ```
 
-The first cell defines `species` through a browser input. The Plot cell
-references `species`, so Notebook Kit schedules it again after each selection.
+The input and readout update within `full_view`. A second call to
+`notebook.view()` creates another runtime with its own output and readback. See
+[Views and composition](views-and-composition.md) for selection, mounting, and
+shared variables and input values.
 
-## Display values
+## Runtime profiles
 
-JavaScript cells display expressions automatically. Program cells use
+The notebook source selects the standard-library profile before a view starts.
+
+| Source                                                       | Profile      |
+| ------------------------------------------------------------ | ------------ |
+| Python-authored cells                                        | Notebook Kit |
+| Ordinary Notebook Kit HTML                                   | Notebook Kit |
+| `Notebook.from_observablehq*`                                | Observable   |
+| ObservableHQ-derived HTML serialized by `to_notebook_html()` | Observable   |
+
+The Notebook Kit profile uses the builtins exported by Notebook Kit. The
+Observable profile uses the classic Observable standard library. Both profiles
+receive view-scoped `FileAttachment`, `document`, `width`, and `dark` values
+from `pyobservablejs`.
+
+ObservableHQ document imports stay pinned when the source document provides a
+valid `id` and `version`. See [ObservableHQ notebooks](observablehq.md) for the
+import and network contract.
+
+## Display and inputs
+
+JavaScript expression cells display their result. Program cells call
 `display(...)` or `view(...)` when they need visible output.
 
-| Form             | Runtime behavior                                                                                                                        |
-| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `Plot.plot()`    | Displays the expression result. DOM nodes are inserted into the cell output. Other values use Notebook Kit's inspector.                 |
-| `display(value)` | Adds `value` to a program cell's output. A cell may call `display` more than once. Previous output is cleared when the cell runs again. |
-| `view(input)`    | Displays an input element and exposes its current value as a reactive variable. Input events rerun dependent cells.                     |
+| Form             | Runtime behavior                                                                                                          |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `Plot.plot()`    | Displays the expression result. DOM nodes render directly, and other values use Notebook Kit's inspector.                 |
+| `display(value)` | Adds a value to a program cell's output. A cell can call it more than once. The output clears before the cell runs again. |
+| `view(input)`    | Displays an input and exposes its current value as a graph variable. Input events rerun dependent cells.                  |
 
-`Inputs` creates controls and tabular displays. Pass an input to `view` when
-other cells should react to it.
+`obs.js` accepts standard JavaScript. `obs.ojs` accepts Observable JavaScript
+syntax such as `viewof` and `mutable` declarations. Both modes participate in
+the same graph. See [Observable cells and reactivity](author-cells.md) for cell
+syntax and helper options.
 
-```python
-obs.js(
-    """
-    const threshold = view(Inputs.range(
-      [0, 1],
-      {label: "Threshold", step: 0.05, value: 0.5}
-    ));
-    """
-)
-```
+(builtins)=
 
-## Cells and template builtins
+## Builtins
 
-Python cell helpers choose the Notebook Kit source mode. Runtime template tags
-produce dynamic content inside JavaScript cells.
+The selected profile resolves builtins when cells reference them.
 
-| Need                     | Use                                   | Contract                                                                        |
-| ------------------------ | ------------------------------------- | ------------------------------------------------------------------------------- |
-| Markdown cell            | `obs.md("## Summary")`                | Renders CommonMark and resolves `${...}` references through the notebook graph. |
-| HTML cell                | `obs.html("<strong>Ready</strong>")`  | Renders HTML and escapes interpolated values.                                   |
-| Markdown from JavaScript | `` md`Total: **${total}**` ``         | Returns rendered Markdown as a DOM value.                                       |
-| HTML from JavaScript     | `` html`<strong>${label}</strong>` `` | Returns a DOM value and escapes interpolated text.                              |
+| Builtin      | Contract                                                                                                                                            |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Inputs`     | Creates controls, tables, and other input elements. Pass an input to `view(...)` to expose its changing value.                                      |
+| `Plot`       | Creates Observable Plot marks. `Plot.plot()` and a mark's `.plot()` return DOM nodes.                                                               |
+| `html`, `md` | Creates reactive HTML and Markdown DOM values from tagged templates.                                                                                |
+| `Generators` | Provides `input`, `observe`, and `queue` in both profiles. Other methods come from the selected standard library.                                   |
+| `Mutable`    | Creates a reactive source with a `.value` getter and setter. Consumers rerun after the value changes.                                               |
+| `width`      | Yields the floored notebook root width with a 320-pixel minimum. It falls back to 928 when layout has no measurable width and updates after resize. |
+| `dark`       | Yields whether the notebook root uses a dark color scheme. Theme changes rerun dependent cells.                                                     |
 
-Use `obs.js` for standard JavaScript and `obs.ojs` for classic Observable
-JavaScript syntax such as `viewof` and `mutable` declarations. Both modes share
-the same graph.
+The Notebook Kit profile also exposes sample datasets such as `aapl`, `cars`,
+and `penguins`. External libraries, sample datasets, module imports, and source
+notebooks can require browser network access. The page content security policy
+must permit every package, data, and module origin used by its cells.
 
-## Runtime builtins
-
-Notebook Kit resolves builtins lazily when a cell references them.
-External-library builtins such as `Inputs` and `Plot`, plus sample datasets,
-load from jsDelivr. The browser needs network access and a content security
-policy that permits those CDN requests.
-
-| Builtin      | Contract                                                                                                                 |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------ |
-| `Inputs`     | Creates controls, tables, and other input elements. Use `view(...)` to expose an input's changing value.                 |
-| `Plot`       | Creates Observable Plot marks and plots. Plot expressions return DOM nodes that cells can display directly.              |
-| `html`, `md` | Create reactive HTML and Markdown DOM values from tagged templates.                                                      |
-| `Generators` | Creates async reactive sources from callbacks, queues, DOM inputs, time, color scheme, and element width.                |
-| `Mutable`    | Creates a reactive source with a `.value` getter and setter. Consumers rerun after `.value` changes.                     |
-| `width`      | Yields the notebook root width in CSS pixels. The value is rounded down, has a minimum of 320, and updates after resize. |
-| `dark`       | Yields a boolean from the notebook root's color scheme and the browser preference. Theme changes rerun dependent cells.  |
-
-Classic OJS cells can use `mutable count = 0`. Standard JavaScript cells can
-create the same source with `Mutable(0)` and update its `.value` from a callback
-defined in that cell.
-
-`Generators.observe` keeps the latest pushed value. `Generators.queue` yields
-every pushed value in order. `Generators.input` converts input events into
-values. An `observe` or `queue` initializer may return a cleanup function, which
-runs when the source is invalidated.
-
-## File attachments
-
-Register files with `Notebook(files=...)`, then read them by name with
-`FileAttachment`. Local paths are resolved against `base_path` when it is set.
-URLs remain URL-backed attachments.
-
-```python
-from pathlib import Path
-
-notebook = obs.Notebook(
-    obs.js(
-        'const rows = FileAttachment("rows.csv").csv({typed: true});'
-    ),
-    obs.js("Inputs.table(rows)"),
-    files={"rows.csv": Path("data/rows.csv")},
-)
-```
-
-A promise returned by `FileAttachment(...).csv()` becomes the resolved `rows`
-value for dependent cells.
-
-| Method group        | Methods                                                                  |
-| ------------------- | ------------------------------------------------------------------------ |
-| Raw response data   | `.url()`, `.blob()`, `.arrayBuffer()`, `.stream()`, `.text()`            |
-| Structured data     | `.json()`, `.csv()`, `.tsv()`, `.dsv()`                                  |
-| Documents and media | `.image()`, `.xml()`, `.html()`                                          |
-| Data formats        | `.arrow()`, `.arquero()`, `.parquet()`, `.zip()`, `.xlsx()`, `.sqlite()` |
-
-`FileAttachment(...).sqlite()` requires a page-provided sql.js `initSqlJs`
-loader. It returns a `SQLiteDatabaseClient` with `query`, `queryRow`, `sql`, and
-schema inspection methods.
-
-Use [files and source notebooks](source-html.md) to discover local attachments
-from Notebook Kit HTML or embed relative JavaScript imports.
-
-## Built-in datasets
-
-Notebook Kit provides sample datasets as graph variables. They load lazily in
-the browser, so the viewer needs network access to the dataset host.
-
-| Values                                                                                                                  | Shape                         |
-| ----------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
-| `aapl`, `alphabet`, `cars`, `citywages`, `diamonds`, `flare`, `industries`, `olympians`, `penguins`, `pizza`, `weather` | Arrays of auto-typed CSV rows |
-| `miserables`                                                                                                            | A JSON graph object           |
-
-Referencing cells receive the loaded value. The first live example uses
-`penguins` directly, with no Python variable or import.
-
-## Standard module imports
-
-`obs.js` accepts static and dynamic JavaScript imports. Use the `npm:` protocol
-for npm packages or a browser-importable URL.
+Standard JavaScript cells can import an npm package or browser module.
 
 ```python
 obs.js(
@@ -196,22 +107,20 @@ obs.js(
 )
 ```
 
-Modules load in the browser. The viewer must be able to reach the package or
-URL origin. For relative modules in file-backed Notebook Kit HTML, use
-`Notebook.from_html_file(..., rewrite_imports=True)` to embed the import graph.
+Use [Files and source notebooks](source-html.md) for `FileAttachment`, local
+Notebook Kit HTML, and relative JavaScript modules.
 
 ## Promises, generators, and invalidation
 
-Notebook Kit tracks asynchronous values as part of the reactive graph.
+Notebook Kit tracks asynchronous values as part of the graph.
 
-| Value                        | On evaluation                                                                        | On invalidation                                                                                   |
-| ---------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
-| Promise                      | Dependent cells wait for the resolved value.                                         | A stale resolution is ignored. The underlying operation keeps running unless the cell cancels it. |
-| Generator or async generator | The first yield becomes the variable value. Each later yield reruns dependent cells. | The runtime calls the generator's `return()` method.                                              |
-| `invalidation`               | Provides a promise scoped to the current cell evaluation.                            | Resolves when the cell reruns or its runtime is disposed.                                         |
+| Value                        | Evaluation                                                             | Invalidation                                                                       |
+| ---------------------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Promise                      | Dependent cells wait for the resolved value.                           | A stale resolution is ignored. The operation continues unless the cell cancels it. |
+| Generator or async generator | The first yield defines the value. Later yields rerun dependent cells. | The runtime calls the generator's `return()` method.                               |
+| `invalidation`               | Provides a promise for the current cell evaluation.                    | Resolves when the evaluation is invalidated or its runtime is disposed.            |
 
-Use `invalidation` to release resources owned by a cell. This fetch aborts when
-one of its dependencies changes or the notebook closes.
+Use `invalidation` to release resources owned by a cell.
 
 ```python
 obs.js(
@@ -226,26 +135,16 @@ obs.js(
 )
 ```
 
-## Python-owned variables
+`NotebookView.close()` closes one runtime. `Notebook.close()` closes every view
+created from that notebook.
 
-`variables` defines Python-owned names in the same graph. Updating a name
-invalidates dependent cells while the view stays mounted.
+## Python variables and readback
 
-| Python API               | Effect                                               |
-| ------------------------ | ---------------------------------------------------- |
-| `update_variables(...)`  | Patches named values and reruns their dependents.    |
-| `replace_variables(...)` | Replaces the Python-owned environment.               |
-| `reset_variables(...)`   | Releases names so notebook cells can own them again. |
+Python-owned variables enter the same graph and rerun their dependents when
+they change. Runtime-owned builtin names cannot be Python variables. See
+[Update from Python](python-variables.md) for the mounted-view workflow and
+[Variables](../reference/variables.md) for serialization and reserved names.
 
-Runtime-owned names cannot be Python variables. `Notebook` raises `ValueError`
-for known collisions, and the browser checks the active Notebook Kit library
-before it starts the runtime. For example, `Plot`, `FileAttachment`, and `width`
-belong to the browser runtime. See [Variable names](../reference/variables.md#variable-names)
-for the complete list.
-
-Imported ObservableHQ notebooks also reserve `require` for classic runtime
-compatibility. Choose an application name such as `plot_rows` or
-`selected_species` when passing a Python value that relates to a builtin.
-
-Continue with [Python variables](python-variables.md) for live updates and
-[cell values](cell-values.md) for browser-to-Python readback.
+Rendered values and graph metadata synchronize to the `NotebookView` that
+produced them. Continue with [Values back to Python](cell-values.md) for the
+readback lifecycle.
