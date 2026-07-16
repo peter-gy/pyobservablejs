@@ -1,4 +1,4 @@
-.PHONY: build check docs docs-serve
+.PHONY: build check clean docs docs-serve
 
 build:
 	pnpm build
@@ -17,7 +17,41 @@ check:
 	uv run --package pyobservablejs ruff check
 	uv run --package pyobservablejs ty check packages/pyobservablejs scripts
 	uv run --package pyobservablejs pyrefly check --min-severity warn
-	uv run --package pyobservablejs pytest -q packages/pyobservablejs/tests
 	$(MAKE) build
+	uv run --package pyobservablejs pytest -q packages/pyobservablejs/tests
 	$(MAKE) docs
 	git diff --check
+
+clean:
+	rm -rf \
+		.DS_Store \
+		.mypy_cache \
+		.pyrefly_cache \
+		.pytest_cache \
+		.ruff_cache \
+		.ty_cache \
+		dist \
+		docs/.jupyter-book-marimo \
+		docs/_build \
+		node_modules/.cache \
+		node_modules/.vite \
+		node_modules/.vite-temp \
+		packages/*/dist \
+		packages/*/node_modules/.cache \
+		packages/*/node_modules/.vite \
+		packages/*/node_modules/.vite-temp \
+		packages/pyobservablejs/src/observablejs/static
+	find .github packages/pyobservablejs scripts docs development_docs \
+		-type d -name node_modules -prune -o \
+		-type d \( \
+			-name __pycache__ -o \
+			-name .ipynb_checkpoints -o \
+			-name .mypy_cache -o \
+			-name .pyrefly_cache -o \
+			-name .pytest_cache -o \
+			-name .ruff_cache -o \
+			-name .ty_cache \
+		\) -prune -exec rm -rf {} +
+	find .github packages/pyobservablejs scripts docs development_docs \
+		-type d -name node_modules -prune -o \
+		-type f \( -name '*.pyc' -o -name '*.pyo' -o -name .DS_Store \) -delete
