@@ -1,7 +1,9 @@
 .PHONY: build check clean docs docs-serve
 
+VP := node_modules/.bin/vp
+
 build:
-	pnpm build
+	$(VP) run -r build
 	uv build --package pyobservablejs
 
 docs:
@@ -11,8 +13,8 @@ docs-serve: docs
 	uv run --package pyobservablejs python -m http.server --bind 127.0.0.1 --directory docs/_build/html 27331
 
 check:
-	pnpm check
-	pnpm test
+	$(VP) run check
+	$(VP) run -r test
 	uv run --package pyobservablejs ruff format --check .
 	uv run --package pyobservablejs ruff check
 	uv run --package pyobservablejs ty check packages/pyobservablejs scripts

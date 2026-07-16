@@ -37,7 +37,7 @@ jobs:
             - args: ['--frozen-lockfile']
 
       - name: Check JavaScript formatting, linting, and types
-        run: pnpm check
+        run: vp run check
 
       - name: Check Python formatting, linting, and types
         run: |
@@ -81,7 +81,7 @@ jobs:
             - args: ['--frozen-lockfile']
 
       - name: Build widget assets
-        run: pnpm --filter @pyobservablejs/python build
+        run: vp run -F @pyobservablejs/python build
 
       - name: Run Python tests
         env:
@@ -108,10 +108,10 @@ jobs:
             - args: ['--frozen-lockfile']
 
       - name: Run JavaScript tests
-        run: pnpm test
+        run: vp run -r test
 
       - name: Build JavaScript packages
-        run: pnpm build
+        run: vp run -r build
 
   package:
     runs-on: ubuntu-latest
