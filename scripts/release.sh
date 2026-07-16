@@ -24,11 +24,11 @@ usage() {
   cat <<'EOF'
 Usage: ./scripts/release.sh <minor|patch|X.Y.Z>
 
-Creates a release commit and final semver tag. Use an explicit X.Y.Z target for
-the first release, major releases, or any release from a prerelease version.
-Use patch or minor only when the current version is already a final X.Y.Z version.
-Pushing the tag publishes the package to PyPI through GitHub Actions and Trusted
-Publishing.
+Creates a release commit and annotated vX.Y.Z tag. Use an explicit X.Y.Z target
+for the first release, major releases, or any release from a prerelease version.
+Use patch or minor only when the current version is already a final X.Y.Z
+version. Pushing the vX.Y.Z tag publishes the package to PyPI through GitHub
+Actions and Trusted Publishing.
 EOF
 }
 
@@ -208,14 +208,15 @@ git pull --ff-only origin main
 
 CURRENT_VERSION="$(current_version)"
 NEW_VERSION="$(target_version "$CURRENT_VERSION" "$VERSION_REQUEST")"
+RELEASE_TAG="v$NEW_VERSION"
 
 if [[ "$NEW_VERSION" == "$CURRENT_VERSION" ]]; then
   print_error "New version matches current version: $NEW_VERSION"
   exit 1
 fi
 
-if git rev-parse -q --verify "refs/tags/$NEW_VERSION" >/dev/null; then
-  print_error "Tag already exists: $NEW_VERSION"
+if git rev-parse -q --verify "refs/tags/$RELEASE_TAG" >/dev/null; then
+  print_error "Tag already exists: $RELEASE_TAG"
   exit 1
 fi
 
@@ -225,7 +226,7 @@ Release summary:
   New version:     $NEW_VERSION
   Request:         $VERSION_REQUEST
   Commit:          release: $NEW_VERSION
-  Tag:             $NEW_VERSION
+  Tag:             $RELEASE_TAG
   Checks:          format, lint, typecheck, tests, docs, package build
 EOF
 
@@ -255,19 +256,19 @@ git commit -m "release: $NEW_VERSION"
 COMMITTED=1
 
 print_step "Creating tag"
-git tag -a "$NEW_VERSION" -m "release: $NEW_VERSION"
+git tag -a "$RELEASE_TAG" -m "release: $NEW_VERSION"
 
 cat <<EOF
 
 Release commit and tag are ready locally.
 Push both to publish:
 
-  git push origin main "$NEW_VERSION"
+  git push origin main "$RELEASE_TAG"
 EOF
 
 if confirm "Push release commit and tag now"; then
-  git push origin main "$NEW_VERSION"
-  printf '\nRelease %s pushed. Watch the publish workflow in GitHub Actions.\n' "$NEW_VERSION"
+  git push origin main "$RELEASE_TAG"
+  printf '\nRelease %s pushed. Watch the publish workflow in GitHub Actions.\n' "$RELEASE_TAG"
 else
-  printf '\nRelease %s remains local and is not published until the tag is pushed.\n' "$NEW_VERSION"
+  printf '\nRelease %s remains local and is not published until the tag is pushed.\n' "$RELEASE_TAG"
 fi

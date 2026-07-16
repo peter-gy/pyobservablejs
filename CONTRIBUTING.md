@@ -37,6 +37,20 @@ Before sending changes for review, run:
 make check
 ```
 
+## Releases
+
+Run the release script from a clean `main` branch:
+
+```sh
+./scripts/release.sh <minor|patch|X.Y.Z>
+```
+
+The script updates the package version to `X.Y.Z`, runs the release checks,
+builds the package artifacts, creates a release commit, and creates an annotated
+`vX.Y.Z` tag. Push the commit and tag when prompted. The `vX.Y.Z` tag starts the
+GitHub Actions publish workflow, which uploads the package to PyPI through
+Trusted Publishing.
+
 ## Browser checks
 
 Run the browser checks in
