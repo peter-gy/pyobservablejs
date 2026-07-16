@@ -33,9 +33,6 @@ catalogs:
     '@types/node':
       specifier: ^22.20.1
       version: 22.20.1
-    es-module-lexer:
-      specifier: ^2.3.0
-      version: 2.3.0
     jsdom:
       specifier: 29.1.1
       version: 29.1.1
@@ -66,36 +63,8 @@ importers:
         specifier: 'catalog:'
         version: 0.2.4(@types/node@22.20.1)(@voidzero-dev/vite-plus-core@0.2.4(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@6.0.3))(esbuild@0.28.1)(jiti@2.7.0)(jsdom@29.1.1)(typescript@6.0.3)
 
-  packages/anywidget-bundle:
-    dependencies:
-      '@anywidget/types':
-        specifier: 'catalog:'
-        version: 0.4.0
-      es-module-lexer:
-        specifier: 'catalog:'
-        version: 2.3.0
-    devDependencies:
-      '@types/node':
-        specifier: 'catalog:'
-        version: 22.20.1
-      jsdom:
-        specifier: 'catalog:'
-        version: 29.1.1
-      typescript:
-        specifier: 'catalog:'
-        version: 6.0.3
-      vite:
-        specifier: npm:@voidzero-dev/vite-plus-core@0.2.4
-        version: '@voidzero-dev/vite-plus-core@0.2.4(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@6.0.3)'
-      vite-plus:
-        specifier: 'catalog:'
-        version: 0.2.4(@types/node@22.20.1)(@voidzero-dev/vite-plus-core@0.2.4(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@6.0.3))(esbuild@0.28.1)(jiti@2.7.0)(jsdom@29.1.1)(typescript@6.0.3)
-
   packages/pyobservablejs:
     dependencies:
-      '@pyobservablejs/anywidget-bundle':
-        specifier: workspace:*
-        version: link:../anywidget-bundle
       '@pyobservablejs/widget':
         specifier: workspace:*
         version: link:../widget
@@ -103,6 +72,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 22.20.1
+      anywidget-bundle:
+        specifier: 0.0.1
+        version: 0.0.1(@voidzero-dev/vite-plus-core@0.2.4(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@6.0.3))
       vite:
         specifier: npm:@voidzero-dev/vite-plus-core@0.2.4
         version: '@voidzero-dev/vite-plus-core@0.2.4(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@6.0.3)'
@@ -889,8 +861,8 @@ packages:
   '@types/unist@3.0.3':
     resolution: {integrity: sha512-ko/gIFJRv177XgZsZcBwnqJN5x/Gien8qNOn0D5bQU/zAzVf9Zt3BlcUiLqhV9y4ARk0GbT3tnUiPNgnTXzc/Q==}
 
-  '@ungap/structured-clone@1.3.2':
-    resolution: {integrity: sha512-5jsZFwgR5rTdKwidH9Qmat75RKwqfpKlWWB1frDkljN127mwqBu8K0PYo7/hFpF03IEJpfVPpCQDY/eDx3iHvA==}
+  '@ungap/structured-clone@1.3.3':
+    resolution: {integrity: sha512-60YRaenCQcVjYEKOcG824+DRGGIQ3VKErcBoAEDJZz5bKIs2ZG+X/H9Nk+Q6EVkwJk5QNApxbrc5QtBSwtrXAg==}
 
   '@vitest/browser-preview@4.1.10':
     resolution: {integrity: sha512-14MJrL59ZFkqXLjwfSk6RzTDy5Czf9UG4+8q8L6Gxjs2aPjEce/cVNYV14bXAc2BvMjUNu904+ZEZA1Xc1wtvQ==}
@@ -1061,6 +1033,12 @@ packages:
     resolution: {integrity: sha512-Cxwpt2SfTzTtXcfOlzGEee8O+c+MmUgGrNiBcXnuWxuFJHe6a5Hz7qwhwe5OgaSYI0IJvkLqWX1ASG+cJOkEiA==}
     engines: {node: '>=10'}
 
+  anywidget-bundle@0.0.1:
+    resolution: {integrity: sha512-iSYtIOWFd8b6bKrRPlutQpxgmUWMg0LlSExDdJ5wmSgyngQCbdN07RsAvcPQm8WZXVySqbQOzXvWbBaN0jRb0w==}
+    engines: {node: '>=20.19.0'}
+    peerDependencies:
+      vite: '>=8 || ^0.2.4'
+
   argparse@2.0.1:
     resolution: {integrity: sha512-8+9WqebbFzpX9OR+Wa6O29asIogeRMzcGtAINdpMHHyAg10f05aSFVBbcEqGf/PXw1EjAZ+q2/bEBg3DvurK3Q==}
 
@@ -1163,8 +1141,8 @@ packages:
     resolution: {integrity: sha512-zwfzJecQ/Uej6tusMqwAqU/6KL2XaB2VZ2Jg54Je6ahNBGNH6Ek6g3jjNCF0fG9EWQKGZNddNjU5F1ZQn/sBnA==}
     engines: {node: '>=20.19.0'}
 
-  es-module-lexer@2.3.0:
-    resolution: {integrity: sha512-KLdwQm2NvGLDkQDCGvmiQrhkd0JbMzXthwQAUgWjQuQdBLFa3eiBP5arXZyA+f8x+x7OXgud6bq2rxjGtHV2tw==}
+  es-module-lexer@2.3.1:
+    resolution: {integrity: sha512-shc1dbU90Yl/xq1QrC7QRtfcwURZuVRfPhZbDoldJ1cn1gzDvBaBWlv0eFolj5+0znnPJz5TXLxsN77X/12KTA==}
 
   esbuild@0.28.1:
     resolution: {integrity: sha512-HrJrvZv5ayxBzPfwphOoNzkzOIIlifzk0KJrGK2c8R4+LKpMtpYLQeUdjnwjWv/LZlkH2laZk+4w78pi99D4Vw==}
@@ -1392,8 +1370,8 @@ packages:
   ms@2.1.3:
     resolution: {integrity: sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==}
 
-  nanoid@3.3.15:
-    resolution: {integrity: sha512-y7Wygv/7mEOvxTuEQDB8StXdMRBWf1kR/tlhAzBRUFkB2jfcLOAxO/SHmOO2zgz1pVgK29/kyupn059/bCHdjA==}
+  nanoid@3.3.16:
+    resolution: {integrity: sha512-bzlKTyNJ7+LdGIIwy8ijFpIqEQIvafahV7eYykJ8Cvh42EdJeODoJ6gUJXpQJvej1BddH8OqTXZNE/KfbWAu8Q==}
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
     hasBin: true
 
@@ -1460,8 +1438,8 @@ packages:
     resolution: {integrity: sha512-LKWqWJRhstyYo9pGvgor/ivk2w94eSjE3RGVuzLGlr3NmD8bf7RcYGze1mNdEHRP6TRP6rMuDHk5t44hnTRyow==}
     engines: {node: '>=14.19.0'}
 
-  postcss@8.5.16:
-    resolution: {integrity: sha512-vuwillviilfKZsg0VGj5R/YwwcHx4SLsIOI/7K6mQkWx+l5cUHTjj5g0AasTBcyXsbfTgrwsUNmVUb5xVwyPwg==}
+  postcss@8.5.19:
+    resolution: {integrity: sha512-Mz8SaolMd8nB+G13WkORcxQKHZ/NE4xXevtkJHVuG+guo9/wYKlIMTKAqGdEmYOXR2ijPjTYNHssizdaVSUNdQ==}
     engines: {node: ^10 || ^12 || >=14}
 
   pretty-format@27.5.1:
@@ -2262,7 +2240,7 @@ snapshots:
 
   '@types/unist@3.0.3': {}
 
-  '@ungap/structured-clone@1.3.2': {}
+  '@ungap/structured-clone@1.3.3': {}
 
   '@vitest/browser-preview@4.1.10(@voidzero-dev/vite-plus-core@0.2.4(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@6.0.3))(vitest@4.1.10)':
     dependencies:
@@ -2339,7 +2317,7 @@ snapshots:
       '@oxc-project/runtime': 0.138.0
       '@oxc-project/types': 0.138.0
       lightningcss: 1.32.0
-      postcss: 8.5.16
+      postcss: 8.5.19
     optionalDependencies:
       '@types/node': 22.20.1
       esbuild: 0.28.1
@@ -2352,7 +2330,7 @@ snapshots:
       '@oxc-project/runtime': 0.138.0
       '@oxc-project/types': 0.138.0
       lightningcss: 1.32.0
-      postcss: 8.5.16
+      postcss: 8.5.19
     optionalDependencies:
       '@types/node': 22.20.1
       esbuild: 0.28.1
@@ -2395,6 +2373,12 @@ snapshots:
   ansi-regex@5.0.1: {}
 
   ansi-styles@5.2.0: {}
+
+  anywidget-bundle@0.0.1(@voidzero-dev/vite-plus-core@0.2.4(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@6.0.3)):
+    dependencies:
+      '@anywidget/types': 0.4.0
+      es-module-lexer: 2.3.1
+      vite: '@voidzero-dev/vite-plus-core@0.2.4(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@6.0.3)'
 
   argparse@2.0.1: {}
 
@@ -2478,7 +2462,7 @@ snapshots:
 
   entities@8.0.0: {}
 
-  es-module-lexer@2.3.0: {}
+  es-module-lexer@2.3.1: {}
 
   esbuild@0.28.1:
     optionalDependencies:
@@ -2718,7 +2702,7 @@ snapshots:
     dependencies:
       '@types/hast': 3.0.5
       '@types/mdast': 4.0.4
-      '@ungap/structured-clone': 1.3.2
+      '@ungap/structured-clone': 1.3.3
       devlop: 1.1.0
       micromark-util-sanitize-uri: 2.0.1
       trim-lines: 3.0.1
@@ -2751,7 +2735,7 @@ snapshots:
 
   ms@2.1.3: {}
 
-  nanoid@3.3.15: {}
+  nanoid@3.3.16: {}
 
   nwsapi@2.2.24: {}
 
@@ -2839,9 +2823,9 @@ snapshots:
 
   pngjs@7.0.0: {}
 
-  postcss@8.5.16:
+  postcss@8.5.19:
     dependencies:
-      nanoid: 3.3.15
+      nanoid: 3.3.16
       picocolors: 1.1.1
       source-map-js: 1.2.1
 
@@ -3059,7 +3043,7 @@ snapshots:
       '@vitest/snapshot': 4.1.10
       '@vitest/spy': 4.1.10
       '@vitest/utils': 4.1.10
-      es-module-lexer: 2.3.0
+      es-module-lexer: 2.3.1
       expect-type: 1.4.0
       magic-string: 0.30.21
       obug: 2.1.3

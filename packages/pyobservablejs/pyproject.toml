@@ -13,7 +13,7 @@ authors = [{ name = "Peter Ferenc Gyarmati", email = "dev.petergy@gmail.com" }]
 maintainers = [{ name = "Peter Ferenc Gyarmati", email = "dev.petergy@gmail.com" }]
 requires-python = ">=3.11"
 keywords = ["anywidget", "jupyter", "marimo", "notebooks", "observable", "visualization"]
-dependencies = ["anywidget>=0.11.0", "traitlets>=5"]
+dependencies = ["anywidget>=0.11.0", "anywidget-bundle==0.0.1", "traitlets>=5"]
 classifiers = [
 	"Programming Language :: Python :: 3",
 	"Programming Language :: Python :: 3 :: Only",

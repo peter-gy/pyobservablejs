@@ -1,4 +1,4 @@
-import anywidgetBundle from "@pyobservablejs/anywidget-bundle/vite";
+import anywidgetBundle from "anywidget-bundle";
 import { defineConfig } from "vite-plus";
 
 export default defineConfig({

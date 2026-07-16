@@ -10,6 +10,7 @@ from typing import Any, cast
 
 import anywidget
 import traitlets
+from anywidget_bundle import Bundle, BundledWidget
 
 from ._cells import NotebookCellInput
 from ._files import FileAttachment, FileInput
@@ -39,8 +40,6 @@ from ._variables import (
     validate_variable_name,
     variable_updates_from_args,
 )
-from ._anywidget_bundle import Bundle, BundledWidget
-
 
 _WIDGET_TRAIT = anywidget.WidgetTrait()
 _WIDGET_TO_JSON = _WIDGET_TRAIT.metadata["to_json"]

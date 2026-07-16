@@ -13,7 +13,6 @@ catalog:
   "@shikijs/langs": ^4.3.1
   "@shikijs/themes": ^4.3.1
   "@types/node": ^22.20.1
-  es-module-lexer: ^2.3.0
   jsdom: 29.1.1
   typescript: ^6.0.3
   vite: npm:@voidzero-dev/vite-plus-core@0.2.4
@@ -21,6 +20,8 @@ catalog:
 
 minimumReleaseAge: 1440
 minimumReleaseAgeStrict: true
+minimumReleaseAgeExclude:
+  - anywidget-bundle@0.0.1
 
 overrides:
   vite: "catalog:"

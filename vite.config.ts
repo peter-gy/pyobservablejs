@@ -58,24 +58,8 @@ export default defineConfig({
 						"error",
 						{
 							patterns: [
-								"@pyobservablejs/anywidget-bundle",
-								"@pyobservablejs/anywidget-bundle/*",
-								"@pyobservablejs/widget",
-								"@pyobservablejs/widget/*",
-							],
-						},
-					],
-				},
-			},
-			{
-				files: ["packages/anywidget-bundle/**"],
-				rules: {
-					"no-restricted-imports": [
-						"error",
-						{
-							patterns: [
-								"@pyobservablejs/runtime",
-								"@pyobservablejs/runtime/*",
+								"anywidget-bundle",
+								"anywidget-bundle/*",
 								"@pyobservablejs/widget",
 								"@pyobservablejs/widget/*",
 							],

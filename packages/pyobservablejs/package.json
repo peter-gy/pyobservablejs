@@ -7,12 +7,12 @@
 		"dev": "vp dev"
 	},
 	"dependencies": {
-		"@pyobservablejs/anywidget-bundle": "workspace:*",
 		"@pyobservablejs/widget": "workspace:*"
 	},
 	"devDependencies": {
 		"@types/node": "catalog:",
-		"vite": "catalog:",
+		"anywidget-bundle": "0.0.1",
+		"vite": "npm:@voidzero-dev/vite-plus-core@0.2.4",
 		"vite-plus": "catalog:"
 	}
 }
