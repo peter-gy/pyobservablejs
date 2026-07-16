@@ -9,10 +9,10 @@ uv sync --package pyobservablejs --group dev
 pnpm install
 ```
 
-Build the widget bundle:
+Build the package artifacts:
 
 ```sh
-pnpm --filter @pyobservablejs/python build
+make build
 ```
 
 ## Docs

@@ -46,8 +46,7 @@ jobs:
       - name: Build package artifacts
         run: |
           rm -rf dist
-          pnpm --filter @pyobservablejs/python build
-          uv build --package pyobservablejs --out-dir dist
+          make build
 
       - name: Check package artifacts
         run: |

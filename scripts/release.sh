@@ -153,8 +153,7 @@ run_release_checks() {
 
 build_release_artifacts() {
   rm -rf dist
-  pnpm --filter @pyobservablejs/python build
-  uv build --package pyobservablejs --out-dir "$ROOT/dist"
+  make build
   uvx twine check dist/pyobservablejs-*.whl dist/pyobservablejs-*.tar.gz
 }
 

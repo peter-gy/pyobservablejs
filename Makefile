@@ -1,4 +1,8 @@
-.PHONY: check docs docs-serve
+.PHONY: build check docs docs-serve
+
+build:
+	pnpm build
+	uv build --package pyobservablejs
 
 docs:
 	cd docs && uv run --package pyobservablejs jupyter book build --html --strict
@@ -14,6 +18,6 @@ check:
 	uv run --package pyobservablejs ty check packages/pyobservablejs scripts
 	uv run --package pyobservablejs pyrefly check --min-severity warn
 	uv run --package pyobservablejs pytest -q packages/pyobservablejs/tests
-	pnpm build
+	$(MAKE) build
 	$(MAKE) docs
 	git diff --check

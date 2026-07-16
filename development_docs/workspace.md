@@ -72,12 +72,14 @@ Scope commands to the distribution:
 
 ```sh
 uv run --package pyobservablejs pytest -q packages/pyobservablejs/tests
-pnpm --filter @pyobservablejs/python build
-uv build --package pyobservablejs
+make build
 uv version --package pyobservablejs --short
 ```
 
 ## Build artifacts
+
+`make build` builds the JavaScript workspace, then writes the Python sdist and
+wheel to the root `dist/` directory.
 
 `vp pack` writes each TypeScript library to its package-local `dist/` directory.
 The Python workspace package runs `vp build` and writes the deployable widget to
