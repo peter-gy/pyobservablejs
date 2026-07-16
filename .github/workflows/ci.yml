@@ -15,6 +15,10 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
+      - name: Read Node.js version
+        id: node-version
+        run: echo "version=$(cat .node-version)" >> "$GITHUB_OUTPUT"
+
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           enable-cache: true
@@ -26,7 +30,7 @@ jobs:
       - uses: voidzero-dev/setup-vp@13e7afb99c66525824db54e107d667216e795d37 # v1.14.0
         with:
           version: 0.2.4
-          node-version: 22
+          node-version: ${{ steps.node-version.outputs.version }}
           cache: true
           sfw: true
           run-install: |
@@ -55,6 +59,10 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
+      - name: Read Node.js version
+        id: node-version
+        run: echo "version=$(cat .node-version)" >> "$GITHUB_OUTPUT"
+
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           enable-cache: true
@@ -66,7 +74,7 @@ jobs:
       - uses: voidzero-dev/setup-vp@13e7afb99c66525824db54e107d667216e795d37 # v1.14.0
         with:
           version: 0.2.4
-          node-version: 22
+          node-version: ${{ steps.node-version.outputs.version }}
           cache: true
           sfw: true
           run-install: |
@@ -86,10 +94,14 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
+      - name: Read Node.js version
+        id: node-version
+        run: echo "version=$(cat .node-version)" >> "$GITHUB_OUTPUT"
+
       - uses: voidzero-dev/setup-vp@13e7afb99c66525824db54e107d667216e795d37 # v1.14.0
         with:
           version: 0.2.4
-          node-version: 22
+          node-version: ${{ steps.node-version.outputs.version }}
           cache: true
           sfw: true
           run-install: |
@@ -107,6 +119,10 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
+      - name: Read Node.js version
+        id: node-version
+        run: echo "version=$(cat .node-version)" >> "$GITHUB_OUTPUT"
+
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           enable-cache: true
@@ -118,7 +134,7 @@ jobs:
       - uses: voidzero-dev/setup-vp@13e7afb99c66525824db54e107d667216e795d37 # v1.14.0
         with:
           version: 0.2.4
-          node-version: 22
+          node-version: ${{ steps.node-version.outputs.version }}
           cache: true
           sfw: true
           run-install: |
@@ -144,6 +160,10 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
+      - name: Read Node.js version
+        id: node-version
+        run: echo "version=$(cat .node-version)" >> "$GITHUB_OUTPUT"
+
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           enable-cache: true
@@ -155,14 +175,14 @@ jobs:
       - uses: voidzero-dev/setup-vp@13e7afb99c66525824db54e107d667216e795d37 # v1.14.0
         with:
           version: 0.2.4
-          node-version: 22
+          node-version: ${{ steps.node-version.outputs.version }}
           cache: true
           sfw: true
           run-install: |
             - args: ['--frozen-lockfile']
 
       - name: Build docs
-        run: uv run --package pyobservablejs python scripts/docs.py build
+        run: make docs
 
       - name: Check docs source and whitespace
         run: |
