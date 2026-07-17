@@ -1,9 +1,9 @@
 ---
-title: Reference
+title: API reference
 description: Public Python API reference for pyobservablejs.
 ---
 
-# Reference
+# API reference
 
 The `observablejs` package exports notebook definitions, renderable views,
 cell constructors, synchronized value records, and dependency graph records.
@@ -21,27 +21,28 @@ full_view = notebook.view()
 ## Public exports
 
 | Export                                                      | Kind              | Contract                                                                           |
-| ----------------------------------------------------------- | ----------------- | ---------------------------------------------------------------------------------- |
-| [`Notebook`](notebook.mdx)                                  | Class             | Owns the Notebook Kit definition, attachments, variables, and shared input values. |
-| [`NotebookView`](notebook.mdx#notebookview)                 | Class             | Renders a cell selection and owns its browser runtime, values, and graph snapshot. |
-| [`Cell`](cells.mdx#cell)                                    | Frozen data class | Describes one Python-authored Notebook Kit cell.                                   |
-| [`ojs`](cells.mdx#cell-helpers)                             | Function          | Creates an Observable JavaScript `Cell`.                                           |
-| [`js`](cells.mdx#cell-helpers)                              | Function          | Creates a JavaScript module `Cell`.                                                |
-| [`md`](cells.mdx#cell-helpers)                              | Function          | Creates a Markdown `Cell`.                                                         |
-| [`html`](cells.mdx#cell-helpers)                            | Function          | Creates an HTML `Cell`.                                                            |
-| [`NotebookCell`](notebook.mdx#notebookcell)                 | Class             | Selects one notebook cell and creates a view through `view()`.                     |
-| [`CellValues`](values-and-graph.mdx#cellvalues)             | Frozen data class | Carries the synchronized values for one selected cell.                             |
-| [`NotebookGraph`](values-and-graph.mdx#notebookgraph)       | Frozen data class | Contains decoded cells and symbolic dependency edges.                              |
-| [`CellInfo`](values-and-graph.mdx#cellinfo)                 | Frozen data class | Describes one cell in a synchronized graph snapshot.                               |
-| [`DependencyEdge`](values-and-graph.mdx#dependencyedge)     | Frozen data class | Describes one variable dependency between two cells.                               |
-| [`NotRenderedError`](values-and-graph.mdx#notrenderederror) | Exception         | Reports that the browser snapshot required for readback has not synchronized.      |
-| [`NOTEBOOK_THEMES`](notebook-themes.mdx)                    | Tuple             | Lists the accepted Notebook Kit theme names.                                       |
+| ----------------------------------------------------------- | ----------------- | ----------------------------------------------------------------------------------- |
+| [`Notebook`](notebook.mdx)                                  | Class             | Owns the Notebook Kit definition, attachments, variables, and shared input values.  |
+| [`NotebookView`](notebook-view-and-cell.mdx#notebookview)   | Class             | Renders a cell selection and owns its browser runtime, values, and graph snapshot.  |
+| [`NotebookCell`](notebook-view-and-cell.mdx#notebookcell)   | Class             | Selects one notebook cell and creates a view through `view()`.                      |
+| [`Cell`](cell-helpers.mdx#cell)                             | Frozen data class | Describes one Python-authored Notebook Kit cell.                                    |
+| [`ojs`](cell-helpers.mdx#helper-functions)                      | Function          | Creates an Observable JavaScript `Cell`.                                            |
+| [`js`](cell-helpers.mdx#helper-functions)                       | Function          | Creates a JavaScript module `Cell`.                                                 |
+| [`md`](cell-helpers.mdx#helper-functions)                       | Function          | Creates a Markdown `Cell`.                                                          |
+| [`html`](cell-helpers.mdx#helper-functions)                     | Function          | Creates an HTML `Cell`.                                                             |
+| [`CellValues`](values-and-graph.mdx#cellvalues)             | Frozen data class | Carries the synchronized values for one selected cell.                              |
+| [`NotebookGraph`](values-and-graph.mdx#notebookgraph)       | Frozen data class | Contains decoded cells and symbolic dependency edges.                               |
+| [`CellInfo`](values-and-graph.mdx#cellinfo)                 | Frozen data class | Describes one cell in a synchronized graph snapshot.                                |
+| [`DependencyEdge`](values-and-graph.mdx#dependencyedge)     | Frozen data class | Describes one variable dependency between two cells.                                |
+| [`NotRenderedError`](values-and-graph.mdx#notrenderederror) | Exception         | Reports that the browser snapshot required for readback has not synchronized.       |
+| [`NOTEBOOK_THEMES`](themes.mdx)                             | Tuple             | Lists the accepted Notebook Kit theme names.                                        |
 
 The reference pages cover these related entry points:
 
-- [Variables](variables.mdx) defines both directions of value serialization and
-  the variable update lifecycle.
+- [Variables and serialization](variables-and-serialization.mdx) defines
+  both directions of value serialization and the variable update lifecycle.
+- [Source constructors](source-constructors.mdx) defines the
+  `Notebook.from_*` constructors.
 - [File attachments](file-attachments.mdx) defines `files`, `base_path`, and
   `FileAttachment` resolution.
-- [Source notebooks](source-notebooks.mdx) defines the `Notebook.from_*`
-  constructors.
+- [Themes](themes.mdx) defines accepted theme names and validation.

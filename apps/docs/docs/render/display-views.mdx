@@ -1,0 +1,109 @@
+---
+title: Display a NotebookView
+description: Mount views in marimo, Jupyter, VS Code, Colab, and other anywidget hosts.
+---
+
+# Display a NotebookView
+
+`notebook.view()` returns a `NotebookView`, an
+[anywidget](https://anywidget.dev/) that any anywidget host can display.
+Browser evaluation begins when the host mounts the view.
+
+```marimo-config
+requires-python = ">=3.11"
+dependencies = ["pyobservablejs"]
+```
+
+```python
+import marimo as mo
+import observablejs as obs
+
+notebook = obs.Notebook(
+    obs.js(
+        """
+        const threshold = view(Inputs.range(
+          [0, 1],
+          {label: "Threshold", step: 0.05, value: 0.5}
+        ));
+        """
+    ),
+    obs.js('html`<p>Threshold: <strong>${threshold}</strong></p>`'),
+)
+
+full_view = notebook.view()
+mo.ui.anywidget(full_view)
+```
+
+```python marimo echo=false server-output=false
+import marimo as mo
+import observablejs as obs
+
+notebook = obs.Notebook(
+    obs.js(
+        """
+        const threshold = view(Inputs.range(
+          [0, 1],
+          {label: "Threshold", step: 0.05, value: 0.5}
+        ));
+        """
+    ),
+    obs.js('html`<p>Threshold: <strong>${threshold}</strong></p>`'),
+)
+
+full_view = notebook.view()
+mo.ui.anywidget(full_view)
+```
+
+## Host idioms
+
+Each host has its own display convention. The `NotebookView` is the same
+object in all of them.
+
+### marimo
+
+Wrap views with `mo.ui.anywidget`. The wrapper also makes readback reactive:
+a marimo cell that references the wrapped widget's `value` runs again when
+the browser synchronizes new state.
+
+```python
+import marimo as mo
+
+widget = mo.ui.anywidget(full_view)
+widget
+```
+
+### JupyterLab and Jupyter Notebook
+
+Display the view directly by leaving it as the final expression in a cell,
+or pass it to `IPython.display.display`.
+
+```python
+full_view
+```
+
+### VS Code notebooks and Google Colab
+
+Both are anywidget hosts and follow the Jupyter idiom: the view displays as
+the final cell expression. Colab requires enabling third-party widget
+support, as documented by
+[anywidget](https://anywidget.dev/en/notebooks/colab/).
+
+## One view per placement
+
+A `NotebookView` owns one live writable output. When the same cells should
+appear in two places at once, create one view per placement; the views stay
+connected through the notebook session.
+
+```python
+chart_a = notebook.view()
+chart_b = notebook.view()
+
+mo.hstack([mo.ui.anywidget(chart_a), mo.ui.anywidget(chart_b)])
+```
+
+Python variable updates reach both views, and named `viewof` inputs share
+supported values across them. See [Mental model](../mental-model.mdx#what-views-share)
+for what is shared and what stays per-view.
+
+Continue with [Select cells and create subsets](select-cells.mdx) to render a
+slice of a notebook instead of all of it.

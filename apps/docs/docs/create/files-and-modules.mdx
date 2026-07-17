@@ -1,0 +1,157 @@
+---
+title: Add files and local modules
+description: Register FileAttachment files and embed local JavaScript modules.
+---
+
+# Add files and local modules
+
+`files` registers named inputs for Observable's `FileAttachment` builtin.
+Local files are read during `Notebook` construction and sent to the browser
+as data URLs, so the widget carries its data wherever it renders.
+
+```marimo-config
+requires-python = ">=3.11"
+dependencies = ["pyobservablejs"]
+```
+
+```python
+from pathlib import Path
+import tempfile
+
+import marimo as mo
+import observablejs as obs
+
+data_dir = Path(tempfile.mkdtemp(prefix="observable-files-"))
+(data_dir / "counts.csv").write_text(
+    "species,count\nAdelie,152\nChinstrap,68\nGentoo,124\n",
+    encoding="utf-8",
+)
+
+notebook = obs.Notebook(
+    obs.js(
+        'const speciesCounts = FileAttachment("counts.csv").csv({typed: true});',
+        key="species_counts",
+        display=False,
+    ),
+    obs.js(
+        """
+        Plot.barY(speciesCounts, {
+          x: "species",
+          y: "count",
+          fill: "species",
+          tip: {fill: "var(--marimo-island-background)"}
+        }).plot({
+          height: 260,
+          color: {legend: true},
+          y: {grid: true, label: "Penguins"}
+        })
+        """,
+        key="chart",
+    ),
+    files={"counts.csv": "counts.csv"},
+    base_path=data_dir,
+)
+
+full_view = notebook.view()
+mo.ui.anywidget(full_view)
+```
+
+```python marimo echo=false server-output=false
+from pathlib import Path
+import tempfile
+
+import marimo as mo
+import observablejs as obs
+
+data_dir = Path(tempfile.mkdtemp(prefix="observable-files-"))
+(data_dir / "counts.csv").write_text(
+    "species,count\nAdelie,152\nChinstrap,68\nGentoo,124\n",
+    encoding="utf-8",
+)
+
+notebook = obs.Notebook(
+    obs.js(
+        'const speciesCounts = FileAttachment("counts.csv").csv({typed: true});',
+        key="species_counts",
+        display=False,
+    ),
+    obs.js(
+        """
+        Plot.barY(speciesCounts, {
+          x: "species",
+          y: "count",
+          fill: "species",
+          tip: {fill: "var(--marimo-island-background)"}
+        }).plot({
+          height: 260,
+          color: {legend: true},
+          y: {grid: true, label: "Penguins"}
+        })
+        """,
+        key="chart",
+    ),
+    files={"counts.csv": "counts.csv"},
+    base_path=data_dir,
+)
+
+full_view = notebook.view()
+mo.ui.anywidget(full_view)
+```
+
+The mapping key is the name used by `FileAttachment`. `typed: true` asks the
+CSV reader to convert values such as numbers and dates. The counts come from
+the [Palmer Penguins
+dataset](https://allisonhorst.github.io/palmerpenguins/).
+
+## Accepted `files` values
+
+Each value can be a local path, a URL, or a prepared attachment record.
+
+```python
+notebook = obs.Notebook(
+    obs.ojs('countries = FileAttachment("countries.json").json()'),
+    files={
+        "countries.json": {
+            "url": "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json",
+            "mimeType": "application/json",
+        }
+    },
+)
+```
+
+Relative local paths resolve against `base_path`, which defaults to the
+current working directory. `from_html_file` uses the HTML file's parent
+directory. See [File attachments](../reference/file-attachments.mdx) for
+path resolution, record shapes, and browser access methods.
+
+## Discover files in source HTML
+
+`Notebook.from_html` and `from_html_file` can discover local files referenced
+by literal `FileAttachment("name")` calls and embed them as data URLs:
+
+```python
+notebook = obs.Notebook.from_html_file(
+    "notebooks/report.html",
+    embed_file_attachments=True,
+)
+```
+
+- `embed_file_attachments=True` discovers local `FileAttachment("...")`
+  references in notebook script cells and embeds each file as a data URL.
+- `rewrite_imports=True` inlines local modules referenced by quoted relative
+  specifiers in static imports, `export ... from` declarations, and dynamic
+  `import(...)` calls, following local imports recursively. Computed
+  specifiers and paths that do not resolve to files stay unchanged.
+
+Both options need a `base_path` with `from_html` because a source string has
+no filesystem location. `from_html_file` uses the document's parent
+directory.
+
+Leave both options false when the page already serves the referenced files at
+the same relative paths. When discovery is enabled, an explicit `files` entry
+takes precedence over a discovered file with the same name.
+
+Use file attachments rather than [Python
+variables](../connect/python-to-observable.mdx) for large tables and binary
+data: the browser loads attachments through `FileAttachment` readers instead
+of carrying them through widget state.

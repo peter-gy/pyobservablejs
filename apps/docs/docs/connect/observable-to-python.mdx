@@ -1,0 +1,138 @@
+---
+title: Observable to Python
+description: Read browser-synchronized values back into Python after a view renders.
+---
+
+# Observable to Python
+
+`NotebookView` synchronizes rendered values back to Python. Move `gain`
+below: the readout updates in the browser, and the Python cell underneath
+reads the synchronized values from the same view.
+
+```marimo-config
+requires-python = ">=3.11"
+dependencies = ["pyobservablejs"]
+```
+
+```python
+import marimo as mo
+import observablejs as obs
+
+notebook = obs.Notebook(
+    obs.ojs(
+        'viewof gain = Inputs.range([0, 12], {value: 5, step: 1, label: "Gain"})',
+        key="gain_control",
+    ),
+    obs.js("const doubled = gain * 2;", key="doubled", display=False),
+    obs.js(
+        'html`<p>Gain is <strong>${gain}</strong>. Doubled is <strong>${doubled}</strong>.</p>`',
+        key="readout",
+    ),
+)
+
+full_view = notebook.view()
+widget = mo.ui.anywidget(full_view)
+widget
+```
+
+```python marimo echo=false server-output=false
+import marimo as mo
+import observablejs as obs
+
+notebook = obs.Notebook(
+    obs.ojs(
+        'viewof gain = Inputs.range([0, 12], {value: 5, step: 1, label: "Gain"})',
+        key="gain_control",
+    ),
+    obs.js("const doubled = gain * 2;", key="doubled", display=False),
+    obs.js(
+        'html`<p>Gain is <strong>${gain}</strong>. Doubled is <strong>${doubled}</strong>.</p>`',
+        key="readout",
+    ),
+)
+
+full_view = notebook.view()
+widget = mo.ui.anywidget(full_view)
+widget
+```
+
+```python
+widget.value  # subscribe this cell to view synchronization
+
+if full_view.has_rendered:
+    synced = full_view.runtime_values
+    message = (
+        f"Python sees `gain = {synced.get('gain')}` "
+        f"and `doubled = {synced.get('doubled')}`."
+    )
+else:
+    message = "Waiting for the view above to render."
+mo.md(message)
+```
+
+```python marimo echo=false server-output=false
+widget.value  # subscribe this cell to view synchronization
+
+if full_view.has_rendered:
+    synced = full_view.runtime_values
+    message = (
+        f"Python sees `gain = {synced.get('gain')}` "
+        f"and `doubled = {synced.get('doubled')}`."
+    )
+else:
+    message = "Waiting for the view above to render."
+mo.md(message)
+```
+
+## Readback members
+
+Readback belongs to the view whose browser runtime produced it.
+
+| Member           | Contract                                                            |
+| ---------------- | ------------------------------------------------------------------- |
+| `has_rendered`   | Whether this view has synchronized a completed browser render.      |
+| `runtime_values` | Decoded values whose name has exactly one owning cell in this view. |
+| `value(name)`    | One entry from `runtime_values`. Raises `KeyError` on a miss.       |
+| `cell_values()`  | One `CellValues` record per selected cell, in notebook order.       |
+
+Reading any of them before the view renders raises
+[`NotRenderedError`](../reference/values-and-graph.mdx#notrenderederror).
+Guard with `has_rendered`, as above. A name produced by more than one
+selected cell is omitted from `runtime_values` because it has no unique
+owner; `cell_values()` still reports it per cell.
+
+```python
+for record in full_view.cell_values():
+    print(record.index, record.key, record.values)
+```
+
+## What comes back
+
+Browser values decode to Python equivalents: `Date` becomes
+`datetime.datetime`, `BigInt` becomes `int`, typed arrays become `bytes`,
+`Map` becomes a list of tuples. Values without a faithful Python form, such
+as DOM elements and functions, decode to descriptive strings. The full table
+is in [Variables and
+serialization](../reference/variables-and-serialization.mdx#browser-to-python-readback).
+
+## Reacting to readback in marimo
+
+marimo reruns a cell when a UI element it references changes. Reference the
+wrapped widget's `value` in the reading cell, as the live example does, and
+the cell reruns whenever the view synchronizes new state. In plain Jupyter,
+readback is not push-based: read `runtime_values` when you next need it, or
+observe the underlying traitlets.
+
+## Reading from a focused view
+
+Each view synchronizes its own values. A focused view of one cell reads that
+cell and its hidden dependencies:
+
+```python
+gain_view = notebook.cell_by_key("gain_control").view()
+```
+
+After `gain_view` renders somewhere, `gain_view.value("gain")` reads the
+value from *its* runtime. When the user changes `gain` in either view, both
+views converge through shared input state; see [Bidirectional
+inputs](bidirectional-inputs.mdx).

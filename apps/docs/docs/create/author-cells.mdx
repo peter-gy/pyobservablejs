@@ -1,13 +1,23 @@
 ---
-title: Observable cells and reactivity
-description: Author Notebook Kit cells and connect them through the reactive graph.
+title: Author cells from Python
+description: Create Notebook Kit cells with obs.js, obs.ojs, obs.md, and obs.html.
 ---
 
-# Observable cells and reactivity
+# Author cells from Python
 
-`obs.js` creates a standard JavaScript cell. Top-level declarations share
-values with other cells. Move the exponent control below and the readout
-recomputes in the browser.
+`Notebook` accepts cells from four helpers. Each helper wraps a source string
+in one Notebook Kit cell mode.
+
+| Helper          | Cell source                      |
+| --------------- | -------------------------------- |
+| `obs.js(...)`   | Standard Notebook Kit JavaScript |
+| `obs.ojs(...)`  | Observable JavaScript            |
+| `obs.md(...)`   | Markdown                         |
+| `obs.html(...)` | HTML                             |
+
+Top-level declarations in JavaScript cells form a reactive graph: when a
+value changes, every cell that references it runs again. Move the exponent
+control below and the readout recomputes in the browser.
 
 ```marimo-config
 requires-python = ">=3.11"
@@ -63,8 +73,8 @@ mo.ui.anywidget(full_view)
 ```
 
 The first cell defines `exponent`. The readout references it, so Notebook Kit
-runs that cell again when the input changes. Notebook Kit schedules cells from
-their dependencies, independent of source order.
+runs that cell again when the input changes. Notebook Kit schedules cells
+from their dependencies, independent of source order.
 
 ## JavaScript cells
 
@@ -74,8 +84,8 @@ An expression cell displays its value implicitly.
 obs.js("Plot.lineY(aapl, {x: 'Date', y: 'Close'}).plot()")
 ```
 
-A program cell contains declarations or statements. Call `display(...)` when a
-program cell should render a value.
+A program cell contains declarations or statements. Call `display(...)` when
+a program cell should render a value.
 
 ```python
 obs.js(
@@ -134,10 +144,14 @@ obs.js(
 
 - `key` names the Python `NotebookCell` selection handle. Call `view()` on
   that handle to create a view for the cell and its dependencies.
-- `display=False` hides the cell output while keeping its values in the graph.
+- `display=False` hides the cell output while keeping its values in the
+  graph.
 - `pinned=True` exposes the source when the cell is selected and the notebook
-  enables `show_pinned_source`.
+  enables `show_pinned_source`. See [Themes and pinned
+  source](../customize/themes-and-pinned-source.mdx).
 - `raw=True` preserves the source string exactly, including indentation and
   surrounding newlines.
 
-See [Cells](../reference/cells.mdx) for the signature and error behavior.
+See [Cell helpers](../reference/cell-helpers.mdx) for the full signature and
+error behavior, and [Browser execution](../customize/browser-execution.mdx)
+for the builtins available to each cell.

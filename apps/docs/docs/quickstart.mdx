@@ -1,9 +1,9 @@
 ---
-title: Getting started
-description: Build a pyobservablejs notebook and render a view.
+title: Quickstart
+description: Install pyobservablejs, build a reactive notebook, and render its view.
 ---
 
-# Getting started
+# Quickstart
 
 Views are [anywidgets](https://anywidget.dev/), so they render in any
 anywidget host. This tutorial uses marimo. Python 3.11 or newer is required.
@@ -140,9 +140,9 @@ reference. `notebook.view()` selects every cell and returns a `NotebookView`;
 browser evaluation starts when marimo mounts that view through
 `mo.ui.anywidget`.
 
-Inside the JavaScript cell, `view(...)` displays the select input and yields its
-current value. Changing the selection invalidates the Plot cell, which runs
-again with the new value.
+Inside the JavaScript cell, `view(...)` displays the select input and yields
+its current value. Changing the selection invalidates the Plot cell, which
+runs again with the new value.
 
 Each host displays anywidgets in its own way. marimo wraps them with
 `mo.ui.anywidget`. Jupyter and most other hosts display `full_view` when it is
@@ -150,10 +150,11 @@ the final expression in a cell.
 
 ## Next steps
 
-- [Python data to Plot](examples/python-data-plot.mdx) passes records from Python.
-- [Observable cells and reactivity](guides/author-cells.mdx) explains `obs.js`,
-  `obs.ojs`, and cell dependencies.
-- [Views and composition](guides/views-and-composition.mdx) explains full,
-  focused, and composite views.
-- [Python variables](guides/python-variables.mdx) updates a mounted view from a
-  marimo control.
+- [Mental model](mental-model.mdx) explains `Notebook`, `NotebookCell`, and
+  `NotebookView` before you build anything larger.
+- [Python to Observable](connect/python-to-observable.mdx) drives a mounted
+  chart from a Python control.
+- [Observable to Python](connect/observable-to-python.mdx) reads browser
+  values back after render.
+- [Author cells from Python](create/author-cells.mdx) explains `obs.js`,
+  `obs.ojs`, and cell options.

@@ -1,13 +1,16 @@
 ---
-title: Files and source notebooks
-description: Load Notebook Kit HTML with local FileAttachment files.
+title: Load an existing notebook with local files
+description: Load Notebook Kit HTML from disk and embed its FileAttachment data.
 ---
 
-# Files and source notebooks
+# Load an existing notebook with local files
 
-`Notebook.from_html_file` loads Notebook Kit HTML files. Set
-`embed_file_attachments=True` to embed local `FileAttachment` calls and
-`rewrite_imports=True` to inline relative JavaScript imports.
+A Notebook Kit document on disk often references data files next to it. This
+recipe loads such a document with `Notebook.from_html_file` and embeds the
+referenced CSV so the widget carries its data wherever it renders.
+
+The example writes the document and its data file to a temporary directory
+first, standing in for a notebook you already have.
 
 ```marimo-config
 requires-python = ">=3.11"
@@ -98,36 +101,27 @@ full_view = notebook.view()
 mo.ui.anywidget(full_view)
 ```
 
-The output renders species counts from the local CSV. The counts come from the
-[Palmer Penguins dataset](https://allisonhorst.github.io/palmerpenguins/).
+The output renders species counts from the local CSV. The counts come from
+the [Palmer Penguins
+dataset](https://allisonhorst.github.io/palmerpenguins/).
 
-## File and import options
+## What this shows
 
-- `embed_file_attachments=True` discovers local `FileAttachment("...")`
-  references in notebook script cells and embeds each file as a data URL.
-- `rewrite_imports=True` inlines local modules referenced by quoted relative
-  specifiers in static imports, `export ... from` declarations, and dynamic
-  `import(...)` calls, following local imports recursively. Computed
-  specifiers and paths that do not resolve to files stay unchanged.
+- `from_html_file` keeps the document as source: the `glacier` theme and
+  both cells come from the HTML, not from Python.
+- `embed_file_attachments=True` discovers the literal
+  `FileAttachment("penguins.csv")` call, reads the file relative to the
+  document, and registers it as a data URL in `notebook.attachments`.
+- The document text in `notebook.source` is unchanged; only the attachment
+  registry carries the embedded bytes.
 
-Both options need a `base_path` with `from_html` because a source string has
-no filesystem location. `from_html_file` uses the document's parent directory.
+## Variations
 
-Leave both options false when the page already serves the referenced files at
-the same relative paths.
-
-```python
-notebook = obs.Notebook.from_html(source)
-```
-
-Register an attachment directly with `files`.
-
-```python
-notebook = obs.Notebook.from_html(
-    source,
-    files={"penguins.csv": base / "penguins.csv"},
-)
-```
-
-When discovery is enabled, an explicit `files` entry takes precedence over a
-discovered file with the same name.
+- Add `rewrite_imports=True` when the document imports local JavaScript
+  modules with relative specifiers; they are inlined recursively. See [Add
+  files and local modules](../create/files-and-modules.mdx#discover-files-in-source-html).
+- Skip embedding when the page already serves the files at the same
+  relative paths: `obs.Notebook.from_html_file(path)` alone leaves
+  resolution to the browser.
+- Override notebook values from Python by passing `variables=` to the
+  constructor, exactly as with authored notebooks.

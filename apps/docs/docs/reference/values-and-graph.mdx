@@ -1,12 +1,12 @@
 ---
-title: Values and graph
+title: Values and graph records
 description: NotebookView readback, CellValues records, render gates, and NotebookGraph metadata.
 ---
 
-# Values and graph
+# Values and graph records
 
-`NotebookView` synchronizes rendered values and symbolic dependency metadata to
-Python. Readback belongs to the view whose browser runtime produced it.
+`NotebookView` synchronizes rendered values and symbolic dependency metadata
+to Python. Readback belongs to the view whose browser runtime produced it.
 
 ```python
 import observablejs as obs
@@ -40,10 +40,11 @@ if full_view.has_graph_snapshot:
 | `value(name)`        | `Any`                    | One entry from `runtime_values`.                               |
 | `graph`              | `NotebookGraph`          | Static dependency graph for cells evaluated by this view.      |
 
-`runtime_values`, `cell_values()`, and `value(name)` require a completed view
-render. `graph` requires a graph snapshot. `value(name)` raises `KeyError` when
-the rendered value mapping has no matching name. A name produced by multiple
-selected cells is omitted from `runtime_values` because it has no unique owner.
+`runtime_values`, `cell_values()`, and `value(name)` require a completed
+view render. `graph` requires a graph snapshot. `value(name)` raises
+`KeyError` when the rendered value mapping has no matching name. A name
+produced by multiple selected cells is omitted from `runtime_values` because
+it has no unique owner.
 
 ## `CellValues`
 
@@ -51,8 +52,8 @@ selected cells is omitted from `runtime_values` because it has no unique owner.
 obs.CellValues(index, key, values)
 ```
 
-`NotebookView.cell_values()` returns one `CellValues` record per selected cell
-in notebook order.
+`NotebookView.cell_values()` returns one `CellValues` record per selected
+cell in notebook order.
 
 | Field    | Type             | Contract                                                |
 | -------- | ---------------- | ------------------------------------------------------- |
@@ -60,8 +61,8 @@ in notebook order.
 | `key`    | `Optional[str]`  | Python cell handle, or `None` when the cell has no key. |
 | `values` | `dict[str, Any]` | Decoded browser-synchronized values for the cell.       |
 
-The data class is frozen. Its `values` field is a regular dictionary returned
-for that snapshot.
+The data class is frozen. Its `values` field is a regular dictionary
+returned for that snapshot.
 
 ```python
 for cell_values in full_view.cell_values():
@@ -74,8 +75,8 @@ for cell_values in full_view.cell_values():
 obs.NotRenderedError(message)
 ```
 
-`NotRenderedError` is a `RuntimeError` raised when code reads synchronized state
-before the browser has produced the required snapshot.
+`NotRenderedError` is a `RuntimeError` raised when code reads synchronized
+state before the browser has produced the required snapshot.
 
 | Readback member                                                   | Required state        |
 | ----------------------------------------------------------------- | --------------------- |
@@ -107,8 +108,8 @@ graph snapshot.
 
 ### `NotebookGraph.cell(index)`
 
-Returns the `CellInfo` whose `index` equals `index`, or `None` when the graph
-has no matching cell.
+Returns the `CellInfo` whose `index` equals `index`, or `None` when the
+graph has no matching cell.
 
 ### `NotebookGraph.cell_for_variable(variable)`
 
@@ -128,6 +129,9 @@ if full_view.has_graph_snapshot:
     graph = full_view.graph
     print(graph.to_mermaid())
 ```
+
+See [Inspect the dependency graph](../connect/dependency-graph.mdx) for a
+live rendering of the Mermaid output.
 
 ## `CellInfo`
 

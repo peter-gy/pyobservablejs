@@ -1,0 +1,65 @@
+---
+title: pyobservablejs or pyobsplot?
+description: Choose between pyobservablejs and pyobsplot for Observable-flavored work from Python.
+---
+
+# pyobservablejs or pyobsplot?
+
+[`pyobsplot`](https://github.com/juba/pyobsplot) renders [Observable
+Plot](https://observablehq.com/plot/) charts from Python. `pyobservablejs`
+renders full Observable notebooks from Python. They overlap on "make an
+Observable Plot chart appear in a Python notebook" and differ everywhere
+else.
+
+| | `pyobsplot` | `pyobservablejs` |
+| --- | --- | --- |
+| Scope | One Observable **Plot** figure per call | Full Observable **notebooks**: Plot, Inputs, arbitrary JavaScript, Markdown, and HTML cells |
+| Authoring | Plot specs written in Python syntax | Real JavaScript source strings, copy-paste compatible with Notebook Kit and observablehq.com |
+| Reactivity | None; each call renders a static figure | Full Observable runtime: `view(...)` inputs, `viewof`, generators, `invalidation` |
+| Direction | Python to chart only | Bidirectional: Python variables in, rendered values and graph metadata back |
+| Existing notebooks | Not supported | `Notebook.from_html`, `Notebook.from_observablehq` |
+| Introspection | None | Dependency graph with `to_mermaid()` and `to_d2()` exports |
+| Static export | jsdom renderer produces standalone SVG/HTML for Quarto and scripts | Browser-only; an anywidget host is required |
+
+## Use `pyobsplot` when
+
+- You want exactly one chart and no interaction beyond Plot's built-in tips.
+- You render to static documents: Quarto, scripts, or files, through its
+  jsdom renderer.
+- You prefer writing the Plot spec in Python syntax instead of JavaScript.
+
+## Use `pyobservablejs` when
+
+- The output is a notebook, not a figure: multiple cells that react to each
+  other and to browser inputs.
+- Python and the browser both hold state: Python data drives the graph, and
+  input values or computed results must come back to Python.
+- You want to reuse existing Observable material, either Notebook Kit HTML or
+  a public observablehq.com notebook.
+- You want to inspect or visualize the dependency structure of the notebook
+  from Python.
+
+## They compose culturally, not technically
+
+Both projects are anywidget-based and share the Observable ecosystem, but a
+`pyobsplot` figure is not a `pyobservablejs` cell. If you start in
+`pyobsplot` and outgrow it, port the Plot spec back to its JavaScript form
+inside an `obs.js` cell; the JavaScript form is the one Observable documents.
+
+`pyobsplot` informed the Python variable API of this project, credited in the
+[README](https://github.com/peter-gy/pyobservablejs#acknowledgements).
+
+## Position in the Observable ecosystem
+
+- **[Notebook Kit](https://observablehq.com/notebook-kit/)** provides the
+  notebook file format, the transpiler, and the runtime that `pyobservablejs`
+  embeds in the browser.
+- **[observablehq.com](https://observablehq.com/)** hosts public notebooks
+  that `Notebook.from_observablehq` imports.
+- **[anywidget](https://anywidget.dev/)** is the widget standard that lets
+  each `NotebookView` render in JupyterLab, marimo, VS Code, and Colab.
+
+`pyobservablejs` documents only the Python integration. Observable JavaScript
+itself, including `Plot`, `Inputs`, and the standard library, is documented
+by [Notebook Kit](https://observablehq.com/notebook-kit/) and
+[observablehq.com](https://observablehq.com/documentation/).

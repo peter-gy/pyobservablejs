@@ -5,9 +5,9 @@ description: files mappings, local path resolution, FileAttachment access, and s
 
 # File attachments
 
-`files` registers named inputs for Observable's `FileAttachment` builtin. Local
-files are read during `Notebook` construction and sent to the browser as data
-URLs.
+`files` registers named inputs for Observable's `FileAttachment` builtin.
+Local files are read during `Notebook` construction and sent to the browser
+as data URLs.
 
 ```python
 from pathlib import Path
@@ -32,7 +32,8 @@ notebook = obs.Notebook(
 ```
 
 The mapping key is the name used by `FileAttachment`. In the example,
-`typed: true` asks the CSV reader to convert values such as numbers and dates.
+`typed: true` asks the CSV reader to convert values such as numbers and
+dates.
 
 ## Accepted `files` values
 
@@ -62,17 +63,17 @@ notebook = obs.Notebook(
 )
 ```
 
-A mapping used by `FileAttachment` needs a `url`. `mimeType`, `lastModified`,
-and `size` are optional. Python preserves other mapping fields and does not
-validate the record. A missing or invalid URL therefore fails when the browser
-registers or loads the attachment.
+A mapping used by `FileAttachment` needs a `url`. `mimeType`,
+`lastModified`, and `size` are optional. Python preserves other mapping
+fields and does not validate the record. A missing or invalid URL therefore
+fails when the browser registers or loads the attachment.
 
 ## Browser access
 
 `FileAttachment(name)` returns Notebook Kit's browser attachment object. Its
 `href`, `name`, `mimeType`, `lastModified`, and `size` properties are always
-present. `lastModified` and `size` are `undefined` when the registered record
-omits them.
+present. `lastModified` and `size` are `undefined` when the registered
+record omits them.
 
 | Data                          | Methods                                                     |
 | ----------------------------- | ----------------------------------------------------------- |
@@ -82,13 +83,13 @@ omits them.
 | Documents and images          | `.image()`, `.xml()`, `.html()`                             |
 | Arrow, Parquet, and workbooks | `.arrow()`, `.arquero()`, `.parquet()`, `.zip()`, `.xlsx()` |
 
-`.href` contains the attachment URL. Notebook Kit's deprecated `.url()` method
-returns the same value asynchronously. Use `.href` in new cells.
+`.href` contains the attachment URL. Notebook Kit's deprecated `.url()`
+method returns the same value asynchronously. Use `.href` in new cells.
 
-The widget also adds `.sqlite()`, which returns a `SQLiteDatabaseClient` with
-`query`, `queryRow`, `sql`, and schema-inspection methods. Before calling it,
-set `globalThis.observablejsSqlite` to an object with `initSqlJs` and an
-optional `locateFile`, or assign the loader directly to
+The widget also adds `.sqlite()`, which returns a `SQLiteDatabaseClient`
+with `query`, `queryRow`, `sql`, and schema-inspection methods. Before
+calling it, set `globalThis.observablejsSqlite` to an object with
+`initSqlJs` and an optional `locateFile`, or assign the loader directly to
 `globalThis.initSqlJs`.
 
 ## Path and base resolution
@@ -96,8 +97,8 @@ optional `locateFile`, or assign the loader directly to
 Local paths are expanded with `Path.expanduser()` and resolved to absolute
 paths during construction.
 
-`base_path` supplies a resolution base. It is not a filesystem boundary, so a
-relative path containing `..` can resolve outside that directory.
+`base_path` supplies a resolution base. It is not a filesystem boundary, so
+a relative path containing `..` can resolve outside that directory.
 
 | Call                                      | Base for a relative `files` value              |
 | ----------------------------------------- | ---------------------------------------------- |
@@ -106,17 +107,17 @@ relative path containing `..` can resolve outside that directory.
 | `Notebook.from_html(..., base_path=path)` | `path`                                         |
 | `Notebook.from_html_file(path, ...)`      | Parent directory of the HTML file              |
 
-The local file bytes are captured when the notebook is created. The registered
-data URL remains that construction-time snapshot across later file and current
-working directory changes.
+The local file bytes are captured when the notebook is created. The
+registered data URL remains that construction-time snapshot across later
+file and current working directory changes.
 
-An explicit local path raises `FileNotFoundError` when it is missing. File read
-and metadata failures raise the corresponding `OSError` subclass.
+An explicit local path raises `FileNotFoundError` when it is missing. File
+read and metadata failures raise the corresponding `OSError` subclass.
 
 ## Attachment records
 
-`notebook.attachments` returns a new outer dictionary containing the registered
-records. For a local file, the record has this shape:
+`notebook.attachments` returns a new outer dictionary containing the
+registered records. For a local file, the record has this shape:
 
 ```python
 {
@@ -132,13 +133,14 @@ The MIME type comes from the attachment name. `.arrow` and `.parquet` use
 Apache Arrow and Apache Parquet media types. Unknown suffixes use
 `application/octet-stream`.
 
-Names absent from `notebook.attachments` resolve against `notebook.base_url`.
-Constructors set that value to `""`, which selects the browser document base
-URI.
+Names absent from `notebook.attachments` resolve against
+`notebook.base_url`. Constructors set that value to `""`, which selects the
+browser document base URI.
 
 ## Source HTML discovery
 
-`Notebook.from_html` can discover local attachment calls in Notebook Kit HTML:
+`Notebook.from_html` can discover local attachment calls in Notebook Kit
+HTML:
 
 ```python
 notebook = obs.Notebook.from_html(
@@ -149,11 +151,11 @@ notebook = obs.Notebook.from_html(
 ```
 
 `embed_file_attachments=True` registers existing local files referenced by
-literal `FileAttachment("name")` calls inside JavaScript notebook cells. Static
-template literals such as ``FileAttachment(`rows.csv`)`` and imported aliases
-from `observablehq:stdlib` are also recognized. Discovery ignores calls in
-comments, string literals, regular-expression literals, Markdown cells, and
-scripts outside the `<notebook>` element.
+literal `FileAttachment("name")` calls inside JavaScript notebook cells.
+Static template literals such as ``FileAttachment(`rows.csv`)`` and imported
+aliases from `observablehq:stdlib` are also recognized. Discovery ignores
+calls in comments, string literals, regular-expression literals, Markdown
+cells, and scripts outside the `<notebook>` element.
 
 Discovery populates `notebook.attachments` with data URLs and keeps each
 `FileAttachment` call in `notebook.source`. Explicit `files` entries take
@@ -162,13 +164,13 @@ path is an existing file becomes a record. Remaining names use browser URL
 resolution.
 
 `base_path` is required when `embed_file_attachments=True`. The
-`Notebook.from_html_file` constructor supplies the HTML file's parent directory.
-See [Source notebooks](source-notebooks.mdx) for the source constructor
-contracts and relative JavaScript import rewriting.
+`Notebook.from_html_file` constructor supplies the HTML file's parent
+directory. See [Source constructors](source-constructors.mdx) for the
+source constructor contracts and relative JavaScript import rewriting.
 
 ## Serialized HTML boundary
 
-`notebook.to_notebook_html()` returns the Notebook Kit document text, not its
-attachment records. When that text is consumed independently, its environment
-must provide the URLs used by `FileAttachment`, or the source must use URLs that
-remain reachable there.
+`notebook.to_notebook_html()` returns the Notebook Kit document text, not
+its attachment records. When that text is consumed independently, its
+environment must provide the URLs used by `FileAttachment`, or the source
+must use URLs that remain reachable there.

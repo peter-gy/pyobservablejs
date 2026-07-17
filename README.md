@@ -84,7 +84,7 @@ full_view
 Top-level declarations in JavaScript cells form a reactive graph: when a value
 changes, every cell that references it runs again.
 
-*View* means two things. In Python, `.view()` creates a renderable
+_View_ means two things. In Python, `.view()` creates a renderable
 `NotebookView` widget. In a JavaScript cell, `view(input)` displays a browser
 input and defines its reactive value.
 
@@ -142,9 +142,9 @@ notebook = obs.Notebook.from_observablehq("@d3/bar-chart")
 
 ## Documentation
 
-- [Getting started](https://peter-gy.github.io/pyobservablejs/getting-started/)
-- [Examples](https://peter-gy.github.io/pyobservablejs/examples/)
-- [Guides](https://peter-gy.github.io/pyobservablejs/guides/)
+- [Quickstart](https://peter-gy.github.io/pyobservablejs/quickstart/)
+- [Mental model](https://peter-gy.github.io/pyobservablejs/mental-model/)
+- [Recipes](https://peter-gy.github.io/pyobservablejs/recipes/)
 - [API reference](https://peter-gy.github.io/pyobservablejs/reference/)
 
 ## Acknowledgements

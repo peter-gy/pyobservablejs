@@ -1,0 +1,145 @@
+---
+title: Select cells and create subsets
+description: Render full, focused, and composite selections from one notebook.
+---
+
+# Select cells and create subsets
+
+Every view renders a selection of notebook cells plus the hidden dependency
+closure those cells need. Three selection shapes cover all cases.
+
+| Shape     | Call                                        | Cells rendered together                                        |
+| --------- | ------------------------------------------- | -------------------------------------------------------------- |
+| Full      | `notebook.view()`                           | Every notebook cell, subject to each cell's `display` setting. |
+| Focused   | `notebook.cell_by_key("chart").view()`      | One selected cell. Its dependencies evaluate as hidden cells.  |
+| Composite | `notebook.view(cells=["chart", "summary"])` | Several selected cells and their hidden dependency closure.    |
+
+The live example below renders a composite view: the data cell is selected
+nowhere, yet both selected cells use it because it belongs to their
+dependency closure.
+
+```marimo-config
+requires-python = ">=3.11"
+dependencies = ["pyobservablejs"]
+```
+
+```python
+import marimo as mo
+import observablejs as obs
+
+notebook = obs.Notebook(
+    obs.js(
+        "const numbers = [2, 4, 8, 16];",
+        key="numbers",
+        display=False,
+    ),
+    obs.js(
+        """
+        Plot.barY(numbers, {
+          x: (_, index) => index + 1,
+          y: (value) => value * scale,
+          tip: {fill: "var(--marimo-island-background)"}
+        }).plot({height: 220, x: {label: "Position"}, y: {grid: true}})
+        """,
+        key="chart",
+    ),
+    obs.js(
+        """
+        html`<p>
+          ${numbers.length} values,
+          ending at <strong>${numbers.at(-1) * scale}</strong>.
+        </p>`
+        """,
+        key="summary",
+    ),
+    variables={"scale": 2},
+)
+
+composite_view = notebook.view(cells=["chart", "summary"])
+mo.ui.anywidget(composite_view)
+```
+
+```python marimo echo=false server-output=false
+import marimo as mo
+import observablejs as obs
+
+notebook = obs.Notebook(
+    obs.js(
+        "const numbers = [2, 4, 8, 16];",
+        key="numbers",
+        display=False,
+    ),
+    obs.js(
+        """
+        Plot.barY(numbers, {
+          x: (_, index) => index + 1,
+          y: (value) => value * scale,
+          tip: {fill: "var(--marimo-island-background)"}
+        }).plot({height: 220, x: {label: "Position"}, y: {grid: true}})
+        """,
+        key="chart",
+    ),
+    obs.js(
+        """
+        html`<p>
+          ${numbers.length} values,
+          ending at <strong>${numbers.at(-1) * scale}</strong>.
+        </p>`
+        """,
+        key="summary",
+    ),
+    variables={"scale": 2},
+)
+
+composite_view = notebook.view(cells=["chart", "summary"])
+mo.ui.anywidget(composite_view)
+```
+
+The composite view evaluates `numbers` once, then renders the two selected
+cells in notebook order.
+
+## Selection inputs
+
+`cells` accepts zero-based indices, Python cell keys, and `NotebookCell`
+handles, in any mix. Explicit selections render in canonical notebook order.
+
+```python
+notebook.view(cells=[1, 2])
+notebook.view(cells=["chart", "summary"])
+notebook.view(cells=[notebook.cell_at(1), notebook.cell_by_key("summary")])
+```
+
+An empty selection, a duplicate selection, or a handle from another notebook
+raises `ValueError`. Unknown keys raise `KeyError`, and out-of-range indices
+raise `IndexError`. See [`Notebook.view`](../reference/notebook.mdx#create-views)
+for the full validation contract.
+
+## Cell handles
+
+`NotebookCell` is a stable selection handle, available before render.
+
+```python
+chart_cell = notebook.cell_by_key("chart")   # by Python key
+first_cell = notebook.cell_at(0)             # by index, negatives count from the end
+all_cells = notebook.cells                   # handles in notebook order
+
+chart_view = chart_cell.view()
+```
+
+`key` comes from the Python-side `key=` cell option; `name` comes from the
+Notebook Kit cell name declared in the source. Both read as `""` when unset.
+
+## Composite view or separate views?
+
+Both render several outputs; they differ in runtimes.
+
+- A **composite view** evaluates the selected cells in **one runtime** with
+  one graph snapshot and one readback. Use it when the outputs belong
+  together in one place.
+- **Separate views** evaluate in **separate runtimes** and stay connected
+  only through notebook-owned state. Use them when the outputs belong in
+  different frontend locations or need separate readback.
+
+The [Split one notebook into several
+views](../recipes/split-notebook-into-views.mdx) recipe mounts two focused
+views side by side and drives both from one Python control.

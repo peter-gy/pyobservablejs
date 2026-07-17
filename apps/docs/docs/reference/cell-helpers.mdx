@@ -1,12 +1,13 @@
 ---
-title: Cells
+title: Cell helpers
 description: Cell data model and helper function contracts.
 ---
 
-# Cells
+# Cell helpers
 
 `Cell` describes one Notebook Kit cell. The `ojs`, `js`, `md`, and `html`
-helpers create cells in the modes used most often by Python-authored notebooks.
+helpers create cells in the modes used most often by Python-authored
+notebooks.
 
 ```python
 import observablejs as obs
@@ -46,10 +47,10 @@ Notebook Kit cell spec during construction.
 | `raw`               | `False`       | Preserves source indentation and surrounding newlines when true.                                                        |
 | `notebookkit_attrs` | Empty mapping | Notebook Kit cell attributes applied after the direct fields when the generated spec is built.                          |
 
-With `raw=False`, construction applies `textwrap.dedent` and strips leading and
-trailing newline characters. A non-string `source` raises `TypeError`. An
-unknown `mode` raises `ValueError` when the cell is converted to a spec, which
-happens during `Notebook` construction.
+With `raw=False`, construction applies `textwrap.dedent` and strips leading
+and trailing newline characters. A non-string `source` raises `TypeError`.
+An unknown `mode` raises `ValueError` when the cell is converted to a spec,
+which happens during `Notebook` construction.
 
 ### `Cell.to_spec(id)`
 
@@ -58,11 +59,11 @@ spec = cell.to_spec(1)
 ```
 
 Returns a new Notebook Kit cell dictionary. `notebookkit_attrs` takes
-precedence when it contains a key also set by a direct `Cell` field. Its `id`
-takes precedence over the method's `id`. The direct `Cell.key` field remains a
-Python handle and is excluded from the returned dictionary.
+precedence when it contains a key also set by a direct `Cell` field. Its
+`id` takes precedence over the method's `id`. The direct `Cell.key` field
+remains a Python handle and is excluded from the returned dictionary.
 
-## Cell helpers
+## Helper functions
 
 ```python
 obs.ojs(source, *, key=None, display=True, raw=False, id=None, pinned=False, output=None, notebookkit_attrs=None)
@@ -91,17 +92,17 @@ The keyword arguments have the following contracts:
 - `pinned=True` emits the Notebook Kit `pinned` attribute. An active view
   renders source for a selected pinned cell when `show_pinned_source=True`.
 - `output` sets the Notebook Kit `output` attribute.
-- `notebookkit_attrs` adds Notebook Kit attributes such as `name`, `database`,
-  or `format`.
+- `notebookkit_attrs` adds Notebook Kit attributes such as `name`,
+  `database`, or `format`.
 
-`notebookkit_attrs` raises `ValueError` when it contains `hidden`, `id`, `mode`,
-`output`, `pinned`, or `value`. Use the corresponding helper argument for the
-first-class options.
+`notebookkit_attrs` raises `ValueError` when it contains `hidden`, `id`,
+`mode`, `output`, `pinned`, or `value`. Use the corresponding helper
+argument for the first-class options.
 
 ## Existing cells
 
-A helper returns an existing `Cell` unchanged when its mode matches and every
-option remains at its default.
+A helper returns an existing `Cell` unchanged when its mode matches and
+every option remains at its default.
 
 ```python
 cell = obs.ojs("answer = 42")

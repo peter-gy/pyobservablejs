@@ -1,12 +1,13 @@
 ---
-title: Update from Python
-description: Update a mounted Observable chart from a Python control.
+title: Python to Observable
+description: Publish Python values as reactive graph variables and update them live.
 ---
 
-# Update from Python
+# Python to Observable
 
 `variables` gives Python ownership of named values in the Observable graph.
-`update_variables` changes those values while the view stays mounted.
+`update_variables` changes those values while the view stays mounted, and
+every cell that references the name runs again.
 
 Move the minimum body mass slider and the chart filters the built-in Palmer
 Penguins sample.
@@ -133,8 +134,42 @@ mo.vstack([minimum_mass, widget])
 ```
 
 The final cell updates one Python-owned variable and returns the existing
-`widget`. The notebook session sends the value to `full_view`, and Notebook Kit
-invalidates the two JavaScript cells that depend on `minimumMass`.
+`widget`. The notebook session sends the value to `full_view`, and Notebook
+Kit invalidates the two JavaScript cells that depend on `minimumMass`.
+Variable updates reach every active view from the notebook, not just this
+one.
+
+## What crosses the wire
+
+Values serialize recursively. Plain values stay JSON; richer values keep
+their browser type through tagged records:
+
+```python
+import datetime as dt
+
+notebook.update_variables(
+    releasedAt=dt.date(2026, 7, 17),   # JavaScript Date
+    payload=b"\x00\x01",               # Uint8Array
+    bigCounter=2**60,                  # BigInt
+)
+```
+
+pandas and Polars are first-class: a `DataFrame` arrives as an array of row
+objects, a `Series` as an array, and NumPy arrays and scalars convert through
+`tolist()` and `item()`.
+
+```python
+import polars as pl
+
+frame = pl.DataFrame({"species": ["Adelie", "Gentoo"], "count": [152, 124]})
+notebook.update_variables(speciesCounts=frame)  # [{species: "Adelie", ...}, ...]
+```
+
+The full conversion table, identifier rules, and reserved names live in
+[Variables and serialization](../reference/variables-and-serialization.mdx).
+For large tables and binary data, prefer [file
+attachments](../create/files-and-modules.mdx), which the browser loads
+through `FileAttachment` readers instead of widget state.
 
 ## Update, replace, or release
 
@@ -158,5 +193,11 @@ notebook.replace_variables({"minimumMass": 4000})
 notebook.reset_variables("minimumMass")
 ```
 
-See [Variables](../reference/variables.mdx) for serialization rules and
-supported Python values.
+Releasing a name rebuilds each active runtime so the original notebook
+definition resumes ownership; see [Manage view
+lifecycle](../render/view-lifecycle.mdx#rebuilds-reset-the-gates). Updates
+that do not change the serialized value are no-ops.
+
+Continue with [Observable to Python](observable-to-python.mdx) for the
+reverse direction, and [Bidirectional inputs](bidirectional-inputs.mdx) for
+Python variables that share a name with browser inputs.

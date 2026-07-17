@@ -1,0 +1,114 @@
+---
+title: Mental model
+description: Notebook, NotebookCell, and NotebookView, and the boundary between Python and the browser.
+---
+
+# Mental model
+
+Three Python objects carry the whole API. Learn what each one owns and the
+rest of this site reads as detail.
+
+| Object         | What it is                              | What it owns                                                                      |
+| -------------- | --------------------------------------- | ---------------------------------------------------------------------------------- |
+| `Notebook`     | The definition and the shared session   | Cells or source HTML, file attachments, theme, Python variables, shared input values |
+| `NotebookCell` | A stable handle for one cell            | Nothing but the selection. `cell.view()` creates a view for that cell.             |
+| `NotebookView` | One renderable display model            | One browser runtime, its rendered output, and its synchronized readback            |
+
+```python
+import observablejs as obs
+
+notebook = obs.Notebook(
+    obs.js("const doubled = base * 2;", key="doubled", display=False),
+    obs.js('html`<p>Doubled: <strong>${doubled}</strong></p>`', key="readout"),
+    variables={"base": 21},
+)
+
+full_view = notebook.view()              # every cell, one runtime
+readout_view = notebook.cell_by_key("readout").view()  # one cell + hidden dependencies
+```
+
+## Python defines, the browser evaluates
+
+`pyobservablejs` is browser-first. Python owns the notebook definition,
+serialization, attachments, and session state. The browser evaluates
+Observable JavaScript through Notebook Kit. No JavaScript executes in Python,
+and no Python executes in the browser.
+
+```text
+Python                                  Browser
+──────                                  ───────
+Notebook ── definition, variables ────▶ (session state)
+   │
+   ├─ NotebookCell.view() ──┐
+   └─ notebook.view() ──────┴─▶ NotebookView ──▶ one Notebook Kit runtime
+                                     ▲                    │
+                                     └── readback ────────┘
+                              rendered flag, values, graph
+```
+
+A `NotebookView` starts evaluating when an anywidget host mounts it. The
+browser then writes readback to that view: a rendered flag, the values of the
+selected cells, and the dependency graph. Python reads them through
+`has_rendered`, `runtime_values`, `cell_values()`, `value(name)`, and `graph`.
+
+## One runtime per view
+
+Every `NotebookView` runs its selected cells and their hidden dependency
+closure in its own Observable runtime. Two views of the same cell evaluate
+that cell twice, once per runtime.
+
+This is why readback is per-view: `full_view.runtime_values` and
+`readout_view.runtime_values` come from different runtimes and can disagree
+while one of them has not rendered yet. When several outputs must share one
+runtime and one graph snapshot, select them into a single composite view with
+`notebook.view(cells=[...])`.
+
+## What views share
+
+Views created from the same `Notebook` stay connected through the session:
+
+- **Python variables.** `notebook.update_variables(...)` reaches every active
+  view.
+- **Named `viewof` input values.** When a user changes a named input in one
+  view, sibling views that render the same input receive the value, provided
+  it has a [supported shared
+  shape](reference/variables-and-serialization.mdx#python-values-and-viewof-inputs).
+- **Definition state.** Cells, attachments, and theme.
+
+Everything else is per-view: the runtime, the DOM output, the render gates,
+and the readback snapshot.
+
+## The word "view" appears twice
+
+The name is shared between the two runtimes on purpose, but the meanings
+differ:
+
+- In **Python**, `notebook.view()` and `cell.view()` create renderable
+  `NotebookView` widgets.
+- In a **JavaScript cell**, `view(input)` displays a browser input and
+  defines its current value as a reactive graph variable.
+
+```python
+obs.js('const threshold = view(Inputs.range([0, 1], {step: 0.05}));')
+```
+
+Python decides *which cells render where*. JavaScript `view(...)` decides
+*which inputs feed the graph*.
+
+## Lifecycle in one pass
+
+1. Python creates a `Notebook` from authored cells, Notebook Kit HTML, or an
+   ObservableHQ document.
+2. Python creates one `NotebookView` per place the notebook appears.
+3. A host mounts the view; the browser resolves the session and starts one
+   Notebook Kit runtime.
+4. The browser writes render status, values, and graph metadata back to that
+   view.
+5. Python reads values, updates variables, or inspects the graph. Updates
+   reach every active view.
+6. `view.close()` disposes one runtime. `notebook.close()` closes the session
+   and every view created from it.
+
+Continue with [Display a NotebookView](render/display-views.mdx) for host
+idioms, and [Select cells and create subsets](render/select-cells.mdx) for
+full, focused, and composite selections.

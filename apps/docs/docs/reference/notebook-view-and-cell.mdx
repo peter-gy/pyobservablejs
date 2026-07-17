@@ -1,0 +1,146 @@
+---
+title: NotebookView and NotebookCell
+description: Display models, selection handles, render gates, and readback members.
+---
+
+# `NotebookView` and `NotebookCell`
+
+`NotebookView` is the anywidget display object for a full, focused, or
+composite selection. `NotebookCell` is the stable handle that selects one
+cell.
+
+## `NotebookCell`
+
+`NotebookCell` identifies one cell in a notebook definition. Its `key` and
+`name` attributes expose the Python key and Notebook Kit name as strings. An
+unset value is `""`. Handles come from
+[`Notebook.cell_at`](notebook.mdx#notebookcell_atindex),
+[`Notebook.cell_by_key`](notebook.mdx#notebookcell_by_keykey), and
+[`Notebook.cells`](notebook.mdx#notebookcells).
+
+```python
+cell = notebook.cell_by_key("answer")
+answer_view = cell.view()
+```
+
+### `NotebookCell.view()`
+
+Returns a new `NotebookView` selected to this cell. The view owns its
+browser runtime, graph, and synchronized values. The selected cell renders
+while its dependency closure evaluates with hidden output.
+
+## `NotebookView`
+
+Its browser runtime starts when an anywidget host mounts it.
+
+```python
+obs.NotebookView(notebook, cell_indexes=None)
+```
+
+The constructor accepts a `Notebook` session and an optional sequence of
+zero-based cell indices. `Notebook.view()` and `NotebookCell.view()` provide
+normalized selection lookup by index, key, or handle.
+
+A non-sequence `cell_indexes` value raises `TypeError`. Invalid, duplicate,
+or out-of-range entries raise `traitlets.TraitError`. A closed notebook
+raises `RuntimeError`.
+
+```python
+full_view = notebook.view()
+full_view
+```
+
+marimo wraps each view with `mo.ui.anywidget`. Most other hosts display the
+view directly.
+
+```python
+import marimo as mo
+
+widget = mo.ui.anywidget(full_view)
+```
+
+### Session and selection
+
+| Member              | Contract                                                        |
+| ------------------- | --------------------------------------------------------------- |
+| `notebook`          | The `Notebook` session rendered by this view.                   |
+| `cell_indexes`      | Selected indices in notebook order, or `None` for all cells.    |
+| `variables`         | A shallow copy of the session's current Python-owned variables. |
+| `update_variables`  | Delegates a variable patch to the notebook session.             |
+| `replace_variables` | Delegates variable replacement to the notebook session.         |
+| `reset_variables`   | Releases named Python variables through the notebook session.   |
+
+Variable changes apply to every active view from the session.
+
+A `NotebookView` owns one live writable output. Create another view from the
+session when the same selection must appear in two outputs at once. A view
+can render again after its previous output is torn down.
+
+### Browser lifecycle
+
+| State                   | `has_rendered` | `has_graph_snapshot` | Available readback                          |
+| ----------------------- | -------------- | -------------------- | ------------------------------------------- |
+| Created                 | `False`        | `False`              | View selection                              |
+| Graph synchronized      | `False`        | `True`               | Graph metadata                              |
+| Selected cells rendered | `True`         | `True`               | Values, per-cell values, and graph metadata |
+
+A variable replacement or release that triggers a runtime rebuild clears
+both gates until the replacement graph and render snapshots synchronize.
+
+### `NotebookView.has_rendered`
+
+Returns whether the browser has synchronized a completed render for this
+view.
+
+### `NotebookView.has_graph_snapshot`
+
+Returns whether this view has synchronized graph metadata.
+
+### `NotebookView.graph`
+
+```python
+graph: obs.NotebookGraph = full_view.graph
+```
+
+Returns the decoded immutable graph snapshot for the cells evaluated by this
+view. A selected view includes its selected cells and their dependency
+closure. It raises `NotRenderedError` before graph synchronization.
+
+### `NotebookView.runtime_values`
+
+```python
+values: dict[str, object] = full_view.runtime_values
+```
+
+Returns a new dictionary of decoded values from this view. Names produced by
+more than one selected cell are omitted because they have no unique owner.
+The property raises `NotRenderedError` before the view renders.
+
+### `NotebookView.cell_values()`
+
+```python
+values: tuple[obs.CellValues, ...] = full_view.cell_values()
+```
+
+Returns one `CellValues` record per selected cell in notebook order. It
+raises `NotRenderedError` before the view renders.
+
+### `NotebookView.value(name)`
+
+```python
+answer = full_view.value("answer")
+```
+
+Returns `full_view.runtime_values[name]`. It raises `NotRenderedError`
+before the view renders and `KeyError` when no rendered value matches
+`name`.
+
+### `NotebookView.close()`
+
+Closes this display model and removes it from the session's active views.
+Other views from the notebook remain active. Repeated calls are no-ops, and
+previously synchronized readback remains available. Variable mutators on the
+closed view raise `RuntimeError`.
+
+See [Values and graph records](values-and-graph.mdx) for decoded value types
+and graph records.

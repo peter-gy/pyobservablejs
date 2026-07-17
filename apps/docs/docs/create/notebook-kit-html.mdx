@@ -1,0 +1,122 @@
+---
+title: Load Notebook Kit HTML
+description: Create source-backed notebooks from Notebook Kit HTML strings and files.
+---
+
+# Load Notebook Kit HTML
+
+`Notebook.from_html` loads an existing Notebook Kit document. The source can
+use Notebook Kit cells and built-in libraries directly. The example uses
+Notebook Kit's built-in AAPL sample.
+
+```marimo-config
+requires-python = ">=3.11"
+dependencies = ["pyobservablejs"]
+```
+
+```python
+import marimo as mo
+import observablejs as obs
+
+source = """
+<notebook theme="glacier">
+  <script type="text/markdown">
+# Apple closing price
+  </script>
+  <script type="module">
+Plot.areaY(aapl, {
+  x: "Date",
+  y: "Close",
+  tip: {fill: "var(--marimo-island-background)"}
+}).plot({
+  height: 280,
+  y: {grid: true, label: "Close ($)"}
+})
+  </script>
+</notebook>
+"""
+
+notebook = obs.Notebook.from_html(source)
+full_view = notebook.view()
+mo.ui.anywidget(full_view)
+```
+
+```python marimo echo=false server-output=false
+import marimo as mo
+import observablejs as obs
+
+source = """
+<notebook theme="glacier">
+  <script type="text/markdown">
+# Apple closing price
+  </script>
+  <script type="module">
+Plot.areaY(aapl, {
+  x: "Date",
+  y: "Close",
+  tip: {fill: "var(--marimo-island-background)"}
+}).plot({
+  height: 280,
+  y: {grid: true, label: "Close ($)"}
+})
+  </script>
+</notebook>
+"""
+
+notebook = obs.Notebook.from_html(source)
+full_view = notebook.view()
+mo.ui.anywidget(full_view)
+```
+
+The widget preserves the `glacier` theme and renders the built-in AAPL sample
+as an area chart.
+
+## Source-backed notebooks
+
+A notebook loaded from HTML is *source-backed*: `notebook.source` returns the
+Notebook Kit document, and `notebook.spec` is empty. The theme comes from the
+source HTML, so assigning `notebook.theme` raises an error instead of
+silently diverging from the document.
+
+Everything else works the same as a Python-authored notebook: `view()`
+creates renderable views, `variables` overrides named values, and readback
+synchronizes after render.
+
+```python
+notebook = obs.Notebook.from_html(source, variables={"threshold": 0.5})
+```
+
+## Load from a file
+
+`Notebook.from_html_file` reads a document from disk and uses the file's
+parent directory as its base path.
+
+```python
+notebook = obs.Notebook.from_html_file("notebooks/report.html")
+```
+
+When the document references local files through `FileAttachment` or imports
+local JavaScript modules, enable embedding so the assets travel with the
+widget:
+
+```python
+notebook = obs.Notebook.from_html_file(
+    "notebooks/report.html",
+    embed_file_attachments=True,
+    rewrite_imports=True,
+)
+```
+
+See [Add files and local modules](files-and-modules.mdx) for how discovery
+and embedding work, and the [Load an existing notebook with local
+files](../recipes/notebook-with-local-files.mdx) recipe for a complete live
+example.
+
+## Round trip
+
+`notebook.to_notebook_html()` returns the Notebook Kit document for any
+notebook, so HTML can round-trip through Python. See [Export Notebook Kit
+HTML](../customize/export-notebook-kit-html.mdx).
+
+[Source constructors](../reference/source-constructors.mdx) defines the full
+contract, including accepted source shapes and error behavior.

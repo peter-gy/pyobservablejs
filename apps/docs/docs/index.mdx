@@ -1,6 +1,7 @@
 ---
 title: pyobservablejs
-description: Observable JavaScript notebooks from Python.
+sidebar_label: Overview
+description: Observable JavaScript notebooks from Python, with dataflow in both directions.
 slug: /
 ---
 
@@ -8,23 +9,24 @@ import DocCardList from "@theme/DocCardList";
 
 # pyobservablejs
 
-`pyobservablejs` renders Observable JavaScript notebooks from Python. A
-`Notebook` collects cells, variables, and attachments. Calling `view()`
-creates a renderable view of the whole notebook or a selected group of cells.
+`pyobservablejs` renders Observable JavaScript notebooks from Python and
+connects the two runtimes. It does three things:
 
-Each view is an [anywidget](https://anywidget.dev/), so it renders wherever
-anywidgets run: JupyterLab, marimo, VS Code notebooks, Google Colab, and other
-hosts. The live examples on this site run in marimo.
+1. **Creates notebooks.** Author [Notebook Kit](https://observablehq.com/notebook-kit/)
+   cells from Python, load existing Notebook Kit HTML, or import public
+   observablehq.com notebooks.
+2. **Moves values in both directions.** Python variables drive the reactive
+   graph in the browser, and rendered browser values synchronize back to
+   Python.
+3. **Exposes the dataflow graph.** Python can inspect which cell defines each
+   variable, follow dependency edges, and export Mermaid or D2 diagrams.
 
-Install it with marimo to follow along:
+Each view is an [anywidget](https://anywidget.dev/), so notebooks render in
+any anywidget host: JupyterLab, marimo, VS Code notebooks, Google Colab, and
+others. The live examples on this site run in marimo.
 
-```sh
-uv add pyobservablejs marimo
-uv run marimo edit notebook.py
-```
-
-The example below uses Notebook Kit's built-in Palmer Penguins sample. Hover a
-dot to inspect a measurement.
+Hover a dot to inspect a measurement. `Plot` and the `penguins` sample ship
+with Notebook Kit.
 
 ```marimo-config
 requires-python = ">=3.11"
@@ -85,42 +87,42 @@ full_view = notebook.view()
 mo.ui.anywidget(full_view)
 ```
 
-`Notebook` accepts JavaScript, Observable JavaScript, Markdown, and HTML
-cells. In Jupyter and most other hosts, the view displays when it is the final
-expression in a cell.
-
-## Start with a workflow
+## Where to go next
 
 <DocCardList
 	items={[
 		{
 			type: "link",
-			href: "/getting-started/",
-			label: "Build your first notebook",
-			description: "Create a reactive Plot chart and render its view in marimo or Jupyter.",
+			href: "/quickstart/",
+			label: "Quickstart",
+			description: "Install pyobservablejs and render your first reactive notebook.",
 		},
 		{
 			type: "link",
-			href: "/examples/python-data-plot/",
-			label: "Pass Python data",
-			description: "Publish Python records as a JavaScript variable and render them with Plot.",
+			href: "/mental-model/",
+			label: "Mental model",
+			description: "Notebook, NotebookCell, and NotebookView: who owns what.",
 		},
 		{
 			type: "link",
-			href: "/examples/reactive-inputs/",
-			label: "React in the browser",
-			description: "Connect an Observable input to a dependent chart.",
+			href: "/connect/python-to-observable/",
+			label: "Connect Python and the browser",
+			description: "Drive the reactive graph from Python and read values back.",
 		},
 		{
 			type: "link",
-			href: "/guides/python-variables/",
-			label: "Update from Python",
-			description: "Drive a mounted view from a marimo control.",
+			href: "/pyobservablejs-or-pyobsplot/",
+			label: "pyobservablejs or pyobsplot?",
+			description: "Choose the right tool for Observable-flavored work from Python.",
 		},
 	]}
 />
 
-The [examples](examples/index.mdx) show complete workflows. The [views and
-composition guide](guides/views-and-composition.mdx) explains cell selection,
-mounting, variable sharing, and readback. The [reference](reference/index.mdx)
-covers signatures, defaults, and lifecycle rules.
+## Scope of this site
+
+This site documents the Python integration: how to create notebooks, render
+views, and move values across the Python-browser boundary. It does not teach
+Observable JavaScript itself. For cell syntax, `Plot`, `Inputs`, and the
+standard library, see the [Notebook Kit
+documentation](https://observablehq.com/notebook-kit/) and
+[observablehq.com](https://observablehq.com/documentation/).
