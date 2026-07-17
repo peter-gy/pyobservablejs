@@ -89,19 +89,6 @@ def test_notebook_themes_match_notebook_kit_theme_names() -> None:
             id="from_html",
         ),
         pytest.param(
-            (obs.Notebook.from_html_file,),
-            (
-                "path",
-                "files",
-                "embed_file_attachments",
-                "rewrite_imports",
-                "variables",
-                "show_pinned_source",
-            ),
-            inspect.Parameter.POSITIONAL_OR_KEYWORD,
-            id="from_html_file",
-        ),
-        pytest.param(
             (obs.Notebook.from_observablehq,),
             ("specifier", "variables", "files", "show_pinned_source", "timeout"),
             inspect.Parameter.POSITIONAL_OR_KEYWORD,

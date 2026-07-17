@@ -124,11 +124,17 @@ through `runtime_values`, `value(name)`, and `graph`.
 
 ## Load existing notebooks
 
-Load a Notebook Kit HTML file:
+Load a Notebook Kit HTML document:
 
 ```python
-notebook = obs.Notebook.from_html_file(
-    "chart.html",
+from pathlib import Path
+
+import observablejs as obs
+
+path = Path("chart.html")
+notebook = obs.Notebook.from_html(
+    path.read_text(encoding="utf-8"),
+    base_path=path.parent,
     embed_file_attachments=True,
     rewrite_imports=True,
 )

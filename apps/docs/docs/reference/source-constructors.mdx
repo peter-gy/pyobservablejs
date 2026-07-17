@@ -1,13 +1,13 @@
 ---
 title: Source constructors
-description: Notebook.from_html, Notebook.from_html_file, Notebook.from_observablehq, and ObservableHQ imports.
+description: Notebook.from_html, Notebook.from_observablehq, and ObservableHQ imports.
 ---
 
 # Source constructors
 
-`Notebook.from_html` and `from_html_file` load Notebook Kit HTML. The
-`from_observablehq*` constructors convert ObservableHQ document records to
-Notebook Kit HTML and select the classic Observable standard library.
+`Notebook.from_html` loads Notebook Kit HTML text. The `from_observablehq*`
+constructors convert ObservableHQ document records to Notebook Kit HTML and
+select the classic Observable standard library.
 
 Source notebook cells run JavaScript in the notebook page and can load
 remote modules or data.
@@ -43,13 +43,28 @@ source = """<!doctype html>
 notebook = obs.Notebook.from_html(source)
 ```
 
-`source` must be a string. `base_path` resolves local files and supplies the
-base used when `rewrite_imports=True`. `files` registers explicit Python
-file inputs and local paths are normalized against `base_path`.
+`source` must be a string. Read or fetch the source before calling
+`from_html`:
+
+```python
+from pathlib import Path
+
+import observablejs as obs
+
+source_path = Path("notebooks/report.html")
+notebook = obs.Notebook.from_html(
+    source_path.read_text(encoding="utf-8"),
+    base_path=source_path.parent,
+)
+```
+
+`base_path` resolves local files and supplies the base used when
+`rewrite_imports=True`. `files` registers explicit Python file inputs and
+local paths are normalized against `base_path`.
 
 HTML returned by an ObservableHQ notebook's `to_notebook_html()` method
 keeps its classic Observable standard-library semantics when loaded through
-`from_html` or `from_html_file`.
+`from_html`.
 
 `embed_file_attachments=True` registers existing local `FileAttachment`
 references as data URLs. `rewrite_imports=True` embeds existing local
@@ -68,33 +83,6 @@ runtime-profile attributes and duplicate nonempty cell names raise
 `OSError` when files are missing or unreadable. Import rewriting raises
 `ValueError` for a circular local graph. Reading an imported module can
 raise an `OSError` or `UnicodeError` subclass.
-
-## `Notebook.from_html_file`
-
-```python
-obs.Notebook.from_html_file(
-    path,
-    *,
-    files=None,
-    embed_file_attachments=False,
-    rewrite_imports=False,
-    variables=None,
-    show_pinned_source=False,
-)
-```
-
-Creates a notebook from a Notebook Kit HTML file. The file parent resolves
-relative explicit files, discovered attachments, and rewritten imports.
-
-```python
-import observablejs as obs
-
-notebook = obs.Notebook.from_html_file("notebooks/report.html")
-```
-
-The file is read as UTF-8. Missing files raise `FileNotFoundError`. Read and
-decode failures raise the corresponding `OSError` or `UnicodeError`
-subclass.
 
 ## `Notebook.from_observablehq`
 

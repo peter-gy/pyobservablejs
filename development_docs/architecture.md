@@ -138,5 +138,4 @@ attachment registry, scoped document helpers, `width` and `dark` generators,
 and Python variables. The profile is fixed for the notebook session and
 inherited by each view. Serialized ObservableHQ source records the profile in
 the root `data-pyobservablejs-runtime-profile` attribute. The HTML parser
-restores that profile when `from_html` or `from_html_file` reconstructs the
-model.
+restores that profile when `from_html` reconstructs the model.

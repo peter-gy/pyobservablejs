@@ -542,35 +542,6 @@ class Notebook(_ObservableWidget):
         )
 
     @classmethod
-    def from_html_file(
-        cls,
-        path: str | pathlib.Path,
-        *,
-        files: Mapping[str, FileInput] | None = None,
-        embed_file_attachments: bool = False,
-        rewrite_imports: bool = False,
-        variables: Mapping[str, Any] | None = None,
-        show_pinned_source: bool = False,
-    ) -> "Notebook":
-        """Create a source-backed notebook from a Notebook Kit HTML file.
-
-        The HTML file's parent directory is used as ``base_path`` when
-        ``embed_file_attachments`` or ``rewrite_imports`` is enabled. Explicit
-        ``files`` override discovered files with the same name.
-        """
-
-        source_path = pathlib.Path(path)
-        return cls.from_html(
-            source_path.read_text(encoding="utf-8"),
-            files=files,
-            base_path=source_path.parent,
-            embed_file_attachments=embed_file_attachments,
-            rewrite_imports=rewrite_imports,
-            variables=variables,
-            show_pinned_source=show_pinned_source,
-        )
-
-    @classmethod
     def from_observablehq(
         cls,
         specifier: str,

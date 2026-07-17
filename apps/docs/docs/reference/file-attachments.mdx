@@ -105,7 +105,6 @@ a relative path containing `..` can resolve outside that directory.
 | `Notebook(..., base_path=path)`           | `path`                                         |
 | `Notebook(..., base_path=None)`           | Current working directory at construction time |
 | `Notebook.from_html(..., base_path=path)` | `path`                                         |
-| `Notebook.from_html_file(path, ...)`      | Parent directory of the HTML file              |
 
 The local file bytes are captured when the notebook is created. The
 registered data URL remains that construction-time snapshot across later
@@ -163,10 +162,10 @@ precedence when they use the same name. Each discovered name whose resolved
 path is an existing file becomes a record. Remaining names use browser URL
 resolution.
 
-`base_path` is required when `embed_file_attachments=True`. The
-`Notebook.from_html_file` constructor supplies the HTML file's parent
-directory. See [Source constructors](source-constructors.mdx) for the
-source constructor contracts and relative JavaScript import rewriting.
+`base_path` is required when `embed_file_attachments=True`. Pass the
+directory that should resolve relative attachment names. See [Source
+constructors](source-constructors.mdx) for the source constructor contract and
+relative JavaScript import rewriting.
 
 ## Serialized HTML boundary
 

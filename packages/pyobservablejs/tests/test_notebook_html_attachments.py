@@ -8,7 +8,7 @@ from helpers import (
     ScriptTags,
     assert_javascript_import_payloads,
     decode_data_url,
-    notebook_from_html_file,
+    notebook_from_html_path,
     normalized_source,
     normalized_source_with_embedded_imports,
     script_by_id,
@@ -38,7 +38,7 @@ def test_from_html_embeds_static_template_and_stdlib_alias_file_attachments(
         encoding="utf-8",
     )
 
-    widget = notebook_from_html_file(notebook)
+    widget = notebook_from_html_path(notebook)
     module_text = script_by_id(script_tags(widget.to_notebook_html()), "1")["text"]
 
     assert set(widget.attachments) == {"templated.csv", "aliased.csv"}
@@ -77,7 +77,7 @@ def test_from_html_embeds_only_bare_file_attachment_calls(
         encoding="utf-8",
     )
 
-    widget = notebook_from_html_file(notebook)
+    widget = notebook_from_html_path(notebook)
     module_text = script_by_id(script_tags(widget.to_notebook_html()), "1")["text"]
 
     assert set(widget.attachments) == {"data.csv"}
@@ -160,7 +160,7 @@ def test_from_html_embeds_only_executable_file_attachments(
         encoding="utf-8",
     )
 
-    widget = notebook_from_html_file(notebook)
+    widget = notebook_from_html_path(notebook)
     ignored_text = script_by_id(script_tags(widget.to_notebook_html()), "1")["text"]
     module_text = script_by_id(script_tags(widget.to_notebook_html()), "2")["text"]
 
@@ -206,7 +206,7 @@ def test_from_html_discovers_file_attachments_after_member_expression_division(
         encoding="utf-8",
     )
 
-    widget = notebook_from_html_file(notebook)
+    widget = notebook_from_html_path(notebook)
     module_text = script_by_id(script_tags(widget.to_notebook_html()), "1")["text"]
 
     assert set(widget.attachments) == {"data.csv"}
@@ -238,7 +238,7 @@ def test_from_html_respects_unquoted_script_types(
         encoding="utf-8",
     )
 
-    widget = notebook_from_html_file(notebook)
+    widget = notebook_from_html_path(notebook)
 
     scripts = script_tags(widget.to_notebook_html())
     markdown_script = script_by_id(scripts, "1")
@@ -290,7 +290,7 @@ def test_from_html_ignores_data_type_when_script_type_is_absent(
         encoding="utf-8",
     )
 
-    widget = notebook_from_html_file(notebook)
+    widget = notebook_from_html_path(notebook)
 
     scripts = script_tags(widget.to_notebook_html())
     first_text = script_by_id(scripts, "1")["text"]
@@ -337,7 +337,7 @@ def test_from_html_handles_gt_in_script_attribute_values(
         encoding="utf-8",
     )
 
-    widget = notebook_from_html_file(notebook)
+    widget = notebook_from_html_path(notebook)
 
     script = script_by_id(script_tags(widget.to_notebook_html()), "1")
     module_text = script["text"]
@@ -383,7 +383,7 @@ def test_from_html_ignores_scripts_outside_notebook(
         encoding="utf-8",
     )
 
-    widget = notebook_from_html_file(notebook)
+    widget = notebook_from_html_path(notebook)
     rendered = widget.to_notebook_html()
     scripts = script_tags(rendered)
     outside_scripts = [
@@ -436,7 +436,7 @@ def test_from_html_ignores_script_tags_inside_html_comments(
         encoding="utf-8",
     )
 
-    widget = notebook_from_html_file(notebook)
+    widget = notebook_from_html_path(notebook)
     rendered = widget.to_notebook_html()
     scripts = script_tags(rendered)
     comments = comment_nodes(rendered)
@@ -479,7 +479,7 @@ def test_from_html_ignores_longer_closing_tag_prefixes(
         encoding="utf-8",
     )
 
-    widget = notebook_from_html_file(notebook)
+    widget = notebook_from_html_path(notebook)
 
     module_text = script_by_id(script_tags(widget.to_notebook_html()), "1")["text"]
     assert_javascript_import_payloads(
@@ -516,7 +516,7 @@ def test_from_html_ignores_notebook_close_text_inside_script(
         encoding="utf-8",
     )
 
-    widget = notebook_from_html_file(notebook)
+    widget = notebook_from_html_path(notebook)
 
     module_text = script_by_id(script_tags(widget.to_notebook_html()), "1")["text"]
     assert_javascript_import_payloads(
@@ -552,7 +552,7 @@ def test_from_html_treats_unknown_script_type_as_javascript(
         encoding="utf-8",
     )
 
-    widget = notebook_from_html_file(notebook)
+    widget = notebook_from_html_path(notebook)
 
     assert len(widget.cells) == 1
     module_text = script_by_id(script_tags(widget.to_notebook_html()), "1")["text"]
@@ -592,7 +592,7 @@ def test_from_html_rewrites_minified_static_imports(
         encoding="utf-8",
     )
 
-    widget = notebook_from_html_file(notebook)
+    widget = notebook_from_html_path(notebook)
 
     module_text = script_by_id(script_tags(widget.to_notebook_html()), "1")["text"]
     assert_javascript_import_payloads(

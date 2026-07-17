@@ -59,7 +59,7 @@ class BrowserGraphCellBuilder(Protocol):
     ) -> BrowserGraphCell: ...
 
 
-def notebook_from_html_file(path: pathlib.Path, **kwargs: Any) -> obs.Notebook:
+def notebook_from_html_path(path: pathlib.Path, **kwargs: Any) -> obs.Notebook:
     kwargs.setdefault("embed_file_attachments", True)
     kwargs.setdefault("rewrite_imports", True)
     return obs.Notebook.from_html(

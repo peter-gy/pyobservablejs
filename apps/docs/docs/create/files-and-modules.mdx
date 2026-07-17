@@ -120,18 +120,24 @@ notebook = obs.Notebook(
 ```
 
 Relative local paths resolve against `base_path`, which defaults to the
-current working directory. `from_html_file` uses the HTML file's parent
-directory. See [File attachments](../reference/file-attachments.mdx) for
-path resolution, record shapes, and browser access methods.
+current working directory. See [File
+attachments](../reference/file-attachments.mdx) for path resolution, record
+shapes, and browser access methods.
 
 ## Discover files in source HTML
 
-`Notebook.from_html` and `from_html_file` can discover local files referenced
-by literal `FileAttachment("name")` calls and embed them as data URLs:
+`Notebook.from_html` can discover local files referenced by literal
+`FileAttachment("name")` calls and embed them as data URLs:
 
 ```python
-notebook = obs.Notebook.from_html_file(
-    "notebooks/report.html",
+from pathlib import Path
+
+import observablejs as obs
+
+source_path = Path("notebooks/report.html")
+notebook = obs.Notebook.from_html(
+    source_path.read_text(encoding="utf-8"),
+    base_path=source_path.parent,
     embed_file_attachments=True,
 )
 ```
@@ -143,9 +149,9 @@ notebook = obs.Notebook.from_html_file(
   `import(...)` calls, following local imports recursively. Computed
   specifiers and paths that do not resolve to files stay unchanged.
 
-Both options need a `base_path` with `from_html` because a source string has
-no filesystem location. `from_html_file` uses the document's parent
-directory.
+Both options need a `base_path` because the source string has no filesystem
+location. Choose the directory that should resolve the document's relative
+attachment and module paths.
 
 Leave both options false when the page already serves the referenced files at
 the same relative paths. When discovery is enabled, an explicit `files` entry

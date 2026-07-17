@@ -1,12 +1,13 @@
 ---
 title: Load Notebook Kit HTML
-description: Create source-backed notebooks from Notebook Kit HTML strings and files.
+description: Create source-backed notebooks from Notebook Kit HTML strings.
 ---
 
 # Load Notebook Kit HTML
 
-`Notebook.from_html` loads an existing Notebook Kit document. The source can
-use Notebook Kit cells and built-in libraries directly. The example uses
+`Notebook.from_html` creates a source-backed notebook from a Notebook Kit HTML
+string. Define the string in Python, read it from a file, fetch it from
+storage, or receive it from another API before construction. The example uses
 Notebook Kit's built-in AAPL sample.
 
 ```marimo-config
@@ -88,20 +89,25 @@ notebook = obs.Notebook.from_html(source, variables={"threshold": 0.5})
 
 ## Load from a file
 
-`Notebook.from_html_file` reads a document from disk and uses the file's
-parent directory as its base path.
+Read the document with Python, then pass its text to `Notebook.from_html`:
 
 ```python
-notebook = obs.Notebook.from_html_file("notebooks/report.html")
+from pathlib import Path
+
+import observablejs as obs
+
+path = Path("notebooks/report.html")
+source = path.read_text(encoding="utf-8")
+notebook = obs.Notebook.from_html(source)
 ```
 
 When the document references local files through `FileAttachment` or imports
-local JavaScript modules, enable embedding so the assets travel with the
-widget:
+local JavaScript modules, pass the directory that should resolve those paths:
 
 ```python
-notebook = obs.Notebook.from_html_file(
-    "notebooks/report.html",
+notebook = obs.Notebook.from_html(
+    source,
+    base_path=path.parent,
     embed_file_attachments=True,
     rewrite_imports=True,
 )

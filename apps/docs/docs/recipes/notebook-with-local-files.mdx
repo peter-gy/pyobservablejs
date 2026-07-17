@@ -6,8 +6,9 @@ description: Load Notebook Kit HTML from disk and embed its FileAttachment data.
 # Load an existing notebook with local files
 
 A Notebook Kit document on disk often references data files next to it. This
-recipe loads such a document with `Notebook.from_html_file` and embeds the
-referenced CSV so the widget carries its data wherever it renders.
+recipe reads the document with Python, passes its text to `Notebook.from_html`,
+and embeds the referenced CSV so the widget carries its data wherever it
+renders.
 
 The example writes the document and its data file to a temporary directory
 first, standing in for a notebook you already have.
@@ -49,10 +50,12 @@ Plot.barY(penguinCounts, {
   </script>
 </notebook>
 """
-(base / "penguins.html").write_text(source, encoding="utf-8")
+source_path = base / "penguins.html"
+source_path.write_text(source, encoding="utf-8")
 
-notebook = obs.Notebook.from_html_file(
-    base / "penguins.html",
+notebook = obs.Notebook.from_html(
+    source_path.read_text(encoding="utf-8"),
+    base_path=source_path.parent,
     embed_file_attachments=True,
 )
 full_view = notebook.view()
@@ -91,10 +94,12 @@ Plot.barY(penguinCounts, {
   </script>
 </notebook>
 """
-(base / "penguins.html").write_text(source, encoding="utf-8")
+source_path = base / "penguins.html"
+source_path.write_text(source, encoding="utf-8")
 
-notebook = obs.Notebook.from_html_file(
-    base / "penguins.html",
+notebook = obs.Notebook.from_html(
+    source_path.read_text(encoding="utf-8"),
+    base_path=source_path.parent,
     embed_file_attachments=True,
 )
 full_view = notebook.view()
@@ -107,11 +112,13 @@ dataset](https://allisonhorst.github.io/palmerpenguins/).
 
 ## What this shows
 
-- `from_html_file` keeps the document as source: the `glacier` theme and
-  both cells come from the HTML, not from Python.
+- `Path.read_text` loads the document text before `from_html` constructs the
+  source-backed notebook. The `glacier` theme and both cells come from that
+  string.
 - `embed_file_attachments=True` discovers the literal
   `FileAttachment("penguins.csv")` call, reads the file relative to the
-  document, and registers it as a data URL in `notebook.attachments`.
+  explicit `base_path`, and registers it as a data URL in
+  `notebook.attachments`.
 - The document text in `notebook.source` is unchanged; only the attachment
   registry carries the embedded bytes.
 
@@ -120,8 +127,7 @@ dataset](https://allisonhorst.github.io/palmerpenguins/).
 - Add `rewrite_imports=True` when the document imports local JavaScript
   modules with relative specifiers; they are inlined recursively. See [Add
   files and local modules](../create/files-and-modules.mdx#discover-files-in-source-html).
-- Skip embedding when the page already serves the files at the same
-  relative paths: `obs.Notebook.from_html_file(path)` alone leaves
-  resolution to the browser.
+- Leave embedding disabled when the page already serves the files at the same
+  browser-relative paths.
 - Override notebook values from Python by passing `variables=` to the
   constructor, exactly as with authored notebooks.

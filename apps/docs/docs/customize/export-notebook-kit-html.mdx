@@ -76,8 +76,8 @@ restored = obs.Notebook.from_html(html_text, variables={"rows": []})
 ```
 
 ObservableHQ-derived notebooks record their classic standard-library profile
-in the exported document, so a round trip through `from_html` or
-`from_html_file` preserves `require` and the other classic builtins.
+in the exported document, so a round trip through `from_html` preserves
+`require` and the other classic builtins.
 
 ## Use with Notebook Kit tooling
 

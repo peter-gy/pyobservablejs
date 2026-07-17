@@ -141,7 +141,7 @@ local JavaScript import rewrites when requested. ObservableHQ constructors
 return the Notebook Kit HTML generated from imported nodes. Document-based
 constructors pin Observable notebook imports when the source includes its
 `id` and `version`. Generated ObservableHQ source preserves its classic
-standard-library semantics through `from_html` and `from_html_file`.
+standard-library semantics through `from_html`.
 
 ### `Notebook.spec`
 
@@ -252,7 +252,7 @@ rewrites. File attachment records and Python variables remain session state,
 as described by [File attachments](file-attachments.mdx) and [Variables and
 serialization](variables-and-serialization.mdx). ObservableHQ-derived HTML
 preserves classic standard-library semantics when loaded again through
-`from_html` or `from_html_file`.
+`from_html`.
 
 ## Alternative constructors
 
@@ -260,7 +260,6 @@ preserves classic standard-library semantics when loaded again through
 
 ```python
 Notebook.from_html(source, *, files=None, base_path=None, embed_file_attachments=False, rewrite_imports=False, variables=None, show_pinned_source=False)
-Notebook.from_html_file(path, *, files=None, embed_file_attachments=False, rewrite_imports=False, variables=None, show_pinned_source=False)
 Notebook.from_observablehq(specifier, *, variables=None, files=None, show_pinned_source=False, timeout=30)
 Notebook.from_observablehq_document(document, *, title=None, variables=None, files=None, show_pinned_source=False)
 Notebook.from_observablehq_page_data(page_data, *, title=None, variables=None, files=None, show_pinned_source=False)

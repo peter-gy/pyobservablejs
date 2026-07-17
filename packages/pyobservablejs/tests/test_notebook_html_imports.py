@@ -12,7 +12,7 @@ from helpers import (
     decode_data_url,
     decoded_data_imports,
     javascript_imports,
-    notebook_from_html_file,
+    notebook_from_html_path,
     normalized_source,
     normalized_source_with_embedded_imports,
     script_by_id,
@@ -42,7 +42,7 @@ def test_from_html_embeds_file_attachments_and_local_imports(
         encoding="utf-8",
     )
 
-    widget = notebook_from_html_file(notebook)
+    widget = notebook_from_html_path(notebook)
 
     assert set(widget.attachments) == {"data/points.csv"}
     mime_type, payload = decode_data_url(widget.attachments["data/points.csv"]["url"])
@@ -63,7 +63,7 @@ def test_from_html_embeds_file_attachments_and_local_imports(
     assert len(widget.cells) == 1
 
 
-def test_from_html_file_uses_file_parent_as_base_path(
+def test_from_html_uses_explicit_base_path_for_relative_attachments(
     tmp_path: pathlib.Path,
     script_tags: ScriptTags,
 ) -> None:
@@ -80,8 +80,9 @@ def test_from_html_file_uses_file_parent_as_base_path(
         encoding="utf-8",
     )
 
-    widget = obs.Notebook.from_html_file(
-        notebook,
+    widget = obs.Notebook.from_html(
+        notebook.read_text(encoding="utf-8"),
+        base_path=notebook.parent,
         embed_file_attachments=True,
         rewrite_imports=True,
     )
@@ -117,7 +118,7 @@ def test_from_html_recursively_embeds_local_imports(
         encoding="utf-8",
     )
 
-    widget = notebook_from_html_file(notebook)
+    widget = notebook_from_html_path(notebook)
 
     module_text = script_by_id(script_tags(widget.to_notebook_html()), "1")["text"]
     [(kind, mime_type, payload, imported, exported)] = decoded_data_imports(
@@ -199,7 +200,7 @@ def test_from_html_preserves_markdown_import_text(
         encoding="utf-8",
     )
 
-    widget = notebook_from_html_file(notebook)
+    widget = notebook_from_html_path(notebook)
 
     markdown_text = script_by_id(script_tags(widget.to_notebook_html()), "1")["text"]
     assert (
@@ -241,7 +242,7 @@ def test_from_html_rewrites_static_and_dynamic_javascript_imports(
         encoding="utf-8",
     )
 
-    widget = notebook_from_html_file(notebook)
+    widget = notebook_from_html_path(notebook)
 
     module_text = script_by_id(script_tags(widget.to_notebook_html()), "2")["text"]
     assert_javascript_import_payloads(
@@ -291,7 +292,7 @@ def test_from_html_preserves_non_executable_import_text(
         encoding="utf-8",
     )
 
-    widget = notebook_from_html_file(notebook)
+    widget = notebook_from_html_path(notebook)
 
     module_text = script_by_id(script_tags(widget.to_notebook_html()), "1")["text"]
     assert_javascript_import_payloads(
@@ -328,7 +329,7 @@ def test_from_html_preserves_import_named_methods(
         encoding="utf-8",
     )
 
-    widget = notebook_from_html_file(notebook)
+    widget = notebook_from_html_path(notebook)
 
     module_text = script_by_id(script_tags(widget.to_notebook_html()), "1")["text"]
     assert_javascript_import_payloads(
@@ -365,7 +366,7 @@ def test_from_html_allows_comments_between_file_attachment_tokens(
         encoding="utf-8",
     )
 
-    widget = notebook_from_html_file(notebook)
+    widget = notebook_from_html_path(notebook)
     module_text = script_by_id(script_tags(widget.to_notebook_html()), "1")["text"]
 
     assert set(widget.attachments) == {"block.csv", "line.csv"}
