@@ -5,7 +5,8 @@ serialization, attachments, and session state. The browser evaluates
 Observable JavaScript through Notebook Kit. A `NotebookView` owns each browser
 runtime and its synchronized readback.
 
-The installed wheel includes the browser runtime used by Jupyter and marimo.
+The installed wheel includes the browser runtime used by anywidget hosts such
+as marimo and Jupyter.
 
 See [View composition](view-composition.md) for the selection, model-resolution,
 synchronization, readback, and teardown paths behind `NotebookView`.
@@ -58,8 +59,8 @@ composite view when multiple cells require the same runtime and graph snapshot.
    ObservableHQ document.
 2. Python creates a `NotebookView` with a full, single-cell, or composite
    selection.
-3. Jupyter displays the view, or marimo wraps that view with
-   `mo.ui.anywidget`.
+3. An anywidget host displays the view. marimo wraps it with
+   `mo.ui.anywidget`, and Jupyter displays it directly.
 4. The frontend resolves the referenced notebook session and reads its source,
    spec, runtime profile, attachments, variables, options, and shared input
    values.
@@ -125,8 +126,8 @@ specifiers because they do not carry a source document id and version.
 source:
 
 - `notebook-kit` uses the builtins exported by
-  `@observablehq/notebook-kit/runtime`. Python-authored notebooks and ordinary
-  Notebook Kit HTML without profile metadata select this profile.
+  `@observablehq/notebook-kit/runtime`. Python-authored notebooks and Notebook
+  Kit HTML without profile metadata select this profile.
 - `observable` creates a `Library` from `@observablehq/stdlib`. Every
   ObservableHQ constructor selects this profile.
 

@@ -9,8 +9,8 @@ description: Notebook.from_html, Notebook.from_html_file, Notebook.from_observab
 `from_observablehq*` constructors convert ObservableHQ document records to
 Notebook Kit HTML and select the classic Observable standard library.
 
-Treat every source notebook as executable code. Its cells run JavaScript in the
-notebook page and can load remote modules or data.
+Source notebook cells run JavaScript in the notebook page and can load remote
+modules or data.
 
 ## `Notebook.from_html`
 
@@ -59,7 +59,7 @@ dynamic `import(...)` calls. Computed specifiers and paths that do not resolve
 to files stay unchanged. Either option requires `base_path`.
 
 Explicit `files` override discovered files with the same name.
-See [File attachments](file-attachments.md) for accepted `files` values,
+See [File attachments](file-attachments.mdx) for accepted `files` values,
 construction-time data URLs, and discovery boundaries.
 
 A non-string `source` raises `TypeError`. Unsupported theme or runtime-profile
@@ -263,7 +263,7 @@ render time. Use `from_observablehq_document` with the source `id` and
 `version` when imported notebooks must stay pinned to a published revision.
 
 The resulting attachments follow the contract described in [File
-attachments](file-attachments.md).
+attachments](file-attachments.mdx).
 
 A non-mapping document or page-data value raises `TypeError`. A document
 without a node list and page data without `initialNotebook` raise `ValueError`.

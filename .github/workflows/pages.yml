@@ -19,22 +19,12 @@ jobs:
     permissions:
       contents: read
       pages: write
-    env:
-      BASE_URL: /pyobservablejs
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Read Node.js version
         id: node-version
         run: echo "version=$(cat .node-version)" >> "$GITHUB_OUTPUT"
-
-      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
-        with:
-          enable-cache: true
-          cache-dependency-glob: uv.lock
-
-      - name: Install Python
-        run: uv python install "$(cat .python-version)"
 
       - uses: voidzero-dev/setup-vp@13e7afb99c66525824db54e107d667216e795d37 # v1.14.0
         with:
@@ -46,15 +36,18 @@ jobs:
             - args: ['--frozen-lockfile']
 
       - name: Configure GitHub Pages
+        id: pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
 
       - name: Build docs
+        env:
+          BASE_PATH: ${{ steps.pages.outputs.base_path }}
         run: make docs
 
       - name: Upload GitHub Pages artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
-          path: docs/_build/html
+          path: apps/docs/build
 
   deploy:
     runs-on: ubuntu-latest

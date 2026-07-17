@@ -5,26 +5,37 @@ description: Read browser-synchronized values and graph metadata from a rendered
 
 # Values back to Python
 
-`NotebookView` synchronizes values and graph metadata after its browser runtime
-renders. Try moving `gain`. The readout updates in the browser, and a later
-Python cell can read `doubled` from the same view.
+`NotebookView` synchronizes values and graph metadata after its browser
+runtime renders. Move `gain` below: the readout updates in the browser, and a
+later Python cell can read `doubled` from the same view.
 
-The browser loads `Inputs` for this example. See [Notebook
-runtime](notebook-runtime.md#builtins) for network and content security policy
-requirements.
-
-```{marimo-config}
-:pyproject:
-
-  requires-python = ">=3.11"
-  dependencies = [
-      "pyobservablejs",
-  ]
+```marimo-config
+requires-python = ">=3.11"
+dependencies = ["pyobservablejs"]
 ```
 
-```{marimo} python
-:echo: true
+```python
+import marimo as mo
+import observablejs as obs
 
+notebook = obs.Notebook(
+    obs.ojs(
+        'viewof gain = Inputs.range([0, 12], {value: 5, step: 1, label: "Gain"})',
+        key="gain_control",
+    ),
+    obs.js("const doubled = gain * 2;", key="doubled", display=False),
+    obs.js(
+        'html`<p>Gain is <strong>${gain}</strong>. Doubled is <strong>${doubled}</strong>.</p>`',
+        key="readout",
+    ),
+)
+
+full_view = notebook.view()
+widget = mo.ui.anywidget(full_view)
+widget
+```
+
+```python marimo echo=false server-output=false
 import marimo as mo
 import observablejs as obs
 
@@ -71,12 +82,10 @@ if gain_view.has_rendered:
     gain_value = gain_view.value("gain")
 ```
 
-When the user changes `viewof gain`, `full_view` and `gain_view`
-share the interacted numeric value through their notebook session. They keep
-separate runtimes and readback snapshots. The [variables
-reference](../reference/variables.md#python-values-and-viewof-inputs) lists the
-value shapes that can be shared. Wrap each view independently in marimo and
-keep both wrappers mounted when both outputs belong on the page.
+When the user changes `viewof gain`, `full_view` and `gain_view` share the
+interacted numeric value through their notebook session while keeping separate
+runtimes and readback snapshots. When both outputs belong on the page, keep
+both views mounted.
 
 ## Keep selected cells in one runtime
 
@@ -99,9 +108,5 @@ if summary_view.has_graph_snapshot:
     referenced_names = doubled_cell.references
 ```
 
-`summary_view.graph` raises `NotRenderedError` before graph metadata arrives.
-`graph.cell_for_variable(name)` raises `KeyError` when the graph has no unique
-owner for `name`.
-
-See [Values and graph](../reference/values-and-graph.md) for the complete
-lifecycle and lookup contracts.
+See [Values and graph](../reference/values-and-graph.mdx) for the lifecycle
+and lookup contracts.

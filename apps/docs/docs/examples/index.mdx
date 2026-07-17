@@ -1,0 +1,42 @@
+---
+title: Examples
+description: Live pyobservablejs workflows with source and output.
+---
+
+import DocCardList from "@theme/DocCardList";
+
+# Examples
+
+Each example includes source and a rendered view.
+
+<DocCardList
+	items={[
+		{
+			type: "link",
+			href: "/examples/python-data-plot/",
+			label: "Python data to Plot",
+			description: "Pass Palmer Penguins records through variables and render them with Plot.",
+		},
+		{
+			type: "link",
+			href: "/examples/reactive-inputs/",
+			label: "Filter in Observable",
+			description: "Connect a Notebook Kit select input to a cars scatter plot.",
+		},
+		{
+			type: "link",
+			href: "/examples/html-notebook-files/",
+			label: "Load notebook HTML",
+			description: "Render an existing Notebook Kit document through Notebook.from_html.",
+		},
+		{
+			type: "link",
+			href: "/guides/python-variables/",
+			label: "Update from Python",
+			description: "Use a marimo slider to update a mounted Observable chart.",
+		},
+	]}
+/>
+
+The [getting started tutorial](../getting-started.mdx) builds a reactive notebook
+and mounts its view.

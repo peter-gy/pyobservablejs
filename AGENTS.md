@@ -19,8 +19,9 @@ that split.
 - `packages/pyobservablejs/` owns the public Python API and composes the widget
   with both `anywidget-bundle` distributions into the static assets shipped in
   the wheel.
-- `docs/` contains the published Jupyter Book. `development_docs/` contains
-  contributor documentation outside the published site.
+- `apps/docs/` owns the Docusaurus application, published MDX pages, and
+  mdx-marimo integration. `development_docs/` contains contributor
+  documentation outside the published site.
 
 Use package names for cross-package imports. `@pyobservablejs/widget` depends on
 `@pyobservablejs/runtime`. The private frontend package depends on the npm
@@ -58,8 +59,8 @@ These paths are generated:
 - `packages/*/dist/`
 - `packages/pyobservablejs/src/observablejs/static/`
 - `dist/`
-- `docs/_build/`
-- `docs/.jupyter-book-marimo/`
+- `apps/docs/.docusaurus/`
+- `apps/docs/build/`
 
 Change source and rebuild. Do not hand-edit generated output.
 
@@ -83,10 +84,10 @@ and accidental package-boundary violations.
   widget state.
 - Test TypeScript behavior through runtime, widget, Vite, DOM, and generated
   artifact contracts. Wait on observable state, not elapsed time.
-- Validate documentation source with `make docs` and serve the generated site
+- Validate Docusaurus MDX source with `make docs` and serve the generated site
   with `make docs-serve` when browser inspection is required.
 - Validate frontend, notebook, and docs changes with `$agent-browser`. Exercise
-  JupyterLab, the marimo-backed docs pages, and Python variable synchronization.
+  JupyterLab, the mdx-marimo docs pages, and Python variable synchronization.
   Check console and page errors, then stop every browser session and local
   server.
 - Build the wheel from the produced sdist when packaging changes. The sdist

@@ -3,7 +3,7 @@
 One Python `NotebookView` selection maps to one browser runtime. The notebook
 session shares definitions and mutable state across views. Each view owns its
 selection, DOM, readback, and teardown. The public [Views and
-composition](../docs/guides/views-and-composition.md) guide covers the
+composition](../apps/docs/docs/guides/views-and-composition.mdx) guide covers the
 user-facing contract.
 
 ## Component map

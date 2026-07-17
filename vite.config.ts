@@ -4,10 +4,10 @@ const generated = [
 	"**/*.har",
 	"**/*.html",
 	"dist/**",
-	"docs/_build/**",
-	"docs/.jupyter-book-marimo/**",
 	"packages/*/dist/**",
 	"packages/pyobservablejs/src/observablejs/static/**",
+	"apps/docs/.docusaurus/**",
+	"apps/docs/build/**",
 ];
 
 export default defineConfig({

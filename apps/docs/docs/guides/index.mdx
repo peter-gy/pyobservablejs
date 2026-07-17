@@ -1,0 +1,64 @@
+---
+title: Guides
+description: Author notebooks, compose views, synchronize values, and load existing sources.
+---
+
+import DocCardList from "@theme/DocCardList";
+
+# Guides
+
+Build notebooks from Python cells or existing sources. Choose which cells
+render together, update variables from Python, and read browser values back.
+
+<DocCardList
+	items={[
+		{
+			type: "link",
+			href: "/guides/views-and-composition/",
+			label: "Views and composition",
+			description: "Choose which cells render together and share variables and input values across views.",
+		},
+		{
+			type: "link",
+			href: "/guides/author-cells/",
+			label: "Observable cells and reactivity",
+			description: "Connect JavaScript cells through Notebook Kit's reactive graph.",
+		},
+		{
+			type: "link",
+			href: "/guides/notebook-runtime/",
+			label: "Notebook runtime",
+			description: "Compare runtime profiles and follow display, input, and invalidation behavior.",
+		},
+		{
+			type: "link",
+			href: "/guides/python-variables/",
+			label: "Update from Python",
+			description: "Keep a view mounted while Python changes its variables.",
+		},
+		{
+			type: "link",
+			href: "/guides/cell-values/",
+			label: "Values back to Python",
+			description: "Read browser values and dependency metadata after render.",
+		},
+		{
+			type: "link",
+			href: "/guides/source-html/",
+			label: "Files and source notebooks",
+			description: "Embed local attachments and relative imports from Notebook Kit HTML.",
+		},
+		{
+			type: "link",
+			href: "/guides/observablehq/",
+			label: "ObservableHQ imports",
+			description: "Fetch public notebooks and override their variables from Python.",
+		},
+		{
+			type: "link",
+			href: "/guides/themes/",
+			label: "Themes and pinned source",
+			description: "Apply light and dark themes and expose selected cell source.",
+		},
+	]}
+/>

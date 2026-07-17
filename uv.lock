@@ -14,8 +14,6 @@ members = [
 [manifest.dependency-groups]
 dev = [
     { name = "jupyter" },
-    { name = "jupyter-book", specifier = ">=2.1.5" },
-    { name = "jupyter-book-marimo", specifier = ">=0.0.1" },
     { name = "marimo", extras = ["recommended"], specifier = ">=0.23.8" },
     { name = "pyrefly", specifier = ">=1" },
     { name = "pytest", specifier = ">=9.0.3" },
@@ -1012,35 +1010,6 @@ wheels = [
 ]
 
 [[package]]
-name = "jupyter-book"
-version = "2.1.6"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "ipykernel" },
-    { name = "jupyter-core" },
-    { name = "jupyter-server" },
-    { name = "nodeenv" },
-    { name = "platformdirs" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/ef/39/df74148121170368574b18b325cff961d871fb1bba536f774829d354a7e3/jupyter_book-2.1.6.tar.gz", hash = "sha256:fb52cf7f7056a8475aebefa78376801e45cc3daa010a48ac3ea089a5f10dd17c", size = 3222318, upload-time = "2026-07-05T16:14:58.105Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/76/5c/07bd7d4e5cb58451fea187d187722976f8b152e09569ec8cb215167fdd58/jupyter_book-2.1.6-py3-none-any.whl", hash = "sha256:677a11211a142757405a0c6cc6f4b36a371ef4887220a4833ed00101b0d52691", size = 2623674, upload-time = "2026-07-05T16:14:56.154Z" },
-]
-
-[[package]]
-name = "jupyter-book-marimo"
-version = "0.0.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "marimo" },
-    { name = "uv" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/1a/b9/537e729844ea288de9d63239788bcb60afa51bb0ccc4cdc2969ef3da11fc/jupyter_book_marimo-0.0.1.tar.gz", hash = "sha256:12a81577957f0e8cdd701d6d49f7dc7f0a1c3c7d50a3db26b256ff67711f94f9", size = 71747, upload-time = "2026-06-06T10:29:13.057Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/82/5f/63808e307ec03733f18985180ce3b6c1bf0312000e5bc17ecc090d693268/jupyter_book_marimo-0.0.1-py3-none-any.whl", hash = "sha256:f4a54216bd08d1abf65d85bb2fd84152469f20b1f6286112ec6ef50cde3f035e", size = 51097, upload-time = "2026-06-06T10:29:13.909Z" },
-]
-
-[[package]]
 name = "jupyter-builder"
 version = "1.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1605,15 +1574,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/b4/73/731debf26e27e0a0323d7bda270dc2f634b398e38f040a09da1f4351d0aa/nest_asyncio2-1.7.2.tar.gz", hash = "sha256:1921d70b92cc4612c374928d081552efb59b83d91b2b789d935c665fa01729a8", size = 14743, upload-time = "2026-02-13T00:34:04.386Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c5/3c/3179b85b0e1c3659f0369940200cd6d0fa900e6cefcc7ea0bc6dd0e29ffb/nest_asyncio2-1.7.2-py3-none-any.whl", hash = "sha256:f5dfa702f3f81f6a03857e9a19e2ba578c0946a4ad417b4c50a24d7ba641fe01", size = 7843, upload-time = "2026-02-13T00:34:02.691Z" },
-]
-
-[[package]]
-name = "nodeenv"
-version = "1.10.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/24/bf/d1bda4f6168e0b2e9e5958945e01910052158313224ada5ce1fb2e1113b8/nodeenv-1.10.0.tar.gz", hash = "sha256:996c191ad80897d076bdfba80a41994c2b47c68e224c542b48feba42ba00f8bb", size = 55611, upload-time = "2025-12-20T14:08:54.006Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/88/b2/d0896bdcdc8d28a7fc5717c305f1a861c26e18c05047949fb371034d98bd/nodeenv-1.10.0-py2.py3-none-any.whl", hash = "sha256:5bb13e3eed2923615535339b3c620e76779af4cb4c6a90deccc9e36b274d3827", size = 23438, upload-time = "2025-12-20T14:08:52.782Z" },
 ]
 
 [[package]]

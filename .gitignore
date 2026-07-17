@@ -1,8 +1,8 @@
 node_modules
 .venv
 dist
-docs/_build
-docs/.jupyter-book-marimo
+apps/docs/.docusaurus
+apps/docs/build
 .DS_Store
 
 # Python

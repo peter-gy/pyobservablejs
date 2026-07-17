@@ -3,14 +3,14 @@
 VP := node_modules/.bin/vp
 
 build:
-	$(VP) run -r build
+	$(VP) run -F './packages/*' build
 	uv build --package pyobservablejs
 
 docs:
-	cd docs && uv run --package pyobservablejs jupyter book build --html --strict
+	pnpm --filter @pyobservablejs/docs build
 
 docs-serve: docs
-	uv run --package pyobservablejs python -m http.server --bind 127.0.0.1 --directory docs/_build/html 27331
+	pnpm --filter @pyobservablejs/docs serve
 
 check:
 	$(VP) run check
@@ -33,8 +33,6 @@ clean:
 		.ruff_cache \
 		.ty_cache \
 		dist \
-		docs/.jupyter-book-marimo \
-		docs/_build \
 		node_modules/.cache \
 		node_modules/.vite \
 		node_modules/.vite-temp \
@@ -42,8 +40,10 @@ clean:
 		packages/*/node_modules/.cache \
 		packages/*/node_modules/.vite \
 		packages/*/node_modules/.vite-temp \
-		packages/pyobservablejs/src/observablejs/static
-	find .github packages/pyobservablejs scripts docs development_docs \
+		packages/pyobservablejs/src/observablejs/static \
+		apps/docs/.docusaurus \
+		apps/docs/build
+	find .github apps packages/pyobservablejs scripts development_docs \
 		-type d -name node_modules -prune -o \
 		-type d \( \
 			-name __pycache__ -o \
@@ -54,6 +54,6 @@ clean:
 			-name .ruff_cache -o \
 			-name .ty_cache \
 		\) -prune -exec rm -rf {} +
-	find .github packages/pyobservablejs scripts docs development_docs \
+	find .github apps packages/pyobservablejs scripts development_docs \
 		-type d -name node_modules -prune -o \
 		-type f \( -name '*.pyc' -o -name '*.pyo' -o -name .DS_Store \) -delete

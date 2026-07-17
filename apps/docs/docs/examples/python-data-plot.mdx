@@ -8,25 +8,14 @@ description: Pass Palmer Penguins records from Python to Observable Plot.
 A Python list of dictionaries becomes a JavaScript array of objects in Notebook
 Kit. This example passes species counts from the [Palmer Penguins
 dataset](https://allisonhorst.github.io/palmerpenguins/) to Observable Plot.
-
 Hover a bar to inspect the count for one species.
 
-The browser loads Plot for this example. See [Notebook
-runtime](../guides/notebook-runtime.md#builtins) for network and content
-security policy requirements.
-
-```{marimo-config}
-:pyproject:
-
-  requires-python = ">=3.11"
-  dependencies = [
-      "pyobservablejs",
-  ]
+```marimo-config
+requires-python = ">=3.11"
+dependencies = ["pyobservablejs"]
 ```
 
-```{marimo} python
-:echo: true
-
+```python
 import marimo as mo
 import observablejs as obs
 
@@ -43,7 +32,41 @@ notebook = obs.Notebook(
           x: "count",
           y: "species",
           fill: "species",
-          tip: true
+          tip: {fill: "var(--marimo-island-background)"}
+        }).plot({
+          height: 240,
+          marginLeft: 76,
+          color: {legend: true},
+          x: {grid: true, label: "Penguins"},
+          y: {label: null}
+        })
+        """,
+    ),
+    variables={"penguinCounts": penguin_counts},
+)
+
+full_view = notebook.view()
+mo.ui.anywidget(full_view)
+```
+
+```python marimo echo=false server-output=false
+import marimo as mo
+import observablejs as obs
+
+penguin_counts = [
+    {"species": "Adelie", "count": 152},
+    {"species": "Chinstrap", "count": 68},
+    {"species": "Gentoo", "count": 124},
+]
+
+notebook = obs.Notebook(
+    obs.js(
+        """
+        Plot.barX(penguinCounts, {
+          x: "count",
+          y: "species",
+          fill: "species",
+          tip: {fill: "var(--marimo-island-background)"}
         }).plot({
           height: 240,
           marginLeft: 76,
@@ -65,5 +88,5 @@ The `variables` mapping publishes the Python list under the JavaScript name
 
 ## Continue
 
-- [Variables](../reference/variables.md) lists the supported Python value types.
-- [Python variables](../guides/python-variables.md) updates values after render.
+- [Variables](../reference/variables.mdx) lists the supported Python value types.
+- [Python variables](../guides/python-variables.mdx) updates values after render.

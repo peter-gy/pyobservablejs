@@ -64,7 +64,7 @@ construction or a variable update.
 One-shot iterators such as generators are materialized once and stored as
 replayable lists. Mapping keys with the same string form collapse to one
 JavaScript property. A mapping that contains `__observablejs_type__` uses tagged
-serialization and revives as an ordinary user object.
+serialization and revives as a JavaScript object.
 
 `range` uses direct JSON number encoding. Elements outside the JavaScript
 safe-integer range can lose precision in the browser. Use a list when those
@@ -72,7 +72,7 @@ elements need `BigInt` conversion.
 
 Values outside these contracts raise `TypeError` during construction or
 mutation, before synchronized state changes. Use [file
-attachments](file-attachments.md) for large tables and binary data that the
+attachments](file-attachments.mdx) for large tables and binary data that the
 browser can load through `FileAttachment`.
 
 ## `Notebook.variables`
@@ -129,8 +129,8 @@ key-value iterable or unsupported value raises `TypeError`.
 notebook.replace_variables({"rows": rows})
 ```
 
-Replaces the complete Python-owned environment and returns `None`. Names absent
-from the replacement are released. Active views rebuild when the serialized
+Replaces the Python-owned environment and returns `None`. Names absent from the
+replacement are released. Active views rebuild when the serialized
 environment changes or the replacement clears interacted input state. This
 restores notebook definitions for released names. A wire-identical replacement
 with no interacted state is a no-op. Keyword arguments win over matching
@@ -151,7 +151,7 @@ notebook definitions in each active runtime.
 
 `NotebookView.runtime_values`, `NotebookView.value`, and
 `NotebookView.cell_values()` decode browser values back to Python after the
-view renders. See [`NotRenderedError`](values-and-graph.md#notrenderederror) for
+view renders. See [`NotRenderedError`](values-and-graph.mdx#notrenderederror) for
 the required lifecycle state.
 
 | Browser value                               | Python readback                                             |

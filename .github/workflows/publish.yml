@@ -37,11 +37,9 @@ jobs:
             - args: ['--frozen-lockfile']
 
       - name: Run release checks
-        env:
-          BASE_URL: /pyobservablejs
         run: |
           make check
-          git diff --exit-code -- docs
+          git diff --exit-code -- apps/docs
 
       - name: Build package artifacts
         run: |

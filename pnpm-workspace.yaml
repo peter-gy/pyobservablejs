@@ -1,4 +1,5 @@
 packages:
+  - apps/*
   - packages/*
 
 catalogMode: prefer
@@ -33,4 +34,6 @@ peerDependencyRules:
     vite: "*"
 
 allowBuilds:
+  "@manzt/uv": true
+  core-js: true
   esbuild: true

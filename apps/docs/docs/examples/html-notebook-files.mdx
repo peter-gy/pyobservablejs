@@ -9,25 +9,12 @@ description: Render an existing Notebook Kit HTML document from Python.
 use Notebook Kit cells and built-in libraries directly. The example uses
 Notebook Kit's built-in AAPL sample.
 
-The browser loads Plot and the sample data used here. See [Notebook
-runtime](../guides/notebook-runtime.md#builtins) for network and content
-security policy requirements.
-
-Load HTML only from sources you trust. Notebook cells execute JavaScript and
-can load remote modules or data.
-
-```{marimo-config}
-:pyproject:
-
-  requires-python = ">=3.11"
-  dependencies = [
-      "pyobservablejs",
-  ]
+```marimo-config
+requires-python = ">=3.11"
+dependencies = ["pyobservablejs"]
 ```
 
-```{marimo} python
-:echo: true
-
+```python
 import marimo as mo
 import observablejs as obs
 
@@ -37,7 +24,38 @@ source = """
 # Apple closing price
   </script>
   <script type="module">
-Plot.areaY(aapl, {x: "Date", y: "Close", tip: true}).plot({
+Plot.areaY(aapl, {
+  x: "Date",
+  y: "Close",
+  tip: {fill: "var(--marimo-island-background)"}
+}).plot({
+  height: 280,
+  y: {grid: true, label: "Close ($)"}
+})
+  </script>
+</notebook>
+"""
+
+notebook = obs.Notebook.from_html(source)
+full_view = notebook.view()
+mo.ui.anywidget(full_view)
+```
+
+```python marimo echo=false server-output=false
+import marimo as mo
+import observablejs as obs
+
+source = """
+<notebook theme="glacier">
+  <script type="text/markdown">
+# Apple closing price
+  </script>
+  <script type="module">
+Plot.areaY(aapl, {
+  x: "Date",
+  y: "Close",
+  tip: {fill: "var(--marimo-island-background)"}
+}).plot({
   height: 280,
   y: {grid: true, label: "Close ($)"}
 })
@@ -59,7 +77,7 @@ and `rewrite_imports` when local assets must travel with the widget.
 
 ## Continue
 
-- Use [Files and source notebooks](../guides/source-html.md) to embed local
+- Use [Files and source notebooks](../guides/source-html.mdx) to embed local
   `FileAttachment` files.
-- [Source notebooks](../reference/source-notebooks.md) gives the complete
-  constructor contract.
+- [Source notebooks](../reference/source-notebooks.mdx) defines the constructor
+  contract.

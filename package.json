@@ -2,8 +2,8 @@
 	"name": "pyobservablejs-workspace",
 	"private": true,
 	"scripts": {
-		"build": "vp run -r build",
-		"check": "vp check --no-error-on-unmatched-pattern .github development_docs docs packages scripts \"*.ipynb\" \"*.json\" \"*.md\" \"*.toml\" \"*.ts\" \"*.yaml\" \"*.yml\"",
+		"build": "vp run -F './packages/*' build",
+		"check": "vp check --no-error-on-unmatched-pattern .github apps development_docs packages scripts \"*.ipynb\" \"*.json\" \"*.md\" \"*.toml\" \"*.ts\" \"*.yaml\" \"*.yml\"",
 		"dev": "vp run @pyobservablejs/python#dev",
 		"test": "vp run -r test"
 	},

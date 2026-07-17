@@ -1,0 +1,126 @@
+---
+title: pyobservablejs
+description: Observable JavaScript notebooks from Python.
+slug: /
+---
+
+import DocCardList from "@theme/DocCardList";
+
+# pyobservablejs
+
+`pyobservablejs` renders Observable JavaScript notebooks from Python. A
+`Notebook` collects cells, variables, and attachments. Calling `view()`
+creates a renderable view of the whole notebook or a selected group of cells.
+
+Each view is an [anywidget](https://anywidget.dev/), so it renders wherever
+anywidgets run: JupyterLab, marimo, VS Code notebooks, Google Colab, and other
+hosts. The live examples on this site run in marimo.
+
+Install it with marimo to follow along:
+
+```sh
+uv add pyobservablejs marimo
+uv run marimo edit notebook.py
+```
+
+The example below uses Notebook Kit's built-in Palmer Penguins sample. Hover a
+dot to inspect a measurement.
+
+```marimo-config
+requires-python = ">=3.11"
+dependencies = ["pyobservablejs"]
+```
+
+```python
+import marimo as mo
+import observablejs as obs
+
+notebook = obs.Notebook(
+    obs.js(
+        """
+        Plot.dot(penguins, {
+          x: "culmen_length_mm",
+          y: "culmen_depth_mm",
+          fill: "species",
+          r: 4,
+          tip: {fill: "var(--marimo-island-background)"}
+        }).plot({
+          height: 320,
+          color: {legend: true},
+          x: {grid: true, label: "Bill length (mm)"},
+          y: {grid: true, label: "Bill depth (mm)"}
+        })
+        """
+    ),
+)
+
+full_view = notebook.view()
+mo.ui.anywidget(full_view)
+```
+
+```python marimo echo=false server-output=false
+import marimo as mo
+import observablejs as obs
+
+notebook = obs.Notebook(
+    obs.js(
+        """
+        Plot.dot(penguins, {
+          x: "culmen_length_mm",
+          y: "culmen_depth_mm",
+          fill: "species",
+          r: 4,
+          tip: {fill: "var(--marimo-island-background)"}
+        }).plot({
+          height: 320,
+          color: {legend: true},
+          x: {grid: true, label: "Bill length (mm)"},
+          y: {grid: true, label: "Bill depth (mm)"}
+        })
+        """
+    ),
+)
+
+full_view = notebook.view()
+mo.ui.anywidget(full_view)
+```
+
+`Notebook` accepts JavaScript, Observable JavaScript, Markdown, and HTML
+cells. In Jupyter and most other hosts, the view displays when it is the final
+expression in a cell.
+
+## Start with a workflow
+
+<DocCardList
+	items={[
+		{
+			type: "link",
+			href: "/getting-started/",
+			label: "Build your first notebook",
+			description: "Create a reactive Plot chart and render its view in marimo or Jupyter.",
+		},
+		{
+			type: "link",
+			href: "/examples/python-data-plot/",
+			label: "Pass Python data",
+			description: "Publish Python records as a JavaScript variable and render them with Plot.",
+		},
+		{
+			type: "link",
+			href: "/examples/reactive-inputs/",
+			label: "React in the browser",
+			description: "Connect an Observable input to a dependent chart.",
+		},
+		{
+			type: "link",
+			href: "/guides/python-variables/",
+			label: "Update from Python",
+			description: "Drive a mounted view from a marimo control.",
+		},
+	]}
+/>
+
+The [examples](examples/index.mdx) show complete workflows. The [views and
+composition guide](guides/views-and-composition.mdx) explains cell selection,
+mounting, variable sharing, and readback. The [reference](reference/index.mdx)
+covers signatures, defaults, and lifecycle rules.

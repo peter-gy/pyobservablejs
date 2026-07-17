@@ -1,0 +1,159 @@
+---
+title: Getting started
+description: Build a pyobservablejs notebook and render a view.
+---
+
+# Getting started
+
+Views are [anywidgets](https://anywidget.dev/), so they render in any
+anywidget host. This tutorial uses marimo. Python 3.11 or newer is required.
+
+```sh
+uv add pyobservablejs marimo
+uv run marimo edit notebook.py
+```
+
+Jupyter and other anywidget hosts work the same way:
+
+```sh
+uv add pyobservablejs jupyterlab
+uv run jupyter lab
+```
+
+## Build a live notebook
+
+This notebook combines a Notebook Kit input with an Observable Plot chart.
+Choose a species and the grouped counts recompute in the browser. `penguins`
+is a sample dataset provided by Notebook Kit.
+
+```marimo-config
+requires-python = ">=3.11"
+dependencies = ["pyobservablejs"]
+```
+
+```python
+import marimo as mo
+import observablejs as obs
+```
+
+```python marimo echo=false server-output=false
+import marimo as mo
+import observablejs as obs
+```
+
+```python
+notebook = obs.Notebook(
+    obs.md("## Penguins by island"),
+    obs.js(
+        """
+        const species = view(Inputs.select(
+          ["All", ...new Set(penguins.map((d) => d.species))],
+          {label: "Species", value: "All"}
+        ));
+        """,
+        key="species_control",
+    ),
+    obs.js(
+        """
+        Plot.barY(
+          species === "All"
+            ? penguins
+            : penguins.filter((d) => d.species === species),
+          Plot.groupX(
+            {y: "count"},
+            {
+              x: "island",
+              fill: "species",
+              tip: {fill: "var(--marimo-island-background)"}
+            }
+          )
+        ).plot({
+          height: 280,
+          color: {legend: true},
+          x: {label: "Island"},
+          y: {grid: true, label: "Penguins"}
+        })
+        """,
+        key="island_counts",
+    ),
+)
+
+full_view = notebook.view()
+```
+
+```python marimo echo=false server-output=false
+notebook = obs.Notebook(
+    obs.md("## Penguins by island"),
+    obs.js(
+        """
+        const species = view(Inputs.select(
+          ["All", ...new Set(penguins.map((d) => d.species))],
+          {label: "Species", value: "All"}
+        ));
+        """,
+        key="species_control",
+    ),
+    obs.js(
+        """
+        Plot.barY(
+          species === "All"
+            ? penguins
+            : penguins.filter((d) => d.species === species),
+          Plot.groupX(
+            {y: "count"},
+            {
+              x: "island",
+              fill: "species",
+              tip: {fill: "var(--marimo-island-background)"}
+            }
+          )
+        ).plot({
+          height: 280,
+          color: {legend: true},
+          x: {label: "Island"},
+          y: {grid: true, label: "Penguins"}
+        })
+        """,
+        key="island_counts",
+    ),
+)
+
+full_view = notebook.view()
+```
+
+```python
+mo.ui.anywidget(full_view)
+```
+
+```python marimo echo=false server-output=false
+mo.ui.anywidget(full_view)
+```
+
+The sample contains three species across three islands. Choosing a species
+narrows both the bars and the legend.
+
+## Follow the graph
+
+`obs.Notebook(...)` stores the cells and shared variables. `obs.js(...)` adds
+standard JavaScript cells whose top-level declarations other cells can
+reference. `notebook.view()` selects every cell and returns a `NotebookView`;
+browser evaluation starts when marimo mounts that view through
+`mo.ui.anywidget`.
+
+Inside the JavaScript cell, `view(...)` displays the select input and yields its
+current value. Changing the selection invalidates the Plot cell, which runs
+again with the new value.
+
+Each host displays anywidgets in its own way. marimo wraps them with
+`mo.ui.anywidget`. Jupyter and most other hosts display `full_view` when it is
+the final expression in a cell.
+
+## Next steps
+
+- [Python data to Plot](examples/python-data-plot.mdx) passes records from Python.
+- [Observable cells and reactivity](guides/author-cells.mdx) explains `obs.js`,
+  `obs.ojs`, and cell dependencies.
+- [Views and composition](guides/views-and-composition.mdx) explains full,
+  focused, and composite views.
+- [Python variables](guides/python-variables.mdx) updates a mounted view from a
+  marimo control.

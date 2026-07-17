@@ -97,8 +97,7 @@ Local paths are expanded with `Path.expanduser()` and resolved to absolute
 paths during construction.
 
 `base_path` supplies a resolution base. It is not a filesystem boundary, so a
-relative path containing `..` can resolve outside that directory. Embed files
-and imports only from sources whose local paths you trust.
+relative path containing `..` can resolve outside that directory.
 
 | Call                                      | Base for a relative `files` value              |
 | ----------------------------------------- | ---------------------------------------------- |
@@ -164,7 +163,7 @@ resolution.
 
 `base_path` is required when `embed_file_attachments=True`. The
 `Notebook.from_html_file` constructor supplies the HTML file's parent directory.
-See [Source notebooks](source-notebooks.md) for the complete source constructor
+See [Source notebooks](source-notebooks.mdx) for the source constructor
 contracts and relative JavaScript import rewriting.
 
 ## Serialized HTML boundary

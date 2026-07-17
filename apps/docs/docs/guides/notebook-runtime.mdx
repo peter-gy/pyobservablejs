@@ -10,9 +10,6 @@ in one Observable runtime. Cells share a reactive graph inside that view. A
 top-level declaration defines a graph variable, and a cell that references the
 variable runs again when its value changes.
 
-The browser loads `Inputs` for this example. See [Builtins](#builtins) for
-network and content security policy requirements.
-
 ```python
 import observablejs as obs
 
@@ -34,7 +31,7 @@ full_view
 
 The input and readout update within `full_view`. A second call to
 `notebook.view()` creates another runtime with its own output and readback. See
-[Views and composition](views-and-composition.md) for selection, mounting, and
+[Views and composition](views-and-composition.mdx) for selection, mounting, and
 shared variables and input values.
 
 ## Runtime profiles
@@ -44,7 +41,7 @@ The notebook source selects the standard-library profile before a view starts.
 | Source                                                       | Profile      |
 | ------------------------------------------------------------ | ------------ |
 | Python-authored cells                                        | Notebook Kit |
-| Ordinary Notebook Kit HTML                                   | Notebook Kit |
+| Notebook Kit HTML                                            | Notebook Kit |
 | `Notebook.from_observablehq*`                                | Observable   |
 | ObservableHQ-derived HTML serialized by `to_notebook_html()` | Observable   |
 
@@ -54,8 +51,8 @@ receive view-scoped `FileAttachment`, `document`, `width`, and `dark` values
 from `pyobservablejs`.
 
 ObservableHQ document imports stay pinned when the source document provides a
-valid `id` and `version`. See [ObservableHQ notebooks](observablehq.md) for the
-import and network contract.
+valid `id` and `version`, as described in [ObservableHQ
+imports](observablehq.mdx).
 
 ## Display and inputs
 
@@ -70,10 +67,7 @@ JavaScript expression cells display their result. Program cells call
 
 `obs.js` accepts standard JavaScript. `obs.ojs` accepts Observable JavaScript
 syntax such as `viewof` and `mutable` declarations. Both modes participate in
-the same graph. See [Observable cells and reactivity](author-cells.md) for cell
-syntax and helper options.
-
-(builtins)=
+the same graph.
 
 ## Builtins
 
@@ -107,7 +101,7 @@ obs.js(
 )
 ```
 
-Use [Files and source notebooks](source-html.md) for `FileAttachment`, local
+Use [Files and source notebooks](source-html.mdx) for `FileAttachment`, local
 Notebook Kit HTML, and relative JavaScript modules.
 
 ## Promises, generators, and invalidation
@@ -141,10 +135,9 @@ created from that notebook.
 ## Python variables and readback
 
 Python-owned variables enter the same graph and rerun their dependents when
-they change. Runtime-owned builtin names cannot be Python variables. See
-[Update from Python](python-variables.md) for the mounted-view workflow and
-[Variables](../reference/variables.md) for serialization and reserved names.
+they change. Runtime-owned builtin names cannot be Python variables. Rendered
+values and graph metadata synchronize back to the `NotebookView` that produced
+them.
 
-Rendered values and graph metadata synchronize to the `NotebookView` that
-produced them. Continue with [Values back to Python](cell-values.md) for the
-readback lifecycle.
+Continue with [Update from Python](python-variables.mdx) for the mounted-view
+workflow and [Values back to Python](cell-values.mdx) for readback.

@@ -6,8 +6,7 @@ description: Notebook definitions, renderable views, shared values, and browser 
 # `Notebook`
 
 `Notebook` stores cells, variables, attachments, and display options. Call
-`view()` to create a renderable view of the complete notebook or a selected
-group of cells.
+`view()` to create a renderable view of all cells or a selected group of cells.
 
 ```python
 import observablejs as obs
@@ -36,9 +35,9 @@ obs.Notebook(
 )
 ```
 
-Creates a Python-authored notebook definition and session. See [Cells](cells.md),
-[variables](variables.md), [file attachments](file-attachments.md), and
-[notebook themes](notebook-themes.md) for the nested input contracts.
+Creates a Python-authored notebook definition and session. See [Cells](cells.mdx),
+[variables](variables.mdx), [file attachments](file-attachments.mdx), and
+[notebook themes](notebook-themes.mdx) for the nested input contracts.
 
 | Argument             | Default      | Contract                                                                                                |
 | -------------------- | ------------ | ------------------------------------------------------------------------------------------------------- |
@@ -70,23 +69,18 @@ summary_view = notebook.view(cells=[0, 1])
 keyed_view = notebook.view(cells=["answer"])
 ```
 
-Returns a new `NotebookView`. With `cells=None`, the view selects the complete
-notebook in cell order. `cells` accepts a sequence of cell indices, Python cell
+Returns a new `NotebookView`. With `cells=None`, the view selects all cells in
+notebook order. `cells` accepts a sequence containing cell indices, Python cell
 keys, or `NotebookCell` handles. The selected cells and their dependencies
 evaluate in one Notebook Kit runtime after a frontend mounts the view. Negative
 indices count from the end. Dependency cells evaluate with hidden output unless
 they are also selected.
 
-Each call creates a view with its own runtime and readback state. Views from
-the same notebook share named Python variables. A browser interaction with a
-named `viewof` input becomes shared state for current and future views when
-its value has a [supported shared shape](variables.md#python-values-and-viewof-inputs).
-A sibling attempts to write that state to its matching input and dispatches
-`input` and `change` events when the value round-trips unchanged. A target that
-coerces an incompatible value may still change before those events are
-suppressed.
+Each call creates a view with its own runtime and readback state. Views
+created from the same notebook share Python variables and [supported `viewof`
+input values](variables.mdx#python-values-and-viewof-inputs).
 
-See [Views and composition](../guides/views-and-composition.md) for the full,
+See [Views and composition](../guides/views-and-composition.mdx) for the full,
 focused, and composite selection patterns.
 
 An empty selection, a duplicate selection, or a handle from another notebook
@@ -145,9 +139,9 @@ dependency closure evaluates with hidden output.
 
 ## `NotebookView`
 
-`NotebookView` is the anywidget display object for a full, focused, or composite
-selection. Its browser runtime starts when Jupyter displays it or marimo mounts
-it through `mo.ui.anywidget`.
+`NotebookView` is the anywidget display object for a full, focused, or
+composite selection. Its browser runtime starts when an anywidget host mounts
+it.
 
 ```python
 obs.NotebookView(notebook, cell_indexes=None)
@@ -166,7 +160,8 @@ full_view = notebook.view()
 full_view
 ```
 
-In marimo, wrap each view separately.
+marimo wraps each view with `mo.ui.anywidget`. Most other hosts display the
+view directly.
 
 ```python
 import marimo as mo
@@ -176,14 +171,14 @@ widget = mo.ui.anywidget(full_view)
 
 ### Session and selection
 
-| Member              | Contract                                                                 |
-| ------------------- | ------------------------------------------------------------------------ |
-| `notebook`          | The `Notebook` session rendered by this view.                            |
-| `cell_indexes`      | Selected indices in notebook order, or `None` for the complete notebook. |
-| `variables`         | A shallow copy of the session's current Python-owned variables.          |
-| `update_variables`  | Delegates a variable patch to the notebook session.                      |
-| `replace_variables` | Delegates a complete variable replacement to the notebook session.       |
-| `reset_variables`   | Releases named Python variables through the notebook session.            |
+| Member              | Contract                                                        |
+| ------------------- | --------------------------------------------------------------- |
+| `notebook`          | The `Notebook` session rendered by this view.                   |
+| `cell_indexes`      | Selected indices in notebook order, or `None` for all cells.    |
+| `variables`         | A shallow copy of the session's current Python-owned variables. |
+| `update_variables`  | Delegates a variable patch to the notebook session.             |
+| `replace_variables` | Delegates variable replacement to the notebook session.         |
+| `reset_variables`   | Releases named Python variables through the notebook session.   |
 
 Variable changes apply to every active view from the session.
 
@@ -255,7 +250,7 @@ views from the notebook remain active. Repeated calls are no-ops, and
 previously synchronized readback remains available. Variable mutators on the
 closed view raise `RuntimeError`.
 
-See [Values and graph](values-and-graph.md) for decoded value types and graph
+See [Values and graph](values-and-graph.mdx) for decoded value types and graph
 records.
 
 ## Construction-time state
@@ -292,7 +287,7 @@ attachments: dict[str, dict[str, object]] = notebook.attachments
 
 Returns a shallow copy of the named `FileAttachment` records. Local files appear
 as data URLs. URL-backed records retain their URL and optional metadata. See
-[File attachments](file-attachments.md) for path resolution and serialized HTML
+[File attachments](file-attachments.mdx) for path resolution and serialized HTML
 boundaries.
 
 ### `Notebook.base_url`
@@ -332,7 +327,7 @@ variables: dict[str, object] = notebook.variables
 ```
 
 Returns a shallow copy of the Python-owned variable environment. See
-[Variables](variables.md) for serialization and mutation contracts.
+[Variables](variables.mdx) for serialization and mutation contracts.
 
 ## Variable mutation
 
@@ -359,7 +354,7 @@ and unknown names are no-ops. Releasing at least one name follows the
 replacement lifecycle.
 
 These methods apply the name and value errors documented on the
-[Variables](variables.md) page.
+[Variables](variables.mdx) page.
 
 ## `Notebook.close()`
 
@@ -377,8 +372,8 @@ html: str = notebook.to_notebook_html()
 Returns Notebook Kit HTML. Python-authored notebooks serialize the current
 `spec`. Source-backed notebooks return `source`, including explicit source
 rewrites. File attachment records and Python variables remain session state, as
-described by [File attachments](file-attachments.md) and
-[Variables](variables.md). ObservableHQ-derived HTML preserves classic
+described by [File attachments](file-attachments.mdx) and
+[Variables](variables.mdx). ObservableHQ-derived HTML preserves classic
 standard-library semantics when loaded again through `from_html` or
 `from_html_file`.
 
@@ -397,5 +392,5 @@ Notebook.from_observablehq_nodes(nodes, *, observable_files=None, title="Untitle
 
 Each method returns a source-backed `Notebook`. ObservableHQ constructors use
 the classic Observable standard library. See
-[Source notebooks](source-notebooks.md) for accepted source shapes, defaults,
+[Source notebooks](source-notebooks.mdx) for accepted source shapes, defaults,
 network failures, file precedence, and source-revision import resolution.

@@ -9,22 +9,12 @@ description: Apply Notebook Kit themes and show selected cell source.
 cells selected by the view appear in a source panel when
 `show_pinned_source=True`.
 
-The browser loads Plot and the AAPL sample used here. See [Notebook
-runtime](notebook-runtime.md#builtins) for network and content security policy
-requirements.
-
-```{marimo-config}
-:pyproject:
-
-  requires-python = ">=3.11"
-  dependencies = [
-      "pyobservablejs",
-  ]
+```marimo-config
+requires-python = ">=3.11"
+dependencies = ["pyobservablejs"]
 ```
 
-```{marimo} python
-:echo: true
-
+```python
 import marimo as mo
 import observablejs as obs
 
@@ -32,7 +22,39 @@ notebook = obs.Notebook(
     obs.md("## AAPL closing price"),
     obs.js(
         """
-        Plot.lineY(aapl, {x: "Date", y: "Close", tip: true}).plot({
+        Plot.lineY(aapl, {
+          x: "Date",
+          y: "Close",
+          tip: {fill: "var(--marimo-island-background)"}
+        }).plot({
+          height: 260,
+          y: {grid: true, label: "Close ($)"}
+        })
+        """,
+        key="price_chart",
+        pinned=True,
+    ),
+    theme={"light": "cotton", "dark": "slate"},
+    show_pinned_source=True,
+)
+
+full_view = notebook.view()
+mo.ui.anywidget(full_view)
+```
+
+```python marimo echo=false server-output=false
+import marimo as mo
+import observablejs as obs
+
+notebook = obs.Notebook(
+    obs.md("## AAPL closing price"),
+    obs.js(
+        """
+        Plot.lineY(aapl, {
+          x: "Date",
+          y: "Close",
+          tip: {fill: "var(--marimo-island-background)"}
+        }).plot({
           height: 260,
           y: {grid: true, label: "Close ($)"}
         })
@@ -71,5 +93,5 @@ Source-backed HTML can also carry a Notebook Kit theme attribute.
 </notebook>
 ```
 
-See [Notebook themes](../reference/notebook-themes.md) for accepted names and
+See [Notebook themes](../reference/notebook-themes.mdx) for accepted names and
 validation rules.

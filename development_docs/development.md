@@ -10,16 +10,16 @@
 - The npm and Python `anywidget-bundle` packages own the cross-language build
   and module-transport boundary consumed by the frontend build and Python
   widget models.
-- `docs/` contains the published Jupyter Book source and live marimo pages.
+- `apps/docs/` owns the Docusaurus application, published MDX pages, and
+  mdx-marimo integration.
 - `development_docs/` contains contributor documentation that stays outside the
   published site.
-- `make docs` builds the static documentation artifact.
 
 Read [Architecture](architecture.md) before changing runtime ownership. See
 [View composition](view-composition.md) before changing selections, shared
 inputs, view readback, or teardown. See [Workspace](workspace.md) for package
 commands and build ownership, and [Documentation build](docs-build.md) for the
-Jupyter Book workflow.
+Docusaurus workflow.
 
 ## Setup
 
@@ -64,13 +64,14 @@ Preview it locally:
 make docs-serve
 ```
 
-The build executes marimo pages in the uv environments declared by their
-`{marimo-config}` blocks and writes the site to `docs/_build/html`. Set
-`BASE_URL=/pyobservablejs` for a site published below that path.
+The build executes `python marimo` cells in the uv environments declared by
+their `marimo-config` fences and writes the site to `apps/docs/build`. The
+GitHub Pages workflow passes its configured deployment path through
+`BASE_PATH`.
 
 ## Checks
 
-Run the full local gate before sending changes for review:
+Run the local gate before sending changes for review:
 
 ```sh
 make check
@@ -78,7 +79,7 @@ make check
 
 ## Browser checks
 
-For widget frontend, notebook rendering, Observable runtime, Jupyter or marimo
+For widget frontend, notebook rendering, Observable runtime, marimo or Jupyter
 integration, docs site rendering, or other user-visible changes, verify the
 affected workflow in a browser.
 
@@ -94,8 +95,9 @@ Start the documentation server in another shell:
 make docs-serve
 ```
 
-Run `example.ipynb` from a fresh kernel for Jupyter changes. Exercise the live
-marimo pages for documentation changes. When a change affects view composition,
-mount the relevant full, focused, or composite views together and exercise
-shared inputs, Python updates, and view-local readback. Inspect console errors,
-the rendered DOM, and screenshots where they expose the behavior under test.
+Run `example.ipynb` from a fresh kernel for Jupyter changes. Exercise the
+mdx-marimo cells for documentation changes. When a change affects view
+composition, mount the relevant full, focused, or composite views together and
+exercise shared inputs, Python updates, and view-local readback. Inspect console
+errors, the rendered DOM, and screenshots where they expose the behavior under
+test.

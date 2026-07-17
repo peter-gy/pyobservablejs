@@ -26,6 +26,7 @@ distribution and contributor environment.
 | `packages/widget`         | anywidget session resolution, view rendering, shared input synchronization, and teardown |
 | `anywidget-bundle`        | Vite plugin, manifest, module transport, lifecycle protocol, and Python response runtime |
 | `packages/pyobservablejs` | Python API, traitlets, final widget assets, wheel, and sdist                             |
+| `apps/docs`               | Docusaurus configuration, mdx-marimo integration, and published site build               |
 
 Cross-package TypeScript imports use package names. Internal dependencies use
 `workspace:*`. The frontend pins the npm `anywidget-bundle` release, and the
@@ -47,7 +48,7 @@ The root `package.json` requires Node 22.18 or newer. `.node-version` pins Node
 for uv and the default CI jobs. The Python compatibility matrix installs its
 supported versions explicitly.
 
-Run the complete JavaScript workspace checks directly:
+Run the JavaScript workspace checks directly:
 
 ```sh
 pnpm check
@@ -65,9 +66,9 @@ pnpm --filter @pyobservablejs/python build
 
 The root `pyproject.toml` defines a virtual uv workspace. The project metadata
 and Hatch configuration live in `packages/pyobservablejs/pyproject.toml`.
-The root `dev` group owns repository-wide tools and docs tooling: Ruff, ty,
-pytest, Pyrefly, marimo, Jupyter, Jupyter Book, and its marimo plugin. The
-package `dev` group owns Hatchling and watchfiles.
+The root `dev` group owns repository-wide Python tools: Ruff, ty, pytest,
+Pyrefly, marimo, and Jupyter. The `apps/docs` package owns Docusaurus and
+mdx-marimo. The Python package `dev` group owns Hatchling and watchfiles.
 Scope commands to the distribution:
 
 ```sh
@@ -90,7 +91,7 @@ packages Python. The sdist contains the Python source, package metadata, and the
 built browser assets. Building a wheel from that sdist uses the same assets and
 works outside the pnpm workspace.
 
-Run the full cross-language gate:
+Run the cross-language gate:
 
 ```sh
 make check

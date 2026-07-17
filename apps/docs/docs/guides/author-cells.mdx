@@ -5,26 +5,40 @@ description: Author Notebook Kit cells and connect them through the reactive gra
 
 # Observable cells and reactivity
 
-`obs.js` creates a standard JavaScript cell. Use top-level declarations to
-share values with other cells. Try moving the exponent control. The readout
+`obs.js` creates a standard JavaScript cell. Top-level declarations share
+values with other cells. Move the exponent control below and the readout
 recomputes in the browser.
 
-The browser loads `Inputs` for this example. See [Notebook
-runtime](notebook-runtime.md#builtins) for network and content security policy
-requirements.
-
-```{marimo-config}
-:pyproject:
-
-  requires-python = ">=3.11"
-  dependencies = [
-      "pyobservablejs",
-  ]
+```marimo-config
+requires-python = ">=3.11"
+dependencies = ["pyobservablejs"]
 ```
 
-```{marimo} python
-:echo: true
+```python
+import marimo as mo
+import observablejs as obs
 
+notebook = obs.Notebook(
+    obs.js(
+        """
+        const exponent = view(Inputs.range(
+          [1, 8],
+          {label: "Exponent", step: 1, value: 2}
+        ));
+        """,
+        key="exponent_control",
+    ),
+    obs.js(
+        'html`<p>Two to the power of ${exponent} is <strong>${2 ** exponent}</strong>.</p>`',
+        key="readout",
+    ),
+)
+
+full_view = notebook.view()
+mo.ui.anywidget(full_view)
+```
+
+```python marimo echo=false server-output=false
 import marimo as mo
 import observablejs as obs
 
@@ -118,12 +132,12 @@ obs.js(
 )
 ```
 
-`key` names the Python `NotebookCell` selection handle. Call `view()` on that
-handle to create a view for the cell and its dependencies. `display=False`
-hides the cell output while keeping its values in the graph. `pinned=True`
-exposes the source when the cell is selected and the notebook enables
-`show_pinned_source`. `raw=True` preserves the source string exactly, including
-indentation and surrounding newlines.
+- `key` names the Python `NotebookCell` selection handle. Call `view()` on
+  that handle to create a view for the cell and its dependencies.
+- `display=False` hides the cell output while keeping its values in the graph.
+- `pinned=True` exposes the source when the cell is selected and the notebook
+  enables `show_pinned_source`.
+- `raw=True` preserves the source string exactly, including indentation and
+  surrounding newlines.
 
-See [Cells](../reference/cells.md) for the complete signature and error
-behavior.
+See [Cells](../reference/cells.mdx) for the signature and error behavior.
