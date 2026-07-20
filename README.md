@@ -20,7 +20,7 @@ uvx --with pyobservablejs marimo edit notebook.py
 
 ### Load an existing Observable notebook
 
-[![Open in molab](https://molab.marimo.io/molab-shield.svg)](https://molab.marimo.io/github/peter-gy/pyobservablejs/blob/main/examples/from-observablehq.py/wasm?utm_source=pyobservablejs)
+[![Open in molab](https://molab.marimo.io/molab-shield.svg)](https://molab.marimo.io/github/peter-gy/pyobservablejs/blob/main/examples/from-observablehq.py/server?utm_source=pyobservablejs)
 
 ```python
 import observablejs as obs
