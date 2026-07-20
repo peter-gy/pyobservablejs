@@ -3,11 +3,11 @@ message: "If you use pyobservablejs, please cite it using the metadata from this
 type: software
 title: "pyobservablejs"
 abstract: "Observable JavaScript notebooks as reusable Python widgets."
-version: "0.0.0rc1"
 authors:
   - family-names: "Gyarmati"
     given-names: "Peter Ferenc"
     email: "dev.petergy@gmail.com"
+    orcid: https://orcid.org/0009-0006-6122-2709
 license: "MIT"
 repository-code: "https://github.com/peter-gy/pyobservablejs"
 url: "https://peter-gy.github.io/pyobservablejs/"
