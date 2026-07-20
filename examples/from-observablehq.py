@@ -5,6 +5,7 @@
 #     "pyobservablejs",
 # ]
 # ///
+
 import marimo
 
 __generated_with = "0.23.14"

@@ -20,10 +20,10 @@ def _():
     return mo, obs
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo, obs):
     notebook = obs.Notebook(
-        obs.html(
+        obs.md(
             """
             <h2>Palmer penguins</h2>
             <p>Choose a species to filter the chart.</p>

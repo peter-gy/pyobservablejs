@@ -32,7 +32,9 @@ notebook.view()
 `@d3/world-tour` resolves to
 [observablehq.com/@d3/world-tour](https://observablehq.com/@d3/world-tour).
 
-### Author an interactive notebook
+![from-observablehq-output](https://files.peter.gy/projects/pyobservablejs/assets/from-slug.gif)
+
+### Author a notebook from code
 
 [![Open in molab](https://molab.marimo.io/molab-shield.svg)](https://molab.marimo.io/github/peter-gy/pyobservablejs/blob/main/examples/from-code.py/wasm?utm_source=pyobservablejs)
 
@@ -84,6 +86,8 @@ JavaScript [`viewof` operator](https://observablehq.com/@observablehq/views)
 updates `species` when the selection changes, which recomputes the plot in the
 browser.
 
+![from-code-output](https://files.peter.gy/projects/pyobservablejs/assets/from-code.gif)
+
 ### Sync values with Python
 
 [![Open in molab](https://molab.marimo.io/molab-shield.svg)](https://molab.marimo.io/github/peter-gy/pyobservablejs/blob/main/examples/sync-variables.py/wasm?utm_source=pyobservablejs)
@@ -110,6 +114,8 @@ notebook = obs.Notebook(
 notebook_view = notebook.view()
 notebook_view
 ```
+
+![sync-variables-output](https://files.peter.gy/projects/pyobservablejs/assets/sync-variables.gif)
 
 While the view stays mounted, call `notebook.update_variables(threshold=0.9)`
 to update the value. The update takes place through

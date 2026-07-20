@@ -1,9 +1,9 @@
 # /// script
+# requires-python = ">=3.11"
 # dependencies = [
 #     "marimo",
 #     "pyobservablejs",
 # ]
-# requires-python = ">=3.11"
 # ///
 
 import marimo
@@ -38,7 +38,15 @@ def _(mo, obs):
 
     notebook_view = mo.ui.anywidget(notebook.view())
     notebook_view
-    return (notebook,)
+    return notebook, notebook_view
+
+
+@app.cell
+def _(mo, notebook_view):
+    mo.md(rf"""
+    The `threshold` value from JS is ${notebook_view.values["threshold"]}$.
+    """)
+    return
 
 
 @app.cell
