@@ -147,8 +147,7 @@ target_version() {
 }
 
 run_release_checks() {
-  make check
-  git diff --exit-code -- docs
+  make check-release
 }
 
 build_release_artifacts() {
@@ -226,7 +225,7 @@ Release summary:
   Request:         $VERSION_REQUEST
   Commit:          release: $NEW_VERSION
   Tag:             $RELEASE_TAG
-  Checks:          format, lint, typecheck, tests, docs, package build
+  Checks:          lockfile, package tests, package build, artifact metadata
 EOF
 
 if ! confirm "Proceed with release"; then

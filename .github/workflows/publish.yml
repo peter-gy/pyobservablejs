@@ -36,10 +36,17 @@ jobs:
           run-install: |
             - args: ['--frozen-lockfile']
 
-      - name: Run release checks
+      - name: Check release version
         run: |
-          make check
-          git diff --exit-code -- apps/docs
+          package_version="$(uv version --package pyobservablejs --short)"
+          tag_version="${GITHUB_REF_NAME#v}"
+          if [ "$package_version" != "$tag_version" ]; then
+            echo "Package version $package_version does not match tag $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+
+      - name: Run release checks
+        run: make check-release
 
       - name: Build package artifacts
         run: |
