@@ -34,16 +34,30 @@ serialization, attachments, and session state. The browser evaluates
 Observable JavaScript through Notebook Kit. No JavaScript executes in Python,
 and no Python executes in the browser.
 
-```text
-Python                                  Browser
-──────                                  ───────
-Notebook ── definition, variables ────▶ (session state)
-   │
-   ├─ NotebookCell.view() ──┐
-   └─ notebook.view() ──────┴─▶ NotebookView ──▶ one Notebook Kit runtime
-                                     ▲                    │
-                                     └── readback ────────┘
-                              rendered flag, values, graph
+```mermaid
+flowchart TB
+  subgraph python["Python"]
+    direction LR
+    notebook["Notebook"]
+    cell["NotebookCell"]
+    view["NotebookView"]
+
+    notebook -->|"cell(...)"| cell
+    notebook -->|"view()"| view
+    cell -->|"view()"| view
+  end
+
+  subgraph browser["Browser"]
+    direction LR
+    session["Synchronized session state"]
+    runtime["Notebook Kit runtime"]
+
+    session -->|"definition and variables"| runtime
+  end
+
+  notebook -->|"definition and variables"| session
+  view -->|"host mounts selected cells"| runtime
+  runtime -.->|"rendered flag, values, graph"| view
 ```
 
 A `NotebookView` starts evaluating when an anywidget host mounts it. The

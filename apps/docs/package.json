@@ -10,8 +10,10 @@
 	"dependencies": {
 		"@docusaurus/core": "3.10.2",
 		"@docusaurus/preset-classic": "3.10.2",
+		"@docusaurus/theme-mermaid": "catalog:",
 		"@marimo-team/mdx-marimo": "0.0.1",
 		"@mdx-js/react": "^3.1.1",
+		"@mermaid-js/layout-elk": "catalog:",
 		"react": "^19.2.7",
 		"react-dom": "^19.2.7"
 	},

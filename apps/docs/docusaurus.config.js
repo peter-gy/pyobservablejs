@@ -23,10 +23,12 @@ const config = {
 	onBrokenAnchors: "throw",
 	trailingSlash: true,
 	markdown: {
+		mermaid: true,
 		hooks: {
 			onBrokenMarkdownLinks: "throw",
 		},
 	},
+	themes: ["@docusaurus/theme-mermaid"],
 	i18n: {
 		defaultLocale: "en",
 		locales: ["en"],
@@ -52,6 +54,9 @@ const config = {
 	themeConfig:
 		/** @type {import("@docusaurus/preset-classic").ThemeConfig} */
 		({
+			mermaid: {
+				theme: { light: "neutral", dark: "dark" },
+			},
 			prism: {
 				additionalLanguages: ["python"],
 			},
