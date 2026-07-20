@@ -12,7 +12,7 @@ __generated_with = "0.23.14"
 app = marimo.App(width="medium")
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _():
     import marimo as mo
     import observablejs as obs
@@ -20,7 +20,7 @@ def _():
     return mo, obs
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo, obs):
     notebook = obs.Notebook.from_observablehq("@d3/world-tour")
     mo.ui.anywidget(notebook.view())

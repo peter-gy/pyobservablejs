@@ -44,7 +44,7 @@ def _(mo, obs):
 @app.cell
 def _(mo, notebook_view):
     mo.md(rf"""
-    The `threshold` value from JS is ${notebook_view.values["threshold"]}$.
+    The `threshold` value from JS is ${notebook_view.values["threshold"] if notebook_view.has_rendered else "..."}$.
     """)
     return
 
