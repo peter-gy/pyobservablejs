@@ -125,6 +125,64 @@ that the Python notebook object does not need to be recreated.
 After the view renders, `notebook_view.values["threshold"]` reads the current
 browser value.
 
+### Inspect the notebook graph
+
+Each mounted view synchronizes a dependency graph with the cells, variables,
+and edges evaluated in its browser runtime. This notebook builds a cylinders
+control, a hidden filter cell, and a table. Once the graph snapshot arrives,
+it renders the result with
+`mo.mermaid(full_view.graph.to_mermaid())`.
+
+```python
+import marimo as mo
+import observablejs as obs
+
+notebook = obs.Notebook(
+    obs.js(
+        """
+        const cylinders = view(Inputs.select(
+          ["All", ...new Set(cars.map((d) => d.cylinders))],
+          {label: "Cylinders", value: "All"}
+        ));
+        """,
+        key="cylinder_control",
+    ),
+    obs.js(
+        """
+        const filteredCars = cylinders === "All"
+          ? cars
+          : cars.filter((d) => d.cylinders === cylinders);
+        """,
+        key="filtered_cars",
+        display=False,
+    ),
+    obs.js("Inputs.table(filteredCars)", key="table"),
+)
+
+full_view = mo.ui.anywidget(notebook.view())
+full_view
+```
+
+```mermaid
+flowchart LR
+  cell_0["Cell 0: cylinder_control, defines: cylinders"]
+  cell_1["Cell 1: filtered_cars, defines: filteredCars"]
+  cell_2["Cell 2: table"]
+  external_0["external: view"]
+  external_1["external: Inputs"]
+  external_2["external: cars"]
+  cell_0 -->|cylinders| cell_1
+  cell_1 -->|filteredCars| cell_2
+  external_0 -->|view| cell_0
+  external_1 -->|Inputs| cell_0
+  external_2 -->|cars| cell_0
+  external_2 -->|cars| cell_1
+  external_1 -->|Inputs| cell_2
+```
+
+Use `full_view.graph` to inspect the records from Python. Call `to_d2()` or
+`to_mermaid()` to export the same graph as D2 or Mermaid.
+
 ## Documentation
 
 Read the [documentation](https://peter-gy.github.io/pyobservablejs/) to learn more about
