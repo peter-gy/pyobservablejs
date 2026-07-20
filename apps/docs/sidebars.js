@@ -35,9 +35,14 @@ const sidebars = {
 				title: "Render and compose",
 				slug: "/render",
 				description:
-					"Display views in anywidget hosts, select the cells each view renders, and manage view lifecycle.",
+					"Display views in anywidget hosts, select cells, manage view lifecycle, and understand session composition.",
 			},
-			items: ["render/display-views", "render/select-cells", "render/view-lifecycle"],
+			items: [
+				"render/display-views",
+				"render/select-cells",
+				"render/view-lifecycle",
+				"render/widget-composition",
+			],
 		},
 		{
 			type: "category",

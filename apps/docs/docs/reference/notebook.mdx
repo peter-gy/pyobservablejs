@@ -88,6 +88,9 @@ Each call creates a view with its own runtime and readback state. Views
 created from the same notebook share Python variables and [supported
 `viewof` input
 values](variables-and-serialization.mdx#python-values-and-viewof-inputs).
+[How views share a notebook
+session](../render/widget-composition.mdx) documents the anywidget composition
+and lifecycle mechanics behind that contract.
 
 See [Select cells and create subsets](../render/select-cells.mdx) for the
 full, focused, and composite selection patterns.

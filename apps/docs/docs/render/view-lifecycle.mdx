@@ -37,6 +37,10 @@ Browser evaluation starts when an anywidget host mounts the view. A
   one view per placement. See [Display a
   NotebookView](display-views.mdx#one-view-per-placement).
 
+[How views share a notebook session](widget-composition.mdx) traces the
+session lookup, per-render abort signal, and runtime ownership behind this
+lifecycle.
+
 ## Rebuilds reset the gates
 
 `replace_variables` and `reset_variables` release Python-owned names back to

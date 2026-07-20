@@ -91,7 +91,7 @@ support, as documented by
 ## One view per placement
 
 A `NotebookView` owns one live writable output. When the same cells should
-appear in two places at once, create one view per placement; the views stay
+appear in two places at once, create one view per placement. The views stay
 connected through the notebook session.
 
 ```python
@@ -103,7 +103,9 @@ mo.hstack([mo.ui.anywidget(chart_a), mo.ui.anywidget(chart_b)])
 
 Python variable updates reach both views, and named `viewof` inputs share
 supported values across them. See [Mental model](../mental-model.mdx#what-views-share)
-for what is shared and what stays per-view.
+for what is shared and what stays per-view. [How views share a notebook
+session](widget-composition.mdx) explains how anywidget composition connects
+the view models to one session.
 
 Continue with [Select cells and create subsets](select-cells.mdx) to render a
-slice of a notebook instead of all of it.
+selected slice of a notebook.
