@@ -6,7 +6,7 @@ from typing import Any
 
 import observablejs as obs
 import pytest
-from helpers import DocumentTitle, ScriptTags, line_indent
+from helpers import DocumentTitle, ScriptTags, line_indent, notebook_session
 
 
 def test_public_namespace_is_small() -> None:
@@ -33,6 +33,46 @@ def test_public_namespace_is_small() -> None:
     exec("from observablejs import *", namespace)
 
     assert {name for name in namespace if not name.startswith("_")} == expected_public
+
+
+def test_public_object_discovery_matches_ownership_model() -> None:
+    notebook = obs.Notebook(obs.ojs("answer = 42", key="answer"))
+    view = notebook.view()
+
+    try:
+        assert {name for name in dir(notebook) if not name.startswith("_")} == {
+            "attachments",
+            "cell",
+            "cells",
+            "close",
+            "from_html",
+            "from_observablehq",
+            "from_observablehq_document",
+            "replace_variables",
+            "reset_variables",
+            "theme",
+            "to_notebook_html",
+            "update_variables",
+            "variables",
+            "view",
+        }
+        assert {name for name in dir(notebook.cell(0)) if not name.startswith("_")} == {
+            "index",
+            "key",
+            "name",
+            "view",
+        }
+        assert all(
+            not hasattr(view, name)
+            for name in (
+                "replace_variables",
+                "reset_variables",
+                "update_variables",
+                "variables",
+            )
+        )
+    finally:
+        notebook.close()
 
 
 def test_version_matches_package_metadata() -> None:
@@ -101,29 +141,11 @@ def test_notebook_themes_match_notebook_kit_theme_names() -> None:
             id="from_observablehq_document",
         ),
         pytest.param(
-            (obs.Notebook.from_observablehq_page_data,),
-            ("page_data", "title", "variables", "files", "show_pinned_source"),
-            inspect.Parameter.POSITIONAL_OR_KEYWORD,
-            id="from_observablehq_page_data",
-        ),
-        pytest.param(
-            (obs.Notebook.from_observablehq_nodes,),
-            (
-                "nodes",
-                "observable_files",
-                "title",
-                "variables",
-                "files",
-                "show_pinned_source",
-            ),
-            inspect.Parameter.POSITIONAL_OR_KEYWORD,
-            id="from_observablehq_nodes",
-        ),
-        pytest.param(
             (obs.ojs, obs.js, obs.md, obs.html),
             (
                 "source",
                 "key",
+                "name",
                 "display",
                 "raw",
                 "id",
@@ -157,6 +179,7 @@ def test_cell_options_serialize_to_notebook_html(
     cell = obs.ojs(
         "answer = 42",
         key="answer",
+        name="answer_cell",
         display=False,
         id=7,
         pinned=True,
@@ -174,11 +197,66 @@ def test_cell_options_serialize_to_notebook_html(
     assert scripts[0]["text"].strip() == "answer = 42"
     assert attrs.get("id") == "7"
     assert attrs.get("type") == "application/vnd.observable.javascript"
-    assert "name" not in attrs
+    assert attrs.get("name") == "answer_cell"
     assert attrs.get("output") == "answer"
     assert attrs.get("database") == "duckdb"
     assert "hidden" in attrs
     assert "pinned" in attrs
+
+
+def test_implicit_cell_ids_skip_explicit_ids(script_tags: ScriptTags) -> None:
+    notebook = obs.Notebook(
+        obs.ojs("first = 1", id=2),
+        obs.ojs("second = 2"),
+        obs.ojs("third = 3", id=5),
+        obs.ojs("fourth = 4"),
+    )
+
+    scripts = script_tags(notebook.to_notebook_html())
+
+    assert [script["attrs"].get("id") for script in scripts] == ["2", "3", "5", "6"]
+
+
+@pytest.mark.parametrize("cell_id", [0, -1, 9007199254740992])
+def test_cell_rejects_ids_outside_the_javascript_safe_range(cell_id: int) -> None:
+    with pytest.raises(ValueError, match="between 1 and 9007199254740991"):
+        obs.ojs("answer = 42", id=cell_id)
+
+
+def test_cell_accepts_the_largest_javascript_safe_id(
+    script_tags: ScriptTags,
+) -> None:
+    notebook = obs.Notebook(obs.ojs("answer = 42", id=9007199254740991))
+
+    [script] = script_tags(notebook.to_notebook_html())
+
+    assert script["attrs"].get("id") == "9007199254740991"
+
+
+def test_implicit_cell_ids_wrap_after_the_largest_safe_id(
+    script_tags: ScriptTags,
+) -> None:
+    notebook = obs.Notebook(
+        obs.ojs("maximum = 1", id=9007199254740991),
+        obs.ojs("first = 2"),
+        obs.ojs("second = 3"),
+    )
+
+    scripts = script_tags(notebook.to_notebook_html())
+
+    assert [script["attrs"].get("id") for script in scripts] == [
+        "9007199254740991",
+        "1",
+        "2",
+    ]
+
+
+def test_notebook_rejects_duplicate_explicit_cell_ids() -> None:
+    with pytest.raises(ValueError, match="Notebook cell ids must be unique: 7"):
+        obs.Notebook(
+            obs.ojs("first = 1", id=7),
+            obs.ojs("second = 2", id=7),
+        )
 
 
 def test_show_pinned_source_sets_renderer_option() -> None:
@@ -187,7 +265,9 @@ def test_show_pinned_source_sets_renderer_option() -> None:
         show_pinned_source=True,
     )
 
-    assert notebook.options == {"show_source": True}
+    assert notebook_session(notebook).get_state(["_options"]) == {
+        "_options": {"show_source": True}
+    }
 
 
 def test_notebook_kit_sources_sync_notebook_kit_runtime_profile() -> None:
@@ -196,7 +276,10 @@ def test_notebook_kit_sources_sync_notebook_kit_runtime_profile() -> None:
         obs.Notebook.from_html("<!doctype html><notebook></notebook>"),
     ]
 
-    assert [notebook.get_state(["_runtime_profile"]) for notebook in notebooks] == [
+    assert [
+        notebook_session(notebook).get_state(["_runtime_profile"])
+        for notebook in notebooks
+    ] == [
         {"_runtime_profile": "notebook-kit"},
         {"_runtime_profile": "notebook-kit"},
     ]
@@ -226,6 +309,55 @@ def test_cell_notebookkit_attrs_reject_first_class_option_collisions() -> None:
         )
 
 
+def test_cell_and_helpers_share_one_first_class_schema() -> None:
+    expected = obs.Cell(
+        "answer = 42",
+        mode="ojs",
+        key="answer",
+        name="answer_cell",
+        display=False,
+        raw=True,
+        id=7,
+        pinned=True,
+        output="answer",
+        notebookkit_attrs={"database": "duckdb"},
+    )
+
+    actual = obs.ojs(
+        "answer = 42",
+        key="answer",
+        name="answer_cell",
+        display=False,
+        raw=True,
+        id=7,
+        pinned=True,
+        output="answer",
+        notebookkit_attrs={"database": "duckdb"},
+    )
+
+    assert actual == expected
+
+
+def test_cell_validates_mode_and_attribute_collisions_at_construction() -> None:
+    bad_mode: Any = "unknown"
+    with pytest.raises(ValueError, match="Unsupported Observable cell mode"):
+        obs.Cell("answer = 42", mode=bad_mode)
+
+    with pytest.raises(ValueError, match="first-class cell options: name"):
+        obs.Cell(
+            "answer = 42",
+            name="answer",
+            notebookkit_attrs={"name": "other"},
+        )
+
+
+def test_cell_helpers_require_source_strings() -> None:
+    source: Any = obs.ojs("answer = 42")
+
+    with pytest.raises(TypeError, match="cell source must be a string"):
+        obs.ojs(source)
+
+
 @pytest.mark.parametrize("theme", obs.NOTEBOOK_THEMES)
 def test_notebook_accepts_shipped_notebook_kit_themes(
     theme: str,
@@ -237,7 +369,6 @@ def test_notebook_accepts_shipped_notebook_kit_themes(
 
     assert document_title(source) == "Demo"
     assert notebook.theme == theme
-    assert notebook.spec["theme"] == theme
     assert f'<notebook theme="{theme}">' in source
 
 
@@ -248,7 +379,6 @@ def test_notebook_theme_mapping_normalizes_and_serializes() -> None:
     )
 
     assert notebook.theme == {"light": "cotton", "dark": "near-midnight"}
-    assert notebook.spec["theme"] == {"light": "cotton", "dark": "near-midnight"}
     assert '<notebook theme="light-dark(cotton, near-midnight)">' in (
         notebook.to_notebook_html()
     )
@@ -274,9 +404,9 @@ def test_notebook_theme_setter_syncs_spec_transport() -> None:
     notebook.theme = "slate"
 
     assert notebook.theme == "slate"
-    assert notebook.spec["theme"] == "slate"
-    assert notebook.get_state(["theme", "_spec"])["theme"] == "slate"
-    assert notebook.get_state(["theme", "_spec"])["_spec"]["theme"] == "slate"
+    state = notebook_session(notebook).get_state(["theme", "_spec"])
+    assert state["theme"] == "slate"
+    assert state["_spec"]["theme"] == "slate"
 
 
 def test_closed_notebook_rejects_theme_mutation() -> None:
@@ -287,7 +417,7 @@ def test_closed_notebook_rejects_theme_mutation() -> None:
         notebook.theme = "slate"
 
     assert notebook.theme == "air"
-    assert notebook.spec["theme"] == "air"
+    assert '<notebook theme="air">' in notebook.to_notebook_html()
 
 
 def test_source_backed_notebook_theme_trait_is_source_owned() -> None:
@@ -302,7 +432,6 @@ def test_source_backed_notebook_theme_trait_is_source_owned() -> None:
         notebook.theme = {"light": "cotton", "dark": "slate"}
 
     assert notebook.theme == "coffee"
-    assert notebook.spec == {}
     assert notebook.to_notebook_html() == source
 
 

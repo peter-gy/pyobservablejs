@@ -4,18 +4,22 @@ from __future__ import annotations
 
 import dataclasses
 import pathlib
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from typing import Any, cast
 
-from ._cells import Cell, NotebookCellInput, NotebookCellSpec, coerce_cell
+from ._cell_ids import _CellIdAllocator, _MAX_SAFE_CELL_ID, _is_safe_cell_id
+from ._cells import (
+    Cell,
+    NotebookCellInput,
+    NotebookCellSpec,
+    coerce_cell,
+)
 from ._files import FileAttachment, FileInput, normalize_files, prepare_source
 from ._html import parse_html_cells, parse_html_runtime_profile, parse_html_theme
 from ._observable import (
     ObservableDocument,
     ObservableFileInput,
-    ObservableFilesInput,
     ObservableNodeInput,
-    ObservablePageData,
     fetch_observablehq_document,
     observable_document_import_resolution,
     observable_files_to_attachments,
@@ -43,7 +47,7 @@ class NotebookNode:
 
     @classmethod
     def from_cell(cls, cell: Cell, id: int) -> "NotebookNode":
-        node = cls.from_spec(cell.to_spec(id))
+        node = cls.from_spec(cell._to_spec(id))
         return dataclasses.replace(node, key=cell.key)
 
     @classmethod
@@ -132,14 +136,11 @@ def notebook_model_from_cells(
     base_path: str | pathlib.Path | None,
 ) -> NotebookModel:
     normalized_theme = normalize_theme(theme)
-    nodes = tuple(
-        NotebookNode.from_cell(coerce_cell(item), index)
-        for index, item in enumerate(cells, start=1)
-    )
+    nodes = _nodes_from_cells(tuple(coerce_cell(item) for item in cells))
     return NotebookModel(
         title=title,
         theme=normalized_theme,
-        nodes=_validate_unique_keys(nodes),
+        nodes=_validate_nodes(nodes),
         attachments=normalize_files(files, base_path=base_path),
     )
 
@@ -161,13 +162,10 @@ def notebook_model_from_html(
         rewrite_imports=rewrite_imports,
     )
     normalized = normalize_files(files, base_path=base_path)
-    cells = parse_html_cells(source)
-    nodes = tuple(
-        NotebookNode.from_cell(cell, index) for index, cell in enumerate(cells, start=1)
-    )
+    nodes = _nodes_from_cells(parse_html_cells(source))
     return NotebookModel(
         theme=parse_html_theme(source),
-        nodes=_validate_unique_keys(nodes),
+        nodes=_validate_nodes(nodes),
         source=source,
         attachments={**discovered, **normalized},
         runtime_profile=parse_html_runtime_profile(source),
@@ -196,7 +194,7 @@ def notebook_model_from_observablehq_document(
     if not isinstance(document, Mapping):
         raise TypeError("ObservableHQ document must be a mapping")
     typed_document = cast(ObservableDocument, document)
-    return notebook_model_from_observablehq_nodes(
+    return _notebook_model_from_observable_document_parts(
         _document_nodes(typed_document),
         files=_document_files(typed_document),
         title=title or _document_title(typed_document),
@@ -205,24 +203,10 @@ def notebook_model_from_observablehq_document(
     )
 
 
-def notebook_model_from_observablehq_page_data(
-    page_data: ObservablePageData | Mapping[str, Any],
-    *,
-    title: str | None = None,
-    files: Mapping[str, FileInput] | None = None,
-) -> NotebookModel:
-    document = _page_data_document(page_data)
-    return notebook_model_from_observablehq_document(
-        document,
-        title=title,
-        files=files,
-    )
-
-
-def notebook_model_from_observablehq_nodes(
+def _notebook_model_from_observable_document_parts(
     nodes: Sequence[ObservableNodeInput],
     *,
-    files: ObservableFilesInput = None,
+    files: Sequence[ObservableFileInput] | None = None,
     title: str = "Untitled",
     local_files: Mapping[str, FileInput] | None = None,
     import_resolution: str | None = None,
@@ -237,11 +221,44 @@ def notebook_model_from_observablehq_nodes(
     return NotebookModel(
         title=title,
         theme="air",
-        nodes=_validate_unique_keys(model_nodes),
+        nodes=_validate_nodes(model_nodes),
         source=serialize(spec, runtime_profile="observable"),
         attachments={**discovered, **normalized},
         runtime_profile="observable",
     )
+
+
+def _nodes_from_cells(cells: Sequence[Cell]) -> tuple[NotebookNode, ...]:
+    explicit_ids = [cell.id for cell in cells if cell.id is not None]
+    duplicates = _duplicates(explicit_ids)
+    if duplicates:
+        ids = ", ".join(str(cell_id) for cell_id in sorted(duplicates))
+        raise ValueError(f"Notebook cell ids must be unique: {ids}")
+
+    allocator = _CellIdAllocator(set(explicit_ids))
+    nodes: list[NotebookNode] = []
+    for cell in cells:
+        if cell.id is None:
+            cell_id = allocator.allocate()
+        else:
+            cell_id = cell.id
+            allocator.advance_past(cell_id)
+        nodes.append(NotebookNode.from_cell(cell, cell_id))
+    return tuple(nodes)
+
+
+def _validate_nodes(nodes: tuple[NotebookNode, ...]) -> tuple[NotebookNode, ...]:
+    invalid_ids = {node.id for node in nodes if not _is_safe_cell_id(node.id)}
+    if invalid_ids:
+        ids = ", ".join(str(cell_id) for cell_id in sorted(invalid_ids))
+        raise ValueError(
+            f"Notebook cell ids must be between 1 and {_MAX_SAFE_CELL_ID}: {ids}"
+        )
+    duplicate_ids = _duplicates(node.id for node in nodes)
+    if duplicate_ids:
+        ids = ", ".join(str(cell_id) for cell_id in sorted(duplicate_ids))
+        raise ValueError(f"Notebook cell ids must be unique: {ids}")
+    return _validate_unique_keys(nodes)
 
 
 def _validate_unique_keys(nodes: tuple[NotebookNode, ...]) -> tuple[NotebookNode, ...]:
@@ -259,20 +276,14 @@ def _validate_unique_keys(nodes: tuple[NotebookNode, ...]) -> tuple[NotebookNode
     return nodes
 
 
-def _page_data_document(
-    page_data: ObservablePageData | Mapping[str, Any],
-) -> ObservableDocument:
-    if not isinstance(page_data, Mapping):
-        raise TypeError("ObservableHQ page data must be a mapping")
-    page_props = page_data.get("pageProps")
-    if isinstance(page_props, Mapping):
-        initial_notebook = page_props.get("initialNotebook")
-        if isinstance(initial_notebook, Mapping):
-            return cast(ObservableDocument, initial_notebook)
-    initial_notebook = page_data.get("initialNotebook")
-    if isinstance(initial_notebook, Mapping):
-        return cast(ObservableDocument, initial_notebook)
-    raise ValueError("ObservableHQ page data is missing initialNotebook")
+def _duplicates(values: Iterable[int]) -> set[int]:
+    seen: set[int] = set()
+    duplicates: set[int] = set()
+    for value in values:
+        if value in seen:
+            duplicates.add(value)
+        seen.add(value)
+    return duplicates
 
 
 def _document_nodes(document: ObservableDocument) -> Sequence[ObservableNodeInput]:
@@ -302,6 +313,10 @@ def _int_cell_id(value: object) -> int:
     if isinstance(value, bool):
         raise ValueError("Notebook cell id must be an integer")
     if isinstance(value, int):
+        if not _is_safe_cell_id(value):
+            raise ValueError(
+                f"Notebook cell id must be between 1 and {_MAX_SAFE_CELL_ID}"
+            )
         return value
     raise ValueError("Notebook cell id must be an integer")
 

@@ -5,9 +5,9 @@ description: Serialize notebooks to Notebook Kit documents and round-trip them.
 
 # Export Notebook Kit HTML
 
-`to_notebook_html()` returns the Notebook Kit document for any notebook.
-Python-authored notebooks serialize their current spec; source-backed
-notebooks return their source, including explicit rewrites.
+`to_notebook_html()` returns the current notebook definition as a Notebook
+Kit document. Loaded documents preserve import rewrites requested during
+construction.
 
 ```python
 import observablejs as obs
@@ -31,16 +31,16 @@ print(notebook.to_notebook_html())
 ```html
 <!doctype html>
 <notebook theme="glacier">
-  <title>Weekly report</title>
-  <script id="1" type="text/markdown">
-    # Report
-  </script>
-  <script id="2" type="module" hidden="">
-    const total = rows.reduce((sum, row) => sum + row.value, 0);
-  </script>
-  <script id="3" type="module">
-    html`<p>Total: ${total}</p>`
-  </script>
+	<title>Weekly report</title>
+	<script id="1" type="text/markdown">
+		# Report
+	</script>
+	<script id="2" type="module" hidden="">
+		const total = rows.reduce((sum, row) => sum + row.value, 0);
+	</script>
+	<script id="3" type="module">
+		html`<p>Total: ${total}</p>`;
+	</script>
 </notebook>
 ```
 
@@ -51,7 +51,7 @@ becomes `hidden`, and each cell keeps its assigned id.
 
 ## What the HTML does not carry
 
-The document is the *definition*, not the session. Two kinds of state stay
+The document is the _definition_, not the session. Two kinds of state stay
 in Python:
 
 - **Python variables.** The exported HTML references `rows`, but the value
@@ -62,9 +62,9 @@ in Python:
   When the text is consumed independently, its environment must provide the
   referenced files.
 
-Python cell `key` values are also Python-side handles and never appear in
-serialized HTML; use Notebook Kit `name` attributes for identity that must
-survive export.
+Python cell `key` values are Python-side handles and never appear in
+serialized HTML. Set the first-class `name=` cell option for identity that
+must survive export.
 
 ## Round trips
 

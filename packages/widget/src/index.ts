@@ -10,12 +10,6 @@ export default function createWidget() {
 		initialize(_props: InitializeProps<WidgetModel>) {},
 		render(props: RenderProps<WidgetModel>) {
 			if (props.signal.aborted) return;
-			if (props.model.get("role") !== "view") {
-				props.el.replaceChildren(
-					createTopLevelError(new Error("Notebook sessions are not displayable. Display notebook.view() instead.")),
-				);
-				return;
-			}
 			if (activeSignal && !activeSignal.aborted) {
 				props.el.replaceChildren(createTopLevelError(new Error("NotebookView already has a live writable render")));
 				return;

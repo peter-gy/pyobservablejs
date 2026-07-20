@@ -20,7 +20,7 @@ unreadable until that sibling renders.
 
 ```python
 if full_view.has_rendered:
-    values = full_view.runtime_values
+    values = full_view.values
 
 if full_view.has_graph_snapshot:
     graph = full_view.graph
@@ -44,7 +44,7 @@ their notebook definitions. That requires rebuilding each active runtime, so
 both gates clear until the replacement graph and render snapshots
 synchronize. `update_variables` patches values in place and does not rebuild.
 
-Previously synchronized readback is invalidated by the rebuild; wait for the
+Previously synchronized readback is invalidated by the rebuild. Wait for the
 gates again before reading.
 
 ## Closing
@@ -56,13 +56,12 @@ notebook.close()       # closes the session and every view created from it
 
 `NotebookView.close()` disposes that view's browser runtime, model listeners,
 and DOM. Other views from the notebook remain active. Repeated calls are
-no-ops, and previously synchronized readback remains readable. Variable
-mutators on a closed view raise `RuntimeError`.
+no-ops, and previously synchronized readback remains readable.
 
 `Notebook.close()` closes the session and every live view. After closing,
 creating views, changing variables, or assigning a theme raises
-`RuntimeError`. Construction-time metadata such as `spec`, `source`, and
-`attachments` remains readable.
+`RuntimeError`. Cell handles, attachments, variables, and theme remain
+readable.
 
 Views are also tracked weakly: a view that goes out of scope without
 `close()` does not keep the notebook session alive.

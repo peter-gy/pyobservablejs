@@ -7,7 +7,7 @@ from typing import Any
 
 import observablejs as obs
 import pytest
-from helpers import BrowserValueSync
+from helpers import BrowserValueSync, notebook_session
 
 
 def test_python_variables_serialize_to_frontend_state() -> None:
@@ -21,7 +21,7 @@ def test_python_variables_serialize_to_frontend_state() -> None:
         },
     )
 
-    wire = widget.get_state(["_variables"])["_variables"]
+    wire = notebook_session(widget).get_state(["_variables"])["_variables"]
     assert widget.variables["rows"][0]["date"] == dt.date(2026, 5, 23)
     assert wire["py_answer"] == 42
     assert wire["rows"][0]["date"] == {
@@ -43,7 +43,9 @@ def test_initial_variable_iterators_materialize_for_python_and_frontend() -> Non
     notebook = obs.Notebook(variables={"rows": (item for item in [1, 2])})
 
     assert notebook.variables == {"rows": [1, 2]}
-    assert notebook.get_state(["_variables"])["_variables"] == {"rows": [1, 2]}
+    assert notebook_session(notebook).get_state(["_variables"])["_variables"] == {
+        "rows": [1, 2]
+    }
 
 
 def test_variable_update_materializes_nested_iterators_once() -> None:
@@ -54,11 +56,13 @@ def test_variable_update_materializes_nested_iterators_once() -> None:
 
     payload = {"rows": [{"x": 1}, {"x": 2}]}
     assert notebook.variables == {"keep": "unchanged", "payload": payload}
-    assert notebook.get_state(["_variables"])["_variables"] == {
+    assert notebook_session(notebook).get_state(["_variables"])["_variables"] == {
         "keep": "unchanged",
         "payload": payload,
     }
-    assert notebook.get_state(["_variable_update"])["_variable_update"] == {
+    assert notebook_session(notebook).get_state(["_variable_update"])[
+        "_variable_update"
+    ] == {
         "seq": 1,
         "kind": "set",
         "values": {"payload": payload},
@@ -90,8 +94,13 @@ def test_variable_replacement_materializes_iterators_and_preserves_values() -> N
         "when": when,
         "raw": b"abc",
     }
-    assert notebook.get_state(["_variables"])["_variables"] == expected_wire
-    assert notebook.get_state(["_variable_update"])["_variable_update"] == {
+    assert (
+        notebook_session(notebook).get_state(["_variables"])["_variables"]
+        == expected_wire
+    )
+    assert notebook_session(notebook).get_state(["_variable_update"])[
+        "_variable_update"
+    ] == {
         "seq": 1,
         "kind": "replace",
         "values": expected_wire,
@@ -107,7 +116,7 @@ def test_python_ints_serialize_as_bigints_after_js_safe_integer_boundary() -> No
         }
     )
 
-    wire = widget.get_state(["_variables"])["_variables"]
+    wire = notebook_session(widget).get_state(["_variables"])["_variables"]
     assert wire["safe"] == 9007199254740991
     assert wire["huge"] == {
         "__observablejs_type__": "bigint",
@@ -125,7 +134,7 @@ def test_variables_update_serializes_merged_frontend_state() -> None:
     widget.update_variables({"other": dt.date(2026, 5, 25)}, py_value=8)
 
     assert widget.variables == {"py_value": 8, "other": dt.date(2026, 5, 25)}
-    assert widget.get_state(["_variables"])["_variables"] == {
+    assert notebook_session(widget).get_state(["_variables"])["_variables"] == {
         "py_value": 8,
         "other": {
             "__observablejs_type__": "datetime",
@@ -155,20 +164,26 @@ def test_variable_update_emits_frontend_protocol_packet() -> None:
 
     widget.update_variables(gain=7)
 
-    set_update = widget.get_state(["_variable_update"])["_variable_update"]
+    set_update = notebook_session(widget).get_state(["_variable_update"])[
+        "_variable_update"
+    ]
     assert set_update["kind"] == "set"
     assert set_update["values"] == {"gain": 7}
 
     widget.replace_variables({"rows": [{"x": 2}]})
 
-    replace_update = widget.get_state(["_variable_update"])["_variable_update"]
+    replace_update = notebook_session(widget).get_state(["_variable_update"])[
+        "_variable_update"
+    ]
     assert replace_update["kind"] == "replace"
     assert replace_update["values"] == {"rows": [{"x": 2}]}
     assert replace_update["seq"] > set_update["seq"]
 
     widget.reset_variables("rows")
 
-    reset_update = widget.get_state(["_variable_update"])["_variable_update"]
+    reset_update = notebook_session(widget).get_state(["_variable_update"])[
+        "_variable_update"
+    ]
     assert reset_update["kind"] == "replace"
     assert reset_update["values"] == {}
     assert reset_update["seq"] > replace_update["seq"]
@@ -177,7 +192,7 @@ def test_variable_update_emits_frontend_protocol_packet() -> None:
 def test_identical_variable_mutations_are_protocol_noops() -> None:
     notebook = obs.Notebook(variables={"gain": 5, "rows": [{"x": 1}]})
     updates: list[dict[str, object]] = []
-    notebook.observe(
+    notebook_session(notebook).observe(
         lambda change: updates.append(change["new"]),
         names="_variable_update",
     )
@@ -186,78 +201,110 @@ def test_identical_variable_mutations_are_protocol_noops() -> None:
     notebook.replace_variables({"gain": 5.0, "rows": [{"x": 1.0}]})
 
     assert notebook.variables == {"gain": 5, "rows": [{"x": 1}]}
-    assert notebook.get_state(["_variable_update"])["_variable_update"] == {}
+    assert (
+        notebook_session(notebook).get_state(["_variable_update"])["_variable_update"]
+        == {}
+    )
     assert updates == []
 
 
 def test_identical_python_update_preserves_browser_owned_view_state() -> None:
     notebook = obs.Notebook(variables={"z": 100})
-    notebook.set_state({"_view_values": {"x": 8}})
+    notebook_session(notebook).set_state({"_view_values": {"x": 8}})
     updates: list[dict[str, object]] = []
-    notebook.observe(
+    notebook_session(notebook).observe(
         lambda change: updates.append(change["new"]),
         names="_variable_update",
     )
 
     notebook.update_variables(z=100)
 
-    assert notebook.get_state(["_view_values"])["_view_values"] == {"x": 8}
-    assert notebook.get_state(["_variable_update"])["_variable_update"] == {}
+    assert notebook_session(notebook).get_state(["_view_values"])["_view_values"] == {
+        "x": 8
+    }
+    assert (
+        notebook_session(notebook).get_state(["_variable_update"])["_variable_update"]
+        == {}
+    )
     assert updates == []
 
 
 def test_same_wire_update_reasserts_python_ownership_without_active_views() -> None:
     notebook = obs.Notebook(variables={"x": 7, "z": 100})
-    notebook.set_state({"_view_values": {"x": 8, "unrelated": 3}})
+    notebook_session(notebook).set_state({"_view_values": {"x": 8, "unrelated": 3}})
 
     notebook.update_variables(x=7, z=100)
 
-    update = notebook.get_state(["_variable_update"])["_variable_update"]
+    update = notebook_session(notebook).get_state(["_variable_update"])[
+        "_variable_update"
+    ]
     assert update == {"seq": 1, "kind": "set", "values": {"x": 7}}
-    assert notebook.get_state(["_view_values"])["_view_values"] == {"unrelated": 3}
+    assert notebook_session(notebook).get_state(["_view_values"])["_view_values"] == {
+        "unrelated": 3
+    }
 
     notebook.update_variables(z=100)
 
-    assert notebook.get_state(["_variable_update"])["_variable_update"] == update
+    assert (
+        notebook_session(notebook).get_state(["_variable_update"])["_variable_update"]
+        == update
+    )
 
 
 def test_same_wire_replace_reasserts_python_ownership() -> None:
     variables = {"x": 7, "z": 100}
     notebook = obs.Notebook(variables=variables)
-    notebook.set_state({"_view_values": {"x": 8, "unrelated": 3}})
+    notebook_session(notebook).set_state({"_view_values": {"x": 8, "unrelated": 3}})
 
     notebook.replace_variables(variables)
 
-    update = notebook.get_state(["_variable_update"])["_variable_update"]
+    update = notebook_session(notebook).get_state(["_variable_update"])[
+        "_variable_update"
+    ]
     assert update == {"seq": 1, "kind": "replace", "values": variables}
-    assert notebook.get_state(["_view_values"])["_view_values"] == {"unrelated": 3}
+    assert notebook_session(notebook).get_state(["_view_values"])["_view_values"] == {
+        "unrelated": 3
+    }
 
     notebook.replace_variables(variables)
 
-    assert notebook.get_state(["_variable_update"])["_variable_update"] == update
+    assert (
+        notebook_session(notebook).get_state(["_variable_update"])["_variable_update"]
+        == update
+    )
 
 
 def test_replace_variables_clears_old_and_new_shared_python_names() -> None:
     notebook = obs.Notebook(variables={"old": 1, "keep": 2})
-    notebook.set_state({"_view_values": {"old": 10, "new": 30, "unrelated": 3}})
+    notebook_session(notebook).set_state(
+        {"_view_values": {"old": 10, "new": 30, "unrelated": 3}}
+    )
 
     notebook.replace_variables({"keep": 2, "new": 3})
 
-    assert notebook.get_state(["_view_values"])["_view_values"] == {"unrelated": 3}
+    assert notebook_session(notebook).get_state(["_view_values"])["_view_values"] == {
+        "unrelated": 3
+    }
 
 
 def test_reset_variables_clears_shared_values_for_replaced_python_names() -> None:
     notebook = obs.Notebook(variables={"x": 7, "z": 100})
-    notebook.set_state({"_view_values": {"x": 8, "z": 101, "unrelated": 3}})
+    notebook_session(notebook).set_state(
+        {"_view_values": {"x": 8, "z": 101, "unrelated": 3}}
+    )
 
     notebook.reset_variables("x")
 
-    assert notebook.get_state(["_variable_update"])["_variable_update"] == {
+    assert notebook_session(notebook).get_state(["_variable_update"])[
+        "_variable_update"
+    ] == {
         "seq": 1,
         "kind": "replace",
         "values": {"z": 100},
     }
-    assert notebook.get_state(["_view_values"])["_view_values"] == {"unrelated": 3}
+    assert notebook_session(notebook).get_state(["_view_values"])["_view_values"] == {
+        "unrelated": 3
+    }
 
 
 def test_variable_patch_distinguishes_signed_zero() -> None:
@@ -265,7 +312,9 @@ def test_variable_patch_distinguishes_signed_zero() -> None:
 
     notebook.update_variables(gain=0.0)
 
-    assert notebook.get_state(["_variable_update"])["_variable_update"] == {
+    assert notebook_session(notebook).get_state(["_variable_update"])[
+        "_variable_update"
+    ] == {
         "seq": 1,
         "kind": "set",
         "values": {"gain": 0.0},
@@ -285,7 +334,9 @@ def test_variable_patch_distinguishes_booleans_from_numbers() -> None:
         nested={"values": [False, {"flag": 1}]},
     )
 
-    assert notebook.get_state(["_variable_update"])["_variable_update"] == {
+    assert notebook_session(notebook).get_state(["_variable_update"])[
+        "_variable_update"
+    ] == {
         "seq": 1,
         "kind": "set",
         "values": {
@@ -310,7 +361,9 @@ def test_variable_replacement_distinguishes_booleans_from_numbers() -> None:
         }
     )
 
-    assert notebook.get_state(["_variable_update"])["_variable_update"] == {
+    assert notebook_session(notebook).get_state(["_variable_update"])[
+        "_variable_update"
+    ] == {
         "seq": 1,
         "kind": "replace",
         "values": {
@@ -325,23 +378,23 @@ def test_variable_patch_sends_changed_names() -> None:
 
     notebook.update_variables(gain=5, color="red")
 
-    assert notebook.get_state(["_variable_update"])["_variable_update"] == {
+    assert notebook_session(notebook).get_state(["_variable_update"])[
+        "_variable_update"
+    ] == {
         "seq": 1,
         "kind": "set",
         "values": {"color": "red"},
     }
 
 
-def test_notebook_view_delegates_variable_mutations_to_its_session() -> None:
+def test_notebook_view_exposes_its_owning_notebook() -> None:
     notebook = obs.Notebook(variables={"gain": 5})
     view = notebook.view()
 
-    view.update_variables(gain=7)
-    assert view.variables == {"gain": 7}
-    view.replace_variables(color="red")
-    assert notebook.variables == {"color": "red"}
-    view.reset_variables("color")
-    assert notebook.variables == {}
+    notebook.update_variables(gain=7)
+
+    assert view.notebook is notebook
+    assert view.notebook.variables == {"gain": 7}
 
 
 @pytest.mark.parametrize("name", ["invalidation", "visibility"])
@@ -363,11 +416,13 @@ def test_observablehq_variables_reserve_classic_runtime_names(name: str) -> None
     message = f"Reserved Observable runtime name: {name!r}"
 
     with pytest.raises(ValueError, match=message):
-        obs.Notebook.from_observablehq_nodes([], variables={name: "shadowed"})
+        obs.Notebook.from_observablehq_document(
+            {"nodes": []}, variables={name: "shadowed"}
+        )
 
 
 def test_observablehq_variable_mutations_reserve_classic_runtime_names() -> None:
-    notebook = obs.Notebook.from_observablehq_nodes([])
+    notebook = obs.Notebook.from_observablehq_document({"nodes": []})
     message = "Reserved Observable runtime name: 'require'"
 
     with pytest.raises(ValueError, match=message):
@@ -395,7 +450,10 @@ def test_reset_variables_validates_names(name: Any, message: str) -> None:
         notebook.reset_variables(name)
 
     assert notebook.variables == {"gain": 5}
-    assert notebook.get_state(["_variable_update"])["_variable_update"] == {}
+    assert (
+        notebook_session(notebook).get_state(["_variable_update"])["_variable_update"]
+        == {}
+    )
 
 
 def test_reset_variables_ignores_valid_unknown_names() -> None:
@@ -403,10 +461,13 @@ def test_reset_variables_ignores_valid_unknown_names() -> None:
     view = notebook.view()
 
     notebook.reset_variables("unknown")
-    view.reset_variables("alsoUnknown")
 
     assert notebook.variables == {"gain": 5}
-    assert notebook.get_state(["_variable_update"])["_variable_update"] == {}
+    assert view.notebook is notebook
+    assert (
+        notebook_session(notebook).get_state(["_variable_update"])["_variable_update"]
+        == {}
+    )
 
 
 def test_closed_notebook_rejects_variable_mutations() -> None:
@@ -423,23 +484,15 @@ def test_closed_notebook_rejects_variable_mutations() -> None:
     assert notebook.variables == {"gain": 5}
 
 
-def test_closed_view_rejects_variable_mutations() -> None:
+def test_closed_view_leaves_its_notebook_session_mutable() -> None:
     notebook = obs.Notebook(variables={"gain": 5})
     view = notebook.view()
 
     view.close()
     view.close()
 
-    with pytest.raises(RuntimeError, match="closed NotebookView"):
-        view.update_variables(gain=7)
-    with pytest.raises(RuntimeError, match="closed NotebookView"):
-        view.replace_variables(color="red")
-    with pytest.raises(RuntimeError, match="closed NotebookView"):
-        view.reset_variables("gain")
-
-    assert view.variables == {"gain": 5}
-    assert view.cell_indexes is None
     notebook.update_variables(gain=6)
+    assert view.notebook is notebook
     assert notebook.variables == {"gain": 6}
 
 
@@ -459,10 +512,8 @@ def test_browser_values_decode_to_python_values(
         },
     )
 
-    assert view.runtime_values["when"] == dt.datetime(
-        2026, 5, 25, 10, tzinfo=dt.timezone.utc
-    )
-    assert view.runtime_values["raw"] == b"abc"
+    assert view.values["when"] == dt.datetime(2026, 5, 25, 10, tzinfo=dt.timezone.utc)
+    assert view.values["raw"] == b"abc"
 
 
 def test_browser_bigint_values_decode_to_python_int(
@@ -480,7 +531,7 @@ def test_browser_bigint_values_decode_to_python_int(
         },
     )
 
-    assert view.runtime_values["huge"] == 9007199254740993
+    assert view.values["huge"] == 9007199254740993
 
 
 def test_browser_summary_values_decode_to_python_string(
@@ -498,7 +549,7 @@ def test_browser_summary_values_decode_to_python_string(
         },
     )
 
-    assert view.runtime_values["when"] == "Invalid Date"
+    assert view.values["when"] == "Invalid Date"
 
 
 def test_browser_values_with_wire_type_key_decode_as_user_objects(
@@ -520,7 +571,7 @@ def test_browser_values_with_wire_type_key_decode_as_user_objects(
         },
     )
 
-    assert view.runtime_values["row"] == {
+    assert view.values["row"] == {
         "__observablejs_type__": "datetime",
         "value": "not a date",
         "other": 1,
@@ -537,7 +588,7 @@ def test_python_variables_with_wire_type_key_serialize_as_user_objects() -> None
         variables={"row": {"__observablejs_type__": "not-a-wire-tag", "value": 1}}
     )
 
-    assert widget.get_state(["_variables"])["_variables"]["row"] == {
+    assert notebook_session(widget).get_state(["_variables"])["_variables"]["row"] == {
         "__observablejs_type__": "object",
         "value": {"__observablejs_type__": "not-a-wire-tag", "value": 1},
     }
@@ -558,7 +609,9 @@ def test_dataframe_like_values_serialize_as_records_by_default(
 
     widget = obs.Notebook(variables={"rows": DataFrame()})
 
-    assert widget.get_state(["_variables"])["_variables"]["rows"] == [{"x": 1}]
+    assert notebook_session(widget).get_state(["_variables"])["_variables"]["rows"] == [
+        {"x": 1}
+    ]
 
 
 def test_polars_like_values_serialize_when_polars_is_loaded(
@@ -580,7 +633,7 @@ def test_polars_like_values_serialize_when_polars_is_loaded(
 
     widget = obs.Notebook(variables={"rows": DataFrame(), "x": Series()})
 
-    assert widget.get_state(["_variables"])["_variables"] == {
+    assert notebook_session(widget).get_state(["_variables"])["_variables"] == {
         "rows": [{"x": 1}],
         "x": [1, 2],
     }

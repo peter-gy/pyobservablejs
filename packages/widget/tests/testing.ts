@@ -102,9 +102,9 @@ export function createHost(models: ReadonlyMap<string, Model | Promise<Model>>):
 	return host;
 }
 
-export function createSession(initial: Omit<Partial<WidgetModel>, "role">): TestModel {
+export function createSession(initial: Partial<WidgetModel>): TestModel {
 	return createModel({
-		role: "session",
+		_model_role: "session",
 		_attachments: {},
 		_variables: {},
 		_view_values: {},
@@ -115,14 +115,13 @@ export function createSession(initial: Omit<Partial<WidgetModel>, "role">): Test
 
 export function createView(ref = "anywidget:session", cellIndexes: number[] | null = null): TestModel {
 	return createModel({
-		role: "view",
-		_notebook: ref,
+		_session: ref,
 		_cell_indexes: cellIndexes,
 		_readback: { revision: 0, rendered: false, graph: {}, cells: {} },
 	});
 }
 
-export function createNotebookFixture(initial: Omit<Partial<WidgetModel>, "role">): {
+export function createNotebookFixture(initial: Partial<WidgetModel>): {
 	session: TestModel;
 	view: TestModel;
 	host: TestHost;

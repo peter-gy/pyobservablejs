@@ -69,7 +69,7 @@ async function renderCurrentView(
 	const sessionRef = readNotebookSessionRef(props.model);
 	const sessionModel = await resolveSessionModel(props, sessionRef, signal);
 	if (signal.aborted) return;
-	if (sessionModel.get("role") !== "session") {
+	if (sessionModel.get("_model_role") !== "session") {
 		throw new Error("NotebookView reference does not resolve to a Notebook session");
 	}
 

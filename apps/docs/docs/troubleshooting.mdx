@@ -5,17 +5,17 @@ description: Symptoms, causes, and fixes for common pyobservablejs failures.
 
 # Troubleshooting
 
-Symptoms first; each entry names the contract behind the fix.
+Start with the symptom. Each entry names the contract behind the fix.
 
 ## `NotRenderedError` when reading values or the graph
 
-Readback exists only after the browser produces it. `runtime_values`,
-`cell_values()`, and `value(name)` require a completed render;
-`graph` requires a graph snapshot. Guard with the gates:
+Readback exists only after the browser produces it. `values` and
+`cell_values` require a completed render. `graph` requires a graph snapshot.
+Guard with the gates:
 
 ```python
 if full_view.has_rendered:
-    values = full_view.runtime_values
+    values = full_view.values
 if full_view.has_graph_snapshot:
     graph = full_view.graph
 ```
@@ -26,8 +26,8 @@ flight. See [Manage view lifecycle](render/view-lifecycle.mdx).
 
 ## The view displays nothing
 
-- **marimo:** wrap the view — `mo.ui.anywidget(full_view)`. A bare
-  `NotebookView` is not a marimo UI element.
+- **marimo:** wrap the view with `mo.ui.anywidget(full_view)`. marimo renders
+  the returned UI element.
 - **Jupyter and most hosts:** the view must be the final expression of a
   cell, or passed to `display(...)`.
 - **Colab:** enable third-party widget support, per
@@ -40,7 +40,7 @@ flight. See [Manage view lifecycle](render/view-lifecycle.mdx).
 
 A `NotebookView` owns one live writable output. Mounting the same view
 object in two places leaves only one output writable. Create one view per
-placement; the views stay synchronized through the session. See [Display a
+placement. The views stay synchronized through the session. See [Display a
 NotebookView](render/display-views.mdx#one-view-per-placement).
 
 ## `ValueError` for a variable name
@@ -52,24 +52,24 @@ serialization](reference/variables-and-serialization.mdx#variable-names).
 
 ## `TypeError: Value of type ... is not serializable`
 
-Only the types in the [serialization
-table](reference/variables-and-serialization.mdx#python-to-browser) cross
-the wire. Convert custom objects to plain mappings, lists, or DataFrames
-first. For large tables and binary data, use [file
-attachments](create/files-and-modules.mdx) instead of variables.
+The [serialization
+table](reference/variables-and-serialization.mdx#python-to-browser) lists
+the types that cross the wire. Convert custom objects to plain mappings,
+lists, or DataFrames first. Use [file
+attachments](create/files-and-modules.mdx) for large tables and binary data.
 
-## A name is missing from `runtime_values`
+## A name is missing from `values`
 
-`runtime_values` omits names produced by more than one selected cell,
-because no unique owner exists. Read the value per cell with
-`cell_values()`, or restructure the notebook so one cell defines the name.
+`values` omits names produced by more than one selected cell because no
+unique owner exists. Read the value per cell with `cell_values`, or
+restructure the notebook so one cell defines the name.
 
 ## The chart did not react to `update_variables`
 
 - The update is a no-op when the serialized value is unchanged. Mutating a
   list in place and passing the same object still changes the wire value
   only if the contents differ.
-- The cell must reference the variable by that exact name; check
+- The cell must reference the variable by that exact name. Check
   `full_view.graph.external_references` to see what the cells actually
   resolve from the environment. See [Inspect the dependency
   graph](connect/dependency-graph.mdx).
@@ -85,28 +85,28 @@ widget = mo.ui.anywidget(full_view)
 
 ```python
 widget.value  # subscribe
-full_view.runtime_values if full_view.has_rendered else None
+full_view.values if full_view.has_rendered else None
 ```
 
 ## `TraitError` when assigning `notebook.theme`
 
 Source-backed notebooks take their theme from the source HTML. Edit the
-`<notebook theme="...">` attribute in the document instead. See [Themes and
+`<notebook theme="...">` attribute in the document. See [Themes and
 pinned source](customize/themes-and-pinned-source.mdx#theme-names).
 
 ## `RuntimeError: Cannot mutate a closed Notebook`
 
-`notebook.close()` closes the session and every view; `view.close()` closes
-one view. After closing, variable mutators and `view()` raise
-`RuntimeError`, while construction-time metadata stays readable. Recreate
-the notebook to continue.
+`notebook.close()` closes the session and every view. `view.close()` closes
+one view. After closing, variable mutators and `view()` raise `RuntimeError`.
+Cell handles, attachments, variables, and theme stay readable. Recreate the
+notebook to continue.
 
 ## `require is not defined` in an authored notebook
 
-`require` belongs to the classic Observable standard library, which only
-ObservableHQ-imported notebooks select. Python-authored and Notebook Kit
-HTML notebooks use the Notebook Kit profile; import npm packages with
-`import ... from "npm:..."` instead. See [Browser execution and network
+`require` belongs to the classic Observable standard library selected by
+ObservableHQ imports. Python-authored and Notebook Kit HTML notebooks use
+the Notebook Kit profile. Import npm packages with
+`import ... from "npm:..."`. See [Browser execution and network
 access](customize/browser-execution.mdx#runtime-profiles).
 
 ## Imports or datasets fail to load in a restricted environment

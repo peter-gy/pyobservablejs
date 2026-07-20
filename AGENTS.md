@@ -1,9 +1,10 @@
 # pyobservablejs
 
 `pyobservablejs` is a browser-first Python interface to Observable Notebook Kit.
-Python owns notebook models, serialization, attachments, and synchronized state.
-The TypeScript frontend owns Notebook Kit evaluation and rendering. Preserve
-that split.
+The public `Notebook` controller owns definitions, serialization, attachments,
+and Python session state. A private anywidget session model carries that state
+to renderable `NotebookView` widgets. The TypeScript frontend owns Notebook Kit
+evaluation and rendering. Preserve that split.
 
 ## Workspace boundaries
 
@@ -16,9 +17,9 @@ that split.
   module transport, manifest, and lifecycle protocol.
 - The Python `anywidget-bundle` distribution owns the bundle manifest and
   custom-message response APIs.
-- `packages/pyobservablejs/` owns the public Python API and composes the widget
-  with both `anywidget-bundle` distributions into the static assets shipped in
-  the wheel.
+- `packages/pyobservablejs/` owns the public Python API, the private traitlets
+  session model, and the renderable view model. It composes the widget with both
+  `anywidget-bundle` distributions into the static assets shipped in the wheel.
 - `apps/docs/` owns the Docusaurus application, published MDX pages, and
   mdx-marimo integration. `development_docs/` contains contributor
   documentation outside the published site.
@@ -28,9 +29,10 @@ Use package names for cross-package imports. `@pyobservablejs/widget` depends on
 `anywidget-bundle` package. The Python distribution depends on the matching
 PyPI release.
 
-Python and the frontend communicate through traitlets and anywidget mechanisms.
-Change both sides when a trait, wire value, manifest, or message shape crosses
-the boundary. Do not use notebook-host internals as a transport or lifecycle
+Python and the frontend communicate through the private session model and each
+view's traitlets. Change both sides when a trait, wire value, manifest, or
+message shape crosses the boundary. Do not expose private session transport on
+the public `Notebook` controller or use notebook-host internals as a lifecycle
 escape hatch.
 
 Read [Architecture](development_docs/architecture.md) before changing runtime
@@ -80,8 +82,8 @@ and accidental package-boundary violations.
 
 ## Verification by boundary
 
-- Test Python behavior through the public `observablejs` API and serialized
-  widget state.
+- Test Python behavior through the public `observablejs` API. Test private
+  session and view traits where the cross-language wire contract is the subject.
 - Test TypeScript behavior through runtime, widget, Vite, DOM, and generated
   artifact contracts. Wait on observable state, not elapsed time.
 - Validate Docusaurus MDX source with `make docs` and serve the generated site
@@ -93,7 +95,7 @@ and accidental package-boundary violations.
 - Build the wheel from the produced sdist when packaging changes. The sdist
   carries browser assets and must build outside the TypeScript workspace.
 
-Published docs explain notebook authoring, frontend use, runtime values, and
+Published docs explain notebook authoring, frontend use, synchronized values, and
 source imports. Keep package layout, release mechanics, generated artifacts,
 and contributor workflows in `development_docs/`.
 

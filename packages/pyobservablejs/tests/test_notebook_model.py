@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import observablejs as obs
+import pytest
 from helpers import DocumentTitle, ScriptTags
 
 from observablejs._model import (
     NotebookModel,
     NotebookNode,
     notebook_model_from_html,
-    notebook_model_from_observablehq_page_data,
+    notebook_model_from_observablehq_document,
 )
 
 
@@ -74,41 +75,111 @@ def test_html_model_preserves_source_and_exposes_cell_nodes() -> None:
     ]
 
 
-def test_observablehq_detail_data_model_accepts_nested_nodes_and_files(
+def test_html_model_normalizes_cell_ids_like_notebook_kit() -> None:
+    source = """<!doctype html>
+<notebook>
+  <script>first = 1</script>
+  <script id="2">second = 2</script>
+  <script id="2">third = 3</script>
+  <script id="-1">fourth = 4</script>
+  <script id="4.9">fifth = 5</script>
+</notebook>
+"""
+
+    model = notebook_model_from_html(
+        source,
+        files=None,
+        base_path=None,
+        embed_file_attachments=False,
+        rewrite_imports=False,
+    )
+
+    assert [node.id for node in model.nodes] == [1, 2, 3, 4, 5]
+
+
+@pytest.mark.parametrize(
+    ("source_id", "expected_ids"),
+    [
+        ("1_0", [1, 2]),
+        ("９", [1, 2]),
+        ("\u00859\u0085", [1, 2]),
+        ("\ufeff2\ufeff", [2, 3]),
+        ("0x10", [16, 17]),
+        ("0b10", [2, 3]),
+        ("0o10", [8, 9]),
+        ("+0x10", [1, 2]),
+        ("077", [77, 78]),
+        ("1.9", [1, 2]),
+        (".5", [1, 2]),
+        ("1e3", [1000, 1001]),
+        ("Infinity", [1, 2]),
+        ("1e309", [1, 2]),
+    ],
+)
+def test_html_model_matches_ecmascript_number_for_cell_ids(
+    source_id: str,
+    expected_ids: list[int],
+) -> None:
+    source = f"""<notebook>
+<script id="{source_id}">first = 1</script>
+<script>second = 2</script>
+</notebook>"""
+
+    model = notebook_model_from_html(
+        source,
+        files=None,
+        base_path=None,
+        embed_file_attachments=False,
+        rewrite_imports=False,
+    )
+
+    assert [node.id for node in model.nodes] == expected_ids
+
+
+def test_html_model_rejects_ids_above_the_javascript_safe_range() -> None:
+    source = "<notebook><script id='9007199254740992'>answer = 42</script></notebook>"
+
+    with pytest.raises(ValueError, match="between 1 and 9007199254740991"):
+        notebook_model_from_html(
+            source,
+            files=None,
+            base_path=None,
+            embed_file_attachments=False,
+            rewrite_imports=False,
+        )
+
+
+def test_observablehq_document_model_accepts_nodes_and_files(
     script_tags: ScriptTags,
 ) -> None:
-    data = {
-        "pageProps": {
-            "initialNotebook": {
-                "title": "Hosted",
-                "nodes": [
-                    {
-                        "id": 1,
-                        "mode": "md",
-                        "value": "# Hosted",
-                        "name": "",
-                    },
-                    {
-                        "id": 2,
-                        "mode": "js",
-                        "value": 'data = FileAttachment("flare-2.json").json()',
-                        "pinned": True,
-                    },
-                ],
-                "files": [
-                    {
-                        "name": "flare-2.json",
-                        "download_url": "https://static.example/flare-2.json",
-                        "mime_type": "application/json",
-                        "size": 123,
-                        "create_time": "2019-10-29T22:33:05.252Z",
-                    }
-                ],
+    document = {
+        "title": "Hosted",
+        "nodes": [
+            {
+                "id": 1,
+                "mode": "md",
+                "value": "# Hosted",
+                "name": "",
+            },
+            {
+                "id": 2,
+                "mode": "js",
+                "value": 'data = FileAttachment("flare-2.json").json()',
+                "pinned": True,
+            },
+        ],
+        "files": [
+            {
+                "name": "flare-2.json",
+                "download_url": "https://static.example/flare-2.json",
+                "mime_type": "application/json",
+                "size": 123,
+                "create_time": "2019-10-29T22:33:05.252Z",
             }
-        }
+        ],
     }
 
-    model = notebook_model_from_observablehq_page_data(data)
+    model = notebook_model_from_observablehq_document(document)
 
     assert model.title == "Hosted"
     assert model.attachments["flare-2.json"] == {
@@ -124,7 +195,68 @@ def test_observablehq_detail_data_model_accepts_nested_nodes_and_files(
     )
 
 
-def test_notebook_accepts_raw_observablehq_nodes_with_files(
+def test_observablehq_document_assigns_unused_ids_to_invalid_inputs() -> None:
+    document = {
+        "nodes": [
+            {"mode": "md", "value": "first"},
+            {"id": 1, "mode": "md", "value": "second"},
+            {"id": 0, "mode": "md", "value": "third"},
+            {"id": "-2", "mode": "md", "value": "fourth"},
+            {"id": "missing", "mode": "md", "value": "fifth"},
+        ]
+    }
+
+    model = notebook_model_from_observablehq_document(document)
+
+    assert [node.id for node in model.nodes] == [2, 1, 3, 4, 5]
+
+
+@pytest.mark.parametrize("cell_id", ["1_0", "９", "\u00859\u0085", "1.5", "1e2"])
+def test_observablehq_document_falls_back_for_non_ascii_integer_ids(
+    cell_id: str,
+) -> None:
+    document = {
+        "nodes": [
+            {"id": cell_id, "mode": "md", "value": "fallback"},
+            {"id": 2, "mode": "md", "value": "explicit"},
+        ]
+    }
+
+    model = notebook_model_from_observablehq_document(document)
+
+    assert [node.id for node in model.nodes] == [1, 2]
+
+
+@pytest.mark.parametrize("cell_id", [9007199254740992, "9007199254740992"])
+def test_observablehq_document_rejects_unsafe_explicit_ids(
+    cell_id: int | str,
+) -> None:
+    document = {"nodes": [{"id": cell_id, "mode": "md", "value": "unsafe"}]}
+
+    with pytest.raises(ValueError, match="between 1 and 9007199254740991"):
+        notebook_model_from_observablehq_document(document)
+
+
+def test_observablehq_document_rejects_oversized_decimal_strings() -> None:
+    document = {"nodes": [{"id": "9" * 5000, "mode": "md", "value": "unsafe"}]}
+
+    with pytest.raises(ValueError, match="between 1 and 9007199254740991"):
+        notebook_model_from_observablehq_document(document)
+
+
+def test_observablehq_document_rejects_duplicate_explicit_ids() -> None:
+    document = {
+        "nodes": [
+            {"id": 7, "mode": "md", "value": "first"},
+            {"id": "7", "mode": "md", "value": "second"},
+        ]
+    }
+
+    with pytest.raises(ValueError, match="Notebook cell ids must be unique: 7"):
+        notebook_model_from_observablehq_document(document)
+
+
+def test_notebook_accepts_observablehq_document_nodes_with_files(
     document_title: DocumentTitle,
     script_tags: ScriptTags,
 ) -> None:
@@ -139,10 +271,8 @@ def test_notebook_accepts_raw_observablehq_nodes_with_files(
         }
     ]
 
-    notebook = obs.Notebook.from_observablehq_nodes(
-        nodes,
-        observable_files=files,
-        title="Raw nodes",
+    notebook = obs.Notebook.from_observablehq_document(
+        {"nodes": nodes, "files": files, "title": "Raw nodes"},
         variables={"py_value": 7},
     )
 

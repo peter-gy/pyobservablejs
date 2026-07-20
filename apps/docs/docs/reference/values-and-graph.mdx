@@ -23,7 +23,7 @@ After the view renders:
 
 ```python
 if full_view.has_rendered:
-    gain = full_view.value("gain")
+    gain = full_view.values["gain"]
 
 if full_view.has_graph_snapshot:
     dependencies = full_view.graph
@@ -35,16 +35,14 @@ if full_view.has_graph_snapshot:
 | -------------------- | ------------------------ | -------------------------------------------------------------- |
 | `has_rendered`       | `bool`                   | Whether this view has synchronized a completed browser render. |
 | `has_graph_snapshot` | `bool`                   | Whether this view has synchronized graph metadata.             |
-| `runtime_values`     | `dict[str, Any]`         | Decoded values with one owning cell in this view.              |
-| `cell_values()`      | `tuple[CellValues, ...]` | Decoded values for selected cells in notebook order.           |
-| `value(name)`        | `Any`                    | One entry from `runtime_values`.                               |
+| `values`             | `dict[str, Any]`         | Decoded values with one owning cell in this view.              |
+| `cell_values`        | `tuple[CellValues, ...]` | Decoded values for selected cells in notebook order.           |
 | `graph`              | `NotebookGraph`          | Static dependency graph for cells evaluated by this view.      |
 
-`runtime_values`, `cell_values()`, and `value(name)` require a completed
-view render. `graph` requires a graph snapshot. `value(name)` raises
-`KeyError` when the rendered value mapping has no matching name. A name
-produced by multiple selected cells is omitted from `runtime_values` because
-it has no unique owner.
+`values` and `cell_values` require a completed view render. `graph` requires
+a graph snapshot. Indexing `values` raises `KeyError` when the rendered value
+mapping has no matching name. A name produced by multiple selected cells is
+omitted from `values` because it has no unique owner.
 
 ## `CellValues`
 
@@ -52,20 +50,20 @@ it has no unique owner.
 obs.CellValues(index, key, values)
 ```
 
-`NotebookView.cell_values()` returns one `CellValues` record per selected
+`NotebookView.cell_values` returns one `CellValues` record per selected
 cell in notebook order.
 
 | Field    | Type             | Contract                                                |
 | -------- | ---------------- | ------------------------------------------------------- |
 | `index`  | `int`            | Zero-based position in the notebook.                    |
-| `key`    | `Optional[str]`  | Python cell handle, or `None` when the cell has no key. |
+| `key`    | `Optional[str]`  | Python selection key, or `None` when the cell has no key. |
 | `values` | `dict[str, Any]` | Decoded browser-synchronized values for the cell.       |
 
 The data class is frozen. Its `values` field is a regular dictionary
 returned for that snapshot.
 
 ```python
-for cell_values in full_view.cell_values():
+for cell_values in full_view.cell_values:
     print(cell_values.index, cell_values.key, cell_values.values)
 ```
 
@@ -78,10 +76,10 @@ obs.NotRenderedError(message)
 `NotRenderedError` is a `RuntimeError` raised when code reads synchronized
 state before the browser has produced the required snapshot.
 
-| Readback member                                                   | Required state        |
-| ----------------------------------------------------------------- | --------------------- |
-| `NotebookView.runtime_values`, `cell_values()`, and `value(name)` | Completed view render |
-| `NotebookView.graph`                                              | View graph snapshot   |
+| Readback member                         | Required state        |
+| --------------------------------------- | --------------------- |
+| `NotebookView.values` and `cell_values` | Completed view render |
+| `NotebookView.graph`                    | View graph snapshot   |
 
 The gates are view-local. Rendering `full_view` leaves a newly created
 `summary_view` unreadable until `summary_view` renders.
@@ -108,8 +106,8 @@ graph snapshot.
 
 ### `NotebookGraph.cell(index)`
 
-Returns the `CellInfo` whose `index` equals `index`, or `None` when the
-graph has no matching cell.
+Returns the `CellInfo` whose `index` equals `index`. It raises `IndexError`
+when the graph has no matching cell.
 
 ### `NotebookGraph.cell_for_variable(variable)`
 
@@ -161,7 +159,7 @@ obs.CellInfo(
 | `id`              | `int`             | Notebook Kit cell id.                             |
 | `index`           | `int`             | Zero-based cell position.                         |
 | `mode`            | `str`             | Cell mode such as `ojs`, `js`, `md`, or `html`.   |
-| `key`             | `Optional[str]`   | Python cell handle.                               |
+| `key`             | `Optional[str]`   | Python selection key.                            |
 | `name`            | `Optional[str]`   | Notebook Kit cell name.                           |
 | `defines`         | `tuple[str, ...]` | Variables defined by the cell.                    |
 | `references`      | `tuple[str, ...]` | Variables read by the cell.                       |

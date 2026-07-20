@@ -2,8 +2,8 @@
 
 ## Repository map
 
-- `packages/pyobservablejs/` owns the Python models, serialization, traitlets,
-  tests, and packaged widget assets.
+- `packages/pyobservablejs/` owns the public Python controller, private session
+  model, renderable view model, serialization, tests, and packaged widget assets.
 - `packages/runtime/` owns Notebook Kit analysis and execution.
 - `packages/widget/` adapts notebook sessions and view-owned runtimes to
   anywidget rendering and synchronization.

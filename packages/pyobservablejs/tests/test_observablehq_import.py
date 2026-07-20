@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import observablejs as obs
 import pytest
-from helpers import DocumentTitle, ObservableHQResponseInstaller, ScriptTags
+from helpers import (
+    DocumentTitle,
+    ObservableHQResponseInstaller,
+    ScriptTags,
+    notebook_session,
+)
 
 
 @pytest.mark.parametrize(
@@ -88,8 +93,10 @@ def test_notebook_from_observablehq_fetches_source_and_remote_attachments(
     assert set(widget.attachments) == {"data.csv", "local.csv"}
     assert widget.attachments["data.csv"]["url"] == "https://static.example/data.csv"
     assert widget.attachments["local.csv"]["url"] == "https://example.test/local.csv"
-    assert widget.options == {"show_source": False}
-    assert widget.get_state(["_runtime_profile"]) == {"_runtime_profile": "observable"}
+    assert notebook_session(widget).get_state(["_options", "_runtime_profile"]) == {
+        "_options": {"show_source": False},
+        "_runtime_profile": "observable",
+    }
     assert len(widget.cells) == 1
 
 
@@ -585,6 +592,44 @@ def test_notebook_from_observablehq_converts_array_sql_nodes(
     assert widget.cells[2].name == "summary"
 
 
+def test_observablehq_sql_client_id_wraps_after_the_largest_safe_id(
+    script_tags: ScriptTags,
+) -> None:
+    notebook = obs.Notebook.from_observablehq_document(
+        {
+            "title": "Remote",
+            "nodes": [
+                {
+                    "id": 9007199254740991,
+                    "mode": "js",
+                    "value": "rows = []",
+                },
+                {
+                    "id": 2,
+                    "mode": "sql",
+                    "name": "summary",
+                    "value": "select count(*) as n from rows",
+                    "data": {
+                        "source": {
+                            "name": "rows",
+                            "type": "cell",
+                            "dialect": "array",
+                        }
+                    },
+                },
+            ],
+        }
+    )
+
+    scripts = script_tags(notebook.to_notebook_html())
+
+    assert [script["attrs"].get("id") for script in scripts] == [
+        "9007199254740991",
+        "1",
+        "2",
+    ]
+
+
 def test_notebook_from_observablehq_suffixes_colliding_sql_client_output(
     observablehq_response: ObservableHQResponseInstaller,
     script_tags: ScriptTags,
@@ -948,4 +993,6 @@ def test_notebook_from_observablehq_initial_variables_serialize_to_frontend_stat
         variables={"py_answer": 7},
     )
 
-    assert widget.get_state(["_variables"])["_variables"] == {"py_answer": 7}
+    assert notebook_session(widget).get_state(["_variables"])["_variables"] == {
+        "py_answer": 7
+    }

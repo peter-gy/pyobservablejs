@@ -13,6 +13,7 @@ from helpers import (
     BrowserGraphSync,
     BrowserValueSync,
     ScriptTags,
+    notebook_session,
 )
 
 
@@ -41,15 +42,36 @@ def test_notebook_returns_stable_cell_handles() -> None:
         title="Composed",
     )
 
-    answer = widget.cell_at(1)
-    assert widget.cell_at(1) is answer
-    assert widget.cell_by_key("answer") is answer
+    answer = widget.cell(1)
+    assert widget.cell(1) is answer
+    assert widget.cell("answer") is answer
     assert len(widget.cells) == 2
-    assert [widget.cell_at(index).key for index in range(2)] == ["title", "answer"]
+    assert [widget.cell(index).key for index in range(2)] == ["title", "answer"]
     assert [cell.key for cell in widget.cells] == ["title", "answer"]
-    assert [cell.name for cell in widget.cells] == ["", ""]
-    assert widget.cell_by_key("answer").key == "answer"
+    assert [cell.name for cell in widget.cells] == [None, None]
+    assert [cell.index for cell in widget.cells] == [0, 1]
+    assert widget.cell("answer").key == "answer"
     assert answer is widget.cells[1]
+
+
+def test_notebook_cell_lookup_supports_negative_indexes_and_typed_failures() -> None:
+    notebook = obs.Notebook(
+        obs.ojs("first = 1", key="first"),
+        obs.ojs("last = 2", key="last"),
+    )
+
+    assert notebook.cell(-1) is notebook.cell("last")
+    assert notebook.cell(-2) is notebook.cell("first")
+    with pytest.raises(IndexError, match="out of range"):
+        notebook.cell(2)
+    with pytest.raises(IndexError, match="out of range"):
+        notebook.cell(-3)
+    with pytest.raises(KeyError, match="Unknown Observable cell key"):
+        notebook.cell("missing")
+    cell: Any = notebook.cell
+    for selector in (True, None, 1.5):
+        with pytest.raises(TypeError, match="integer index or string key"):
+            cell(selector)
 
 
 def test_notebook_view_calls_create_distinct_stable_display_models() -> None:
@@ -68,6 +90,18 @@ def test_notebook_view_calls_create_distinct_stable_display_models() -> None:
     assert _display_model_id(formatter, first) == first_id
 
 
+def test_notebook_is_plain_python_and_notebook_view_is_displayable() -> None:
+    notebook = obs.Notebook(obs.ojs("answer = 42"))
+    view = notebook.view()
+    formatter = DisplayFormatter()
+
+    notebook_data, _metadata = formatter.format(notebook)
+    view_data, _metadata = formatter.format(view)
+
+    assert "application/vnd.jupyter.widget-view+json" not in notebook_data
+    assert "application/vnd.jupyter.widget-view+json" in view_data
+
+
 def test_notebook_view_serializes_session_and_cell_selection() -> None:
     notebook = obs.Notebook(
         obs.md("# Title", key="title"),
@@ -75,16 +109,15 @@ def test_notebook_view_serializes_session_and_cell_selection() -> None:
     )
     full = notebook.view()
     selected = notebook.view([1, "title"])
-    state = selected.get_state(["role", "_notebook", "_cell_indexes"])
+    session = notebook_session(notebook)
+    state = selected.get_state(["_session", "_cell_indexes"])
 
-    assert notebook.role == "session"
-    assert full.role == "view"
-    assert full.cell_indexes is None
+    assert session.get_state(["_model_role"]) == {"_model_role": "session"}
+    assert full.cells == notebook.cells
     assert selected.notebook is notebook
-    assert selected.cell_indexes == (0, 1)
+    assert selected.cells == notebook.cells
     assert state == {
-        "role": "view",
-        "_notebook": f"anywidget:{notebook.model_id}",
+        "_session": f"anywidget:{session.model_id}",
         "_cell_indexes": [0, 1],
     }
 
@@ -95,10 +128,10 @@ def test_notebook_cell_view_selects_its_index() -> None:
         obs.ojs("double = answer * 2", key="double"),
     )
 
-    view = notebook.cell_by_key("double").view()
+    view = notebook.cell("double").view()
 
     assert view.notebook is notebook
-    assert view.cell_indexes == (1,)
+    assert view.cells == (notebook.cell("double"),)
 
 
 def test_selected_view_readback_uses_notebook_order(
@@ -113,9 +146,9 @@ def test_selected_view_readback_uses_notebook_order(
     browser_value_sync(view, {"c": 3}, index=2)
     browser_value_sync(view, {"a": 1}, index=0)
 
-    assert view.cell_indexes == (0, 2)
+    assert [cell.index for cell in view.cells] == [0, 2]
     assert view.get_state(["_cell_indexes"])["_cell_indexes"] == [0, 2]
-    assert view.cell_values() == (
+    assert view.cell_values == (
         obs.CellValues(index=0, key="a", values={"a": 1}),
         obs.CellValues(index=2, key="c", values={"c": 3}),
     )
@@ -125,18 +158,18 @@ def test_notebook_view_validates_selections() -> None:
     notebook = obs.Notebook(obs.ojs("answer = 42", key="answer"))
     other = obs.Notebook(obs.ojs("other = 1", key="other"))
 
-    assert notebook.view([-1]).cell_indexes == (0,)
+    assert notebook.view([-1]).cells == (notebook.cell(0),)
     with pytest.raises(ValueError, match="at least one"):
         notebook.view([])
     with pytest.raises(ValueError, match="each notebook cell once"):
         notebook.view([0, "answer"])
     with pytest.raises(ValueError, match="another Notebook"):
-        notebook.view([other.cell_at(0)])
+        notebook.view([other.cell(0)])
     scalar_selection: Any = "answer"
     with pytest.raises(TypeError, match="sequence"):
         notebook.view(scalar_selection)
     boolean_selection: Any = [True]
-    with pytest.raises(TypeError, match="must contain"):
+    with pytest.raises(TypeError, match="cell selector"):
         notebook.view(boolean_selection)
 
 
@@ -152,40 +185,33 @@ def test_notebook_view_requires_a_sequence_container(cells: Any) -> None:
         notebook.view(cells)
 
 
-@pytest.mark.parametrize(
-    "cell_indexes",
-    [{0: "answer"}, {0}, bytearray([0]), "0", b"0"],
-    ids=["mapping", "set", "bytearray", "string", "bytes"],
-)
-def test_notebook_view_constructor_requires_a_sequence_container(
-    cell_indexes: Any,
-) -> None:
-    notebook = obs.Notebook(obs.ojs("answer = 42", key="answer"))
-
-    with pytest.raises(TypeError, match="cell_indexes must be a sequence"):
-        obs.NotebookView(notebook, cell_indexes=cell_indexes)
+def test_cell_and_view_objects_are_created_by_notebook_factories() -> None:
+    with pytest.raises(TypeError, match="created with Notebook.cell"):
+        obs.NotebookCell()
+    with pytest.raises(TypeError, match="created with Notebook.view"):
+        obs.NotebookView()
 
 
-def test_notebook_view_constructor_accepts_sequence_indexes() -> None:
-    notebook = obs.Notebook(
-        obs.ojs("a = 1", key="a"),
-        obs.ojs("b = 2", key="b"),
-    )
-
-    view = obs.NotebookView(notebook, cell_indexes=(1, 0))
-
-    assert view.cell_indexes == (0, 1)
-
-
-def test_notebook_view_session_reference_rejects_browser_wire_state() -> None:
+def test_notebook_view_session_trait_rejects_a_public_notebook() -> None:
     notebook = obs.Notebook(obs.ojs("answer = 42", key="answer"))
     view = notebook.view()
-    ref = f"anywidget:{notebook.model_id}"
 
-    with pytest.raises(traitlets.TraitError, match="expected a Notebook"):
-        view.set_state({"_notebook": ref})
+    with pytest.raises(traitlets.TraitError, match="expected a _NotebookSession"):
+        view.set_trait("_session", notebook)
 
     assert view.notebook is notebook
+
+
+def test_notebook_view_rejects_a_different_private_session() -> None:
+    notebook = obs.Notebook(obs.ojs("answer = 42", key="answer"))
+    other = obs.Notebook(obs.ojs("other = 1", key="other"))
+    view = notebook.view()
+
+    with pytest.raises(traitlets.TraitError, match="owning Notebook"):
+        view.set_trait("_session", notebook_session(other))
+
+    assert view.notebook is notebook
+    assert view.cells == notebook.cells
 
 
 def test_notebook_view_rejects_an_empty_wire_selection() -> None:
@@ -231,6 +257,10 @@ def test_notebook_graph_exposes_symbolic_cell_metadata(
     assert graph.defines == ("a", "b")
     assert graph.references == ("a", "rows")
     assert graph.external_references == ("rows",)
+    assert graph.cell(0).key == "a"
+    assert graph.cell(1).key == "b"
+    with pytest.raises(IndexError, match="graph cell index out of range"):
+        graph.cell(2)
     assert graph.cell_for_variable("a").key == "a"
     assert graph.cell_for_variable("b").key == "b"
     assert [
@@ -239,14 +269,14 @@ def test_notebook_graph_exposes_symbolic_cell_metadata(
         if edge.source_id == graph.cell_for_variable("a").id
         and edge.target_id == graph.cell_for_variable("b").id
     ] == ["a"]
-    assert notebook.cell_by_key("b").key == "b"
+    assert notebook.cell("b").key == "b"
 
 
 def test_view_graph_waits_for_a_complete_snapshot() -> None:
     view = obs.Notebook().view()
 
     assert view.has_graph_snapshot is False
-    with pytest.raises(obs.NotRenderedError, match="after the view renders"):
+    with pytest.raises(obs.NotRenderedError, match="after graph synchronization"):
         _ = view.graph
 
     view.set_trait(
@@ -293,9 +323,28 @@ def test_view_readback_rejects_an_out_of_order_browser_snapshot() -> None:
 
     assert view.has_rendered is True
     assert view.graph == obs.NotebookGraph(cells=(), edges=())
-    assert view.runtime_values == {"answer": 42}
-    assert view.cell_values() == (
+    assert view.values == {"answer": 42}
+    assert view.cell_values == (
         obs.CellValues(index=0, key="answer", values={"answer": 42}),
+    )
+
+
+def test_view_values_omit_ambiguous_names_but_cell_values_keep_them(
+    browser_value_sync: BrowserValueSync,
+) -> None:
+    notebook = obs.Notebook(
+        obs.ojs("answer = 1", key="first"),
+        obs.ojs("answer = 2", key="second"),
+    )
+    view = notebook.view()
+
+    browser_value_sync(view, {"answer": 1}, index=0)
+    browser_value_sync(view, {"answer": 2}, index=1)
+
+    assert view.values == {}
+    assert view.cell_values == (
+        obs.CellValues(index=0, key="first", values={"answer": 1}),
+        obs.CellValues(index=1, key="second", values={"answer": 2}),
     )
 
 
@@ -537,7 +586,7 @@ def test_view_graph_resolves_a_unique_variable(
     )
 
     with pytest.raises(KeyError, match="Unknown Observable cell key"):
-        notebook.cell_by_key("answer")
+        notebook.cell("answer")
     assert view.graph.cell_for_variable("answer").index == 0
     assert view.graph.cell_for_variable("answer").defines == ("answer",)
 
@@ -580,7 +629,7 @@ def test_view_graph_keeps_python_keys_separate_from_ojs_variables(
         ],
     )
 
-    assert notebook.cell_by_key("conflict").key == "conflict"
+    assert notebook.cell("conflict").key == "conflict"
     assert view.graph.cell_for_variable("conflict").key == "ojs-variable"
     assert view.graph.cell_for_variable("conflict").defines == ("conflict",)
 
@@ -589,14 +638,14 @@ def test_cell_view_exposes_its_synchronized_values(
     browser_value_sync: BrowserValueSync,
 ) -> None:
     notebook = obs.Notebook(obs.ojs("viewof gain = Inputs.range([0, 11])", key="gain"))
-    view = notebook.cell_by_key("gain").view()
+    view = notebook.cell("gain").view()
 
     browser_value_sync(view, {"gain": 7}, ["gain"])
 
     assert view.has_rendered is True
-    assert view.runtime_values == {"gain": 7}
-    assert view.value("gain") == 7
-    assert view.cell_values() == (
+    assert view.values == {"gain": 7}
+    assert view.values["gain"] == 7
+    assert view.cell_values == (
         obs.CellValues(index=0, key="gain", values={"gain": 7}),
     )
 
@@ -611,7 +660,7 @@ def test_selected_view_owns_readback_independently_from_another_view(
         obs.ojs("double = answer * 2", key="double"),
     )
     full = notebook.view()
-    selected = notebook.cell_by_key("double").view()
+    selected = notebook.cell("double").view()
     browser_graph_sync(
         selected,
         cells=[
@@ -629,36 +678,36 @@ def test_selected_view_owns_readback_independently_from_another_view(
 
     assert selected.has_graph_snapshot is True
     assert selected.graph.cell_for_variable("double").key == "double"
-    assert selected.value("double") == 84
-    assert selected.cell_values() == (
+    assert selected.values["double"] == 84
+    assert selected.cell_values == (
         obs.CellValues(index=1, key="double", values={"double": 84}),
     )
     assert full.has_rendered is False
     with pytest.raises(obs.NotRenderedError):
-        full.runtime_values
+        full.values
 
 
 def test_closing_notebook_closes_live_views() -> None:
     notebook = obs.Notebook(obs.ojs("answer = 42", key="answer"))
     first = notebook.view()
-    second = notebook.cell_at(0).view()
+    second = notebook.cell(0).view()
 
     notebook.close()
     notebook.close()
 
-    with pytest.raises(RuntimeError, match="closed NotebookView"):
-        first.update_variables(answer=43)
-    with pytest.raises(RuntimeError, match="closed NotebookView"):
-        second.update_variables(answer=43)
+    assert first.comm is None
+    assert second.comm is None
+    with pytest.raises(RuntimeError, match="closed Notebook"):
+        notebook.view()
 
 
 def test_closed_notebook_keeps_cell_handles_readable_and_rejects_views() -> None:
     notebook = obs.Notebook(obs.ojs("answer = 42", key="answer"))
-    cell = notebook.cell_at(0)
+    cell = notebook.cell(0)
     notebook.close()
 
     assert cell.key == "answer"
-    assert cell.name == ""
+    assert cell.name is None
     with pytest.raises(RuntimeError, match="closed Notebook"):
         notebook.view()
     with pytest.raises(RuntimeError, match="closed Notebook"):

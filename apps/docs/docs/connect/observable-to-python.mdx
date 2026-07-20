@@ -5,9 +5,9 @@ description: Read browser-synchronized values back into Python after a view rend
 
 # Observable to Python
 
-`NotebookView` synchronizes rendered values back to Python. Move `gain`
-below: the readout updates in the browser, and the Python cell underneath
-reads the synchronized values from the same view.
+`NotebookView` synchronizes rendered values back to Python. Move the `gain`
+control to update the browser readout and the Python cell that reads from the
+same view.
 
 ```marimo-config
 requires-python = ">=3.11"
@@ -60,13 +60,13 @@ widget
 widget.value  # subscribe this cell to view synchronization
 
 if full_view.has_rendered:
-    synced = full_view.runtime_values
+    synced = full_view.values
     message = (
         f"Python sees `gain = {synced.get('gain')}` "
         f"and `doubled = {synced.get('doubled')}`."
     )
 else:
-    message = "Waiting for the view above to render."
+    message = "Waiting for the Observable view to render."
 mo.md(message)
 ```
 
@@ -74,13 +74,13 @@ mo.md(message)
 widget.value  # subscribe this cell to view synchronization
 
 if full_view.has_rendered:
-    synced = full_view.runtime_values
+    synced = full_view.values
     message = (
         f"Python sees `gain = {synced.get('gain')}` "
         f"and `doubled = {synced.get('doubled')}`."
     )
 else:
-    message = "Waiting for the view above to render."
+    message = "Waiting for the Observable view to render."
 mo.md(message)
 ```
 
@@ -88,21 +88,20 @@ mo.md(message)
 
 Readback belongs to the view whose browser runtime produced it.
 
-| Member           | Contract                                                            |
-| ---------------- | ------------------------------------------------------------------- |
-| `has_rendered`   | Whether this view has synchronized a completed browser render.      |
-| `runtime_values` | Decoded values whose name has exactly one owning cell in this view. |
-| `value(name)`    | One entry from `runtime_values`. Raises `KeyError` on a miss.       |
-| `cell_values()`  | One `CellValues` record per selected cell, in notebook order.       |
+| Member         | Contract                                                            |
+| -------------- | ------------------------------------------------------------------- |
+| `has_rendered` | Whether this view has synchronized a completed browser render.      |
+| `values`       | Decoded values whose name has exactly one owning cell in this view. |
+| `cell_values`  | One `CellValues` record per selected cell, in notebook order.       |
 
-Reading any of them before the view renders raises
+Reading `values` or `cell_values` before the view renders raises
 [`NotRenderedError`](../reference/values-and-graph.mdx#notrenderederror).
-Guard with `has_rendered`, as above. A name produced by more than one
-selected cell is omitted from `runtime_values` because it has no unique
-owner; `cell_values()` still reports it per cell.
+Guard readback with `has_rendered`. A name produced by more than one selected
+cell is omitted from `values` because it has no unique owner. `cell_values`
+still reports it per cell.
 
 ```python
-for record in full_view.cell_values():
+for record in full_view.cell_values:
     print(record.index, record.key, record.values)
 ```
 
@@ -118,21 +117,22 @@ serialization](../reference/variables-and-serialization.mdx#browser-to-python-re
 ## Reacting to readback in marimo
 
 marimo reruns a cell when a UI element it references changes. Reference the
-wrapped widget's `value` in the reading cell, as the live example does, and
-the cell reruns whenever the view synchronizes new state. In plain Jupyter,
-readback is not push-based: read `runtime_values` when you next need it, or
-observe the underlying traitlets.
+wrapped widget's `value` in the reading cell so the cell reruns whenever the
+view synchronizes new state. In plain Jupyter, readback is not push-based.
+Read `values` when you next need it, or observe the underlying traitlets.
 
 ## Reading from a focused view
 
-Each view synchronizes its own values. A focused view of one cell reads that
-cell and its hidden dependencies:
+Each view synchronizes its own selected-cell values. A focused view evaluates
+the selected cell's hidden dependencies while reporting values for the
+selected cell:
 
 ```python
-gain_view = notebook.cell_by_key("gain_control").view()
+gain_view = notebook.cell("gain_control").view()
 ```
 
-After `gain_view` renders somewhere, `gain_view.value("gain")` reads the
-value from *its* runtime. When the user changes `gain` in either view, both
-views converge through shared input state; see [Bidirectional
-inputs](bidirectional-inputs.mdx).
+After an anywidget host mounts and renders `gain_view`,
+`gain_view.values["gain"]` reads the value from its runtime. When the user
+changes `gain` in either view, both
+views converge through the notebook's synchronized input state. See
+[Bidirectional inputs](bidirectional-inputs.mdx).

@@ -5,9 +5,10 @@ description: Notebook construction, session state, variable mutation, and serial
 
 # `Notebook`
 
-`Notebook` stores cells, variables, attachments, and display options. Call
-`view()` to create a renderable view of all cells or a selected group of
-cells.
+`Notebook` is a plain Python object that owns a notebook definition, Python
+variables, attachments, theme, and synchronized browser input values. Call
+`view()` to create a renderable `NotebookView` for all cells or a selected
+group of cells.
 
 ```python
 import observablejs as obs
@@ -45,21 +46,22 @@ input contracts.
 | Argument             | Default      | Contract                                                                                                |
 | -------------------- | ------------ | ------------------------------------------------------------------------------------------------------- |
 | `*cells`             | Empty        | `Cell` objects from `ojs`, `js`, `md`, `html`, or direct `Cell` construction.                           |
-| `title`              | `"Untitled"` | Notebook Kit document title used by `spec` and generated HTML.                                          |
+| `title`              | `"Untitled"` | Notebook Kit document title written to generated HTML.                                                  |
 | `theme`              | `"air"`      | Theme name or `{"light": name, "dark": name}` mapping. Names are normalized to lowercase.               |
 | `files`              | `None`       | Named local paths, URLs, or attachment records for `FileAttachment`.                                    |
 | `base_path`          | `None`       | Base directory for relative local paths in `files`. The current working directory is used when omitted. |
 | `variables`          | `None`       | Mapping of Python-owned Observable variable names to serializable values.                               |
-| `show_pinned_source` | `False`      | Sends `show_source=True` to the renderer so selected pinned cells appear in the source panel.           |
+| `show_pinned_source` | `False`      | Shows source for selected cells whose `pinned` option is enabled.                                       |
 
 ### Construction errors
 
 - `TypeError` reports a non-`Cell` positional input, a non-mapping
   `variables` value, an unsupported variable value, or an invalid theme
   value type.
-- `ValueError` reports an unknown cell mode, duplicate nonempty cell keys,
-  an invalid or reserved variable name, an unknown theme, or a malformed
-  theme mapping.
+- `ValueError` reports an out-of-range or duplicate cell id, a duplicate
+  nonempty cell key, an invalid or reserved variable name, an unknown theme,
+  or a malformed theme mapping. `Cell` construction reports unknown cell modes
+  and conflicting cell attributes.
 - `FileNotFoundError` reports a missing explicit local attachment.
 - Other `OSError` subclasses report local attachment read or metadata
   failures.
@@ -95,27 +97,20 @@ raises `ValueError`. An invalid selection type raises `TypeError`. Unknown
 keys raise `KeyError`, and out-of-range indices raise `IndexError`. Calling
 `view()` after `notebook.close()` raises `RuntimeError`.
 
-### `Notebook.cell_at(index)`
+### `Notebook.cell(selector)`
 
 ```python
-cell = notebook.cell_at(0)
-data_view = cell.view()
+first_cell = notebook.cell(0)
+answer_cell = notebook.cell("answer")
+answer_view = answer_cell.view()
 ```
 
 Returns the cached
-[`NotebookCell`](notebook-view-and-cell.mdx#notebookcell) selection handle
-at `index`. Nonnegative indices count from the start, negative indices count
-from the end, and an out-of-range index raises `IndexError`.
-
-### `Notebook.cell_by_key(key)`
-
-```python
-cell = notebook.cell_by_key("answer")
-answer_view = cell.view()
-```
-
-Returns the cached selection handle whose Python key equals `key`. It is
-available before render. Missing and ambiguous keys raise `KeyError`.
+[`NotebookCell`](notebook-view-and-cell.mdx#notebookcell) selected by a
+zero-based index or Python cell key. Negative indices count from the end.
+Unknown or ambiguous keys raise `KeyError`, out-of-range indices raise
+`IndexError`, and other selector types raise `TypeError`. Cell lookup is
+available before a view renders.
 
 ### `Notebook.cells`
 
@@ -125,34 +120,9 @@ cells: tuple[obs.NotebookCell, ...] = notebook.cells
 
 Returns cached selection handles in notebook order. Accessing this property
 materializes every handle. While the notebook is open, each handle keeps
-object identity across later `cells` and lookup calls.
+object identity across later `cells` and `cell()` calls.
 
-## Construction-time state
-
-### `Notebook.source`
-
-```python
-source: str = notebook.source
-```
-
-Returns Notebook Kit HTML owned by a source-backed notebook. Python-authored
-notebooks return `""`. `from_html` returns its prepared source, including
-local JavaScript import rewrites when requested. ObservableHQ constructors
-return the Notebook Kit HTML generated from imported nodes. Document-based
-constructors pin Observable notebook imports when the source includes its
-`id` and `version`. Generated ObservableHQ source preserves its classic
-standard-library semantics through `from_html`.
-
-### `Notebook.spec`
-
-```python
-spec: dict[str, object] = notebook.spec
-```
-
-Returns a shallow copy of the Notebook Kit spec for a Python-authored
-notebook. The dictionary contains `title`, `theme`, and `cells`.
-Source-backed notebooks return an empty dictionary because their `source` is
-the rendering input.
+## Notebook state
 
 ### `Notebook.attachments`
 
@@ -165,24 +135,6 @@ appear as data URLs. URL-backed records retain their URL and optional
 metadata. See [File attachments](file-attachments.mdx) for path resolution
 and serialized HTML boundaries.
 
-### `Notebook.base_url`
-
-```python
-base_url: str = notebook.base_url
-```
-
-Returns the base URL for attachment names absent from `attachments`.
-Constructors use `""`, which selects the browser document base URI.
-
-### `Notebook.options`
-
-```python
-options: dict[str, object] = notebook.options
-```
-
-Returns a shallow copy of renderer options. Every notebook includes
-`{"show_source": bool}`.
-
 ### `Notebook.theme`
 
 ```python
@@ -191,9 +143,9 @@ notebook.theme = "slate"
 ```
 
 Returns the normalized theme name or light and dark mapping. Assigning a
-valid theme on a Python-authored notebook updates its active views and
-`notebook.spec`. Source-backed notebooks take their theme from source HTML,
-and changing that theme raises `traitlets.TraitError`.
+valid theme on a Python-authored notebook updates its active views.
+Source-backed notebooks take their theme from source HTML, and changing that
+theme raises `traitlets.TraitError`.
 
 ### `Notebook.variables`
 
@@ -237,8 +189,8 @@ and serialization](variables-and-serialization.mdx) page.
 
 Closes the notebook session and every live `NotebookView` created from it.
 Repeated calls are no-ops. Creating views, changing variables, or assigning
-a theme after close raises `RuntimeError`. Construction-time metadata
-remains readable.
+a theme after close raises `RuntimeError`. Cells, attachments, variables, and
+theme remain readable.
 
 ## `Notebook.to_notebook_html()`
 
@@ -246,10 +198,10 @@ remains readable.
 html: str = notebook.to_notebook_html()
 ```
 
-Returns Notebook Kit HTML. Python-authored notebooks serialize the current
-`spec`. Source-backed notebooks return `source`, including explicit source
-rewrites. File attachment records and Python variables remain session state,
-as described by [File attachments](file-attachments.mdx) and [Variables and
+Returns the current notebook definition as Notebook Kit HTML. The document
+includes authored cells and source rewrites. File attachment records and
+Python variables remain session state, as described by [File
+attachments](file-attachments.mdx) and [Variables and
 serialization](variables-and-serialization.mdx). ObservableHQ-derived HTML
 preserves classic standard-library semantics when loaded again through
 `from_html`.
@@ -262,11 +214,10 @@ preserves classic standard-library semantics when loaded again through
 Notebook.from_html(source, *, files=None, base_path=None, embed_file_attachments=False, rewrite_imports=False, variables=None, show_pinned_source=False)
 Notebook.from_observablehq(specifier, *, variables=None, files=None, show_pinned_source=False, timeout=30)
 Notebook.from_observablehq_document(document, *, title=None, variables=None, files=None, show_pinned_source=False)
-Notebook.from_observablehq_page_data(page_data, *, title=None, variables=None, files=None, show_pinned_source=False)
-Notebook.from_observablehq_nodes(nodes, *, observable_files=None, title="Untitled", variables=None, files=None, show_pinned_source=False)
 ```
 
-Each method returns a source-backed `Notebook`. ObservableHQ constructors
-use the classic Observable standard library. See [Source
-constructors](source-constructors.mdx) for accepted source shapes, defaults,
-network failures, file precedence, and source-revision import resolution.
+Each method returns a `Notebook` backed by imported Notebook Kit HTML.
+ObservableHQ constructors use the classic Observable standard library. See
+[Source constructors](source-constructors.mdx) for accepted source shapes,
+defaults, network failures, file precedence, and source-revision import
+resolution.

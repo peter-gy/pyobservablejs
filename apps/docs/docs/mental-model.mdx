@@ -8,11 +8,11 @@ description: Notebook, NotebookCell, and NotebookView, and the boundary between 
 Three Python objects carry the whole API. Learn what each one owns and the
 rest of this site reads as detail.
 
-| Object         | What it is                              | What it owns                                                                      |
-| -------------- | --------------------------------------- | ---------------------------------------------------------------------------------- |
-| `Notebook`     | The definition and the shared session   | Cells or source HTML, file attachments, theme, Python variables, shared input values |
-| `NotebookCell` | A stable handle for one cell            | Nothing but the selection. `cell.view()` creates a view for that cell.             |
-| `NotebookView` | One renderable display model            | One browser runtime, its rendered output, and its synchronized readback            |
+| Object         | What it is                   | What it owns                                                                            |
+| -------------- | ---------------------------- | --------------------------------------------------------------------------------------- |
+| `Notebook`     | A plain Python object        | Cells or source HTML, file attachments, theme, Python variables, and shared inputs      |
+| `NotebookCell` | A stable handle for one cell | Its index, optional Python key, optional Notebook Kit name, and `view()` selection path |
+| `NotebookView` | A renderable anywidget       | One browser runtime, selected cells, rendered output, and synchronized readback         |
 
 ```python
 import observablejs as obs
@@ -24,7 +24,7 @@ notebook = obs.Notebook(
 )
 
 full_view = notebook.view()              # every cell, one runtime
-readout_view = notebook.cell_by_key("readout").view()  # one cell + hidden dependencies
+readout_view = notebook.cell("readout").view()  # one cell + hidden dependencies
 ```
 
 ## Python defines, the browser evaluates
@@ -49,7 +49,7 @@ Notebook ── definition, variables ────▶ (session state)
 A `NotebookView` starts evaluating when an anywidget host mounts it. The
 browser then writes readback to that view: a rendered flag, the values of the
 selected cells, and the dependency graph. Python reads them through
-`has_rendered`, `runtime_values`, `cell_values()`, `value(name)`, and `graph`.
+`has_rendered`, `values`, `cell_values`, and `graph`.
 
 ## One runtime per view
 
@@ -57,8 +57,8 @@ Every `NotebookView` runs its selected cells and their hidden dependency
 closure in its own Observable runtime. Two views of the same cell evaluate
 that cell twice, once per runtime.
 
-This is why readback is per-view: `full_view.runtime_values` and
-`readout_view.runtime_values` come from different runtimes and can disagree
+This is why readback is per-view: `full_view.values` and
+`readout_view.values` come from different runtimes and can disagree
 while one of them has not rendered yet. When several outputs must share one
 runtime and one graph snapshot, select them into a single composite view with
 `notebook.view(cells=[...])`.
@@ -92,15 +92,15 @@ differ:
 obs.js('const threshold = view(Inputs.range([0, 1], {step: 0.05}));')
 ```
 
-Python decides *which cells render where*. JavaScript `view(...)` decides
-*which inputs feed the graph*.
+Python decides _which cells render where_. JavaScript `view(...)` decides
+_which inputs feed the graph_.
 
 ## Lifecycle in one pass
 
 1. Python creates a `Notebook` from authored cells, Notebook Kit HTML, or an
    ObservableHQ document.
 2. Python creates one `NotebookView` per place the notebook appears.
-3. A host mounts the view; the browser resolves the session and starts one
+3. A host mounts the view. The browser resolves the session and starts one
    Notebook Kit runtime.
 4. The browser writes render status, values, and graph metadata back to that
    view.

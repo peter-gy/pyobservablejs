@@ -2,9 +2,9 @@
 
 One Python `NotebookView` selection maps to one browser runtime. The notebook
 session shares definitions and mutable state across views. Each view owns its
-selection, DOM, readback, and teardown. The public [Views and
-composition](../apps/docs/docs/guides/views-and-composition.mdx) guide covers the
-user-facing contract.
+selection, DOM, readback, and teardown. [Select cells and create
+subsets](../apps/docs/docs/render/select-cells.mdx) covers the user-facing
+contract.
 
 ## Component map
 
@@ -25,25 +25,23 @@ readback are anywidget concerns.
 
 ## Model boundary
 
-Python creates two anywidget model roles:
+Python exposes a plain `Notebook` controller and a renderable `NotebookView`
+anywidget. The controller owns a private `_NotebookSession` anywidget model with
+the definition, runtime profile, attachments, theme, Python variables, named
+input values, renderer options, and cell keys. `NotebookView` owns a serialized
+`_session` reference, normalized cell indices, and its `_readback` snapshot.
 
-- `Notebook` uses `role="session"`. It owns source or spec data, the runtime
-  profile, attachments, theme, Python variables, named input values, options,
-  and cell keys.
-- `NotebookView` uses `role="view"`. It owns a serialized reference to the
-  session model, normalized cell indices, and its `_readback` snapshot.
-
-The frontend resolves `_notebook` through the anywidget host before it reads the
-session. A resolved model with another role is a protocol error.
+The frontend resolves `_session` through the anywidget host before reading the
+session. The resolved model must carry `_model_role="session"`.
 
 Derived graph and value state stays on `NotebookView`. Session mutations reach
 active views while readback remains local to the originating view model.
 
 ## Session model reference
 
-`NotebookView._notebook` is a `traitlets.Instance(Notebook)` with anywidget's
-widget-reference serializers. Python therefore validates the relationship as a
-`Notebook`, while the wire value preserves that model's identity. The frontend
+`NotebookView._session` is a `traitlets.Instance(_NotebookSession)` with
+anywidget's widget-reference serializers. Python validates the private model
+type, while the wire value preserves that model's identity. The frontend
 resolves the reference through `host.getModel` before reading session state or
 subscribing to changes.
 
@@ -52,16 +50,16 @@ specification](https://anywidget.dev/en/afm/#widget-composition). Each view
 retains the session model identity while owning a separate output lifecycle:
 
 ```text
-one Notebook model
-  shared definition and session state
+one public Notebook controller
+  one private session model
         |
         +---- NotebookView model -> one runtime and output
         |
         +---- NotebookView model -> one runtime and output
 ```
 
-Reusing a `Notebook` shares session state. Calling `.view()` again creates
-another output lifecycle.
+Reusing a `Notebook` shares its private session state. Calling `.view()` again
+creates another output lifecycle.
 
 ## Selection path
 
@@ -69,7 +67,8 @@ another output lifecycle.
 view model:
 
 1. `None` represents the full notebook.
-2. Integers, cell keys, and `NotebookCell` handles resolve to zero-based indices.
+2. `Notebook.cell()` resolves integer indices and string keys to stable handles.
+   View selections accept those selectors and existing `NotebookCell` handles.
 3. Indices are unique, in range, and sorted into notebook order.
 4. `_cell_indexes` carries `None` or the normalized nonempty list to the browser.
 
@@ -108,8 +107,8 @@ The active attempt follows this order:
    registers later receives its value during registration.
 10. Mark the view rendered after all selected cells publish settled state.
 
-Changes to the view's session reference or selection invalidate readback and
-start another attempt. Changes to session source, spec, theme, attachments,
+Changes to the view's private session reference or selection invalidate readback
+and start another attempt. Changes to session source, spec, theme, attachments,
 base URL, runtime profile, options, or cell keys follow the same rebuild path.
 
 Python `set` variable updates enter the active runtime directly. A replacement
@@ -158,4 +157,4 @@ for notebook frontends that transport model saves as separate requests.
 The render signal owns model, input, and cell listeners plus the runtime
 session. Aborting a render removes those listeners and disposes the Observable
 runtime. `NotebookView.close()` closes one display model. `Notebook.close()`
-closes every tracked view and then the session model.
+closes every tracked view and then its private session model.

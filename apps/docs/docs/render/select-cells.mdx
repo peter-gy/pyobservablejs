@@ -11,12 +11,11 @@ closure those cells need. Three selection shapes cover all cases.
 | Shape     | Call                                        | Cells rendered together                                        |
 | --------- | ------------------------------------------- | -------------------------------------------------------------- |
 | Full      | `notebook.view()`                           | Every notebook cell, subject to each cell's `display` setting. |
-| Focused   | `notebook.cell_by_key("chart").view()`      | One selected cell. Its dependencies evaluate as hidden cells.  |
+| Focused   | `notebook.cell("chart").view()`             | One selected cell. Its dependencies evaluate as hidden cells.  |
 | Composite | `notebook.view(cells=["chart", "summary"])` | Several selected cells and their hidden dependency closure.    |
 
-The live example below renders a composite view: the data cell is selected
-nowhere, yet both selected cells use it because it belongs to their
-dependency closure.
+The composite example renders two selected cells. The data cell is not
+selected, yet both selected cells use it through their dependency closure.
 
 ```marimo-config
 requires-python = ">=3.11"
@@ -106,7 +105,7 @@ handles, in any mix. Explicit selections render in canonical notebook order.
 ```python
 notebook.view(cells=[1, 2])
 notebook.view(cells=["chart", "summary"])
-notebook.view(cells=[notebook.cell_at(1), notebook.cell_by_key("summary")])
+notebook.view(cells=[notebook.cell(1), notebook.cell("summary")])
 ```
 
 An empty selection, a duplicate selection, or a handle from another notebook
@@ -119,26 +118,30 @@ for the full validation contract.
 `NotebookCell` is a stable selection handle, available before render.
 
 ```python
-chart_cell = notebook.cell_by_key("chart")   # by Python key
-first_cell = notebook.cell_at(0)             # by index, negatives count from the end
-all_cells = notebook.cells                   # handles in notebook order
+chart_cell = notebook.cell("chart")  # by Python key
+first_cell = notebook.cell(0)        # by index, negatives count from the end
+all_cells = notebook.cells           # handles in notebook order
 
 chart_view = chart_cell.view()
+selected_cells = chart_view.cells
 ```
 
-`key` comes from the Python-side `key=` cell option; `name` comes from the
-Notebook Kit cell name declared in the source. Both read as `""` when unset.
+`key` comes from the Python-side `key=` cell option. `name` comes from the
+Notebook Kit cell name declared in the source or set through `name=`. Both
+are `None` when unset. `index` is the cell's zero-based notebook position.
+`NotebookView.cells` returns the selected handles in notebook order.
 
 ## Composite view or separate views?
 
-Both render several outputs; they differ in runtimes.
+Both render several outputs. They differ in runtime ownership.
 
 - A **composite view** evaluates the selected cells in **one runtime** with
   one graph snapshot and one readback. Use it when the outputs belong
   together in one place.
-- **Separate views** evaluate in **separate runtimes** and stay connected
-  only through notebook-owned state. Use them when the outputs belong in
-  different frontend locations or need separate readback.
+- **Separate views** evaluate in **separate runtimes** and own separate
+  readback. Python variables and named browser inputs synchronize through
+  the notebook. Use separate views when outputs belong in different
+  frontend locations.
 
 The [Split one notebook into several
 views](../recipes/split-notebook-into-views.mdx) recipe mounts two focused

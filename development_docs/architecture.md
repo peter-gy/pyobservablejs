@@ -12,18 +12,17 @@ See [View composition](view-composition.md) for the selection, model-resolution,
 synchronization, readback, and teardown paths behind `NotebookView`.
 
 ```text
-Python Notebook
-  definition, attachments, options, shared variables and named inputs
+public Notebook controller
+  definition, attachments, variables, cell handles
         |
-        +---- NotebookCell selection handle
-        |          |
-        |          +---- view()
+        +---- private anywidget session model
+        |          definition and shared input state
         |
-        +---- view() or view(cells=[...])
+        +---- cell(...).view() or view(cells=[...])
                    |
                    v
-             NotebookView model
-               cell selection
+             NotebookView widget
+             selection + session reference
                    |
                    v
           one Notebook Kit runtime
@@ -34,18 +33,20 @@ Python Notebook
 
 ## Ownership boundaries
 
-`Notebook` owns the definition and session. Its state includes authored cells
-or source HTML, attachments, renderer options, Python variables, and named
-browser input values whose serialized shapes can be shared across views.
+`Notebook` is a plain Python controller. It owns the definition, cell handles,
+attachments, theme, Python variables, and lifecycle. Its private anywidget
+session model carries the definition and shareable named browser input values to
+each view.
 
 `NotebookCell` owns a stable cell selection. `NotebookCell.view()` creates a
 `NotebookView` for the selected cell and its dependency closure. The resulting
 view owns the browser runtime and readback state.
 
-`NotebookView` owns one anywidget display model, one Notebook Kit runtime, the
-selected cell indices, render gates, runtime values, per-cell values, and graph
-metadata. `Notebook.view()` selects every cell. `Notebook.view(cells=[...])`
-creates a composite selection that evaluates in one runtime.
+`NotebookView` is the public renderable anywidget. It owns one Notebook Kit
+runtime, selected cell handles, render gates, synchronized values, per-cell
+values, and graph metadata. `Notebook.view()` selects every cell.
+`Notebook.view(cells=[...])` creates a composite selection that evaluates in one
+runtime.
 
 Separate views from one notebook share named Python variables. A browser input
 event on a named `viewof` value becomes session state for current and future
@@ -61,13 +62,13 @@ composite view when multiple cells require the same runtime and graph snapshot.
    selection.
 3. An anywidget host displays the view. marimo wraps it with
    `mo.ui.anywidget`, and Jupyter displays it directly.
-4. The frontend resolves the referenced notebook session and reads its source,
-   spec, runtime profile, attachments, variables, options, and shared input
-   values.
+4. The frontend resolves the private session model referenced by the view and
+   reads its definition, runtime profile, attachments, variables, renderer
+   options, and shared input values.
 5. Notebook Kit parses or transpiles the definition. The runtime profile
    selects the standard library before creating one Observable runtime for that
    view.
-6. The browser writes runtime values, per-cell values, graph metadata, and
+6. The browser writes synchronized values, per-cell values, graph metadata, and
    render status to the view model.
 7. Teardown disposes the runtime, model listeners, and DOM owned by that view.
 
@@ -95,9 +96,9 @@ recreating the shared session.
 
 ## Readback ownership
 
-Each view owns its render flag, graph snapshot, runtime values, and per-cell
-values. Python reads them through `NotebookView.runtime_values`,
-`NotebookView.cell_values()`, `NotebookView.value()`, and `NotebookView.graph`.
+Each view owns its render flag, graph snapshot, values, and per-cell values.
+Python reads them through `NotebookView.values`, `NotebookView.cell_values`, and
+`NotebookView.graph`.
 
 Each render attempt carries one monotonic token. Writes from an aborted or
 superseded attempt are dropped. Changes that rebuild a view invalidate its
@@ -117,8 +118,8 @@ reaches the browser.
 into Notebook Kit HTML. The document `id` and `version` form an import
 resolution token. Observable import cells are rewritten to public v4 module
 URLs carrying that token, which preserves the dependency revisions selected by
-the source notebook. Raw node collections keep their supplied import
-specifiers because they do not carry a source document id and version.
+the source notebook. Document mappings without an id and version keep their
+supplied import specifiers.
 
 ## Runtime profiles
 

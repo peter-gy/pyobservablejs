@@ -3,9 +3,9 @@ import { deserialize, toNotebook, type Notebook } from "@observablehq/notebook-k
 import type { AttachmentInfo, NotebookGraph, NotebookOptions } from "@pyobservablejs/runtime";
 
 export type WidgetModel = {
-	role?: "session" | "view";
+	_model_role?: "session";
 	_runtime_profile?: "notebook-kit" | "observable";
-	_notebook?: string | null;
+	_session?: string | null;
 	_cell_indexes?: number[] | null;
 	_source?: string;
 	_spec?: Record<string, unknown>;
@@ -51,7 +51,7 @@ export const SESSION_MODEL_CHANGE_EVENTS = [
 	"change:_cell_keys",
 ] as const;
 
-export const VIEW_MODEL_CHANGE_EVENTS = ["change:_notebook", "change:_cell_indexes"] as const;
+export const VIEW_MODEL_CHANGE_EVENTS = ["change:_session", "change:_cell_indexes"] as const;
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
 	return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -94,7 +94,7 @@ function readNotebookTheme(model: AnyWidgetModel): Notebook["theme"] | undefined
 }
 
 export function readNotebookSessionRef(model: AnyWidgetModel): string {
-	const sessionRef = model.get("_notebook");
+	const sessionRef = model.get("_session");
 	if (typeof sessionRef !== "string" || !sessionRef) {
 		throw new Error("NotebookView has no Notebook session reference");
 	}

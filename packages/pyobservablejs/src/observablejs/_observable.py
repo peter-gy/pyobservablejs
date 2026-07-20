@@ -12,6 +12,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, TypedDict, cast
 
+from ._cell_ids import _CellIdAllocator, _MAX_SAFE_CELL_ID, _is_safe_cell_id
 from ._cells import NotebookCellSpec
 from ._files import FileAttachment
 
@@ -24,6 +25,7 @@ _JS_IDENTIFIER_RE = re.compile(r"^[A-Za-z_$][0-9A-Za-z_$]*$")
 _OJS_OUTPUT_RE = re.compile(
     r"^\s*(?:mutable\s+|viewof\s+)?([A-Za-z_$][0-9A-Za-z_$]*)\s*="
 )
+_ASCII_INTEGER_RE = re.compile(r"[+-]?[0-9]+")
 _LEGACY_DUCKDB_IMPORT_RE = re.compile(
     r"""^\s*import\s*\{\s*DuckDBClient\s*\}\s*from\s*["']@cmudig/duckdb["']\s*;?\s*$"""
 )
@@ -75,18 +77,6 @@ class ObservableDocument(TypedDict, total=False):
     files: Sequence[ObservableFileInput]
 
 
-class ObservablePageProps(TypedDict, total=False):
-    initialNotebook: ObservableDocument
-
-
-class ObservablePageData(TypedDict, total=False):
-    pageProps: ObservablePageProps | Mapping[str, Any]
-    initialNotebook: ObservableDocument
-
-
-ObservableFilesInput = Sequence[ObservableFileInput] | None
-
-
 @dataclass(frozen=True)
 class ObservableNode:
     index: int
@@ -114,7 +104,7 @@ class SqlPlan:
 
 @dataclass
 class SqlContext:
-    next_id: int
+    ids: _CellIdAllocator
     used_names: set[str]
     clients: dict[str, str] = field(default_factory=dict)
 
@@ -159,8 +149,7 @@ class SqlContext:
         database = _generated_sql_client_name(seed, self.used_names)
         self.used_names.add(database)
         self.clients[key] = database
-        generated = cell(id=self.next_id, name=database, **kwargs)
-        self.next_id += 1
+        generated = cell(id=self.ids.allocate(), name=database, **kwargs)
         return SqlPlan(database=database, cells=(generated,))
 
 
@@ -236,7 +225,7 @@ def observable_nodes_to_cells(
 ) -> list[NotebookCellSpec]:
     """Convert ObservableHQ document nodes to Notebook Kit cell specs."""
 
-    normalized = [_normalize_node(node, index) for index, node in enumerate(nodes)]
+    normalized = _normalize_nodes(nodes)
     return _lower_nodes(normalized, import_resolution=import_resolution)
 
 
@@ -264,7 +253,31 @@ def observable_files_to_attachments(
     return _files_to_attachments(files)
 
 
-def _normalize_node(node: ObservableNodeInput, index: int) -> ObservableNode:
+def _normalize_nodes(nodes: Sequence[ObservableNodeInput]) -> list[ObservableNode]:
+    records: list[tuple[ObservableNodeInput, int, int | None]] = []
+    reserved: set[int] = set()
+    for index, node in enumerate(nodes):
+        if not isinstance(node, Mapping):
+            raise ValueError("Observable document node must be an object")
+        cell_id = _explicit_node_id(node.get("id"))
+        records.append((node, index, cell_id))
+        if cell_id is not None:
+            reserved.add(cell_id)
+
+    allocator = _CellIdAllocator(reserved)
+    normalized: list[ObservableNode] = []
+    for node, index, cell_id in records:
+        if cell_id is None:
+            cell_id = allocator.allocate()
+        normalized.append(_normalize_node(node, index, cell_id))
+    return normalized
+
+
+def _normalize_node(
+    node: ObservableNodeInput,
+    index: int,
+    cell_id: int,
+) -> ObservableNode:
     if not isinstance(node, Mapping):
         raise ValueError("Observable document node must be an object")
     raw = dict(node)
@@ -273,7 +286,7 @@ def _normalize_node(node: ObservableNodeInput, index: int) -> ObservableNode:
         mode = str(mode)
     return ObservableNode(
         index=index,
-        id=_node_id(raw.get("id"), index),
+        id=cell_id,
         mode=mode,
         value=raw.get("value"),
         name=_valid_cell_name(raw.get("name")),
@@ -296,8 +309,12 @@ def _lower_nodes(
             used_names.add(node.name)
         if output_name := _cell_output_name(node):
             used_names.add(output_name)
+    node_ids = {node.id for node in nodes}
     sql_context = SqlContext(
-        next_id=max((node.id for node in nodes), default=0) + 1,
+        ids=_CellIdAllocator(
+            node_ids,
+            next_id=max(node_ids, default=0) + 1,
+        ),
         used_names=used_names,
     )
 
@@ -927,17 +944,31 @@ def _json_literal(value: object) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
-def _node_id(value: object, index: int) -> int:
+def _explicit_node_id(value: object) -> int | None:
     if isinstance(value, bool):
-        return index + 1
-    if isinstance(value, int):
-        return value
+        return None
     if isinstance(value, str):
-        try:
-            return int(value)
-        except ValueError:
-            return index + 1
-    return index + 1
+        if not _ASCII_INTEGER_RE.fullmatch(value):
+            return None
+        sign = value[0] if value[0] in "+-" else ""
+        digits = value[len(sign) :].lstrip("0")
+        if sign == "-" or not digits:
+            return None
+        maximum = str(_MAX_SAFE_CELL_ID)
+        if len(digits) > len(maximum) or (
+            len(digits) == len(maximum) and digits > maximum
+        ):
+            raise ValueError(
+                f"ObservableHQ cell id must be between 1 and {_MAX_SAFE_CELL_ID}"
+            )
+        value = int(digits)
+    if not isinstance(value, int) or value <= 0:
+        return None
+    if not _is_safe_cell_id(value):
+        raise ValueError(
+            f"ObservableHQ cell id must be between 1 and {_MAX_SAFE_CELL_ID}"
+        )
+    return value
 
 
 def _files_to_attachments(

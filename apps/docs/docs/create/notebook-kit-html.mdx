@@ -74,10 +74,9 @@ as an area chart.
 
 ## Source-backed notebooks
 
-A notebook loaded from HTML is *source-backed*: `notebook.source` returns the
-Notebook Kit document, and `notebook.spec` is empty. The theme comes from the
-source HTML, so assigning `notebook.theme` raises an error instead of
-silently diverging from the document.
+A notebook loaded from HTML keeps that Notebook Kit document as its
+definition. The document owns its theme. Assigning `notebook.theme` raises
+`traitlets.TraitError`.
 
 Everything else works the same as a Python-authored notebook: `view()`
 creates renderable views, `variables` overrides named values, and readback

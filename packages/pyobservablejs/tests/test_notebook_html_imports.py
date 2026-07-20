@@ -166,13 +166,13 @@ def test_source_backed_notebook_exposes_one_cell_per_script() -> None:
     widget = obs.Notebook.from_html(SOURCE_BACKED_NAMED_CELLS)
 
     assert len(widget.cells) == 3
-    assert [widget.cell_at(index).key for index in range(3)] == [
+    assert [widget.cell(index).key for index in range(3)] == [
         "title",
         "svg",
         "display",
     ]
-    display_cell = widget.cell_by_key("display")
-    svg_cell = widget.cell_by_key("svg")
+    display_cell = widget.cell("display")
+    svg_cell = widget.cell("svg")
     assert display_cell.name == "display"
     assert svg_cell.name == "svg"
 

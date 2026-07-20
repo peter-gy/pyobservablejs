@@ -119,13 +119,13 @@ dataset](https://allisonhorst.github.io/palmerpenguins/).
   `FileAttachment("penguins.csv")` call, reads the file relative to the
   explicit `base_path`, and registers it as a data URL in
   `notebook.attachments`.
-- The document text in `notebook.source` is unchanged; only the attachment
-  registry carries the embedded bytes.
+- Attachment discovery keeps the input document text unchanged. The
+  attachment registry carries the embedded bytes.
 
 ## Variations
 
 - Add `rewrite_imports=True` when the document imports local JavaScript
-  modules with relative specifiers; they are inlined recursively. See [Add
+  modules with relative specifiers. They are inlined recursively. See [Add
   files and local modules](../create/files-and-modules.mdx#discover-files-in-source-html).
 - Leave embedding disabled when the page already serves the files at the same
   browser-relative paths.

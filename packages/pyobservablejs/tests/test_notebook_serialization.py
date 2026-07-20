@@ -53,7 +53,7 @@ def test_observable_document_serializes_to_notebook_kit_html(
 
     assert document_title(source) == "Remote Plot"
     scripts = script_tags(source)
-    assert [script["attrs"].get("id") for script in scripts] == ["0", "3"]
+    assert [script["attrs"].get("id") for script in scripts] == ["1", "3"]
     assert [script["attrs"].get("type") for script in scripts] == [
         "text/markdown",
         "application/vnd.observable.javascript",

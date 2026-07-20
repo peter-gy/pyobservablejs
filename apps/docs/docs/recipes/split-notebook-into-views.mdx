@@ -79,8 +79,8 @@ notebook = obs.Notebook(
     variables={"minMass": 4000},
 )
 
-chart_view = notebook.cell_by_key("chart").view()
-summary_view = notebook.cell_by_key("summary").view()
+chart_view = notebook.cell("chart").view()
+summary_view = notebook.cell("summary").view()
 
 chart_widget = mo.ui.anywidget(chart_view)
 summary_widget = mo.ui.anywidget(summary_view)
@@ -122,8 +122,8 @@ notebook = obs.Notebook(
     variables={"minMass": 4000},
 )
 
-chart_view = notebook.cell_by_key("chart").view()
-summary_view = notebook.cell_by_key("summary").view()
+chart_view = notebook.cell("chart").view()
+summary_view = notebook.cell("summary").view()
 
 chart_widget = mo.ui.anywidget(chart_view)
 summary_widget = mo.ui.anywidget(summary_view)
@@ -151,14 +151,14 @@ mo.vstack(
 
 ## What this shows
 
-- **Focused views carry their dependencies.** Each view selects one cell;
-  the hidden `heavy_penguins` cell evaluates inside both runtimes because
+- **Focused views carry their dependencies.** Each view selects one cell.
+  The hidden `heavy_penguins` cell evaluates inside both runtimes because
   the selected cells depend on it.
 - **One session update reaches every view.** The final cell calls
   `update_variables` once. The notebook session fans the new `minMass` out
   to both runtimes, and each recomputes its own cells.
-- **Each view still owns its readback.** `chart_view.runtime_values` and
-  `summary_view.runtime_values` come from different runtimes and synchronize
+- **Each view still owns its readback.** `chart_view.values` and
+  `summary_view.values` come from different runtimes and synchronize
   independently.
 
 ## Sharing browser inputs across views
@@ -170,11 +170,11 @@ marimo and JupyterLab. The contract, including which value shapes are
 shared, is described in [Bidirectional
 inputs](../connect/bidirectional-inputs.mdx#which-values-can-be-shared).
 
-## When to use a composite view instead
+## Choose a composite view
 
-If the chart and summary belong in *one* placement, select them into one
-view: `notebook.view(cells=["chart", "summary"])` evaluates everything once
-in a single runtime. Separate views are for separate placements — different
-cells of the host notebook, different layout columns, or different pages of
-a dashboard. See [Select cells and create
+If the chart and summary belong in _one_ placement, select them into one
+view. `notebook.view(cells=["chart", "summary"])` evaluates everything once
+in a single runtime. Separate views fit separate placements such as different
+cells of the host notebook, different layout columns, or different dashboard
+pages. See [Select cells and create
 subsets](../render/select-cells.mdx#composite-view-or-separate-views).

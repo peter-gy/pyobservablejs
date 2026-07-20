@@ -66,11 +66,13 @@ class NotebookGraph:
         defined.update(name for cell in self.cells for name in cell.runtime_outputs)
         return tuple(name for name in self.references if name not in defined)
 
-    def cell(self, index: int) -> CellInfo | None:
+    def cell(self, index: int) -> CellInfo:
+        """Return the cell at ``index`` in the notebook definition."""
+
         for cell in self.cells:
             if cell.index == index:
                 return cell
-        return None
+        raise IndexError("notebook graph cell index out of range")
 
     def cell_for_variable(self, variable: str) -> CellInfo:
         matches = [cell for cell in self.cells if variable in cell.defines]

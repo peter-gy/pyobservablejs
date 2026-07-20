@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import math
+import re
 import textwrap
 from html.parser import HTMLParser
 from typing import Any, cast
 
+from ._cell_ids import _MAX_SAFE_CELL_ID
 from ._cells import Cell
 from ._serialize import (
     RUNTIME_PROFILE_ATTRIBUTE,
@@ -19,6 +22,19 @@ from ._themes import Theme, deserialize_theme_attribute
 _MODE_BY_SCRIPT_TYPE = {
     script_type.lower(): mode for mode, script_type in SCRIPT_TYPES.items()
 }
+_ECMASCRIPT_TRIM = (
+    "\u0009\u000a\u000b\u000c\u000d\u0020\u00a0\u1680"
+    "\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a"
+    "\u2028\u2029\u202f\u205f\u3000\ufeff"
+)
+_ECMASCRIPT_DECIMAL = re.compile(
+    r"[+-]?(?:Infinity|(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?)"
+)
+_ECMASCRIPT_NON_DECIMAL = (
+    (re.compile(r"0[xX][0-9a-fA-F]+"), 16),
+    (re.compile(r"0[bB][01]+"), 2),
+    (re.compile(r"0[oO][0-7]+"), 8),
+)
 
 
 class _NotebookHTMLParser(HTMLParser):
@@ -32,6 +48,8 @@ class _NotebookHTMLParser(HTMLParser):
         self._inside_notebook = False
         self._script_attrs: dict[str, str | None] | None = None
         self._script_parts: list[str] = []
+        self._max_cell_id = 0
+        self._cell_ids: set[int] = set()
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag = tag.lower()
@@ -76,14 +94,10 @@ class _NotebookHTMLParser(HTMLParser):
             .replace("<\\/script", "</script")
         )
         cell_attrs: dict[str, Any] = {}
-        cell_id = _optional_int(attrs.get("id"))
-        if cell_id is not None:
-            cell_attrs["id"] = cell_id
-        for key in ("database", "format", "output"):
+        cell_id = self._cell_id(attrs.get("id"))
+        for key in ("database", "format"):
             if attrs.get(key) is not None:
                 cell_attrs[key] = attrs[key]
-        if "pinned" in attrs:
-            cell_attrs["pinned"] = True
         self.cells.append(
             Cell(
                 source=value,
@@ -97,9 +111,24 @@ class _NotebookHTMLParser(HTMLParser):
                 name=attrs.get("name"),
                 display="hidden" not in attrs,
                 raw=True,
+                id=cell_id,
+                pinned="pinned" in attrs,
+                output=attrs.get("output"),
                 notebookkit_attrs=cell_attrs,
             )
         )
+
+    def _cell_id(self, value: str | None) -> int:
+        cell_id = _notebook_kit_cell_id(value)
+        if cell_id is None or cell_id in self._cell_ids:
+            if self._max_cell_id >= _MAX_SAFE_CELL_ID:
+                raise ValueError("Notebook has no available JavaScript-safe cell id")
+            self._max_cell_id += 1
+            cell_id = self._max_cell_id
+        elif cell_id > self._max_cell_id:
+            self._max_cell_id = cell_id
+        self._cell_ids.add(cell_id)
+        return cell_id
 
 
 def parse_html_cells(source: str) -> list[Cell]:
@@ -128,10 +157,27 @@ def _runtime_profile(value: str | None) -> RuntimeProfile:
     raise ValueError(f"Unsupported pyobservablejs runtime profile: {value!r}")
 
 
-def _optional_int(value: str | None) -> int | None:
-    if value is None:
+def _notebook_kit_cell_id(value: str | None) -> int | None:
+    normalized = "" if value is None else value.strip(_ECMASCRIPT_TRIM)
+    if not normalized:
         return None
-    try:
-        return int(value)
-    except ValueError:
+    if _ECMASCRIPT_DECIMAL.fullmatch(normalized):
+        number = float(normalized)
+    else:
+        for pattern, base in _ECMASCRIPT_NON_DECIMAL:
+            if pattern.fullmatch(normalized):
+                try:
+                    number = float(int(normalized[2:], base))
+                except OverflowError:
+                    return None
+                break
+        else:
+            return None
+    if not math.isfinite(number):
         return None
+    cell_id = math.floor(number)
+    if cell_id <= 0:
+        return None
+    if cell_id > _MAX_SAFE_CELL_ID:
+        raise ValueError(f"Notebook cell id must be between 1 and {_MAX_SAFE_CELL_ID}")
+    return cell_id

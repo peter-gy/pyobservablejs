@@ -44,6 +44,12 @@ BrowserValueSync = Callable[..., None]
 CommentNodes = Callable[[str], list[str]]
 
 
+def notebook_session(notebook: obs.Notebook) -> Any:
+    """Return the private widget model used for browser protocol assertions."""
+
+    return getattr(notebook, "_session")
+
+
 class BrowserGraphCellBuilder(Protocol):
     def __call__(
         self,

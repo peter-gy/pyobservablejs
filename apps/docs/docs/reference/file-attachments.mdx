@@ -132,9 +132,8 @@ The MIME type comes from the attachment name. `.arrow` and `.parquet` use
 Apache Arrow and Apache Parquet media types. Unknown suffixes use
 `application/octet-stream`.
 
-Names absent from `notebook.attachments` resolve against
-`notebook.base_url`. Constructors set that value to `""`, which selects the
-browser document base URI.
+Names absent from `notebook.attachments` resolve against the browser document
+base URI.
 
 ## Source HTML discovery
 
@@ -157,10 +156,10 @@ calls in comments, string literals, regular-expression literals, Markdown
 cells, and scripts outside the `<notebook>` element.
 
 Discovery populates `notebook.attachments` with data URLs and keeps each
-`FileAttachment` call in `notebook.source`. Explicit `files` entries take
-precedence when they use the same name. Each discovered name whose resolved
-path is an existing file becomes a record. Remaining names use browser URL
-resolution.
+`FileAttachment` call in the imported document definition. Explicit `files`
+entries take precedence when they use the same name. Each discovered name
+whose resolved path is an existing file becomes a record. Remaining names
+use browser URL resolution.
 
 `base_path` is required when `embed_file_attachments=True`. Pass the
 directory that should resolve relative attachment names. See [Source

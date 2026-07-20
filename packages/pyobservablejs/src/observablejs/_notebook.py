@@ -1,4 +1,4 @@
-"""Python widget models for Observable notebooks and cells."""
+"""Python notebook sessions, cell handles, and renderable views."""
 
 from __future__ import annotations
 
@@ -21,15 +21,8 @@ from ._model import (
     notebook_model_from_html,
     notebook_model_from_observablehq,
     notebook_model_from_observablehq_document,
-    notebook_model_from_observablehq_nodes,
-    notebook_model_from_observablehq_page_data,
 )
-from ._observable import (
-    ObservableDocument,
-    ObservableFilesInput,
-    ObservableNodeInput,
-    ObservablePageData,
-)
+from ._observable import ObservableDocument
 from ._serialize import serialize
 from ._themes import Theme, normalize_theme
 from ._variables import (
@@ -78,40 +71,52 @@ class _ObservableWidget(BundledWidget):
 
 
 class NotebookCell:
-    """Stable selection handle for one Observable cell."""
+    """Stable selection handle for one notebook cell."""
 
-    __slots__ = ("_notebook", "_index")
+    __slots__ = ("_owner", "_index")
+    _owner: Notebook
+    _index: int
 
-    def __init__(self, notebook: Notebook, index: int) -> None:
-        self._notebook = notebook
-        self._index = index
+    def __init__(self) -> None:
+        raise TypeError("NotebookCell objects are created with Notebook.cell()")
+
+    @classmethod
+    def _create(cls, notebook: Notebook, index: int) -> NotebookCell:
+        cell = object.__new__(cls)
+        cell._owner = notebook
+        cell._index = index
+        return cell
 
     @property
-    def key(self) -> str:
-        """Python handle assigned to this cell, or an empty string."""
+    def index(self) -> int:
+        """Zero-based position in the notebook definition."""
 
-        return self._notebook._cell_keys[self._index]
+        return self._index
 
     @property
-    def name(self) -> str:
-        """Notebook Kit name assigned to this cell, or an empty string."""
+    def key(self) -> str | None:
+        """Python selection key assigned to this cell."""
 
-        return self._notebook._cell_names[self._index]
+        return self._owner._session._cell_keys[self._index] or None
+
+    @property
+    def name(self) -> str | None:
+        """Notebook Kit name assigned to this cell."""
+
+        return self._owner._session._cell_names[self._index] or None
 
     def view(self) -> NotebookView:
-        """Create a display model that renders this cell."""
+        """Create a display model for this cell and its dependencies."""
 
-        return self._notebook.view([self])
+        return self._owner.view([self])
 
 
-class Notebook(_ObservableWidget):
-    """State and runtime session for an Observable Notebook Kit notebook.
+class _NotebookSession(anywidget.AnyWidget):
+    """Private anywidget model for notebook definitions and shared state."""
 
-    Python owns cell specs, attachments, and Python-backed OJS variables. The
-    browser resolves this session through a ``NotebookView`` display model.
-    """
-
-    role = traitlets.Unicode("session").tag(sync=True)
+    # AnyWidget applies later comm updates after this module has loaded.
+    _esm = "export default { initialize() {} };"
+    _model_role = traitlets.Unicode("session").tag(sync=True)
     _runtime_profile = traitlets.Enum(
         values=["notebook-kit", "observable"],
         default_value="notebook-kit",
@@ -126,6 +131,41 @@ class Notebook(_ObservableWidget):
     _view_values = traitlets.Dict(default_value={}).tag(sync=True)
     _options = traitlets.Dict().tag(sync=True)
     _cell_keys = traitlets.List(traitlets.Unicode(), default_value=[]).tag(sync=True)
+
+    def __init__(
+        self,
+        model: NotebookModel,
+        *,
+        variables: Mapping[str, Any] | None,
+        show_pinned_source: bool,
+    ) -> None:
+        self._reserved_variable_names = (
+            OBSERVABLE_RESERVED_VARIABLE_NAMES
+            if model.runtime_profile == "observable"
+            else frozenset()
+        )
+        self._variable_values, variable_wire = self._prepare_variables(variables)
+        self._cell_names = tuple(model.cell_names)
+        self._views: weakref.WeakSet[NotebookView] = weakref.WeakSet()
+        self._notebook_closed = False
+        self._variable_update_seq = 0
+        spec = dict(model.spec)
+        if not model.source:
+            spec["theme"] = model.theme
+        self._initializing_notebook = True
+        try:
+            super().__init__(
+                _runtime_profile=model.runtime_profile,
+                _source=model.source,
+                _spec=spec,
+                theme=model.theme,
+                _attachments=dict(model.attachments),
+                _variables=variable_wire,
+                _options={"show_source": show_pinned_source},
+                _cell_keys=list(model.cell_keys),
+            )
+        finally:
+            self._initializing_notebook = False
 
     @traitlets.validate("theme")
     def _validate_theme(self, proposal: Any) -> Theme:
@@ -149,131 +189,13 @@ class Notebook(_ObservableWidget):
         spec["theme"] = change["new"]
         self.set_trait("_spec", spec)
 
-    def __init__(
-        self,
-        *cells: NotebookCellInput,
-        title: str = "Untitled",
-        theme: str | Mapping[str, str] = "air",
-        files: Mapping[str, FileInput] | None = None,
-        base_path: str | pathlib.Path | None = None,
-        variables: Mapping[str, Any] | None = None,
-        show_pinned_source: bool = False,
-    ) -> None:
-        """Create a notebook from Python-authored cells.
-
-        Cells must come from ``obs.ojs``, ``obs.js``, ``obs.md``, or
-        ``obs.html``. ``files`` registers file values, with ``base_path``
-        resolving relative local paths. ``variables`` sets Python-owned OJS
-        variables. ``show_pinned_source`` renders source for pinned cells.
-
-        Raises:
-            ValueError: ``mode`` or a variable name is invalid.
-            TypeError: A cell or variable value is unsupported.
-            FileNotFoundError: An explicit local attachment path does not exist.
-            OSError: An explicit local attachment path cannot be read.
-        """
-
-        model = notebook_model_from_cells(
-            cells,
-            title=title,
-            theme=theme,
-            files=files,
-            base_path=base_path,
-        )
-        self._initialize_model(
-            model,
-            variables=variables,
-            show_pinned_source=show_pinned_source,
-        )
-
-    @classmethod
-    def _from_model(
-        cls,
-        model: NotebookModel,
-        *,
-        variables: Mapping[str, Any] | None,
-        show_pinned_source: bool,
-    ) -> "Notebook":
-        notebook = cls.__new__(cls)
-        notebook._initialize_model(
-            model,
-            variables=variables,
-            show_pinned_source=show_pinned_source,
-        )
-        return notebook
-
-    def _initialize_model(
-        self,
-        model: NotebookModel,
-        *,
-        variables: Mapping[str, Any] | None,
-        show_pinned_source: bool,
-    ) -> None:
-        self._reserved_variable_names = (
-            OBSERVABLE_RESERVED_VARIABLE_NAMES
-            if model.runtime_profile == "observable"
-            else frozenset()
-        )
-        self._variable_values, variable_wire = self._prepare_variables(variables)
-        self._cell_names = tuple(model.cell_names)
-        self._cell_cache: dict[int, NotebookCell] = {}
-        self._views: weakref.WeakSet[NotebookView] = weakref.WeakSet()
-        self._notebook_closed = False
-        spec = dict(model.spec)
-        if not model.source:
-            spec["theme"] = model.theme
-        options: dict[str, Any] = {"show_source": show_pinned_source}
-        self._variable_update_seq = 0
-        self._initializing_notebook = True
-        try:
-            super().__init__(
-                _runtime_profile=model.runtime_profile,
-                _source=model.source,
-                _spec=spec,
-                theme=model.theme,
-                _attachments=dict(model.attachments),
-                _variables=variable_wire,
-                _options=options,
-                _cell_keys=list(model.cell_keys),
-            )
-        finally:
-            self._initializing_notebook = False
-
     @property
     def variables(self) -> dict[str, Any]:
-        """Current Python-owned Observable variables."""
-
         return dict(self._variable_values)
 
     @property
-    def source(self) -> str:
-        """Notebook Kit source HTML for source-backed notebooks."""
-
-        return self._source
-
-    @property
-    def spec(self) -> dict[str, Any]:
-        """Notebook Kit spec for Python-authored notebooks."""
-
-        return dict(self._spec)
-
-    @property
     def attachments(self) -> dict[str, FileAttachment]:
-        """File records sent to the frontend FileAttachment registry."""
-
         return cast(dict[str, FileAttachment], dict(self._attachments))
-
-    @property
-    def base_url(self) -> str:
-        """Base URL used by the frontend for unresolved file references."""
-
-        return self._base_url
-
-    @property
-    def options(self) -> dict[str, Any]:
-        """Display options sent to the frontend renderer."""
-
-        return dict(self._options)
 
     def update_variables(
         self,
@@ -281,13 +203,6 @@ class Notebook(_ObservableWidget):
         /,
         **kwargs: Any,
     ) -> None:
-        """Merge Python-owned variable updates into the live runtime.
-
-        Accepts a mapping, key/value pairs, keyword arguments, or both. Nonempty
-        updates set ``_variable_update`` with kind ``"set"`` and refresh the
-        serialized ``_variables`` trait.
-        """
-
         self._require_open()
         updates = variable_updates_from_args("update_variables", values, kwargs)
         if updates:
@@ -299,27 +214,12 @@ class Notebook(_ObservableWidget):
         /,
         **kwargs: Any,
     ) -> None:
-        """Replace the full Python-owned variable environment.
-
-        Accepts a mapping, key/value pairs, keyword arguments, or both. Omitted
-        names are released. The browser receives a replacement update and
-        rebuilds the runtime so original notebook definitions return for
-        released names.
-        """
-
         self._require_open()
         replacement = variable_updates_from_args("replace_variables", values, kwargs)
         prepared, serialized = self._prepare_variables(replacement)
         self._apply_variable_replacement(prepared, serialized)
 
     def reset_variables(self, *names: str) -> None:
-        """Release Python ownership for names that are currently overridden.
-
-        Empty calls and missing names are no-ops. Removing at least one name
-        sends a replacement update and restores original notebook definitions in
-        the browser runtime.
-        """
-
         self._require_open()
         if not names:
             return
@@ -333,10 +233,7 @@ class Notebook(_ObservableWidget):
                 serialized.pop(name, None)
                 changed = True
         if changed:
-            self._apply_variable_replacement(
-                values,
-                serialized,
-            )
+            self._apply_variable_replacement(values, serialized)
 
     def _require_open(self) -> None:
         if self._notebook_closed:
@@ -414,44 +311,171 @@ class Notebook(_ObservableWidget):
             )
         return cleared_names
 
+    def to_notebook_html(self) -> str:
+        return self._source or serialize(self._spec)
+
+    def close(self) -> None:
+        if getattr(self, "_notebook_closed", False):
+            return
+        self._notebook_closed = True
+        for view in tuple(getattr(self, "_views", ())):
+            view.close()
+        super().close()
+
+
+class Notebook:
+    """Notebook definition and Python-owned session state.
+
+    The browser evaluates the definition through a ``NotebookView`` created by
+    ``view()`` or by a ``NotebookCell`` handle.
+    """
+
+    __slots__ = ("_session", "_cell_cache")
+
+    def __init__(
+        self,
+        *cells: NotebookCellInput,
+        title: str = "Untitled",
+        theme: str | Mapping[str, str] = "air",
+        files: Mapping[str, FileInput] | None = None,
+        base_path: str | pathlib.Path | None = None,
+        variables: Mapping[str, Any] | None = None,
+        show_pinned_source: bool = False,
+    ) -> None:
+        """Create a notebook from Python-authored cells."""
+
+        model = notebook_model_from_cells(
+            cells,
+            title=title,
+            theme=theme,
+            files=files,
+            base_path=base_path,
+        )
+        self._initialize_model(
+            model,
+            variables=variables,
+            show_pinned_source=show_pinned_source,
+        )
+
+    @classmethod
+    def _from_model(
+        cls,
+        model: NotebookModel,
+        *,
+        variables: Mapping[str, Any] | None,
+        show_pinned_source: bool,
+    ) -> Notebook:
+        notebook = cls.__new__(cls)
+        notebook._initialize_model(
+            model,
+            variables=variables,
+            show_pinned_source=show_pinned_source,
+        )
+        return notebook
+
+    def _initialize_model(
+        self,
+        model: NotebookModel,
+        *,
+        variables: Mapping[str, Any] | None,
+        show_pinned_source: bool,
+    ) -> None:
+        self._cell_cache: dict[int, NotebookCell] = {}
+        self._session = _NotebookSession(
+            model,
+            variables=variables,
+            show_pinned_source=show_pinned_source,
+        )
+
+    @property
+    def variables(self) -> dict[str, Any]:
+        """Current Python-owned Observable variables."""
+
+        return self._session.variables
+
+    @property
+    def attachments(self) -> dict[str, FileAttachment]:
+        """File records registered with ``FileAttachment`` in each view."""
+
+        return self._session.attachments
+
+    @property
+    def theme(self) -> Theme:
+        """Notebook Kit theme used by each view."""
+
+        return cast(Theme, self._session.theme)
+
+    @theme.setter
+    def theme(self, value: str | Mapping[str, str]) -> None:
+        self._session.theme = value
+
+    def update_variables(
+        self,
+        values: Mapping[str, Any] | Iterable[tuple[str, Any]] | None = None,
+        /,
+        **kwargs: Any,
+    ) -> None:
+        """Merge Python-owned variable updates into every active view."""
+
+        self._session.update_variables(values, **kwargs)
+
+    def replace_variables(
+        self,
+        values: Mapping[str, Any] | Iterable[tuple[str, Any]] | None = None,
+        /,
+        **kwargs: Any,
+    ) -> None:
+        """Replace the Python-owned variable environment for every active view."""
+
+        self._session.replace_variables(values, **kwargs)
+
+    def reset_variables(self, *names: str) -> None:
+        """Release Python ownership of variables in every active view."""
+
+        self._session.reset_variables(*names)
+
     @property
     def cells(self) -> tuple[NotebookCell, ...]:
-        """Cell selection handles in notebook order."""
+        """Cell handles in notebook order."""
 
-        return tuple(self.cell_at(index) for index in range(len(self._cell_keys)))
+        return tuple(self.cell(index) for index in range(len(self._session._cell_keys)))
 
-    def cell_at(self, index: int) -> NotebookCell:
-        """Return the cell handle at zero-based notebook order."""
+    def cell(self, selector: int | str) -> NotebookCell:
+        """Return a cell by zero-based index or Python selection key."""
 
-        count = len(self._cell_keys)
-        normalized = index if index >= 0 else count + index
-        if normalized < 0 or normalized >= count:
-            raise IndexError("notebook cell index out of range")
-        cached = self._cell_cache.get(normalized)
-        if cached is not None:
-            return cached
-        cell = NotebookCell(self, normalized)
-        self._cell_cache[normalized] = cell
-        return cell
+        if isinstance(selector, int) and not isinstance(selector, bool):
+            count = len(self._session._cell_keys)
+            index = selector if selector >= 0 else count + selector
+            if index < 0 or index >= count:
+                raise IndexError("notebook cell index out of range")
+        elif isinstance(selector, str):
+            matches = [
+                index
+                for index, key in enumerate(self._session._cell_keys)
+                if key and key == selector
+            ]
+            if not matches:
+                raise KeyError(f"Unknown Observable cell key: {selector!r}")
+            if len(matches) > 1:
+                raise KeyError(f"Ambiguous Observable cell key: {selector!r}")
+            index = matches[0]
+        else:
+            raise TypeError("cell selector must be an integer index or string key")
+        cached = self._cell_cache.get(index)
+        if cached is None:
+            cached = NotebookCell._create(self, index)
+            self._cell_cache[index] = cached
+        return cached
 
     def view(
         self,
         cells: Sequence[int | str | NotebookCell] | None = None,
     ) -> NotebookView:
-        """Create a display model for the full notebook or selected cells.
+        """Create a display model for all cells or an explicit selection."""
 
-        ``None`` selects the full notebook. Integer selections use notebook order,
-        strings use Python cell keys, and ``NotebookCell`` selections must belong
-        to this notebook. Explicit selections render in canonical notebook order.
-        """
-
-        if self._notebook_closed:
-            raise RuntimeError("Cannot create a view from a closed Notebook")
+        self._session._require_open()
         indexes = None if cells is None else self._normalize_view_cells(cells)
-        return NotebookView(
-            notebook=self,
-            cell_indexes=indexes,
-        )
+        return NotebookView._create(self, indexes)
 
     def _normalize_view_cells(
         self, cells: Sequence[int | str | NotebookCell]
@@ -468,44 +492,21 @@ class Notebook(_ObservableWidget):
         indexes: list[int] = []
         for selection in cells:
             if isinstance(selection, NotebookCell):
-                if selection._notebook is not self:
+                if selection._owner is not self:
                     raise ValueError("NotebookCell belongs to another Notebook")
-                index = selection._index
-            elif isinstance(selection, str):
-                index = self.cell_by_key(selection)._index
-            elif isinstance(selection, int) and not isinstance(selection, bool):
-                index = self.cell_at(selection)._index
+                index = selection.index
             else:
-                raise TypeError(
-                    "view cells must contain indexes, keys, or NotebookCell objects"
-                )
+                index = self.cell(selection).index
             if index in indexes:
                 raise ValueError("view cells must select each notebook cell once")
             indexes.append(index)
         return sorted(indexes)
 
-    def cell_by_key(self, key: str) -> NotebookCell:
-        """Return the unique cell handle with Python key ``key``."""
-
-        matches = [index for index, item in enumerate(self._cell_keys) if item == key]
-        if len(matches) == 1:
-            return self.cell_at(matches[0])
-        if len(matches) > 1:
-            raise KeyError(f"Ambiguous Observable cell key: {key!r}")
-        raise KeyError(f"Unknown Observable cell key: {key!r}")
-
     def close(self) -> None:
-        """Close the session and its live display models."""
+        """Close the session and every live view created from it."""
 
-        if getattr(self, "_notebook_closed", False):
-            return
-        self._notebook_closed = True
-        cache = getattr(self, "_cell_cache", None)
-        if cache is not None:
-            cache.clear()
-        for view in tuple(getattr(self, "_views", ())):
-            view.close()
-        super().close()
+        self._cell_cache.clear()
+        self._session.close()
 
     @classmethod
     def from_html(
@@ -518,15 +519,8 @@ class Notebook(_ObservableWidget):
         rewrite_imports: bool = False,
         variables: Mapping[str, Any] | None = None,
         show_pinned_source: bool = False,
-    ) -> "Notebook":
-        """Create a source-backed notebook from a Notebook Kit HTML string.
-
-        ``embed_file_attachments`` discovers and embeds local file references.
-        ``rewrite_imports`` rewrites relative JavaScript imports to data URLs.
-        Either option requires ``base_path``. Explicit ``files`` override
-        discovered files with the same name. ``variables`` sets Python-owned OJS
-        variables for the rendered notebook.
-        """
+    ) -> Notebook:
+        """Create a notebook from Notebook Kit HTML text."""
 
         model = notebook_model_from_html(
             source,
@@ -550,15 +544,8 @@ class Notebook(_ObservableWidget):
         files: Mapping[str, FileInput] | None = None,
         show_pinned_source: bool = False,
         timeout: float | None = 30,
-    ) -> "Notebook":
-        """Fetch a public ObservableHQ notebook through the document API.
-
-        ``specifier`` may be an ObservableHQ URL, slug, id, or document API URL.
-        ObservableHQ API ``js`` cells are imported as OJS cells. Remote uploaded
-        files become URL-backed attachments. ``timeout`` controls the network
-        request. Invalid specifiers or non-JSON responses raise ``ValueError``.
-        HTTP and network failures raise ``OSError``.
-        """
+    ) -> Notebook:
+        """Fetch a public ObservableHQ notebook through the document API."""
 
         model = notebook_model_from_observablehq(
             specifier,
@@ -580,14 +567,8 @@ class Notebook(_ObservableWidget):
         variables: Mapping[str, Any] | None = None,
         files: Mapping[str, FileInput] | None = None,
         show_pinned_source: bool = False,
-    ) -> "Notebook":
-        """Create a notebook from an ObservableHQ document API mapping.
-
-        ``document`` is the JSON object returned by the ObservableHQ document
-        API. It must contain a ``nodes`` sequence. Optional ``files`` records
-        become URL-backed attachments. Explicit ``files`` override uploaded
-        files with the same name.
-        """
+    ) -> Notebook:
+        """Create a notebook from an ObservableHQ document API mapping."""
 
         model = notebook_model_from_observablehq_document(
             document,
@@ -600,79 +581,18 @@ class Notebook(_ObservableWidget):
             show_pinned_source=show_pinned_source,
         )
 
-    @classmethod
-    def from_observablehq_page_data(
-        cls,
-        page_data: ObservablePageData | Mapping[str, Any],
-        *,
-        title: str | None = None,
-        variables: Mapping[str, Any] | None = None,
-        files: Mapping[str, FileInput] | None = None,
-        show_pinned_source: bool = False,
-    ) -> "Notebook":
-        """Create a notebook from Observable page data with ``initialNotebook``.
-
-        ``page_data`` must contain ``pageProps.initialNotebook`` or a top-level
-        ``initialNotebook`` mapping. The nested notebook mapping uses the same
-        ``title``, ``nodes``, and ``files`` shape accepted by
-        ``from_observablehq_document``.
-        """
-
-        model = notebook_model_from_observablehq_page_data(
-            page_data,
-            title=title,
-            files=files,
-        )
-        return cls._from_model(
-            model,
-            variables=variables,
-            show_pinned_source=show_pinned_source,
-        )
-
-    @classmethod
-    def from_observablehq_nodes(
-        cls,
-        nodes: Sequence[ObservableNodeInput],
-        *,
-        observable_files: ObservableFilesInput = None,
-        title: str = "Untitled",
-        variables: Mapping[str, Any] | None = None,
-        files: Mapping[str, FileInput] | None = None,
-        show_pinned_source: bool = False,
-    ) -> "Notebook":
-        """Create a notebook from ObservableHQ node and file records.
-
-        ``nodes`` accepts the node records used by the ObservableHQ document API.
-        JavaScript nodes use OJS semantics after import. ``observable_files``
-        accepts uploaded file records with ``name`` and ``download_url``.
-        Explicit ``files`` override uploaded files with the same name.
-        """
-
-        model = notebook_model_from_observablehq_nodes(
-            nodes,
-            files=observable_files,
-            title=title,
-            local_files=files,
-        )
-        return cls._from_model(
-            model,
-            variables=variables,
-            show_pinned_source=show_pinned_source,
-        )
-
     def to_notebook_html(self) -> str:
-        """Return Notebook Kit HTML for saving or inspecting the notebook."""
+        """Return Notebook Kit HTML for saving or inspecting the definition."""
 
-        if self._source:
-            return self._source
-        return serialize(self._spec)
+        return self._session.to_notebook_html()
 
 
 class NotebookView(_ObservableWidget):
-    """Display model for a full notebook or an explicit cell selection."""
+    """Renderable view of a notebook cell selection."""
 
-    role = traitlets.Unicode("view").tag(sync=True)
-    _notebook = traitlets.Instance(Notebook).tag(
+    _owner: Notebook
+    _view_closed: bool
+    _session = traitlets.Instance(_NotebookSession).tag(
         sync=True,
         to_json=_WIDGET_TO_JSON,
         from_json=_WIDGET_FROM_JSON,
@@ -687,24 +607,37 @@ class NotebookView(_ObservableWidget):
         }
     ).tag(sync=True)
 
-    def __init__(
-        self,
+    def __init__(self) -> None:
+        raise TypeError("NotebookView objects are created with Notebook.view()")
+
+    @classmethod
+    def _create(
+        cls,
         notebook: Notebook,
-        cell_indexes: Sequence[int] | None = None,
-    ) -> None:
-        if notebook._notebook_closed:
-            raise RuntimeError("Cannot create a view from a closed Notebook")
-        self._view_closed = False
-        if cell_indexes is None:
-            indexes = None
-        else:
-            _require_sequence_container(
-                cell_indexes,
-                message="cell_indexes must be a sequence of notebook cell indexes",
+        cell_indexes: Sequence[int] | None,
+    ) -> NotebookView:
+        notebook._session._require_open()
+        view = cls.__new__(cls)
+        view._owner = notebook
+        view._view_closed = False
+        indexes = None if cell_indexes is None else list(cell_indexes)
+        _ObservableWidget.__init__(
+            view,
+            _session=notebook._session,
+            _cell_indexes=indexes,
+        )
+        notebook._session._views.add(view)
+        return view
+
+    @traitlets.validate("_session")
+    def _validate_session(self, proposal: Any) -> _NotebookSession:
+        session = cast(_NotebookSession, proposal["value"])
+        owner = getattr(self, "_owner", None)
+        if owner is not None and session is not owner._session:
+            raise traitlets.TraitError(
+                "_session must reference the NotebookView's owning Notebook"
             )
-            indexes = list(cell_indexes)
-        super().__init__(_notebook=notebook, _cell_indexes=indexes)
-        notebook._views.add(self)
+        return session
 
     @traitlets.validate("_cell_indexes")
     def _validate_cell_indexes(self, proposal: Any) -> list[int] | None:
@@ -718,7 +651,7 @@ class NotebookView(_ObservableWidget):
                 not isinstance(index, int)
                 or isinstance(index, bool)
                 or index < 0
-                or index >= len(self._notebook._cell_keys)
+                or index >= len(self._session._cell_keys)
                 for index in value
             )
         ):
@@ -749,62 +682,28 @@ class NotebookView(_ObservableWidget):
         current_revision = (
             current.get("revision") if isinstance(current, Mapping) else -1
         )
-        # Marimo transports model saves as independent requests, so a delayed
-        # snapshot must not replace one that Python has already accepted.
+        # Marimo transports model saves independently. Keep the newest browser
+        # snapshot when an earlier save arrives after it.
         if isinstance(current_revision, int) and revision <= current_revision:
             return cast(dict[str, Any], current)
         return cast(dict[str, Any], value)
 
     @property
     def notebook(self) -> Notebook:
-        """Session rendered by this view."""
+        """Notebook definition and session rendered by this view."""
 
-        return self._notebook
-
-    @property
-    def cell_indexes(self) -> tuple[int, ...] | None:
-        """Selected indexes in notebook order, or ``None`` for the full notebook."""
-
-        return None if self._cell_indexes is None else tuple(self._cell_indexes)
+        return self._owner
 
     @property
-    def variables(self) -> dict[str, Any]:
-        """Current Python-owned Observable variables."""
+    def cells(self) -> tuple[NotebookCell, ...]:
+        """Selected cell handles in notebook order."""
 
-        return self._notebook.variables
-
-    def update_variables(
-        self,
-        values: Mapping[str, Any] | Iterable[tuple[str, Any]] | None = None,
-        /,
-        **kwargs: Any,
-    ) -> None:
-        """Merge Python-owned variable updates into this view's session."""
-
-        self._require_open()
-        self._notebook.update_variables(values, **kwargs)
-
-    def replace_variables(
-        self,
-        values: Mapping[str, Any] | Iterable[tuple[str, Any]] | None = None,
-        /,
-        **kwargs: Any,
-    ) -> None:
-        """Replace the Python-owned variables in this view's session."""
-
-        self._require_open()
-        self._notebook.replace_variables(values, **kwargs)
-
-    def reset_variables(self, *names: str) -> None:
-        """Release Python ownership for names in this view's session."""
-
-        self._require_open()
-        self._notebook.reset_variables(*names)
-
-    def _require_open(self) -> None:
-        if self._view_closed:
-            raise RuntimeError("Cannot mutate a closed NotebookView")
-        self._notebook._require_open()
+        indexes = (
+            range(len(self._session._cell_keys))
+            if self._cell_indexes is None
+            else self._cell_indexes
+        )
+        return tuple(self._owner.cell(index) for index in indexes)
 
     @property
     def has_rendered(self) -> bool:
@@ -821,7 +720,7 @@ class NotebookView(_ObservableWidget):
     def _require_rendered(self) -> None:
         if not self.has_rendered:
             raise NotRenderedError(
-                "NotebookView readback is available after the view renders in a browser"
+                "NotebookView values are available after the view renders in a browser"
             )
 
     @property
@@ -831,13 +730,13 @@ class NotebookView(_ObservableWidget):
         graph = graph_from_raw(self._readback.get("graph"))
         if graph is None:
             raise NotRenderedError(
-                "NotebookView graph metadata is available after the view renders in a browser"
+                "NotebookView graph metadata is available after graph synchronization"
             )
         return graph
 
     @property
-    def runtime_values(self) -> dict[str, Any]:
-        """Latest unambiguous browser values synchronized from this view."""
+    def values(self) -> dict[str, Any]:
+        """Latest browser values with one owning cell in this view."""
 
         self._require_rendered()
         owners: dict[str, tuple[int, Any]] = {}
@@ -859,30 +758,21 @@ class NotebookView(_ObservableWidget):
             if count == 1
         }
 
+    @property
     def cell_values(self) -> tuple[CellValues, ...]:
-        """Return browser-synchronized values for the cells in this view."""
+        """Browser-synchronized values for the selected cells."""
 
         self._require_rendered()
-        indexes = (
-            range(len(self._notebook._cell_keys))
-            if self._cell_indexes is None
-            else self._cell_indexes
-        )
         return tuple(
             CellValues(
-                index=index,
-                key=self._notebook._cell_keys[index] or None,
-                values=self._cell_runtime_values(index),
+                index=cell.index,
+                key=cell.key,
+                values=self._cell_values(cell.index),
             )
-            for index in indexes
+            for cell in self.cells
         )
 
-    def value(self, name: str) -> Any:
-        """Return the synchronized value for ``name``."""
-
-        return self.runtime_values[name]
-
-    def _cell_runtime_values(self, index: int) -> dict[str, Any]:
+    def _cell_values(self, index: int) -> dict[str, Any]:
         cells = self._readback.get("cells")
         record = cells.get(str(index)) if isinstance(cells, Mapping) else None
         values = record.get("values") if isinstance(record, Mapping) else None
@@ -900,7 +790,7 @@ class NotebookView(_ObservableWidget):
         if getattr(self, "_view_closed", False):
             return
         self._view_closed = True
-        notebook = getattr(self, "_trait_values", {}).get("_notebook")
-        if notebook is not None:
-            notebook._views.discard(self)
+        session = getattr(self, "_trait_values", {}).get("_session")
+        if session is not None:
+            session._views.discard(self)
         super().close()

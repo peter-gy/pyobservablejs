@@ -5,153 +5,125 @@
 [![Python versions](https://img.shields.io/pypi/pyversions/pyobservablejs.svg)](https://pypi.org/project/pyobservablejs/)
 [![License](https://img.shields.io/pypi/l/pyobservablejs.svg)](https://github.com/peter-gy/pyobservablejs/blob/main/LICENSE)
 
-`pyobservablejs` renders Observable JavaScript notebooks from Python. Author
-cells in Python and pass values in both directions: Python variables drive the
-reactive graph in the browser, and rendered values synchronize back to Python.
+`pyobservablejs` brings interactive Observable notebooks into Python workflows.
+Author a notebook in Python or load an existing one, render the views you need,
+and keep its controls and results connected to your Python code.
 
-Each view is an [anywidget](https://anywidget.dev/), so notebooks render in
-any anywidget host: JupyterLab, marimo, VS Code notebooks, Google Colab, and
-others.
-
-## Install
-
-Python 3.11 or newer is required.
-
-```sh
-uv add pyobservablejs
-```
+Use it in JupyterLab, marimo, VS Code notebooks, Google Colab, and other
+environments that support [anywidget](https://anywidget.dev/).
 
 ## Quick start
-
-This example uses marimo as the host:
 
 ```sh
 uvx --with pyobservablejs marimo edit notebook.py
 ```
 
+### Load an existing Observable notebook
+
+[![Open in molab](https://molab.marimo.io/molab-shield.svg)](https://molab.marimo.io/github/peter-gy/pyobservablejs/blob/main/examples/from-observablehq.py/wasm?utm_source=pyobservablejs)
+
 ```python
-import marimo as mo
+import observablejs as obs
+
+notebook = obs.Notebook.from_observablehq("@d3/world-tour")
+notebook.view()
+```
+
+`@d3/world-tour` resolves to
+[observablehq.com/@d3/world-tour](https://observablehq.com/@d3/world-tour).
+
+### Author an interactive notebook
+
+[![Open in molab](https://molab.marimo.io/molab-shield.svg)](https://molab.marimo.io/github/peter-gy/pyobservablejs/blob/main/examples/from-code.py/wasm?utm_source=pyobservablejs)
+
+```python
 import observablejs as obs
 
 notebook = obs.Notebook(
+    obs.html(
+        """
+        <h2>Palmer penguins</h2>
+        <p>Choose a species to filter the chart.</p>
+        """
+    ),
+    obs.ojs(
+        """
+        viewof species = Inputs.select(
+          ["All", ...new Set(penguins.map((d) => d.species))],
+          {label: "Species", value: "All"}
+        )
+        """,
+    ),
     obs.js(
         """
-        Plot.dot(penguins, {
-          x: "culmen_length_mm",
-          y: "culmen_depth_mm",
-          fill: "species",
-          tip: true
-        }).plot({
+        Plot.dot(
+          species === "All"
+            ? penguins
+            : penguins.filter((d) => d.species === species),
+          {
+            x: "culmen_length_mm",
+            y: "culmen_depth_mm",
+            fill: "species",
+            tip: true
+          }
+        ).plot({
           height: 320,
           color: {legend: true},
           x: {grid: true, label: "Bill length (mm)"},
           y: {grid: true, label: "Bill depth (mm)"}
         })
-        """
-    )
+        """,
+    ),
 )
 
-full_view = notebook.view()
-mo.ui.anywidget(full_view)
+notebook.view()
 ```
 
-`Plot` and the `penguins` sample ship with Notebook Kit and load from jsDelivr
-at render time.
+`penguins`, `Inputs`, and `Plot` come from Notebook Kit. The Observable
+JavaScript [`viewof` operator](https://observablehq.com/@observablehq/views)
+updates `species` when the selection changes, which recomputes the plot in the
+browser.
 
-In Jupyter and most other hosts, display the view directly by leaving it as
-the final expression in a cell:
+### Sync values with Python
 
-```sh
-uv add jupyterlab
-uv run jupyter lab
-```
-
-```python
-full_view
-```
-
-## Cells, views, and inputs
-
-`Notebook` accepts four kinds of cells:
-
-| Helper          | Cell source                      |
-| --------------- | -------------------------------- |
-| `obs.js(...)`   | Standard Notebook Kit JavaScript |
-| `obs.ojs(...)`  | Observable JavaScript            |
-| `obs.md(...)`   | Markdown                         |
-| `obs.html(...)` | HTML                             |
-
-Top-level declarations in JavaScript cells form a reactive graph: when a value
-changes, every cell that references it runs again.
-
-_View_ means two things. In Python, `.view()` creates a renderable
-`NotebookView` widget. In a JavaScript cell, `view(input)` displays a browser
-input and defines its reactive value.
-
-| Call                          | Result                                                            |
-| ----------------------------- | ----------------------------------------------------------------- |
-| `notebook.view()`             | A `NotebookView` that renders every cell.                         |
-| `notebook.view(cells=[...])`  | A composite view of selected cells and their hidden dependencies. |
-| `notebook.cell_at(0).view()`  | A focused view of one cell and its hidden dependencies.           |
-| `view(input)` inside `obs.js` | A browser input whose value other cells can reference.            |
-
-Create one view per place a notebook appears in the host. Views from the same
-notebook stay connected: Python variable updates reach all of them, and named
-`viewof` inputs share their values across views.
-
-## Python variables
+[![Open in molab](https://molab.marimo.io/molab-shield.svg)](https://molab.marimo.io/github/peter-gy/pyobservablejs/blob/main/examples/sync-variables.py/wasm?utm_source=pyobservablejs)
 
 Pass Python values to the browser through `variables`:
 
 ```python
+import observablejs as obs
+
 notebook = obs.Notebook(
+    obs.ojs(
+        """
+        viewof threshold = Inputs.range([0, 1], {
+          value: 0.75,
+          step: 0.05,
+          label: "Threshold"
+        })
+        """
+    ),
     obs.js('html`<p>Threshold: <strong>${threshold}</strong></p>`'),
     variables={"threshold": 0.75},
 )
 
-full_view = notebook.view()
-full_view
+notebook_view = notebook.view()
+notebook_view
 ```
 
-Update a value while the view stays mounted:
+While the view stays mounted, call `notebook.update_variables(threshold=0.9)`
+to update the value. The update takes place through
+[Observable's runtime](https://github.com/observablehq/runtime), meaning
+that the Python notebook object does not need to be recreated.
 
-```python
-notebook.update_variables(threshold=0.9)
-```
-
-After the view renders, read browser values and dependency metadata back
-through `runtime_values`, `value(name)`, and `graph`.
-
-## Load existing notebooks
-
-Load a Notebook Kit HTML document:
-
-```python
-from pathlib import Path
-
-import observablejs as obs
-
-path = Path("chart.html")
-notebook = obs.Notebook.from_html(
-    path.read_text(encoding="utf-8"),
-    base_path=path.parent,
-    embed_file_attachments=True,
-    rewrite_imports=True,
-)
-```
-
-Load a public ObservableHQ notebook:
-
-```python
-notebook = obs.Notebook.from_observablehq("@d3/bar-chart")
-```
+After the view renders, `notebook_view.values["threshold"]` reads the current
+browser value.
 
 ## Documentation
 
-- [Quickstart](https://peter-gy.github.io/pyobservablejs/quickstart/)
-- [Mental model](https://peter-gy.github.io/pyobservablejs/mental-model/)
-- [Recipes](https://peter-gy.github.io/pyobservablejs/recipes/)
-- [API reference](https://peter-gy.github.io/pyobservablejs/reference/)
+Read the [documentation](https://peter-gy.github.io/pyobservablejs/) to learn more about
+notebook sources, cells and views, Python and browser dataflow, runtime values, graph
+inspection, recipes, and the API reference.
 
 ## Acknowledgements
 

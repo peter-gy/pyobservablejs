@@ -6,27 +6,37 @@ from collections.abc import Sequence
 from typing import Any
 
 import observablejs as obs
+import pytest
+from helpers import notebook_session
 
 
-class _RecordingNotebook(obs.Notebook):
-    sent: list[tuple[dict[str, Any], list[bytes]]]
+def test_private_session_loads_before_live_updates() -> None:
+    notebook = obs.Notebook()
 
-    def __init__(self) -> None:
-        self.sent = []
-        super().__init__()
+    try:
+        assert notebook_session(notebook).get_state(["_esm"]) == {
+            "_esm": "export default { initialize() {} };"
+        }
+    finally:
+        notebook.close()
 
-    def send(
-        self,
+
+def test_notebook_view_serves_manifest_app_module_as_binary_buffer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    notebook = obs.Notebook()
+    view = notebook.view()
+    sent: list[tuple[dict[str, Any], list[bytes]]] = []
+
+    def record_send(
         content: dict[str, Any],
         buffers: Sequence[bytes | bytearray | memoryview] | None = None,
     ) -> None:
-        self.sent.append((content, [bytes(buffer) for buffer in buffers or []]))
+        sent.append((content, [bytes(buffer) for buffer in buffers or []]))
 
-
-def test_notebook_serves_manifest_app_module_as_binary_buffer() -> None:
-    notebook = _RecordingNotebook()
+    monkeypatch.setattr(view, "send", record_send)
     try:
-        static_dir = notebook.bundle.static_dir
+        static_dir = view.bundle.static_dir
         manifest = json.loads(
             (static_dir / "anywidget.json").read_text(encoding="utf-8")
         )
@@ -43,14 +53,14 @@ def test_notebook_serves_manifest_app_module_as_binary_buffer() -> None:
         entry_source = entry_path.read_text(encoding="utf-8")
         app_source = app_path.read_text(encoding="utf-8")
 
-        assert notebook.get_state(["_esm", "_css"]) == {
+        assert view.get_state(["_esm", "_css"]) == {
             "_esm": entry_source,
             "_css": style_path.read_text(encoding="utf-8"),
         }
         assert len(entry_source.encode()) < len(app_source.encode())
 
-        notebook.sent.clear()
-        notebook._handle_custom_msg(
+        sent.clear()
+        view._handle_custom_msg(
             {
                 "type": "anywidget-bundle:request",
                 "version": 1,
@@ -60,7 +70,7 @@ def test_notebook_serves_manifest_app_module_as_binary_buffer() -> None:
             [],
         )
 
-        assert notebook.sent == [
+        assert sent == [
             (
                 {
                     "type": "anywidget-bundle:response",

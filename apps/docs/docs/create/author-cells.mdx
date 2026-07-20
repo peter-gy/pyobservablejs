@@ -17,7 +17,7 @@ in one Notebook Kit cell mode.
 
 Top-level declarations in JavaScript cells form a reactive graph: when a
 value changes, every cell that references it runs again. Move the exponent
-control below and the readout recomputes in the browser.
+control to recompute the readout in the browser.
 
 ```marimo-config
 requires-python = ">=3.11"
@@ -137,13 +137,15 @@ Every helper accepts the same options.
 obs.js(
     "const filtered = [1, 2, 3].filter((value) => value >= 2);",
     key="filtered_rows",
+    name="filtered",
     display=False,
     pinned=True,
 )
 ```
 
-- `key` names the Python `NotebookCell` selection handle. Call `view()` on
-  that handle to create a view for the cell and its dependencies.
+- `key` names the Python selection handle returned by
+  `notebook.cell("filtered_rows")`.
+- `name` sets the Notebook Kit cell name written to exported HTML.
 - `display=False` hides the cell output while keeping its values in the
   graph.
 - `pinned=True` exposes the source when the cell is selected and the notebook
@@ -151,6 +153,8 @@ obs.js(
   source](../customize/themes-and-pinned-source.mdx).
 - `raw=True` preserves the source string exactly, including indentation and
   surrounding newlines.
+- `id`, `output`, and `notebookkit_attrs` expose the corresponding Notebook
+  Kit metadata when a source format requires it.
 
 See [Cell helpers](../reference/cell-helpers.mdx) for the full signature and
 error behavior, and [Browser execution](../customize/browser-execution.mdx)

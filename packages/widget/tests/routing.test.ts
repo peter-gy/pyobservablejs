@@ -34,21 +34,6 @@ describe("widget routing", () => {
 		controller.abort();
 	});
 
-	test("a Notebook session is not a display model", async () => {
-		const session = createSession({ _spec: { cells: [] } });
-		const controller = new AbortController();
-		const el = document.createElement("div");
-		const definition = createWidget();
-		definition.initialize(initializeProps(session, controller.signal));
-
-		definition.render(renderProps(session, el, controller.signal));
-
-		expect(await waitFor(() => alertText(el))).toBe(
-			"Error: Notebook sessions are not displayable. Display notebook.view() instead.",
-		);
-		controller.abort();
-	});
-
 	test("reports missing and invalid session references", async () => {
 		const missing = createView("", null);
 		const wrongRole = createView("anywidget:wrong", null);
