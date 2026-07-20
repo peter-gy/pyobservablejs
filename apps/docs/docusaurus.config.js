@@ -2,6 +2,8 @@
 
 import { remarkMarimo } from "@marimo-team/mdx-marimo/remark";
 
+const umamiWebsiteId = "a16d4cab-d28f-4a52-9fdd-46399feffea4";
+
 /** @param {string} value */
 function normalizeBaseUrl(value) {
 	const path = value.trim();
@@ -22,6 +24,18 @@ const config = {
 	onBrokenLinks: "throw",
 	onBrokenAnchors: "throw",
 	trailingSlash: true,
+	scripts: [
+		{
+			src: "https://umami.peter.gy/script.js",
+			defer: true,
+			"data-website-id": umamiWebsiteId,
+		},
+		{
+			src: "https://umami.peter.gy/recorder.js",
+			defer: true,
+			"data-website-id": umamiWebsiteId,
+		},
+	],
 	markdown: {
 		mermaid: true,
 		hooks: {
