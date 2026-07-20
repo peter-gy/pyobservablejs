@@ -71,5 +71,12 @@ export default defineConfig({
 	},
 	run: {
 		cache: true,
+		tasks: {
+			"docs-build": {
+				command: "node_modules/.bin/docusaurus build",
+				cwd: "apps/docs",
+				env: ["BASE_PATH", "UV_NO_DEFAULT_GROUPS"],
+			},
+		},
 	},
 });

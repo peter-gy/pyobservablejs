@@ -7,7 +7,7 @@ build:
 	uv build --package pyobservablejs
 
 docs:
-	UV_NO_DEFAULT_GROUPS=1 $(VP) run -F @pyobservablejs/docs build
+	UV_NO_DEFAULT_GROUPS=1 $(VP) run -w docs-build
 
 docs-serve: docs
 	$(VP) run -F @pyobservablejs/docs serve
