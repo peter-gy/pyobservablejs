@@ -11,15 +11,15 @@ renders full Observable notebooks from Python. They overlap on "make an
 Observable Plot chart appear in a Python notebook" and differ everywhere
 else.
 
-| | `pyobsplot` | `pyobservablejs` |
-| --- | --- | --- |
-| Scope | One Observable **Plot** figure per call | Full Observable **notebooks**: Plot, Inputs, arbitrary JavaScript, Markdown, and HTML cells |
-| Authoring | Plot specs written in Python syntax | Real JavaScript source strings, copy-paste compatible with Notebook Kit and observablehq.com |
-| Reactivity | None; each call renders a static figure | Full Observable runtime: `view(...)` inputs, `viewof`, generators, `invalidation` |
-| Direction | Python to chart only | Bidirectional: Python variables in, rendered values and graph metadata back |
-| Existing notebooks | Not supported | `Notebook.from_html`, `Notebook.from_observablehq` |
-| Introspection | None | Dependency graph with `to_mermaid()` and `to_d2()` exports |
-| Static export | jsdom renderer produces standalone SVG/HTML for Quarto and scripts | Browser-only; an anywidget host is required |
+|                    | `pyobsplot`                                                        | `pyobservablejs`                                                                             |
+| ------------------ | ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| Scope              | One Observable **Plot** figure per call                            | Full Observable **notebooks**: Plot, Inputs, arbitrary JavaScript, Markdown, and HTML cells  |
+| Authoring          | Plot specs written in Python syntax                                | Real JavaScript source strings, copy-paste compatible with Notebook Kit and observablehq.com |
+| Reactivity         | None; each call renders a static figure                            | Full Observable runtime: `view(...)` inputs, `viewof`, generators, `invalidation`            |
+| Direction          | Python to chart only                                               | Bidirectional: Python variables in, rendered values and graph metadata back                  |
+| Existing notebooks | Not supported                                                      | `Notebook.from_html`, `Notebook.from_observablehq`                                           |
+| Introspection      | None                                                               | Dependency graph with `to_mermaid()` and `to_d2()` exports                                   |
+| Static export      | jsdom renderer produces standalone SVG/HTML for Quarto and scripts | Browser-only; an anywidget host is required                                                  |
 
 ## Use `pyobsplot` when
 
@@ -46,8 +46,11 @@ Both projects are anywidget-based and share the Observable ecosystem, but a
 `pyobsplot` and outgrow it, port the Plot spec back to its JavaScript form
 inside an `obs.js` cell; the JavaScript form is the one Observable documents.
 
-`pyobsplot` informed the Python variable API of this project, credited in the
-[README](https://github.com/peter-gy/pyobservablejs#acknowledgements).
+`pyobsplot` is a great project and helped shape an early version of the Python
+variable API in `pyobservablejs`. The projects address different workflows:
+`pyobsplot` focuses on Observable Plot figures, while `pyobservablejs`
+integrates full Observable notebooks with Python. `pyobservablejs` aims to
+complement `pyobsplot`, not replace or compete with it.
 
 ## Position in the Observable ecosystem
 
