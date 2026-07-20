@@ -112,7 +112,7 @@ the parent's `render` function two ways to resolve it:
 | API                   | Resolved contract                                                                 |
 | --------------------- | --------------------------------------------------------------------------------- |
 | `host.getWidget(ref)` | The child widget's exports and a function that mounts its view into a DOM element |
-| `host.getModel(ref)`  | The child `AnyModel` for direct state access, events, messages, and saves          |
+| `host.getModel(ref)`  | The child `AnyModel` for direct state access, events, messages, and saves         |
 
 `pyobservablejs` places one widget reference in the `NotebookView._session`
 trait and resolves it with `host.getModel`. The private session acts as a
@@ -142,8 +142,8 @@ A focused view has wire state shaped like this:
 
 ```json
 {
-  "_session": "anywidget:<session-model-id>",
-  "_cell_indexes": [1]
+	"_session": "anywidget:<session-model-id>",
+	"_cell_indexes": [1]
 }
 ```
 
@@ -154,11 +154,11 @@ while keeping separate selections and readback.
 
 ## State ownership
 
-| Owner                       | State                                                                                               |
-| --------------------------- | --------------------------------------------------------------------------------------------------- |
+| Owner                       | State                                                                                             |
+| --------------------------- | ------------------------------------------------------------------------------------------------- |
 | `Notebook` session          | Source or cell specification, runtime profile, theme, attachments, Python variables, named inputs |
-| `NotebookView` model        | Cell selection and revisioned graph, render, and cell-value readback                                |
-| `NotebookView` browser view | Notebook Kit runtime, rendered DOM, observers, and pending evaluation                               |
+| `NotebookView` model        | Cell selection and revisioned graph, render, and cell-value readback                              |
+| `NotebookView` browser view | Notebook Kit runtime, rendered DOM, observers, and pending evaluation                             |
 
 This ownership produces three distinct synchronization paths.
 
@@ -211,12 +211,12 @@ The anywidget render signal and a per-attempt abort controller define cleanup:
 
 ## Keep the view concepts separate
 
-| Term                              | Meaning                                                                                  |
-| --------------------------------- | ---------------------------------------------------------------------------------------- |
-| Anywidget widget composition      | A widget reference resolved through `host.getWidget` or `host.getModel`                 |
-| `Notebook.view(cells=[...])`      | Several selected Observable cells evaluated in one `NotebookView` runtime               |
-| Observable `view(input)`          | A browser input whose current value becomes a reactive Observable variable              |
-| `mo.ui.anywidget(notebook_view)`  | A marimo host wrapper that mounts one existing `NotebookView` and observes its readback  |
+| Term                             | Meaning                                                                                 |
+| -------------------------------- | --------------------------------------------------------------------------------------- |
+| Anywidget widget composition     | A widget reference resolved through `host.getWidget` or `host.getModel`                 |
+| `Notebook.view(cells=[...])`     | Several selected Observable cells evaluated in one `NotebookView` runtime               |
+| Observable `view(input)`         | A browser input whose current value becomes a reactive Observable variable              |
+| `mo.ui.anywidget(notebook_view)` | A marimo host wrapper that mounts one existing `NotebookView` and observes its readback |
 
 Continue with [Display a NotebookView](display-views.mdx) for host-specific
 mounting, [Bidirectional inputs](../connect/bidirectional-inputs.mdx) for the

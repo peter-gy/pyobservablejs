@@ -17,15 +17,9 @@ const sidebars = {
 				type: "generated-index",
 				title: "Create notebooks",
 				slug: "/create",
-				description:
-					"Author cells from Python, or load existing Notebook Kit and ObservableHQ sources.",
+				description: "Author cells from Python, or load existing Notebook Kit and ObservableHQ sources.",
 			},
-			items: [
-				"create/author-cells",
-				"create/notebook-kit-html",
-				"create/observablehq",
-				"create/files-and-modules",
-			],
+			items: ["create/author-cells", "create/notebook-kit-html", "create/observablehq", "create/files-and-modules"],
 		},
 		{
 			type: "category",
@@ -37,12 +31,7 @@ const sidebars = {
 				description:
 					"Display views in anywidget hosts, select cells, manage view lifecycle, and understand session composition.",
 			},
-			items: [
-				"render/display-views",
-				"render/select-cells",
-				"render/view-lifecycle",
-				"render/widget-composition",
-			],
+			items: ["render/display-views", "render/select-cells", "render/view-lifecycle", "render/widget-composition"],
 		},
 		{
 			type: "category",
@@ -68,8 +57,7 @@ const sidebars = {
 				type: "generated-index",
 				title: "Customize and serialize",
 				slug: "/customize",
-				description:
-					"Themes, pinned source panels, Notebook Kit HTML export, and browser execution.",
+				description: "Themes, pinned source panels, Notebook Kit HTML export, and browser execution.",
 			},
 			items: [
 				"customize/themes-and-pinned-source",

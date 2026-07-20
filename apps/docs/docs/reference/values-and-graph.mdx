@@ -53,11 +53,11 @@ obs.CellValues(index, key, values)
 `NotebookView.cell_values` returns one `CellValues` record per selected
 cell in notebook order.
 
-| Field    | Type             | Contract                                                |
-| -------- | ---------------- | ------------------------------------------------------- |
-| `index`  | `int`            | Zero-based position in the notebook.                    |
+| Field    | Type             | Contract                                                  |
+| -------- | ---------------- | --------------------------------------------------------- |
+| `index`  | `int`            | Zero-based position in the notebook.                      |
 | `key`    | `Optional[str]`  | Python selection key, or `None` when the cell has no key. |
-| `values` | `dict[str, Any]` | Decoded browser-synchronized values for the cell.       |
+| `values` | `dict[str, Any]` | Decoded browser-synchronized values for the cell.         |
 
 The data class is frozen. Its `values` field is a regular dictionary
 returned for that snapshot.
@@ -159,7 +159,7 @@ obs.CellInfo(
 | `id`              | `int`             | Notebook Kit cell id.                             |
 | `index`           | `int`             | Zero-based cell position.                         |
 | `mode`            | `str`             | Cell mode such as `ojs`, `js`, `md`, or `html`.   |
-| `key`             | `Optional[str]`   | Python selection key.                            |
+| `key`             | `Optional[str]`   | Python selection key.                             |
 | `name`            | `Optional[str]`   | Notebook Kit cell name.                           |
 | `defines`         | `tuple[str, ...]` | Variables defined by the cell.                    |
 | `references`      | `tuple[str, ...]` | Variables read by the cell.                       |
