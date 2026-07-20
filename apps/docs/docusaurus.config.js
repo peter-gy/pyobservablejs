@@ -41,7 +41,7 @@ const config = {
 				docs: {
 					routeBasePath: "/",
 					sidebarPath: "./sidebars.js",
-					remarkPlugins: [remarkMarimo],
+					remarkPlugins: [[remarkMarimo, { compiler: { uvCommand: "uv" } }]],
 					editUrl: "https://github.com/peter-gy/pyobservablejs/edit/main/apps/docs/",
 				},
 				blog: false,

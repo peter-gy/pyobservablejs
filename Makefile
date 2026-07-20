@@ -7,10 +7,10 @@ build:
 	uv build --package pyobservablejs
 
 docs:
-	pnpm --filter @pyobservablejs/docs build
+	UV_NO_DEFAULT_GROUPS=1 $(VP) run -F @pyobservablejs/docs build
 
 docs-serve: docs
-	pnpm --filter @pyobservablejs/docs serve
+	$(VP) run -F @pyobservablejs/docs serve
 
 check:
 	$(VP) run check
