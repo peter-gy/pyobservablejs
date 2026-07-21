@@ -327,7 +327,7 @@ describe("NotebookView composition", () => {
 		);
 
 		expect(hasRendered(view)).toBe(false);
-		expect(cellRecord(view, 0)).toBeUndefined();
+		expect(cellRecord(view, 0)).toMatchObject({ status: "pending", values: {}, errors: [] });
 		expect(graphValue(view)).toBeUndefined();
 
 		resolveSession(session);

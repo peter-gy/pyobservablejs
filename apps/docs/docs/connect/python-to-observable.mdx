@@ -1,36 +1,21 @@
 ---
 title: Python to Observable
-description: Publish Python values as reactive graph variables and update them live.
+description: Publish one variable mapping and update the reactive browser graph.
 ---
 
 # Python to Observable
 
-`variables` gives Python ownership of named values in the Observable graph.
-`update_variables` changes those values while the view stays mounted, and
-every cell that references the name runs again.
-
-Move the minimum body mass slider and the chart filters the built-in Palmer
-Penguins sample.
+`variables` sends named Python values to the browser. `update_variables`
+changes them while views stay open. Cells that use a changed value run again.
 
 ```marimo-config
 requires-python = ">=3.11"
 dependencies = ["pyobservablejs"]
 ```
 
+Use separate marimo cells for the slider, notebook, and update.
+
 ```python
-import marimo as mo
-import observablejs as obs
-
-minimum_mass = mo.ui.slider(
-    start=3000,
-    stop=6000,
-    step=250,
-    value=4000,
-    label="Minimum body mass (g)",
-)
-```
-
-```python marimo echo=false server-output=false
 import marimo as mo
 import observablejs as obs
 
@@ -63,13 +48,16 @@ notebook = obs.Notebook(
             {
               y: "species",
               fill: "species",
-              tip: {fill: "var(--marimo-island-background)"}
+              tip: {
+                // This example references a theme variable used by mdx-marimo.
+                // Replace it with a CSS color or remove `fill` in another host.
+                fill: "var(--marimo-island-background)"
+              }
             }
           )
         ).plot({
           height: 240,
           marginLeft: 76,
-          color: {legend: true},
           x: {grid: true, label: "Penguins at or above the threshold"},
           y: {label: null}
         })
@@ -79,8 +67,26 @@ notebook = obs.Notebook(
     variables={"minimumMass": 4000},
 )
 
-full_view = notebook.view()
-widget = mo.ui.anywidget(full_view)
+view = notebook.view()
+widget = mo.ui.anywidget(view)
+```
+
+```python
+notebook.update_variables({"minimumMass": minimum_mass.value})
+mo.vstack([minimum_mass, widget])
+```
+
+```python marimo echo=false server-output=false
+import marimo as mo
+import observablejs as obs
+
+minimum_mass = mo.ui.slider(
+    start=3000,
+    stop=6000,
+    step=250,
+    value=4000,
+    label="Minimum body mass (g)",
+)
 ```
 
 ```python marimo echo=false server-output=false
@@ -103,13 +109,16 @@ notebook = obs.Notebook(
             {
               y: "species",
               fill: "species",
-              tip: {fill: "var(--marimo-island-background)"}
+              tip: {
+                // This example references a theme variable used by mdx-marimo.
+                // Replace it with a CSS color or remove `fill` in another host.
+                fill: "var(--marimo-island-background)"
+              }
             }
           )
         ).plot({
           height: 240,
           marginLeft: 76,
-          color: {legend: true},
           x: {grid: true, label: "Penguins at or above the threshold"},
           y: {label: null}
         })
@@ -119,85 +128,36 @@ notebook = obs.Notebook(
     variables={"minimumMass": 4000},
 )
 
-full_view = notebook.view()
-widget = mo.ui.anywidget(full_view)
-```
-
-```python
-notebook.update_variables(minimumMass=minimum_mass.value)
-mo.vstack([minimum_mass, widget])
+view = notebook.view()
+widget = mo.ui.anywidget(view)
 ```
 
 ```python marimo echo=false server-output=false
-notebook.update_variables(minimumMass=minimum_mass.value)
+notebook.update_variables({"minimumMass": minimum_mass.value})
 mo.vstack([minimum_mass, widget])
 ```
-
-The final cell updates one Python-owned variable and returns the existing
-`widget`. The notebook session sends the value to `full_view`, and Notebook
-Kit invalidates the two JavaScript cells that depend on `minimumMass`.
-Variable updates reach every active view from the notebook, not just this
-one.
-
-## What crosses the wire
-
-Values serialize recursively. Plain values stay JSON; richer values keep
-their browser type through tagged records:
-
-```python
-import datetime as dt
-
-notebook.update_variables(
-    releasedAt=dt.date(2026, 7, 17),   # JavaScript Date
-    payload=b"\x00\x01",               # Uint8Array
-    bigCounter=2**60,                  # BigInt
-)
-```
-
-pandas and Polars are first-class: a `DataFrame` arrives as an array of row
-objects, a `Series` as an array, and NumPy arrays and scalars convert through
-`tolist()` and `item()`.
-
-```python
-import polars as pl
-
-frame = pl.DataFrame({"species": ["Adelie", "Gentoo"], "count": [152, 124]})
-notebook.update_variables(speciesCounts=frame)  # [{species: "Adelie", ...}, ...]
-```
-
-The full conversion table, identifier rules, and reserved names live in
-[Variables and serialization](../reference/variables-and-serialization.mdx).
-For large tables and binary data, prefer [file
-attachments](../create/files-and-modules.mdx), which the browser loads
-through `FileAttachment` readers instead of widget state.
 
 ## Update, replace, or release
 
-`update_variables` merges values into the current set of Python-owned names.
+Both write methods accept exactly one mapping:
 
 ```python
 notebook.update_variables({"minimumMass": 3500})
-notebook.update_variables(minimumMass=4500)
-```
-
-`replace_variables` replaces the Python-owned variable mapping. A name absent
-from the replacement returns to its notebook definition.
-
-```python
-notebook.replace_variables({"minimumMass": 4000})
-```
-
-`reset_variables` releases selected names.
-
-```python
+notebook.replace_variables({"minimumMass": 4000, "rows": rows})
 notebook.reset_variables("minimumMass")
 ```
 
-Releasing a name rebuilds each active runtime so the original notebook
-definition resumes ownership; see [Manage view
-lifecycle](../render/view-lifecycle.mdx#rebuilds-reset-the-gates). Updates
-that do not change the serialized value are no-ops.
+Update changes the listed names and keeps the rest. Replace uses the new mapping
+as the complete set of Python values. Reset removes selected Python values so
+the notebook can define them again. A real change reaches every active view.
+An unchanged value is a no-op unless the browser has changed a shared input with
+that name. In that case, the update clears the browser-owned value and reapplies
+the Python value.
 
-Continue with [Observable to Python](observable-to-python.mdx) for the
-reverse direction, and [Bidirectional inputs](bidirectional-inputs.mdx) for
-Python variables that share a name with browser inputs.
+`Notebook.variables` is a separate read-only snapshot. Frameworks that listen
+to traitlets can observe `Notebook.state` for changes.
+
+See [Variables and
+serialization](../reference/variables-and-serialization.mdx) for supported
+values and [Observable to Python](observable-to-python.mdx) for browser
+results.

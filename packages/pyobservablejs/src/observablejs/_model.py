@@ -14,10 +14,9 @@ from ._cells import (
     NotebookCellSpec,
     coerce_cell,
 )
-from ._files import FileAttachment, FileInput, normalize_files, prepare_source
+from ._files import FileAttachment, normalize_files, prepare_source
 from ._html import parse_html_cells, parse_html_runtime_profile, parse_html_theme
 from ._observable import (
-    ObservableDocument,
     ObservableFileInput,
     ObservableNodeInput,
     fetch_observablehq_document,
@@ -26,7 +25,8 @@ from ._observable import (
     observable_nodes_to_cells,
 )
 from ._serialize import SCRIPT_TYPES, Mode, RuntimeProfile, serialize
-from ._themes import Theme, normalize_theme
+from ._themes import normalize_theme
+from .types import FileInput, ObservableDocument, Theme
 
 
 @dataclasses.dataclass(frozen=True)
@@ -37,12 +37,12 @@ class NotebookNode:
     value: str = ""
     mode: Mode = "ojs"
     key: str | None = None
-    name: str | None = None
     pinned: bool = False
     hidden: bool = False
     output: str | None = None
     format: str | None = None
     database: str | None = None
+    since: str | int | float | None = None
     attrs: Mapping[str, Any] = dataclasses.field(default_factory=dict)
 
     @classmethod
@@ -56,19 +56,20 @@ class NotebookNode:
         node_id = _int_cell_id(attrs.pop("id"))
         value = "" if (raw_value := attrs.pop("value", "")) is None else str(raw_value)
         mode = _mode(attrs.pop("mode", "ojs"))
-        name = _optional_str(attrs.pop("name", None))
-        key = _optional_str(attrs.pop("key", None)) or name
+        key = _optional_str(attrs.pop("key", None))
+        if "name" in attrs:
+            raise ValueError("Notebook cell specs use key for public identity")
         return cls(
             id=node_id,
             value=value,
             mode=mode,
             key=key,
-            name=name,
             pinned=attrs.pop("pinned", False) is True,
             hidden=attrs.pop("hidden", False) is True,
             output=_optional_str(attrs.pop("output", None)),
             format=_optional_str(attrs.pop("format", None)),
             database=_optional_str(attrs.pop("database", None)),
+            since=_since(attrs.pop("since", None)),
             attrs=attrs,
         )
 
@@ -78,13 +79,13 @@ class NotebookNode:
             "value": self.value,
             "mode": self.mode,
         }
-        if self.name is not None:
-            spec["name"] = self.name
+        if self.key is not None:
+            spec["key"] = self.key
         if self.pinned:
             spec["pinned"] = True
         if self.hidden:
             spec["hidden"] = True
-        for key in ("output", "format", "database"):
+        for key in ("output", "format", "database", "since"):
             value = getattr(self, key)
             if value is not None:
                 spec[key] = value
@@ -116,10 +117,6 @@ class NotebookModel:
         }
 
     @property
-    def cell_names(self) -> tuple[str, ...]:
-        return tuple(node.name or "" for node in self.nodes)
-
-    @property
     def cell_keys(self) -> tuple[str, ...]:
         return tuple(node.key or "" for node in self.nodes)
 
@@ -131,7 +128,7 @@ def notebook_model_from_cells(
     cells: Sequence[NotebookCellInput],
     *,
     title: str,
-    theme: str | Mapping[str, str],
+    theme: Theme,
     files: Mapping[str, FileInput] | None,
     base_path: str | pathlib.Path | None,
 ) -> NotebookModel:
@@ -186,20 +183,19 @@ def notebook_model_from_observablehq(
 
 
 def notebook_model_from_observablehq_document(
-    document: ObservableDocument | Mapping[str, Any],
+    document: ObservableDocument,
     *,
     title: str | None = None,
     files: Mapping[str, FileInput] | None = None,
 ) -> NotebookModel:
     if not isinstance(document, Mapping):
         raise TypeError("ObservableHQ document must be a mapping")
-    typed_document = cast(ObservableDocument, document)
     return _notebook_model_from_observable_document_parts(
-        _document_nodes(typed_document),
-        files=_document_files(typed_document),
-        title=title or _document_title(typed_document),
+        _document_nodes(document),
+        files=_document_files(document),
+        title=title or _document_title(document),
         local_files=files,
-        import_resolution=observable_document_import_resolution(typed_document),
+        import_resolution=observable_document_import_resolution(document),
     )
 
 
@@ -329,3 +325,9 @@ def _mode(value: object) -> Mode:
 
 def _optional_str(value: object) -> str | None:
     return value if isinstance(value, str) else None
+
+
+def _since(value: object) -> str | int | float | None:
+    if isinstance(value, bool):
+        return None
+    return value if isinstance(value, str | int | float) else None

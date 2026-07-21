@@ -57,7 +57,11 @@ notebook = obs.Notebook(
           y: "body_mass_g",
           fill: "species",
           r: 4,
-          tip: {fill: "var(--marimo-island-background)"}
+          tip: {
+            // This example references a theme variable used by mdx-marimo.
+            // Replace it with a CSS color or remove `fill` in another host.
+            fill: "var(--marimo-island-background)"
+          }
         }).plot({
           height: 260,
           color: {legend: true},
@@ -79,8 +83,8 @@ notebook = obs.Notebook(
     variables={"minMass": 4000},
 )
 
-chart_view = notebook.cell("chart").view()
-summary_view = notebook.cell("summary").view()
+chart_view = notebook.view("chart")
+summary_view = notebook.view("summary")
 
 chart_widget = mo.ui.anywidget(chart_view)
 summary_widget = mo.ui.anywidget(summary_view)
@@ -100,7 +104,11 @@ notebook = obs.Notebook(
           y: "body_mass_g",
           fill: "species",
           r: 4,
-          tip: {fill: "var(--marimo-island-background)"}
+          tip: {
+            // This example references a theme variable used by mdx-marimo.
+            // Replace it with a CSS color or remove `fill` in another host.
+            fill: "var(--marimo-island-background)"
+          }
         }).plot({
           height: 260,
           color: {legend: true},
@@ -122,15 +130,15 @@ notebook = obs.Notebook(
     variables={"minMass": 4000},
 )
 
-chart_view = notebook.cell("chart").view()
-summary_view = notebook.cell("summary").view()
+chart_view = notebook.view("chart")
+summary_view = notebook.view("summary")
 
 chart_widget = mo.ui.anywidget(chart_view)
 summary_widget = mo.ui.anywidget(summary_view)
 ```
 
 ```python
-notebook.update_variables(minMass=mass_slider.value)
+notebook.update_variables({"minMass": mass_slider.value})
 mo.vstack(
     [
         mass_slider,
@@ -140,7 +148,7 @@ mo.vstack(
 ```
 
 ```python marimo echo=false server-output=false
-notebook.update_variables(minMass=mass_slider.value)
+notebook.update_variables({"minMass": mass_slider.value})
 mo.vstack(
     [
         mass_slider,
@@ -155,11 +163,10 @@ mo.vstack(
   The hidden `heavy_penguins` cell evaluates inside both runtimes because
   the selected cells depend on it.
 - **One session update reaches every view.** The final cell calls
-  `update_variables` once. The notebook session fans the new `minMass` out
-  to both runtimes, and each recomputes its own cells.
-- **Each view still owns its readback.** `chart_view.values` and
-  `summary_view.values` come from different runtimes and synchronize
-  independently.
+  `update_variables` once. Both views receive the new `minMass` and run their
+  cells again.
+- **Each view has its own state.** `chart_view.state` and `summary_view.state`
+  update independently.
 
 ## Sharing browser inputs across views
 
@@ -168,13 +175,13 @@ when a user interacts with an input in one view, sibling views that render
 an input with the same name receive the value in interactive hosts such as
 marimo and JupyterLab. The contract, including which value shapes are
 shared, is described in [Bidirectional
-inputs](../connect/bidirectional-inputs.mdx#which-values-can-be-shared).
+inputs](../connect/bidirectional-inputs.mdx).
 
 ## Choose a composite view
 
 If the chart and summary belong in _one_ placement, select them into one
-view. `notebook.view(cells=["chart", "summary"])` evaluates everything once
+view. `notebook.view("chart", "summary")` evaluates everything once
 in a single runtime. Separate views fit separate placements such as different
 cells of the host notebook, different layout columns, or different dashboard
 pages. See [Select cells and create
-subsets](../render/select-cells.mdx#composite-view-or-separate-views).
+subsets](../render/select-cells.mdx#one-composite-view-or-separate-views).

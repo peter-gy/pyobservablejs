@@ -13,8 +13,8 @@ from ._graph_diagram import graph_to_d2, graph_to_mermaid
 class DependencyEdge:
     """A symbolic dependency between two notebook cells."""
 
-    source_id: int
-    target_id: int
+    source: CellInfo
+    target: CellInfo
     variable: str
 
 
@@ -33,7 +33,6 @@ class CellInfo:
     index: int
     mode: str
     key: str | None
-    name: str | None
     defines: tuple[str, ...]
     references: tuple[str, ...]
     output: str | None
@@ -66,13 +65,17 @@ class NotebookGraph:
         defined.update(name for cell in self.cells for name in cell.runtime_outputs)
         return tuple(name for name in self.references if name not in defined)
 
-    def cell(self, index: int) -> CellInfo:
-        """Return the cell at ``index`` in the notebook definition."""
+    def cell(self, key: str) -> CellInfo:
+        """Return the uniquely keyed cell identified by ``key``."""
 
-        for cell in self.cells:
-            if cell.index == index:
-                return cell
-        raise IndexError("notebook graph cell index out of range")
+        if not isinstance(key, str):
+            raise TypeError("graph cell key must be a string")
+        matches = [cell for cell in self.cells if cell.key == key]
+        if len(matches) == 1:
+            return matches[0]
+        if len(matches) > 1:
+            raise KeyError(f"Ambiguous Observable cell key: {key!r}")
+        raise KeyError(f"Unknown Observable cell key: {key!r}")
 
     def cell_for_variable(self, variable: str) -> CellInfo:
         matches = [cell for cell in self.cells if variable in cell.defines]
@@ -107,13 +110,11 @@ def graph_from_raw(raw: Any) -> NotebookGraph | None:
         for item in _sequence(raw, "cells")
         if (cell := cell_info_from_raw(item)) is not None
     )
-    cell_ids = {cell.id for cell in cells}
+    cells_by_id = {cell.id: cell for cell in cells}
     edges = tuple(
         edge
         for item in _sequence(raw, "edges")
-        if (edge := _edge_from_raw(item)) is not None
-        and edge.source_id in cell_ids
-        and edge.target_id in cell_ids
+        if (edge := _edge_from_raw(item, cells_by_id)) is not None
     )
     return NotebookGraph(cells=cells, edges=edges)
 
@@ -133,7 +134,6 @@ def cell_info_from_raw(raw: Any) -> CellInfo | None:
         index=index,
         mode=mode,
         key=_optional_string(raw.get("key")),
-        name=_optional_string(raw.get("name")),
         defines=_strings(raw, "defines"),
         references=_strings(raw, "references"),
         output=_optional_string(raw.get("output")),
@@ -146,7 +146,9 @@ def cell_info_from_raw(raw: Any) -> CellInfo | None:
     )
 
 
-def _edge_from_raw(raw: Any) -> DependencyEdge | None:
+def _edge_from_raw(
+    raw: Any, cells_by_id: Mapping[int, CellInfo]
+) -> DependencyEdge | None:
     if not isinstance(raw, Mapping):
         return None
     source_id = _int_field(raw, "from")
@@ -159,7 +161,11 @@ def _edge_from_raw(raw: Any) -> DependencyEdge | None:
         or not variable
     ):
         return None
-    return DependencyEdge(source_id=source_id, target_id=target_id, variable=variable)
+    source = cells_by_id.get(source_id)
+    target = cells_by_id.get(target_id)
+    if source is None or target is None:
+        return None
+    return DependencyEdge(source=source, target=target, variable=variable)
 
 
 def _unique(values: Iterable[str]) -> tuple[str, ...]:

@@ -15,7 +15,13 @@ import {
 	type ViewWriteResult,
 } from "@pyobservablejs/runtime";
 import { isRecord, type AnyWidgetModel, type WidgetModel } from "./model";
-import type { CellReadback } from "./readback";
+import {
+	structuredCellError,
+	type CellErrorWire,
+	type CellReadback,
+	type ErrorPhase,
+	type ReadbackToken,
+} from "./readback";
 
 type RuntimeVariablesSyncOptions = {
 	model: AnyWidgetModel;
@@ -24,6 +30,7 @@ type RuntimeVariablesSyncOptions = {
 	viewNames: Set<string>;
 	signal: AbortSignal;
 	onReset(variables: Record<string, unknown>): void;
+	onInput?(names: ReadonlySet<string>): void;
 	writeViewValue?(view: ViewTarget, value: unknown): ViewWriteResult;
 };
 
@@ -36,41 +43,98 @@ export type RuntimeViewSync = {
 };
 
 export type CellVariableSync = {
-	setVariableNames(names: string[]): void;
-	setVariable(name: string, value: unknown): void;
-	markRendered(): void;
+	configure(names: string[], display: boolean): void;
+	pending(channel: string): void;
+	fulfilled(channel: string, name?: string, value?: unknown): void;
+	rejected(channel: string, error: unknown, phase: ErrorPhase, variable?: string): void;
+	fail(error: unknown, phase: ErrorPhase, variable?: string): void;
 };
 
 const programmaticViewWrites = new WeakSet<ViewTarget>();
 
-/** Buffer one selected cell until all exposed values settle. */
+/** Aggregate every observer channel into one selected-cell result. */
 export function createCellStateSync({
-	read,
-	publish,
+	begin,
+	settle,
 }: {
-	read(): CellReadback;
-	publish(value: CellReadback): void;
+	begin(channel: string, generation: number): ReadbackToken | null;
+	settle(token: ReadbackToken, value: Omit<CellReadback, "revision">): void;
 }): CellVariableSync {
-	const initial = read();
-	let names = [...initial.names];
-	let variables = { ...initial.values };
-	let rendered = false;
-	const publishCurrent = () => publish({ rendered: true, names: [...names], values: { ...variables } });
+	const expected = new Set<string>();
+	const statuses = new Map<string, "pending" | "success" | "error">();
+	const generations = new Map<string, number>();
+	const tokens = new Map<string, ReadbackToken>();
+	const values = new Map<string, { name: string; value: unknown }>();
+	const errors = new Map<string, CellErrorWire>();
+	let revision = -1;
+
+	const start = (channel: string): ReadbackToken | null => {
+		const generation = (generations.get(channel) ?? 0) + 1;
+		generations.set(channel, generation);
+		const token = begin(channel, generation);
+		if (!token) return null;
+		if (token.revision > revision) {
+			revision = token.revision;
+			for (const expectedChannel of expected) {
+				if (statuses.get(expectedChannel) === "pending") tokens.delete(expectedChannel);
+			}
+		}
+		tokens.set(channel, token);
+		statuses.set(channel, "pending");
+		values.delete(channel);
+		errors.delete(channel);
+		return token;
+	};
+
+	const tokenFor = (channel: string) =>
+		statuses.get(channel) === "pending" ? (tokens.get(channel) ?? start(channel)) : start(channel);
+	const settleIfReady = (token: ReadbackToken) => {
+		if ([...expected].some((channel) => statuses.get(channel) === "pending")) return;
+		const resultErrors = [...errors.values()];
+		settle(token, {
+			status: resultErrors.length > 0 ? "error" : "success",
+			values: Object.fromEntries([...values.values()].map((item) => [item.name, item.value])),
+			errors: resultErrors,
+		});
+	};
+
 	return {
-		setVariableNames(nextNames) {
-			if (sameWireValue(names, nextNames)) return;
-			names = [...nextNames];
-			if (rendered) publishCurrent();
+		configure(names, display) {
+			expected.clear();
+			if (display) expected.add("display");
+			for (const name of names) expected.add(`variable:${name}`);
+			for (const channel of expected) {
+				if (!statuses.has(channel)) statuses.set(channel, "pending");
+			}
 		},
-		setVariable(name, value) {
-			if (sameWireValue(variables[name], value)) return;
-			variables = { ...variables, [name]: value };
-			if (rendered) publishCurrent();
+		pending(channel) {
+			start(channel);
 		},
-		markRendered() {
-			if (rendered) return;
-			rendered = true;
-			publishCurrent();
+		fulfilled(channel, name, value) {
+			const token = tokenFor(channel);
+			if (!token || tokens.get(channel) !== token) return;
+			statuses.set(channel, "success");
+			if (name !== undefined) values.set(channel, { name, value });
+			errors.delete(channel);
+			settleIfReady(token);
+		},
+		rejected(channel, error, phase, variable) {
+			const token = tokenFor(channel);
+			if (!token || tokens.get(channel) !== token) return;
+			statuses.set(channel, "error");
+			values.delete(channel);
+			errors.set(channel, structuredCellError(error, phase, variable));
+			settleIfReady(token);
+		},
+		fail(error, phase, variable) {
+			const channel = "failure";
+			expected.clear();
+			expected.add(channel);
+			const token = start(channel);
+			if (!token) return;
+			statuses.set(channel, "error");
+			errors.set(channel, structuredCellError(error, phase, variable));
+			settleIfReady(token);
 		},
 	};
 }
@@ -84,10 +148,12 @@ export function createRuntimeViewSync({
 	model,
 	variables,
 	signal,
+	onInput = () => {},
 }: {
 	model: AnyWidgetModel;
 	variables: RuntimeVariablesController;
 	signal: AbortSignal;
+	onInput?(names: ReadonlySet<string>): void;
 }): RuntimeViewSync {
 	const views = new Map<string, ViewTarget>();
 	const cleanups = new Map<string, () => void>();
@@ -95,6 +161,7 @@ export function createRuntimeViewSync({
 
 	const publish = (name: string, value: unknown) => {
 		if (sameWireValue(sharedValues[name], value) && Object.prototype.hasOwnProperty.call(sharedValues, name)) return;
+		onInput(new Set([name]));
 		sharedValues = { ...sharedValues, [name]: value };
 		model.set("_view_values", sharedValues);
 		model.save_changes();
@@ -114,7 +181,14 @@ export function createRuntimeViewSync({
 	};
 
 	const apply = () => {
+		const previous = sharedValues;
 		sharedValues = readViewValues(model);
+		const changed = new Set(
+			Object.entries(sharedValues)
+				.filter(([name, value]) => !sameWireValue(previous[name], value))
+				.map(([name]) => name),
+		);
+		if (changed.size > 0) onInput(changed);
 		for (const [name, wireValue] of Object.entries(sharedValues)) {
 			const view = views.get(name);
 			if (!view || !isWritableSyncedViewValue(wireValue)) continue;
@@ -149,11 +223,11 @@ export function createRuntimeViewSync({
 				const wireValue = toWireValue(readViewValue(value));
 				if (isWritableSyncedViewValue(wireValue)) publish(name, wireValue);
 			};
-			value.addEventListener("input", onInteraction);
-			value.addEventListener("change", onInteraction);
+			value.addEventListener("input", onInteraction, { capture: true });
+			value.addEventListener("change", onInteraction, { capture: true });
 			const cleanup = () => {
-				value.removeEventListener("input", onInteraction);
-				value.removeEventListener("change", onInteraction);
+				value.removeEventListener("input", onInteraction, { capture: true });
+				value.removeEventListener("change", onInteraction, { capture: true });
 				if (views.get(name) === value) views.delete(name);
 				if (cleanups.get(name) === cleanup) cleanups.delete(name);
 				variables.deleteView(name, value);
@@ -176,6 +250,7 @@ export function createRuntimeVariablesSync({
 	viewNames,
 	signal,
 	onReset,
+	onInput = () => {},
 	writeViewValue = writeRawViewValue,
 }: RuntimeVariablesSyncOptions): RuntimeVariablesController {
 	let lastPatchSeq = readVariableUpdate(model).seq ?? 0;
@@ -201,6 +276,7 @@ export function createRuntimeVariablesSync({
 			const values = patch.values ?? {};
 			assertNoRuntimeBuiltinCollisions(runtime, values);
 			notifyViewStateClears(listeners, Object.keys(values));
+			onInput(new Set(Object.keys(values)));
 			inputs.set(values);
 			return;
 		}

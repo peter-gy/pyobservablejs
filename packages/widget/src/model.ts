@@ -21,16 +21,29 @@ export type WidgetModel = {
 	};
 	_readback?: {
 		revision: number;
-		rendered: boolean;
+		input_revision: number | null;
+		settled_revision: number | null;
+		pending: boolean;
 		graph: NotebookGraph | Record<string, never>;
-		cells: Record<
+		results: Record<
 			string,
 			{
-				rendered?: boolean;
-				names?: string[];
-				values?: Record<string, unknown>;
+				revision: number;
+				status: "pending" | "success" | "error";
+				values: Record<string, unknown>;
+				errors: Array<{
+					name: string;
+					message: string;
+					phase: "analysis" | "evaluation" | "rendering" | "serialization";
+					variable?: string;
+				}>;
 			}
 		>;
+		errors: Array<{
+			name: string;
+			message: string;
+			phase: "analysis" | "evaluation" | "rendering" | "serialization";
+		}>;
 	};
 	_options?: {
 		show_source?: boolean;

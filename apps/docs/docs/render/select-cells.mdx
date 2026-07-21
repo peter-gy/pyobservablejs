@@ -1,21 +1,20 @@
 ---
-title: Select cells and create subsets
-description: Render full, focused, and composite selections from one notebook.
+title: Select cells
+description: Render keyed cells and run the cells they depend on.
 ---
 
-# Select cells and create subsets
+# Select cells
 
-Every view renders a selection of notebook cells plus the hidden dependency
-closure those cells need. Three selection shapes cover all cases.
+Call `Notebook.view(...)` to render all cells or a keyed selection.
 
-| Shape     | Call                                        | Cells rendered together                                        |
-| --------- | ------------------------------------------- | -------------------------------------------------------------- |
-| Full      | `notebook.view()`                           | Every notebook cell, subject to each cell's `display` setting. |
-| Focused   | `notebook.cell("chart").view()`             | One selected cell. Its dependencies evaluate as hidden cells.  |
-| Composite | `notebook.view(cells=["chart", "summary"])` | Several selected cells and their hidden dependency closure.    |
+| Selection           | Call                                |
+| ------------------- | ----------------------------------- |
+| Whole notebook      | `notebook.view()`                   |
+| One keyed cell      | `notebook.view("chart")`            |
+| Several keyed cells | `notebook.view("chart", "summary")` |
 
-The composite example renders two selected cells. The data cell is not
-selected, yet both selected cells use it through their dependency closure.
+Cells needed by the selection also run, but their output stays hidden. Selected
+cells render in notebook order, regardless of selector order.
 
 ```marimo-config
 requires-python = ">=3.11"
@@ -26,123 +25,112 @@ dependencies = ["pyobservablejs"]
 import marimo as mo
 import observablejs as obs
 
-notebook = obs.Notebook(
-    obs.js(
-        "const numbers = [2, 4, 8, 16];",
-        key="numbers",
-        display=False,
-    ),
-    obs.js(
-        """
-        Plot.barY(numbers, {
-          x: (_, index) => index + 1,
-          y: (value) => value * scale,
-          tip: {fill: "var(--marimo-island-background)"}
-        }).plot({height: 220, x: {label: "Position"}, y: {grid: true}})
-        """,
-        key="chart",
-    ),
-    obs.js(
-        """
-        html`<p>
-          ${numbers.length} values,
-          ending at <strong>${numbers.at(-1) * scale}</strong>.
-        </p>`
-        """,
-        key="summary",
-    ),
-    variables={"scale": 2},
+numbers = obs.js(
+    "const numbers = [2, 4, 8, 16];",
+    key="numbers",
+    display=False,
 )
 
-composite_view = notebook.view(cells=["chart", "summary"])
-mo.ui.anywidget(composite_view)
+chart = obs.js(
+    """
+    Plot.barY(numbers, {
+      x: (_, index) => index + 1,
+      y: (value) => value * scale,
+      tip: {
+        // This example references a theme variable used by mdx-marimo.
+        // Replace it with a CSS color or remove `fill` in another host.
+        fill: "var(--marimo-island-background)"
+      }
+    }).plot({height: 220, x: {label: "Position"}, y: {grid: true}})
+    """,
+    key="chart",
+)
+
+summary = obs.js(
+    """
+    html`<p>
+      ${numbers.length} values,
+      ending at <strong>${numbers.at(-1) * scale}</strong>.
+    </p>`
+    """,
+    key="summary",
+)
+
+notebook = obs.Notebook(numbers, chart, summary, variables={"scale": 2})
+selected = notebook.view(summary, "chart")
+mo.ui.anywidget(selected)
 ```
 
 ```python marimo echo=false server-output=false
 import marimo as mo
 import observablejs as obs
 
-notebook = obs.Notebook(
-    obs.js(
-        "const numbers = [2, 4, 8, 16];",
-        key="numbers",
-        display=False,
-    ),
-    obs.js(
-        """
-        Plot.barY(numbers, {
-          x: (_, index) => index + 1,
-          y: (value) => value * scale,
-          tip: {fill: "var(--marimo-island-background)"}
-        }).plot({height: 220, x: {label: "Position"}, y: {grid: true}})
-        """,
-        key="chart",
-    ),
-    obs.js(
-        """
-        html`<p>
-          ${numbers.length} values,
-          ending at <strong>${numbers.at(-1) * scale}</strong>.
-        </p>`
-        """,
-        key="summary",
-    ),
-    variables={"scale": 2},
+numbers = obs.js(
+    "const numbers = [2, 4, 8, 16];",
+    key="numbers",
+    display=False,
 )
 
-composite_view = notebook.view(cells=["chart", "summary"])
-mo.ui.anywidget(composite_view)
+chart = obs.js(
+    """
+    Plot.barY(numbers, {
+      x: (_, index) => index + 1,
+      y: (value) => value * scale,
+      tip: {
+        // This example references a theme variable used by mdx-marimo.
+        // Replace it with a CSS color or remove `fill` in another host.
+        fill: "var(--marimo-island-background)"
+      }
+    }).plot({height: 220, x: {label: "Position"}, y: {grid: true}})
+    """,
+    key="chart",
+)
+
+summary = obs.js(
+    """
+    html`<p>
+      ${numbers.length} values,
+      ending at <strong>${numbers.at(-1) * scale}</strong>.
+    </p>`
+    """,
+    key="summary",
+)
+
+notebook = obs.Notebook(numbers, chart, summary, variables={"scale": 2})
+selected = notebook.view(summary, "chart")
+mo.ui.anywidget(selected)
 ```
 
-The composite view evaluates `numbers` once, then renders the two selected
-cells in notebook order.
+Although `summary` was passed first, the chart renders first because it appears
+earlier in the notebook. `numbers` evaluates once as a hidden dependency.
 
-## Selection inputs
+## Selector contract
 
-`cells` accepts zero-based indices, Python cell keys, and `NotebookCell`
-handles, in any mix. Explicit selections render in canonical notebook order.
+`view(*selectors)` accepts key strings, keyed authored `Cell` objects, and
+`NotebookCell` handles from the same notebook.
 
 ```python
-notebook.view(cells=[1, 2])
-notebook.view(cells=["chart", "summary"])
-notebook.view(cells=[notebook.cell(1), notebook.cell("summary")])
+notebook.view("chart")
+notebook.view(chart)
+notebook.view(notebook.cell("chart"))
+notebook.view(chart, notebook.cell("summary"))
 ```
 
-An empty selection, a duplicate selection, or a handle from another notebook
-raises `ValueError`. Unknown keys raise `KeyError`, and out-of-range indices
-raise `IndexError`. See [`Notebook.view`](../reference/notebook.mdx#create-views)
-for the full validation contract.
+Unknown keys raise `KeyError`. Each authored `Cell` selector needs a key, and
+each `NotebookCell` selector must belong to the notebook. Duplicate selections
+and foreign handles raise `ValueError`. Invalid selector types raise
+`TypeError`.
 
-## Cell handles
+`NotebookCell.key` is public identity. `NotebookCell.id` is Notebook Kit
+serialization metadata, and `NotebookCell.index` is notebook-order metadata.
+Anonymous cells remain available through `notebook.cells`.
 
-`NotebookCell` is a stable selection handle, available before render.
+## One composite view or separate views
 
-```python
-chart_cell = notebook.cell("chart")  # by Python key
-first_cell = notebook.cell(0)        # by index, negatives count from the end
-all_cells = notebook.cells           # handles in notebook order
+A combined view evaluates selected outputs together and reports one state
+snapshot. Separate views evaluate independently but receive the same notebook
+values. Use a combined view for outputs that belong together and separate views
+for different locations.
 
-chart_view = chart_cell.view()
-selected_cells = chart_view.cells
-```
-
-`key` comes from the Python-side `key=` cell option. `name` comes from the
-Notebook Kit cell name declared in the source or set through `name=`. Both
-are `None` when unset. `index` is the cell's zero-based notebook position.
-`NotebookView.cells` returns the selected handles in notebook order.
-
-## Composite view or separate views?
-
-Both render several outputs. They differ in runtime ownership.
-
-- A **composite view** evaluates the selected cells in **one runtime** with
-  one graph snapshot and one readback. Use it when the outputs belong
-  together in one place.
-- **Separate views** evaluate in **separate runtimes** and own separate
-  readback. Python variables and named browser inputs synchronize through
-  the notebook. Use separate views when outputs belong in different
-  frontend locations.
-
-The [Split one notebook into several
-views](../recipes/split-notebook-into-views.mdx) recipe mounts two focused
-views side by side and drives both from one Python control.
+See [Split one notebook into several
+views](../recipes/split-notebook-into-views.mdx) for a complete layout.

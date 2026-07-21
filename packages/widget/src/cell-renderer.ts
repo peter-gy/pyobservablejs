@@ -105,7 +105,7 @@ function renderCell({
 		runtimeProfile,
 		visible,
 	);
-	if (showSource && cell.pinned) appendSource(wrapper, cell, signal);
+	if (showSource && cell.pinned) appendSource(wrapper, cell, signal, sync);
 }
 
 function defineCell(
@@ -126,13 +126,14 @@ function defineCell(
 		const exposed = exposedVariableNames(definition);
 		const displayName = exposed.length === 0 && cellName ? cellName : null;
 		const pythonNames = pythonOwnedNames(definition, exposed, pythonVariableNames);
-		sync?.setVariableNames(displayName ? [displayName] : exposed);
 		const observer = visible ? safeObserve : observeWithoutVisibilityNode;
 		if (pythonNames.length === exposed.length && pythonNames.length > 0) {
+			sync?.configure(exposed, false);
 			renderPythonVariableCell(runtime, root, cell, definition, pythonNames, observer);
 			if (sync) defineSyncObservers(runtime, sync, exposed);
 			return;
 		}
+		sync?.configure(displayName ? [] : exposed, true);
 		const sourceDefinition = sourceRuntimeDefinition(definition, pythonNames);
 		defineRuntimeCell(
 			runtime,
@@ -140,7 +141,7 @@ function defineCell(
 			cell,
 			sourceDefinition,
 			sync
-				? createCellObserver(sync, viewSync, sourceDefinition, displayName, exposed.length > 0)
+				? createCellObserver(sync, viewSync, sourceDefinition, displayName)
 				: createRuntimeInputObserver(observer, viewSync, sourceDefinition),
 			{
 				document: runtimeDocument(runtime),
@@ -151,7 +152,7 @@ function defineCell(
 		if (sync) defineSyncObservers(runtime, sync, exposed);
 	} catch (error) {
 		root.appendChild(createTopLevelError(error));
-		sync?.markRendered();
+		sync?.fail(error, "analysis");
 	}
 }
 
@@ -173,11 +174,12 @@ function createRuntimeInputObserver(
 	};
 }
 
-function appendSource(wrapper: HTMLElement, cell: Cell, signal: AbortSignal): void {
+function appendSource(wrapper: HTMLElement, cell: Cell, signal: AbortSignal, sync?: CellVariableSync): void {
 	try {
 		if (!signal.aborted) wrapper.appendChild(renderSource(cell, signal));
 	} catch (error) {
 		if (!signal.aborted) wrapper.appendChild(createTopLevelError(error));
+		sync?.fail(error, "rendering");
 	}
 }
 
@@ -220,32 +222,53 @@ function createCellObserver(
 	viewSync: RuntimeViewSync,
 	definition: RuntimeCellDefinition,
 	displayName: string | null,
-	hasSyncedNames: boolean,
 ): typeof observe {
-	const displayObserverCompletesReadback = displayName !== null || !hasSyncedNames;
 	return (state, runtimeDefinition) => {
+		let renderFailed = false;
 		// Keep the runtime output for variable wiring and clear the display label so
 		// Selected cell output renders the value text expected by Python callers.
-		const observer = safeObserve(state, { ...runtimeDefinition, output: undefined });
+		const observer = safeObserve(state, { ...runtimeDefinition, output: undefined }, (error) => {
+			renderFailed = true;
+			sync.rejected("display", error, "rendering", displayName ?? undefined);
+		});
+		const pending = observer.pending.bind(observer);
+		observer.pending = () => {
+			renderFailed = false;
+			sync.pending("display");
+			pending();
+		};
 		const fulfilled = observer.fulfilled.bind(observer);
 		observer.fulfilled = (value: unknown) => {
 			const viewName = viewVariableName(definition);
 			if (viewName) viewSync.register(viewName, value);
-			if (displayName) sync.setVariable(displayName, toWireValue(value));
-			if (displayObserverCompletesReadback) sync.markRendered();
 			fulfilled(value);
+			if (renderFailed) return;
+			if (!displayName) {
+				sync.fulfilled("display");
+				return;
+			}
+			try {
+				sync.fulfilled("display", displayName, toWireValue(value));
+			} catch (error) {
+				sync.rejected("display", error, "serialization", displayName);
+			}
 		};
 		const rejected = observer.rejected.bind(observer);
 		observer.rejected = (error: unknown) => {
-			if (displayName) sync.setVariable(displayName, toWireValue(error));
-			if (displayObserverCompletesReadback) sync.markRendered();
 			rejected(error);
+			if (!renderFailed) {
+				sync.rejected("display", error, "evaluation", displayName ?? undefined);
+			}
 		};
 		return observer;
 	};
 }
 
-function safeObserve(state: DisplayState, definition: RuntimeDefinition): DisplayObserver {
+function safeObserve(
+	state: DisplayState,
+	definition: RuntimeDefinition,
+	onRenderError?: (error: unknown) => void,
+): DisplayObserver {
 	const observer = observe(state, definition) as DisplayObserver;
 	const fulfilled = observer.fulfilled.bind(observer);
 	const rejected = observer.rejected.bind(observer);
@@ -253,10 +276,10 @@ function safeObserve(state: DisplayState, definition: RuntimeDefinition): Displa
 		...observer,
 		pending: observer.pending.bind(observer),
 		fulfilled(value: unknown) {
-			renderSafely(state, () => fulfilled(value));
+			renderSafely(state, () => fulfilled(value), onRenderError);
 		},
 		rejected(error: unknown) {
-			renderSafely(state, () => rejected(error));
+			renderSafely(state, () => rejected(error), onRenderError);
 		},
 	};
 }
@@ -267,11 +290,12 @@ function observeWithoutVisibilityNode(state: DisplayState, definition: RuntimeDe
 	return observer;
 }
 
-function renderSafely(state: DisplayState, render: () => void): void {
+function renderSafely(state: DisplayState, render: () => void, onError?: (error: unknown) => void): void {
 	try {
 		render();
 	} catch (error) {
 		state.root.replaceChildren(createInspectFallback(state.root.ownerDocument, error));
+		onError?.(error);
 	}
 }
 
@@ -284,38 +308,28 @@ function createInspectFallback(document: Document, error: unknown): HTMLDivEleme
 	return node;
 }
 
-function createSyncObserver(sync: CellVariableSync, name: string, onSettled: () => void): RuntimeObserver {
-	let settled = false;
-	const settle = () => {
-		if (settled) return;
-		settled = true;
-		onSettled();
-	};
+function createSyncObserver(sync: CellVariableSync, name: string): RuntimeObserver {
+	const channel = `variable:${name}`;
 	return {
-		pending() {},
+		pending() {
+			sync.pending(channel);
+		},
 		fulfilled(value: unknown) {
-			sync.setVariable(name, toWireValue(value));
-			settle();
+			try {
+				sync.fulfilled(channel, name, toWireValue(value));
+			} catch (error) {
+				sync.rejected(channel, error, "serialization", name);
+			}
 		},
 		rejected(error: unknown) {
-			sync.setVariable(name, toWireValue(error));
-			settle();
+			sync.rejected(channel, error, "evaluation", name);
 		},
 	};
 }
 
 function defineSyncObservers(runtime: NotebookRuntime, sync: CellVariableSync, names: string[]): void {
-	const pending = new Set(names);
-	const settle = (name: string) => {
-		pending.delete(name);
-		if (pending.size === 0) sync.markRendered();
-	};
 	for (const name of names) {
-		observeRuntimeVariable(
-			runtime,
-			name,
-			createSyncObserver(sync, name, () => settle(name)),
-		);
+		observeRuntimeVariable(runtime, name, createSyncObserver(sync, name));
 	}
 }
 

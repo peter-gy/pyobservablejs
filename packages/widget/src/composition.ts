@@ -32,6 +32,7 @@ export function renderNotebookView({
 	attempt,
 	cellKeys,
 }: RenderNotebookViewOptions): void {
+	readback.begin(attempt, selectedIndexes);
 	const { options, root } = session;
 	const cells = notebook.cells;
 	const context: CellRenderContext = {
@@ -60,13 +61,12 @@ export function renderNotebookView({
 			cell,
 			showSource: selected && options.showSource,
 			visible: selected,
-			sync: selected ? cellSync(index, readback, attempt, selectedIndexes.size) : undefined,
+			sync: selected ? cellSync(index, readback, attempt) : undefined,
 			cellName: selected ? cellKeys[index] || undefined : undefined,
 		});
 	}
 	for (const target of targets) renderCellTarget(target, context);
 	session.variablesSync.applyInitialViews();
-	readback.complete(attempt, selectedIndexes.size);
 }
 
 export function notebookViewIndexes(analysis: NotebookAnalysis, selectedIndexes: ReadonlySet<number>): Set<number> {
@@ -77,12 +77,9 @@ export function notebookViewIndexes(analysis: NotebookAnalysis, selectedIndexes:
 	return indexes;
 }
 
-function cellSync(index: number, readback: ViewReadback, attempt: ReadbackAttempt, selectedCellCount: number) {
+function cellSync(index: number, readback: ViewReadback, attempt: ReadbackAttempt) {
 	return createCellStateSync({
-		read: () => readback.read(index),
-		publish(value) {
-			readback.publish(attempt, index, value);
-			readback.complete(attempt, selectedCellCount);
-		},
+		begin: (channel, generation) => readback.beginCell(attempt, index, channel, generation),
+		settle: (token, value) => readback.settleCell(token, value),
 	});
 }

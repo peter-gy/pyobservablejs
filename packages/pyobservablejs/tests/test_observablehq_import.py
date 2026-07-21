@@ -208,12 +208,13 @@ def test_notebook_from_observablehq_converts_named_file_table_nodes(
 
     scripts = script_tags(widget.to_notebook_html())
     assert scripts[0]["attrs"].get("type") == "application/vnd.observable.javascript"
-    assert scripts[0]["attrs"].get("name") == "worldbank"
+    assert scripts[0]["attrs"].get("data-pyobservablejs-key") == "worldbank"
+    assert scripts[0]["attrs"].get("name") is None
     assert "hidden" in scripts[0]["attrs"]
     assert scripts[0]["text"].strip() == (
         'viewof worldbank = Inputs.table(await FileAttachment("wb_tidy.csv").csv({typed: true}))'
     )
-    assert widget.cells[0].name == "worldbank"
+    assert widget.cells[0].key == "worldbank"
 
 
 def test_notebook_from_observablehq_converts_empty_table_nodes(
@@ -278,12 +279,13 @@ def test_notebook_from_observablehq_converts_chart_nodes_to_plot_auto(
 
     scripts = script_tags(widget.to_notebook_html())
     assert scripts[0]["attrs"].get("type") == "application/vnd.observable.javascript"
-    assert scripts[0]["attrs"].get("name") == "revenueChart"
+    assert scripts[0]["attrs"].get("data-pyobservablejs-key") == "revenueChart"
+    assert scripts[0]["attrs"].get("name") is None
     assert scripts[0]["text"].strip() == (
         'revenueChart = Plot.auto(await orders, {"x": "order_date", "y": "revenue", '
         '"fy": "category", "color": "category", "mark": "area", "marginLeft": 60}).plot()'
     )
-    assert widget.cells[0].name == "revenueChart"
+    assert widget.cells[0].key == "revenueChart"
 
 
 def test_notebook_from_observablehq_preserves_chart_channel_options(
@@ -440,7 +442,7 @@ def test_notebook_from_observablehq_converts_duckdb_sql_nodes(
     assert scripts[1]["attrs"].get("database") == "var:starDB"
     assert scripts[1]["attrs"].get("output") == "stars"
     assert scripts[1]["text"].strip() == "select * from stars"
-    assert widget.cells[1].name == "stars"
+    assert widget.cells[1].key == "stars"
 
 
 def test_notebook_from_observablehq_converts_sql_database_nodes(
@@ -589,7 +591,7 @@ def test_notebook_from_observablehq_converts_array_sql_nodes(
     assert scripts[2]["attrs"].get("database") == "var:rowsDB"
     assert scripts[2]["attrs"].get("output") == "summary"
     assert scripts[2]["text"].strip() == "select count(*) as n from rows"
-    assert widget.cells[2].name == "summary"
+    assert widget.cells[2].key == "summary"
 
 
 def test_observablehq_sql_client_id_wraps_after_the_largest_safe_id(
@@ -710,7 +712,7 @@ def test_notebook_from_observablehq_converts_file_attachment_sql_nodes(
     assert scripts[1]["attrs"].get("database") == "var:Power_PlantsDB"
     assert scripts[1]["attrs"].get("output") == "plants"
     assert scripts[1]["text"].strip() == 'select * from "Power_Plants"'
-    assert widget.cells[1].name == "plants"
+    assert widget.cells[1].key == "plants"
 
 
 def test_notebook_from_observablehq_converts_sqlite_file_sql_nodes(

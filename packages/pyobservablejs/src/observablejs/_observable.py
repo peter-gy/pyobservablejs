@@ -10,11 +10,16 @@ import urllib.parse
 import urllib.request
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any, TypedDict, cast
+from typing import Any, cast
 
 from ._cell_ids import _CellIdAllocator, _MAX_SAFE_CELL_ID, _is_safe_cell_id
 from ._cells import NotebookCellSpec
 from ._files import FileAttachment
+from .types import (
+    ObservableDocument,
+    ObservableFile as ObservableFileRecord,
+    ObservableNode as ObservableNodeRecord,
+)
 
 _UI_ORIGIN = "https://observablehq.com"
 _ID_SPECIFIER_RE = re.compile(r"^[0-9a-f]{16}(?:@\d+|@latest|@\w+|~\d+)?$")
@@ -31,50 +36,8 @@ _LEGACY_DUCKDB_IMPORT_RE = re.compile(
 )
 
 
-class ObservableSourceRecord(TypedDict, total=False):
-    name: str
-    type: str
-    dialect: str
-
-
-class ObservableDataRecord(TypedDict, total=False):
-    source: ObservableSourceRecord | Mapping[str, Any]
-    operations: Mapping[str, Any]
-    config: Mapping[str, Any]
-    display: Mapping[str, Any]
-
-
-class ObservableNodeRecord(TypedDict, total=False):
-    id: int | str
-    mode: str
-    value: Any
-    name: str | None
-    pinned: bool
-    hidden: bool
-    database: str
-    format: str
-    output: str
-    data: ObservableDataRecord | Mapping[str, Any]
-
-
-class ObservableFileRecord(TypedDict, total=False):
-    name: str
-    download_url: str
-    mime_type: str
-    size: int
-    create_time: str
-
-
 ObservableNodeInput = ObservableNodeRecord | Mapping[str, Any]
 ObservableFileInput = ObservableFileRecord | Mapping[str, Any]
-
-
-class ObservableDocument(TypedDict, total=False):
-    id: str
-    version: int
-    title: str
-    nodes: Sequence[ObservableNodeInput]
-    files: Sequence[ObservableFileInput]
 
 
 @dataclass(frozen=True)
@@ -394,6 +357,8 @@ def _code_node_to_cell(
         # reserves "js" for ES modules, so imported cells keep OJS semantics.
         "mode": "ojs" if node.mode == "js" else node.mode,
     }
+    if node.name is not None:
+        cell["key"] = node.name
     _copy_visibility_attrs(cell, node)
     if uses_builtin_duckdb:
         cell["hidden"] = True
@@ -401,7 +366,7 @@ def _code_node_to_cell(
         cell["output"] = node.name
     if sql_database is not None:
         cell["database"] = f"var:{sql_database}"
-    for key in ("database", "format", "name", "output"):
+    for key in ("database", "format", "output"):
         value = node.raw.get(key)
         if value is not None and key not in cell:
             cell[key] = value
@@ -582,11 +547,11 @@ def _table_node_to_cell(
         "value": value,
         "mode": "ojs",
     }
+    if node.name is not None:
+        cell["key"] = node.name
     _copy_visibility_attrs(cell, node)
     if _data_display_mode(node.raw.get("data")) == "none":
         cell["hidden"] = True
-    if node.name is not None:
-        cell["name"] = node.name
     return cast(NotebookCellSpec, cell)
 
 
@@ -606,9 +571,9 @@ def _chart_node_to_cell(node: ObservableNode) -> NotebookCellSpec:
         "value": value,
         "mode": "ojs",
     }
-    _copy_visibility_attrs(cell, node)
     if node.name is not None:
-        cell["name"] = node.name
+        cell["key"] = node.name
+    _copy_visibility_attrs(cell, node)
     return cast(NotebookCellSpec, cell)
 
 

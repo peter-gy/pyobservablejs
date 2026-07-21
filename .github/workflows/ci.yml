@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   quality:
     runs-on: ubuntu-latest
@@ -45,6 +49,7 @@ jobs:
           uv run --package pyobservablejs ruff format --check .
           uv run --package pyobservablejs ruff check .
           uv run --package pyobservablejs ty check packages/pyobservablejs scripts
+          uv run --package pyobservablejs pyrefly check --min-severity warn
 
       - name: Check whitespace
         run: git diff --check

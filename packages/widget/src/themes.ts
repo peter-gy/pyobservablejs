@@ -13,7 +13,7 @@ import themeParchmentCss from "@observablehq/notebook-kit/theme-parchment.css?in
 import themeSlateCss from "@observablehq/notebook-kit/theme-slate.css?inline";
 import themeStarkCss from "@observablehq/notebook-kit/theme-stark.css?inline";
 import themeSunFadedCss from "@observablehq/notebook-kit/theme-sun-faded.css?inline";
-import plotThemeCss from "./plot.css?inline";
+import plotThemeCss from "./styles/plot.css?inline";
 
 const THEME_STYLE_ID = "pyobservablejs-notebook-kit-themes";
 

@@ -24,11 +24,11 @@ usage() {
   cat <<'EOF'
 Usage: ./scripts/release.sh <minor|patch|X.Y.Z>
 
-Creates a release commit and annotated vX.Y.Z tag. Use an explicit X.Y.Z target
-for the first release, major releases, or any release from a prerelease version.
-Use patch or minor only when the current version is already a final X.Y.Z
-version. Pushing the vX.Y.Z tag publishes the package to PyPI through GitHub
-Actions and Trusted Publishing.
+Validates the release and creates an annotated vX.Y.Z tag. An explicit X.Y.Z
+target may match the package version already committed at HEAD. A newer target
+also creates a release commit with the version change. Use patch or minor when
+the current version is already a final X.Y.Z version. Pushing the vX.Y.Z tag
+publishes the package to PyPI through GitHub Actions and Trusted Publishing.
 EOF
 }
 
@@ -77,7 +77,7 @@ bump_version() {
   esac
 }
 
-require_newer_explicit_target() {
+require_current_or_newer_explicit_target() {
   local current="$1"
   local target="$2"
 
@@ -89,7 +89,6 @@ require_newer_explicit_target() {
   local current_major="${BASH_REMATCH[1]}"
   local current_minor="${BASH_REMATCH[2]}"
   local current_patch="${BASH_REMATCH[3]}"
-  local current_suffix="${BASH_REMATCH[4]}"
 
   if [[ ! "$target" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
     print_error "Invalid version target: $target"
@@ -118,11 +117,11 @@ require_newer_explicit_target() {
     target_major == current_major
     && target_minor == current_minor
     && target_patch == current_patch
-  )) && [[ -n "$current_suffix" ]]; then
+  )); then
     return
   fi
 
-  print_error "Version target must be greater than current version: $target <= $current"
+  print_error "Version target is older than current version: $target < $current"
   exit 1
 }
 
@@ -140,7 +139,7 @@ target_version() {
         usage
         exit 1
       fi
-      require_newer_explicit_target "$version" "$request"
+      require_current_or_newer_explicit_target "$version" "$request"
       printf '%s\n' "$request"
       ;;
   esac
@@ -208,11 +207,6 @@ CURRENT_VERSION="$(current_version)"
 NEW_VERSION="$(target_version "$CURRENT_VERSION" "$VERSION_REQUEST")"
 RELEASE_TAG="v$NEW_VERSION"
 
-if [[ "$NEW_VERSION" == "$CURRENT_VERSION" ]]; then
-  print_error "New version matches current version: $NEW_VERSION"
-  exit 1
-fi
-
 if git rev-parse -q --verify "refs/tags/$RELEASE_TAG" >/dev/null; then
   print_error "Tag already exists: $RELEASE_TAG"
   exit 1
@@ -221,9 +215,9 @@ fi
 cat <<EOF
 Release summary:
   Current version: $CURRENT_VERSION
-  New version:     $NEW_VERSION
+  Release version: $NEW_VERSION
   Request:         $VERSION_REQUEST
-  Commit:          release: $NEW_VERSION
+  Version commit:  $([[ "$NEW_VERSION" == "$CURRENT_VERSION" ]] && printf 'already at HEAD' || printf 'release: %s' "$NEW_VERSION")
   Tag:             $RELEASE_TAG
   Checks:          lockfile, package tests, package build, artifact metadata
 EOF
@@ -237,10 +231,12 @@ VERSION_UPDATED=0
 COMMITTED=0
 trap restore_version_on_failure EXIT
 
-print_step "Bumping version"
-write_version "$NEW_VERSION"
-VERSION_UPDATED=1
-uv lock
+if [[ "$NEW_VERSION" != "$CURRENT_VERSION" ]]; then
+  print_step "Bumping version"
+  write_version "$NEW_VERSION"
+  VERSION_UPDATED=1
+  uv lock
+fi
 
 print_step "Running release checks"
 run_release_checks
@@ -248,18 +244,20 @@ run_release_checks
 print_step "Building release artifacts"
 build_release_artifacts
 
-print_step "Committing version"
-git add packages/pyobservablejs/pyproject.toml uv.lock
-git commit -m "release: $NEW_VERSION"
-COMMITTED=1
+if [[ "$NEW_VERSION" != "$CURRENT_VERSION" ]]; then
+  print_step "Committing version"
+  git add packages/pyobservablejs/pyproject.toml uv.lock
+  git commit -m "release: $NEW_VERSION"
+  COMMITTED=1
+fi
 
 print_step "Creating tag"
 git tag -a "$RELEASE_TAG" -m "release: $NEW_VERSION"
 
 cat <<EOF
 
-Release commit and tag are ready locally.
-Push both to publish:
+Release tag is ready locally.
+Push the current main branch and tag to publish:
 
   git push origin main "$RELEASE_TAG"
 EOF

@@ -15,6 +15,7 @@ export {
 	analyzeNotebook,
 	createNotebookGraph,
 	createNotebookGraphFromAnalysis,
+	notebookAffectedIndexes,
 	notebookDefinedNamesFromAnalysis,
 	notebookDependencyIndexes,
 	notebookViewNamesFromAnalysis,

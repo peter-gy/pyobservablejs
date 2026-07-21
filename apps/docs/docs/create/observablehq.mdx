@@ -10,6 +10,10 @@ the document API and returns a `Notebook` definition. Call `view()` to create
 its renderable view. Imported cells run with the classic Observable standard
 library, including `require`, `html`, `Generators`, `Mutable`, and `DOM`.
 
+Imported notebooks and remote modules run with the host page's browser
+privileges. Review the trust boundary in [Browser
+execution](../customize/browser-execution.mdx).
+
 ```python
 import observablejs as obs
 

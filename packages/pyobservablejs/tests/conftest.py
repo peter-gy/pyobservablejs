@@ -156,7 +156,6 @@ def browser_graph_cell() -> BrowserGraphCellBuilder:
         *,
         id: int | None = None,
         index: int | None = None,
-        name: str | None = None,
         defines: Sequence[str] = (),
         references: Sequence[str] = (),
         output: str | None = None,
@@ -166,7 +165,6 @@ def browser_graph_cell() -> BrowserGraphCellBuilder:
             key=key,
             id=id,
             index=index,
-            name=name,
             defines=tuple(defines),
             references=tuple(references),
             output=output,
@@ -186,18 +184,38 @@ def browser_value_sync() -> BrowserValueSync:
         index: int = 0,
     ) -> None:
         current = cast(dict[str, Any], view._readback)
-        graph = (
-            cast(dict[str, Any], current["graph"])
-            if view.has_graph_snapshot
-            else {"cells": [], "edges": []}
-        )
-        records = dict(cast(dict[str, Any], current["cells"]))
+        del value_names
+        input_revision = current["input_revision"]
+        if input_revision is None:
+            input_revision = 0
+        records = dict(cast(dict[str, Any], current["results"]))
+        for cell in view.cells:
+            records.setdefault(
+                str(cell.index),
+                {
+                    "revision": input_revision,
+                    "status": "pending",
+                    "values": {},
+                    "errors": [],
+                },
+            )
         records[str(index)] = {
-            "rendered": True,
-            "names": list(value_names if value_names is not None else values),
+            "revision": input_revision,
+            "status": "success",
             "values": values,
+            "errors": [],
         }
-        _sync_browser_readback(view, rendered=True, graph=graph, cells=records)
+        pending = any(record["status"] == "pending" for record in records.values())
+        _sync_browser_readback(
+            view,
+            input_revision=input_revision,
+            settled_revision=(
+                current["settled_revision"] if pending else input_revision
+            ),
+            pending=pending,
+            graph=cast(dict[str, Any], current["graph"]),
+            results=records,
+        )
 
     return sync
 
@@ -205,18 +223,30 @@ def browser_value_sync() -> BrowserValueSync:
 def _sync_browser_readback(
     view: obs.NotebookView,
     *,
-    rendered: bool | None = None,
+    input_revision: int | None | object = ...,
+    settled_revision: int | None | object = ...,
+    pending: bool | None = None,
     graph: dict[str, Any] | None = None,
-    cells: dict[str, Any] | None = None,
+    results: dict[str, Any] | None = None,
+    errors: list[dict[str, Any]] | None = None,
 ) -> None:
     current = cast(dict[str, Any], view._readback)
     view.set_trait(
         "_readback",
         {
             "revision": current["revision"] + 1,
-            "rendered": current["rendered"] if rendered is None else rendered,
+            "input_revision": (
+                current["input_revision"] if input_revision is ... else input_revision
+            ),
+            "settled_revision": (
+                current["settled_revision"]
+                if settled_revision is ...
+                else settled_revision
+            ),
+            "pending": current["pending"] if pending is None else pending,
             "graph": current["graph"] if graph is None else graph,
-            "cells": current["cells"] if cells is None else cells,
+            "results": current["results"] if results is None else results,
+            "errors": current["errors"] if errors is None else errors,
         },
     )
 
@@ -233,15 +263,14 @@ def _browser_graph_cell(
         "key": cell.key,
         "mode": "ojs",
         "defines": list(cell.defines),
+        "references": list(cell.references),
+        "output": cell.output,
+        "outputs": [],
+        "runtime_outputs": list(cell.runtime_outputs),
+        "autodisplay": False,
+        "autoview": False,
+        "automutable": False,
     }
-    if cell.name is not None:
-        raw["name"] = cell.name
-    if cell.references:
-        raw["references"] = list(cell.references)
-    if cell.output is not None:
-        raw["output"] = cell.output
-    if cell.runtime_outputs:
-        raw["runtime_outputs"] = list(cell.runtime_outputs)
     return raw
 
 

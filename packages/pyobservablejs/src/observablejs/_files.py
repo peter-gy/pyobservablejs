@@ -14,18 +14,11 @@ import pathlib
 import re
 from collections.abc import Mapping
 from html.parser import HTMLParser
-from typing import Any, NamedTuple, NotRequired, TypedDict, cast
+from typing import NamedTuple, cast
 
+from .types import FileInput, FileSpec
 
-class FileAttachment(TypedDict, total=False):
-    url: NotRequired[str]
-    path: NotRequired[str]
-    mimeType: NotRequired[str]
-    lastModified: NotRequired[int]
-    size: NotRequired[int]
-
-
-FileInput = str | pathlib.Path | Mapping[str, Any]
+FileAttachment = FileSpec
 
 _JS_LINE_COMMENT_RE = r"//[^\n]*(?:\n|$)"
 _JS_BLOCK_COMMENT_RE = r"/\*[^*]*\*+(?:[^/*][^*]*\*+)*/"

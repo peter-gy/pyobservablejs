@@ -22,9 +22,6 @@ class _Cell(Protocol):
     def key(self) -> str | None: ...
 
     @property
-    def name(self) -> str | None: ...
-
-    @property
     def defines(self) -> tuple[str, ...]: ...
 
     @property
@@ -36,10 +33,10 @@ class _Cell(Protocol):
 
 class _Edge(Protocol):
     @property
-    def source_id(self) -> int: ...
+    def source(self) -> _Cell: ...
 
     @property
-    def target_id(self) -> int: ...
+    def target(self) -> _Cell: ...
 
     @property
     def variable(self) -> str: ...
@@ -87,8 +84,8 @@ def _diagram_from_graph(graph: _Graph) -> _Diagram:
 
     edges: list[_DiagramEdge] = []
     for edge in graph.edges:
-        source = cell_ids.get(edge.source_id)
-        target = cell_ids.get(edge.target_id)
+        source = cell_ids.get(edge.source.id)
+        target = cell_ids.get(edge.target.id)
         if source is not None and target is not None:
             edges.append(_DiagramEdge(source, target, edge.variable))
 
@@ -168,8 +165,8 @@ def _external_edges(
 
 
 def _cell_label(cell: _Cell) -> str:
-    title = cell.key or cell.name or cell.output or f"{cell.mode} cell"
-    parts = [f"Cell {cell.index}: {title}"]
+    title = cell.key or f"Cell {cell.index}"
+    parts = [title]
     if cell.defines:
         parts.append(f"defines: {', '.join(cell.defines)}")
     return ", ".join(parts)

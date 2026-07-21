@@ -11,12 +11,14 @@ from typing import Any, cast
 from ._cell_ids import _MAX_SAFE_CELL_ID
 from ._cells import Cell
 from ._serialize import (
+    CELL_KEY_ATTRIBUTE,
     RUNTIME_PROFILE_ATTRIBUTE,
     SCRIPT_TYPES,
     Mode,
     RuntimeProfile,
 )
 from ._themes import Theme, deserialize_theme_attribute
+from .types import NotebookKitCellMetadata
 
 
 _MODE_BY_SCRIPT_TYPE = {
@@ -95,7 +97,7 @@ class _NotebookHTMLParser(HTMLParser):
         )
         cell_attrs: dict[str, Any] = {}
         cell_id = self._cell_id(attrs.get("id"))
-        for key in ("database", "format"):
+        for key in ("database", "format", "since"):
             if attrs.get(key) is not None:
                 cell_attrs[key] = attrs[key]
         self.cells.append(
@@ -107,14 +109,13 @@ class _NotebookHTMLParser(HTMLParser):
                         (attrs.get("type") or "module").lower(), "ojs"
                     ),
                 ),
-                key=attrs.get("name"),
-                name=attrs.get("name"),
+                key=attrs.get(CELL_KEY_ATTRIBUTE),
                 display="hidden" not in attrs,
                 raw=True,
                 id=cell_id,
                 pinned="pinned" in attrs,
                 output=attrs.get("output"),
-                notebookkit_attrs=cell_attrs,
+                notebookkit_attrs=cast(NotebookKitCellMetadata, cell_attrs),
             )
         )
 

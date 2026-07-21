@@ -1,186 +1,107 @@
 ---
-title: Values and graph records
-description: NotebookView readback, CellValues records, render gates, and NotebookGraph metadata.
+title: View state and graph
+description: Browser progress, structured cell results, errors, and dependencies.
 ---
 
-# Values and graph records
+# View state and graph
 
-`NotebookView` synchronizes rendered values and symbolic dependency metadata
-to Python. Readback belongs to the view whose browser runtime produced it.
-
-```python
-import observablejs as obs
-
-notebook = obs.Notebook(
-    obs.ojs("gain = 0.8", key="gain"),
-    obs.ojs("doubled = gain * 2", key="doubled"),
-)
-full_view = notebook.view()
-full_view
-```
-
-After the view renders:
+`NotebookView.state` is one consistent, read-only snapshot of browser work.
 
 ```python
-if full_view.has_rendered:
-    gain = full_view.values["gain"]
+state = view.state
 
-if full_view.has_graph_snapshot:
-    dependencies = full_view.graph
+if (
+    not state.pending
+    and state.input_revision is not None
+    and state.settled_revision == state.input_revision
+):
+    result = state.result("chart")
 ```
 
-## Readback members
+## `ViewState`
 
-| Member               | Type                     | Contract                                                       |
-| -------------------- | ------------------------ | -------------------------------------------------------------- |
-| `has_rendered`       | `bool`                   | Whether this view has synchronized a completed browser render. |
-| `has_graph_snapshot` | `bool`                   | Whether this view has synchronized graph metadata.             |
-| `values`             | `dict[str, Any]`         | Decoded values with one owning cell in this view.              |
-| `cell_values`        | `tuple[CellValues, ...]` | Decoded values for selected cells in notebook order.           |
-| `graph`              | `NotebookGraph`          | Static dependency graph for cells evaluated by this view.      |
+| Field              | Type                     | Contract                                          |
+| ------------------ | ------------------------ | ------------------------------------------------- |
+| `input_revision`   | optional `int`           | Latest browser update number.                     |
+| `settled_revision` | optional `int`           | Latest update where every selected cell finished. |
+| `pending`          | `bool`                   | Whether the latest update is still running.       |
+| `results`          | `tuple[CellResult, ...]` | Selected-cell results in notebook order.          |
+| `errors`           | `tuple[ViewError, ...]`  | Setup or view-level failures.                     |
+| `graph`            | optional `NotebookGraph` | Current read-only dependency graph snapshot.      |
 
-`values` and `cell_values` require a completed view render. `graph` requires
-a graph snapshot. Indexing `values` raises `KeyError` when the rendered value
-mapping has no matching name. A name produced by multiple selected cells is
-omitted from `values` because it has no unique owner.
+Before display, both revisions are `None`. The first browser run uses revision
+`0`. Python updates, browser inputs, and later generator values advance
+`input_revision`. While work runs, `settled_revision` stays at the previous
+finished revision. Results from older revisions are ignored.
 
-## `CellValues`
+### `ViewState.result(selector)`
 
-```python
-obs.CellValues(index, key, values)
-```
+Returns the result for a key string, keyed authored `Cell`, or `NotebookCell`
+from the same notebook. Missing results raise `KeyError`, including requests
+made before the browser starts. Invalid selector types raise `TypeError`. Once
+the state contains results, a handle from another notebook raises `ValueError`.
 
-`NotebookView.cell_values` returns one `CellValues` record per selected
-cell in notebook order.
+## `CellResult`
 
-| Field    | Type             | Contract                                                |
-| -------- | ---------------- | ------------------------------------------------------- |
-| `index`  | `int`            | Zero-based position in the notebook.                    |
-| `key`    | `Optional[str]`  | Python selection key, or `None` when the cell has no key. |
-| `values` | `dict[str, Any]` | Decoded browser-synchronized values for the cell.       |
+| Field      | Type                    | Contract                                   |
+| ---------- | ----------------------- | ------------------------------------------ |
+| `cell`     | `NotebookCell`          | Stable selected-cell handle.               |
+| `revision` | `int`                   | Input revision represented by this result. |
+| `status`   | `CellStatus`            | `"pending"`, `"success"`, or `"error"`.    |
+| `values`   | `Mapping[str, object]`  | Separate, read-only output values.         |
+| `errors`   | `tuple[CellError, ...]` | Structured failures for this cell.         |
 
-The data class is frozen. Its `values` field is a regular dictionary
-returned for that snapshot.
+`success` means every expected output finished. An `error` result may still
+contain values from outputs that succeeded. Read results after the current
+revision finishes.
 
-```python
-for cell_values in full_view.cell_values:
-    print(cell_values.index, cell_values.key, cell_values.values)
-```
+## Structured errors
 
-## `NotRenderedError`
+`CellError` contains `name`, `message`, `phase`, and an optional output
+`variable`. `ViewError` contains `name`, `message`, and `phase`. The phase is
+`analysis`, `evaluation`, `rendering`, or `serialization`. Browser stack text
+is not part of the contract.
 
-```python
-obs.NotRenderedError(message)
-```
-
-`NotRenderedError` is a `RuntimeError` raised when code reads synchronized
-state before the browser has produced the required snapshot.
-
-| Readback member                         | Required state        |
-| --------------------------------------- | --------------------- |
-| `NotebookView.values` and `cell_values` | Completed view render |
-| `NotebookView.graph`                    | View graph snapshot   |
-
-The gates are view-local. Rendering `full_view` leaves a newly created
-`summary_view` unreadable until `summary_view` renders.
+A JavaScript expression that returns `new Error("invalid value")` has
+succeeded. Its value becomes `BrowserErrorValue(name, message)`. A rejected
+evaluation produces `CellError` and an error result.
 
 ## `NotebookGraph`
 
-```python
-obs.NotebookGraph(cells, edges)
-```
+| Member                | Contract                                             |
+| --------------------- | ---------------------------------------------------- |
+| `cells`               | Immutable `CellInfo` records.                        |
+| `edges`               | Immutable `DependencyEdge` records.                  |
+| `defines`             | Unique defined names in cell order.                  |
+| `references`          | Unique referenced names in cell order.               |
+| `external_references` | Referenced names absent from evaluated cell outputs. |
 
-`NotebookView.graph` returns a frozen `NotebookGraph` after graph metadata
-synchronizes. Malformed browser entries are dropped while Python decodes the
-graph snapshot.
+### `NotebookGraph.cell(key)`
 
-### Attributes
-
-| Attribute             | Type                         | Contract                                                           |
-| --------------------- | ---------------------------- | ------------------------------------------------------------------ |
-| `cells`               | `tuple[CellInfo, ...]`       | Decoded cell records.                                              |
-| `edges`               | `tuple[DependencyEdge, ...]` | Decoded edges whose source and target ids exist in `cells`.        |
-| `defines`             | `tuple[str, ...]`            | Unique defined names in cell order.                                |
-| `references`          | `tuple[str, ...]`            | Unique referenced names in cell order.                             |
-| `external_references` | `tuple[str, ...]`            | Referenced names absent from cell definitions and runtime outputs. |
-
-### `NotebookGraph.cell(index)`
-
-Returns the `CellInfo` whose `index` equals `index`. It raises `IndexError`
-when the graph has no matching cell.
+Returns the unique keyed `CellInfo`. Anonymous cells remain available through
+`graph.cells`. Unknown or ambiguous keys raise `KeyError`.
 
 ### `NotebookGraph.cell_for_variable(variable)`
 
-Returns the unique `CellInfo` that defines `variable`. It raises `KeyError`
-when no cell defines the variable or multiple cells define it.
+Returns the unique cell that defines a variable. Missing or ambiguous
+definitions raise `KeyError`.
 
-### `NotebookGraph.to_mermaid()`
+### Diagram export
 
-Returns a Mermaid `flowchart LR` string for cell and external dependencies.
-
-### `NotebookGraph.to_d2()`
-
-Returns a D2 diagram string with `direction: right`.
-
-```python
-if full_view.has_graph_snapshot:
-    graph = full_view.graph
-    print(graph.to_mermaid())
-```
-
-See [Inspect the dependency graph](../connect/dependency-graph.mdx) for a
-live rendering of the Mermaid output.
+`graph.to_mermaid()` returns a Mermaid `flowchart LR` string.
+`graph.to_d2()` returns a D2 diagram with rightward layout. Diagram labels use
+the public key and fall back to notebook position for anonymous cells.
 
 ## `CellInfo`
 
-```python
-obs.CellInfo(
-    id,
-    index,
-    mode,
-    key,
-    name,
-    defines,
-    references,
-    output,
-    outputs,
-    runtime_outputs,
-    autodisplay,
-    autoview,
-    automutable,
-    error=None,
-)
-```
-
-`CellInfo` is a frozen record for one cell in a graph snapshot.
-
-| Field             | Type              | Contract                                          |
-| ----------------- | ----------------- | ------------------------------------------------- |
-| `id`              | `int`             | Notebook Kit cell id.                             |
-| `index`           | `int`             | Zero-based cell position.                         |
-| `mode`            | `str`             | Cell mode such as `ojs`, `js`, `md`, or `html`.   |
-| `key`             | `Optional[str]`   | Python selection key.                            |
-| `name`            | `Optional[str]`   | Notebook Kit cell name.                           |
-| `defines`         | `tuple[str, ...]` | Variables defined by the cell.                    |
-| `references`      | `tuple[str, ...]` | Variables read by the cell.                       |
-| `output`          | `Optional[str]`   | Primary Notebook Kit output name.                 |
-| `outputs`         | `tuple[str, ...]` | Notebook Kit output names.                        |
-| `runtime_outputs` | `tuple[str, ...]` | Raw runtime output names used for edges.          |
-| `autodisplay`     | `bool`            | Whether Notebook Kit auto-displays the output.    |
-| `autoview`        | `bool`            | Whether Notebook Kit generated a `viewof` output. |
-| `automutable`     | `bool`            | Whether Notebook Kit generated a mutable output.  |
-| `error`           | `Optional[str]`   | Cell transpilation error text.                    |
+`CellInfo` exposes `id`, `index`, `mode`, `key`, `defines`, `references`,
+`output`, `outputs`, `runtime_outputs`, `autodisplay`, `autoview`,
+`automutable`, and optional `error` fields. The id and index are metadata.
 
 ## `DependencyEdge`
 
-```python
-obs.DependencyEdge(source_id, target_id, variable)
-```
+Each edge contains `source` and `target` `CellInfo` objects plus the linking
+`variable` name.
 
-`DependencyEdge` is a frozen record for one symbolic variable dependency.
-
-| Field       | Type  | Contract                                  |
-| ----------- | ----- | ----------------------------------------- |
-| `source_id` | `int` | Id of the cell that defines the variable. |
-| `target_id` | `int` | Id of the cell that reads the variable.   |
-| `variable`  | `str` | Variable name that links the cells.       |
+See [Inspect the dependency graph](../connect/dependency-graph.mdx) for a live
+workflow.

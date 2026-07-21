@@ -137,15 +137,14 @@ Every helper accepts the same options.
 obs.js(
     "const filtered = [1, 2, 3].filter((value) => value >= 2);",
     key="filtered_rows",
-    name="filtered",
     display=False,
     pinned=True,
 )
 ```
 
-- `key` names the Python selection handle returned by
-  `notebook.cell("filtered_rows")`.
-- `name` sets the Notebook Kit cell name written to exported HTML.
+- `key` is the public identity used by `notebook.cell("filtered_rows")`,
+  `notebook.view("filtered_rows")`, readback, and graph lookup. It survives
+  Notebook Kit HTML round trips.
 - `display=False` hides the cell output while keeping its values in the
   graph.
 - `pinned=True` exposes the source when the cell is selected and the notebook
@@ -153,8 +152,8 @@ obs.js(
   source](../customize/themes-and-pinned-source.mdx).
 - `raw=True` preserves the source string exactly, including indentation and
   surrounding newlines.
-- `id`, `output`, and `notebookkit_attrs` expose the corresponding Notebook
-  Kit metadata when a source format requires it.
+- `id` is Notebook Kit serialization metadata. `output` and
+  `notebookkit_attrs` expose mode-specific Notebook Kit metadata.
 
 See [Cell helpers](../reference/cell-helpers.mdx) for the full signature and
 error behavior, and [Browser execution](../customize/browser-execution.mdx)

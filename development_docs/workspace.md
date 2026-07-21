@@ -6,18 +6,12 @@ distribution and contributor environment.
 
 ## Package graph
 
-```text
-@pyobservablejs/runtime
-          |
-          v
-@pyobservablejs/widget       anywidget-bundle
-          |                  npm plugin + Python runtime
-          +---------------+--------------+
-                          v
-                @pyobservablejs/python
-                          |
-                          v
-                   PyPI pyobservablejs
+```mermaid
+flowchart TB
+  runtime["@pyobservablejs/runtime"] --> widget["@pyobservablejs/widget"]
+  widget --> python["@pyobservablejs/python"]
+  bundle["anywidget-bundle<br/>npm plugin and Python runtime"] --> python
+  python --> pypi["PyPI pyobservablejs"]
 ```
 
 | Package                   | Contract                                                                                 |

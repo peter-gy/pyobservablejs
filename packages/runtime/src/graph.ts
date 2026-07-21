@@ -5,7 +5,6 @@ export type CellGraph = {
 	id: number;
 	index: number;
 	key: string;
-	name: string;
 	mode: Cell["mode"];
 	defines: string[];
 	references: string[];
@@ -109,6 +108,34 @@ export function notebookDependencyIndexes(analysis: NotebookAnalysis, targetInde
 	return indexes;
 }
 
+export function notebookAffectedIndexes(analysis: NotebookAnalysis, variableNames: ReadonlySet<string>): Set<number> {
+	const affected = new Set<number>();
+	const targetIndexesBySource = new Map<number, number[]>();
+	const indexById = new Map(analysis.graph.cells.map((cell) => [cell.id, cell.index]));
+	for (const edge of analysis.graph.edges) {
+		const source = indexById.get(edge.from);
+		const target = indexById.get(edge.to);
+		if (source === undefined || target === undefined) continue;
+		const targets = targetIndexesBySource.get(source);
+		if (targets) targets.push(target);
+		else targetIndexesBySource.set(source, [target]);
+	}
+	const visit = (index: number) => {
+		if (affected.has(index)) return;
+		affected.add(index);
+		for (const target of targetIndexesBySource.get(index) ?? []) visit(target);
+	};
+	for (const cell of analysis.graph.cells) {
+		if (
+			cell.references.some((name) => variableNames.has(name)) ||
+			definedNames(cell).some((name) => variableNames.has(name))
+		) {
+			visit(cell.index);
+		}
+	}
+	return affected;
+}
+
 function analyzeCell(cell: Cell, index: number, key: string): CellAnalysis {
 	try {
 		const definition = transpileNotebookCell(cell);
@@ -178,7 +205,6 @@ function cellGraphFromDefinition(
 		id: notebookCell.id,
 		index,
 		key,
-		name: notebookCellName(notebookCell),
 		mode: notebookCell.mode,
 		defines: exposedVariableNames(definition),
 		references: definition.inputs ?? [],
@@ -201,7 +227,6 @@ function cellGraphFromError(
 		id: notebookCell.id,
 		index,
 		key,
-		name: notebookCellName(notebookCell),
 		mode: notebookCell.mode,
 		defines: [],
 		references: [],
@@ -213,11 +238,6 @@ function cellGraphFromError(
 		automutable: false,
 		error: error instanceof Error ? `${error.name}: ${error.message}` : String(error),
 	};
-}
-
-function notebookCellName(cell: Notebook["cells"][number]): string {
-	const name = (cell as { name?: unknown }).name;
-	return typeof name === "string" ? name : "";
 }
 
 function definedNames(cell: CellGraph): string[] {

@@ -39,7 +39,11 @@ notebook = obs.Notebook(
           x: "species",
           y: "count",
           fill: "species",
-          tip: {fill: "var(--marimo-island-background)"}
+          tip: {
+            // This example references a theme variable used by mdx-marimo.
+            // Replace it with a CSS color or remove `fill` in another host.
+            fill: "var(--marimo-island-background)"
+          }
         }).plot({
           height: 260,
           color: {legend: true},
@@ -81,7 +85,11 @@ notebook = obs.Notebook(
           x: "species",
           y: "count",
           fill: "species",
-          tip: {fill: "var(--marimo-island-background)"}
+          tip: {
+            // This example references a theme variable used by mdx-marimo.
+            // Replace it with a CSS color or remove `fill` in another host.
+            fill: "var(--marimo-island-background)"
+          }
         }).plot({
           height: 260,
           color: {legend: true},
@@ -157,7 +165,6 @@ Leave both options false when the page already serves the referenced files at
 the same relative paths. When discovery is enabled, an explicit `files` entry
 takes precedence over a discovered file with the same name.
 
-Use file attachments rather than [Python
-variables](../connect/python-to-observable.mdx) for large tables and binary
-data: the browser loads attachments through `FileAttachment` readers instead
-of carrying them through widget state.
+Use URL-backed attachments for large data that the browser should load outside
+widget state. Local files are embedded as data URLs and increase the
+synchronized payload.

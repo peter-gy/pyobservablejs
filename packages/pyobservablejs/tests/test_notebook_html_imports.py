@@ -162,19 +162,26 @@ SOURCE_BACKED_NAMED_CELLS = """<!doctype html>
 """
 
 
-def test_source_backed_notebook_exposes_one_cell_per_script() -> None:
+def test_source_backed_script_names_do_not_create_public_keys() -> None:
     widget = obs.Notebook.from_html(SOURCE_BACKED_NAMED_CELLS)
 
     assert len(widget.cells) == 3
-    assert [widget.cell(index).key for index in range(3)] == [
-        "title",
-        "svg",
-        "display",
-    ]
-    display_cell = widget.cell("display")
-    svg_cell = widget.cell("svg")
-    assert display_cell.name == "display"
-    assert svg_cell.name == "svg"
+    assert [cell.key for cell in widget.cells] == [None, None, None]
+    with pytest.raises(KeyError, match="Unknown Observable cell key"):
+        widget.cell("display")
+
+
+def test_source_backed_data_attribute_creates_public_key() -> None:
+    widget = obs.Notebook.from_html(
+        """<!doctype html>
+<notebook>
+  <script id="10" name="metadata" data-pyobservablejs-key="answer">answer = 42</script>
+</notebook>
+"""
+    )
+
+    assert widget.cell("answer") is widget.cells[0]
+    assert widget.cell("answer").id == 10
 
 
 def test_source_backed_notebook_preserves_input_html() -> None:

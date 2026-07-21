@@ -117,7 +117,15 @@ export function createView(ref = "anywidget:session", cellIndexes: number[] | nu
 	return createModel({
 		_session: ref,
 		_cell_indexes: cellIndexes,
-		_readback: { revision: 0, rendered: false, graph: {}, cells: {} },
+		_readback: {
+			revision: 0,
+			input_revision: null,
+			settled_revision: null,
+			pending: false,
+			graph: {},
+			results: {},
+			errors: [],
+		},
 	});
 }
 
@@ -179,6 +187,9 @@ export type CellRecord = {
 	rendered: boolean;
 	names: string[];
 	values: Record<string, unknown>;
+	revision: number;
+	status: "pending" | "success" | "error";
+	errors: unknown[];
 };
 
 export function cellRecord(model: Model, index: number): CellRecord | undefined {
@@ -200,7 +211,8 @@ export function graphValue(model: Model): NotebookGraph | undefined {
 }
 
 export function hasRendered(model: Model): boolean {
-	return readbackValue(model).rendered === true;
+	const readback = readbackValue(model);
+	return readback.input_revision !== null && readback.settled_revision === readback.input_revision && !readback.pending;
 }
 
 export async function waitFor<T>(read: () => T | undefined, timeoutMs = 1000): Promise<T> {
@@ -248,7 +260,7 @@ function isHidden(item: HTMLElement): boolean {
 }
 
 function readCellValues(model: Model): Record<string, unknown> {
-	const value = readbackValue(model).cells;
+	const value = readbackValue(model).results;
 	return value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
@@ -260,10 +272,21 @@ function readbackValue(model: Model): Partial<NonNullable<WidgetModel["_readback
 function readCellRecord(value: unknown): CellRecord | undefined {
 	if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined;
 	const record = value as Partial<CellRecord>;
-	if (!Array.isArray(record.names) || record.values === null || typeof record.values !== "object") return undefined;
+	if (
+		(record.status !== "pending" && record.status !== "success" && record.status !== "error") ||
+		typeof record.revision !== "number" ||
+		record.values === null ||
+		typeof record.values !== "object" ||
+		!Array.isArray(record.errors)
+	)
+		return undefined;
+	const values = record.values as Record<string, unknown>;
 	return {
-		rendered: record.rendered === true,
-		names: record.names.filter((name): name is string => typeof name === "string"),
-		values: record.values as Record<string, unknown>,
+		rendered: record.status !== "pending",
+		names: Object.keys(values),
+		values,
+		revision: record.revision,
+		status: record.status,
+		errors: record.errors,
 	};
 }

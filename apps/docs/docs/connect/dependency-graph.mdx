@@ -1,17 +1,12 @@
 ---
-title: Inspect the dependency graph
-description: Read graph metadata from a rendered view and export Mermaid or D2 diagrams.
+title: Dependency graph
+description: Inspect keyed cells, variable dependencies, and diagram exports.
 ---
 
-# Inspect the dependency graph
+# Dependency graph
 
-Every rendered view synchronizes a symbolic dependency graph: which cell
-defines each variable, which cells read it, and the edges between them.
-Python reads it through `NotebookView.graph`.
-
-The live example renders a three-cell notebook, then draws its own
-dependency graph with `graph.to_mermaid()` — the diagram below the widget is
-produced by the library at runtime, not by this page.
+Each displayed view reports the dependencies for its selected cells and the
+cells they need. Read them from `view.state.graph`.
 
 ```marimo-config
 requires-python = ">=3.11"
@@ -47,22 +42,19 @@ notebook = obs.Notebook(
           x: "weight (lb)",
           y: "economy (mpg)",
           fill: "cylinders",
-          r: 4,
-          opacity: 0.72,
-          tip: {fill: "var(--marimo-island-background)"}
-        }).plot({
-          height: 300,
-          color: {legend: true},
-          x: {grid: true, label: "Weight (lb)"},
-          y: {grid: true, label: "Fuel economy (mpg)"}
-        })
+          tip: {
+            // This example references a theme variable used by mdx-marimo.
+            // Replace it with a CSS color or remove `fill` in another host.
+            fill: "var(--marimo-island-background)"
+          }
+        }).plot({height: 300, x: {grid: true}, y: {grid: true}})
         """,
         key="chart",
     ),
 )
 
-full_view = notebook.view()
-widget = mo.ui.anywidget(full_view)
+view = notebook.view()
+widget = mo.ui.anywidget(view)
 widget
 ```
 
@@ -95,108 +87,46 @@ notebook = obs.Notebook(
           x: "weight (lb)",
           y: "economy (mpg)",
           fill: "cylinders",
-          r: 4,
-          opacity: 0.72,
-          tip: {fill: "var(--marimo-island-background)"}
-        }).plot({
-          height: 300,
-          color: {legend: true},
-          x: {grid: true, label: "Weight (lb)"},
-          y: {grid: true, label: "Fuel economy (mpg)"}
-        })
+          tip: {
+            // This example references a theme variable used by mdx-marimo.
+            // Replace it with a CSS color or remove `fill` in another host.
+            fill: "var(--marimo-island-background)"
+          }
+        }).plot({height: 300, x: {grid: true}, y: {grid: true}})
         """,
         key="chart",
     ),
 )
 
-full_view = notebook.view()
-widget = mo.ui.anywidget(full_view)
+view = notebook.view()
+widget = mo.ui.anywidget(view)
 widget
 ```
 
-```python
-widget.value  # subscribe this cell to view synchronization
-
-if full_view.has_graph_snapshot:
-    diagram = mo.mermaid(full_view.graph.to_mermaid())
-else:
-    diagram = mo.md("Waiting for the view above to synchronize its graph.")
-diagram
-```
-
-```python marimo echo=false server-output=false
-widget.value  # subscribe this cell to view synchronization
-
-if full_view.has_graph_snapshot:
-    diagram = mo.mermaid(full_view.graph.to_mermaid())
-else:
-    diagram = mo.md("Waiting for the view above to synchronize its graph.")
-diagram
-```
-
-## Walk the graph from Python
-
-`graph` is a frozen snapshot of `CellInfo` records and `DependencyEdge`
-records.
+After the graph arrives:
 
 ```python
-graph = full_view.graph
+graph = view.state.graph
 
-graph.defines               # variables defined by cells in this view
-graph.external_references   # names resolved outside the cells, e.g. "cars"
-
-chart_cell = graph.cell_for_variable("filteredCars")
-chart_cell.defines          # ("filteredCars",)
-chart_cell.references       # names that cell reads
-
-for edge in graph.edges:
-    print(edge.source_id, "->", edge.target_id, "via", edge.variable)
+if graph is not None:
+    chart = graph.cell("chart")
+    print(chart.references)
+    for edge in graph.edges:
+        print(edge.source.key, "->", edge.target.key, "via", edge.variable)
 ```
 
-`external_references` includes builtins the cells use, such as `cars`,
-`Plot`, and `Inputs`, because no cell in the view defines them. That makes
-the graph a quick answer to "what does this notebook need from its
-environment?" — useful before overriding names with [Python
-variables](python-to-observable.mdx).
+`graph.cell(key)` uses public cell identity. Anonymous cells remain in
+`graph.cells`. `cell_for_variable(name)` finds one unique defining cell.
+`external_references` lists names supplied outside evaluated cells, including
+referenced builtins and Python variables.
 
-`graph` requires a graph snapshot and raises
-[`NotRenderedError`](../reference/values-and-graph.mdx#notrenderederror)
-before one arrives. Guard with `has_graph_snapshot`. Each view snapshots the
-cells *it* evaluates: a focused view's graph contains the selected cell plus
-its dependency closure, not the whole notebook.
-
-## Export diagrams
-
-`to_mermaid()` returns a [Mermaid](https://mermaid.js.org/) flowchart;
-`to_d2()` returns a [D2](https://d2lang.com/) diagram. Both label nodes with
-the cell index, its key or name, and its defined variables, and label edges
-with the variable that links the cells:
-
-```text
-flowchart LR
-  cell_0["Cell 0: cylinder_control, defines: cylinders"]
-  cell_1["Cell 1: filtered_cars, defines: filteredCars"]
-  cell_2["Cell 2: chart"]
-  external_0["external: cars"]
-  cell_0 -->|cylinders| cell_1
-  cell_1 -->|filteredCars| cell_2
-  external_0 -->|cars| cell_1
-```
-
-The real output also lists builtin external references; the snippet above is
-abridged. Paste Mermaid output into any Mermaid renderer, a GitHub comment,
-or `mo.mermaid(...)` as the live example does. Pipe D2 output to the `d2`
-CLI for SVG:
+Export the same snapshot as Mermaid or D2:
 
 ```python
-from pathlib import Path
-
-Path("graph.d2").write_text(full_view.graph.to_d2(), encoding="utf-8")
+if graph is not None:
+    mermaid_source = graph.to_mermaid()
+    d2_source = graph.to_d2()
 ```
 
-```sh
-d2 graph.d2 graph.svg
-```
-
-See [Values and graph records](../reference/values-and-graph.mdx) for the
-`NotebookGraph`, `CellInfo`, and `DependencyEdge` field contracts.
+Diagram labels prefer cell keys and fall back to notebook position. See [View
+state and graph](../reference/values-and-graph.mdx) for record fields.

@@ -9,7 +9,7 @@ A Python list of dictionaries becomes a JavaScript array of objects. This
 recipe passes per-species statistics from the [Palmer Penguins
 dataset](https://allisonhorst.github.io/palmerpenguins/) to the browser,
 where an Observable input chooses the plotted metric. The switch recomputes
-entirely in the browser; Python is not involved after the initial render.
+entirely in the browser. Python is not involved after the initial render.
 
 ```marimo-config
 requires-python = ">=3.11"
@@ -45,7 +45,11 @@ notebook = obs.Notebook(
           x: metric,
           y: "species",
           fill: "species",
-          tip: {fill: "var(--marimo-island-background)"}
+          tip: {
+            // This example references a theme variable used by mdx-marimo.
+            // Replace it with a CSS color or remove `fill` in another host.
+            fill: "var(--marimo-island-background)"
+          }
         }).plot({
           height: 240,
           marginLeft: 76,
@@ -92,7 +96,11 @@ notebook = obs.Notebook(
           x: metric,
           y: "species",
           fill: "species",
-          tip: {fill: "var(--marimo-island-background)"}
+          tip: {
+            // This example references a theme variable used by mdx-marimo.
+            // Replace it with a CSS color or remove `fill` in another host.
+            fill: "var(--marimo-island-background)"
+          }
         }).plot({
           height: 240,
           marginLeft: 76,
@@ -116,17 +124,16 @@ mo.ui.anywidget(full_view)
   name `speciesStats`. The chart cell reads it like any graph variable.
 - `view(Inputs.select(...))` defines `metric` in the browser. Changing it
   invalidates only the chart cell.
-- A pandas or Polars `DataFrame` works in place of the literal list; it
+- A pandas or Polars `DataFrame` works in place of the literal list. It
   arrives as the same array of row objects. See [Variables and
-  serialization](../reference/variables-and-serialization.mdx#python-to-browser).
+  serialization](../reference/variables-and-serialization.mdx#python-to-browser-conversion).
 
 ## Variations
 
 - Update the records after render with
-  `notebook.update_variables(speciesStats=...)`; the chart recomputes while
+  `notebook.update_variables({"speciesStats": ...})`. The chart recomputes while
   the input keeps its selection. See [Python to
   Observable](../connect/python-to-observable.mdx).
 - For large tables, register a file with
   [`files=`](../create/files-and-modules.mdx) and load it in the browser
-  with `FileAttachment(...).csv()` instead of shipping records through
-  widget state.
+  with `FileAttachment(...).csv()`.

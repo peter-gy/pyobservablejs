@@ -1,121 +1,75 @@
 ---
 title: NotebookView and NotebookCell
-description: Display models, selection handles, render gates, and readback members.
+description: Renderable views, cell handles, and observable browser state.
 ---
 
 # `NotebookView` and `NotebookCell`
 
-`NotebookView` is the anywidget display object for a full, focused, or
-composite selection. `NotebookCell` is the stable handle that selects one
-cell.
+Call `Notebook.view(...)` to create a `NotebookView`. `Notebook.cell` and
+`Notebook.cells` return stable `NotebookCell` handles.
 
 ## `NotebookCell`
 
-`NotebookCell` identifies one cell in a notebook definition. Its `key` and
-`name` attributes expose the optional Python key and Notebook Kit name.
-`index` is the cell's zero-based position. Handles come from
-[`Notebook.cell`](notebook.mdx#notebookcellselector) and
-[`Notebook.cells`](notebook.mdx#notebookcells).
-
 ```python
 cell = notebook.cell("answer")
-print(cell.index, cell.key, cell.name)
-answer_view = cell.view()
+print(cell.key, cell.index, cell.id)
 ```
 
-### `NotebookCell.view()`
+| Member  | Contract                                                   |
+| ------- | ---------------------------------------------------------- |
+| `key`   | Portable public identity, or `None` for an anonymous cell. |
+| `index` | Zero-based notebook order metadata.                        |
+| `id`    | Notebook Kit serialization metadata.                       |
 
-Returns a new `NotebookView` selected to this cell. The view owns its
-browser runtime, graph, and synchronized values. The selected cell renders
-while its dependency closure evaluates with hidden output.
+Use the key or handle as a `Notebook.view(...)` selector. The id and index do
+not select cells.
 
 ## `NotebookView`
 
-`Notebook.view()` and `NotebookCell.view()` create `NotebookView` objects.
-The browser runtime starts when an anywidget host mounts the view.
+A view is an anywidget model with one browser run. It evaluates its selected
+cells and any other cells they need.
 
 ```python
-full_view = notebook.view()
-full_view
+view = notebook.view("answer")
+view
 ```
 
-marimo wraps each view with `mo.ui.anywidget`. Most other hosts display the
-view directly.
+marimo can wrap it explicitly:
 
 ```python
 import marimo as mo
 
-widget = mo.ui.anywidget(full_view)
+mo.ui.anywidget(view)
 ```
-
-### Notebook and selection
 
 | Member     | Contract                                           |
 | ---------- | -------------------------------------------------- |
-| `notebook` | The `Notebook` that created this view.             |
+| `notebook` | The owning `Notebook` controller.                  |
 | `cells`    | Selected `NotebookCell` handles in notebook order. |
+| `state`    | Current immutable `ViewState` browser snapshot.    |
 
-Mutate Python variables through `view.notebook` or the original `Notebook`.
-Variable changes apply to every active view from that notebook.
-
-A `NotebookView` owns one live writable output. Create another view from the
-notebook when the same selection must appear in two outputs at once. A view
-can render again after its previous output is torn down.
-
-### Browser lifecycle
-
-| State                   | `has_rendered` | `has_graph_snapshot` | Available readback                          |
-| ----------------------- | -------------- | -------------------- | ------------------------------------------- |
-| Created                 | `False`        | `False`              | View selection                              |
-| Graph synchronized      | `False`        | `True`               | Graph metadata                              |
-| Selected cells rendered | `True`         | `True`               | Values, per-cell values, and graph metadata |
-
-A variable replacement or release that triggers a runtime rebuild clears
-both gates until the replacement graph and render snapshots synchronize.
-
-### `NotebookView.has_rendered`
-
-Returns whether the browser has synchronized a completed render for this
-view.
-
-### `NotebookView.has_graph_snapshot`
-
-Returns whether this view has synchronized graph metadata.
-
-### `NotebookView.graph`
+Before a browser mounts the view, `state.input_revision` and
+`state.settled_revision` are `None`, `pending` is false, and no results or graph
+exist. Each accepted browser snapshot replaces `state` once. Frameworks that
+listen to traitlets can observe it:
 
 ```python
-graph: obs.NotebookGraph = full_view.graph
+def on_view_state(change):
+    state = change["new"]
+    if not state.pending:
+        print(state.results)
+
+view.observe(on_view_state, names="state")
 ```
 
-Returns the decoded immutable graph snapshot for the cells evaluated by this
-view. A selected view includes its selected cells and their dependency
-closure. It raises `NotRenderedError` before graph synchronization.
+One `NotebookView` can have one live writable render at a time. Create another
+view from the notebook when the same selection must appear in two outputs.
 
-### `NotebookView.values`
+## `NotebookView.close()`
 
-```python
-values: dict[str, object] = full_view.values
-```
+Closes this view and its browser runtime. Other views and the notebook session
+remain active. Repeated calls are no-ops. Late browser callbacks cannot publish
+new state after close.
 
-Returns a new dictionary of decoded values from this view. Names produced by
-more than one selected cell are omitted because they have no unique owner.
-The property raises `NotRenderedError` before the view renders.
-
-### `NotebookView.cell_values`
-
-```python
-values: tuple[obs.CellValues, ...] = full_view.cell_values
-```
-
-Returns one `CellValues` record per selected cell in notebook order. It
-raises `NotRenderedError` before the view renders.
-
-### `NotebookView.close()`
-
-Closes this display model and removes it from the notebook's active views.
-Other views from the notebook remain active. Repeated calls are no-ops, and
-previously synchronized readback remains available.
-
-See [Values and graph records](values-and-graph.mdx) for decoded value types
-and graph records.
+See [View state and graph](values-and-graph.mdx) for the result, error, revision,
+and dependency records.

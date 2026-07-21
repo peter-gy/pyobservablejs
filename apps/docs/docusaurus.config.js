@@ -30,11 +30,6 @@ const config = {
 			defer: true,
 			"data-website-id": umamiWebsiteId,
 		},
-		{
-			src: "https://umami.peter.gy/recorder.js",
-			defer: true,
-			"data-website-id": umamiWebsiteId,
-		},
 	],
 	markdown: {
 		mermaid: true,

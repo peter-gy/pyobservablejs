@@ -1,48 +1,26 @@
 ---
 title: Bidirectional inputs
-description: Python variables and named viewof inputs sharing one name and one value.
+description: Share a named browser input across views and set it from Python.
 ---
 
 # Bidirectional inputs
 
-When a Python variable shares its name with a named `viewof` input, the two
-sides negotiate one value. The Python value seeds the control, browser
-interactions become shared session state, and a later Python update takes
-the name back.
-
-Drag either control. The marimo slider asserts the value from Python. The
-Observable input changes it from the browser. The readout follows
-whichever side acted last.
+When a Python variable and named `viewof` input use the same name, the initial
+Python value sets the control. Browser changes update sibling views. A later
+Python update sets the value again in every view.
 
 ```marimo-config
 requires-python = ">=3.11"
 dependencies = ["pyobservablejs"]
 ```
 
+Use separate marimo cells for the Python slider, notebook, and update.
+
 ```python
 import marimo as mo
 import observablejs as obs
 
-python_gain = mo.ui.slider(
-    start=0,
-    stop=12,
-    step=1,
-    value=5,
-    label="Gain from Python",
-)
-```
-
-```python marimo echo=false server-output=false
-import marimo as mo
-import observablejs as obs
-
-python_gain = mo.ui.slider(
-    start=0,
-    stop=12,
-    step=1,
-    value=5,
-    label="Gain from Python",
-)
+python_gain = mo.ui.slider(start=0, stop=12, value=5, label="Gain from Python")
 ```
 
 ```python
@@ -55,17 +33,36 @@ notebook = obs.Notebook(
         """
         Plot.barY(
           Array.from({length: 8}, (_, index) => (index + 1) * gain),
-          {x: (_, index) => index + 1, y: (value) => value,
-           tip: {fill: "var(--marimo-island-background)"}}
-        ).plot({height: 220, x: {label: "Step"}, y: {grid: true, label: "Step × gain"}})
+          {
+            x: (_, index) => index + 1,
+            y: (value) => value,
+            tip: {
+              // This example references a theme variable used by mdx-marimo.
+              // Replace it with a CSS color or remove `fill` in another host.
+              fill: "var(--marimo-island-background)"
+            }
+          }
+        ).plot({height: 220, x: {label: "Step"}, y: {grid: true}})
         """,
         key="chart",
     ),
     variables={"gain": 5},
 )
 
-full_view = notebook.view()
-widget = mo.ui.anywidget(full_view)
+view = notebook.view()
+widget = mo.ui.anywidget(view)
+```
+
+```python
+notebook.update_variables({"gain": python_gain.value})
+mo.vstack([python_gain, widget])
+```
+
+```python marimo echo=false server-output=false
+import marimo as mo
+import observablejs as obs
+
+python_gain = mo.ui.slider(start=0, stop=12, value=5, label="Gain from Python")
 ```
 
 ```python marimo echo=false server-output=false
@@ -78,76 +75,44 @@ notebook = obs.Notebook(
         """
         Plot.barY(
           Array.from({length: 8}, (_, index) => (index + 1) * gain),
-          {x: (_, index) => index + 1, y: (value) => value,
-           tip: {fill: "var(--marimo-island-background)"}}
-        ).plot({height: 220, x: {label: "Step"}, y: {grid: true, label: "Step × gain"}})
+          {
+            x: (_, index) => index + 1,
+            y: (value) => value,
+            tip: {
+              // This example references a theme variable used by mdx-marimo.
+              // Replace it with a CSS color or remove `fill` in another host.
+              fill: "var(--marimo-island-background)"
+            }
+          }
+        ).plot({height: 220, x: {label: "Step"}, y: {grid: true}})
         """,
         key="chart",
     ),
     variables={"gain": 5},
 )
 
-full_view = notebook.view()
-widget = mo.ui.anywidget(full_view)
-```
-
-```python
-notebook.update_variables(gain=python_gain.value)
-mo.vstack([python_gain, widget])
+view = notebook.view()
+widget = mo.ui.anywidget(view)
 ```
 
 ```python marimo echo=false server-output=false
-notebook.update_variables(gain=python_gain.value)
+notebook.update_variables({"gain": python_gain.value})
 mo.vstack([python_gain, widget])
 ```
 
-```python
-widget.value  # subscribe this cell to view synchronization
+The value moves in four steps:
 
-if full_view.has_rendered:
-    status = f"Python reads `gain = {full_view.values.get('gain')}`."
-else:
-    status = "Waiting for the Observable view to render."
-mo.md(status)
-```
+1. The initial Python value sets the input.
+2. Changing the browser input updates sibling views.
+3. `update_variables({"gain": value})` sets a new Python value in every view.
+4. `reset_variables("gain")` returns the value to the notebook definition.
 
-```python marimo echo=false server-output=false
-widget.value  # subscribe this cell to view synchronization
+Shared input state supports JSON-like values, `BigInt`, dates, maps, and sets.
+Functions, DOM elements, files, and binary buffers stay in the view where they
+were created. Use the same input shape for a shared name across views.
 
-if full_view.has_rendered:
-    status = f"Python reads `gain = {full_view.values.get('gain')}`."
-else:
-    status = "Waiting for the Observable view to render."
-mo.md(status)
-```
-
-## The negotiation, step by step
-
-1. **Seed.** At construction, the Python value `gain=5` seeds the `viewof`
-   control and takes precedence over the source default.
-2. **Browser interaction.** Dragging the Observable input makes its value
-   shared session state. Sibling views that render an input with the same
-   name receive the value, and readback reports it to Python.
-3. **Python reasserts.** An `update_variables` call that includes the name
-   clears the interacted state and applies the Python value to every active
-   view. This also reasserts a Python value that has not changed in Python,
-   which is why moving the marimo slider back to its old position still
-   resets the browser control.
-4. **Release.** Removing the name through `replace_variables` or
-   `reset_variables` restores the source-defined input default.
-
-## Which values can be shared
-
-Shared input state accepts `null`, booleans, strings, numbers including
-special numeric values, `BigInt`, valid dates, arrays, plain objects, maps,
-and sets, with containers checked recursively. Values such as functions, DOM
-elements, files, and binary buffers remain local to the view that produced
-them. Use the same input type for a shared name across views: a mismatched
-target can coerce an incompatible value before the round-trip check
-suppresses its events.
-
-The precise contract is in [Variables and
-serialization](../reference/variables-and-serialization.mdx#python-values-and-viewof-inputs).
-
-For a larger worked example, see the [Coordinate Python and browser
-inputs](../recipes/coordinate-python-and-browser-inputs.mdx) recipe.
+Read the current browser result through `view.state.result("gain_control")`.
+See [Widget composition](../render/widget-composition.mdx) for separate views
+and [Variables and
+serialization](../reference/variables-and-serialization.mdx#shared-viewof-inputs)
+for the value boundary.

@@ -18,7 +18,6 @@ class BrowserGraphCell:
     key: str
     id: int | None = None
     index: int | None = None
-    name: str | None = None
     defines: tuple[str, ...] = ()
     references: tuple[str, ...] = ()
     output: str | None = None
@@ -57,7 +56,6 @@ class BrowserGraphCellBuilder(Protocol):
         *,
         id: int | None = None,
         index: int | None = None,
-        name: str | None = None,
         defines: Sequence[str] = (),
         references: Sequence[str] = (),
         output: str | None = None,

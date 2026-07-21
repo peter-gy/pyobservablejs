@@ -10,6 +10,9 @@ string. Define the string in Python, read it from a file, fetch it from
 storage, or receive it from another API before construction. The example uses
 Notebook Kit's built-in AAPL sample.
 
+Imported cells run with the host page's browser privileges. Review the trust
+boundary in [Browser execution](../customize/browser-execution.mdx).
+
 ```marimo-config
 requires-python = ">=3.11"
 dependencies = ["pyobservablejs"]
@@ -28,7 +31,11 @@ source = """
 Plot.areaY(aapl, {
   x: "Date",
   y: "Close",
-  tip: {fill: "var(--marimo-island-background)"}
+  tip: {
+    // This example references a theme variable used by mdx-marimo.
+    // Replace it with a CSS color or remove `fill` in another host.
+    fill: "var(--marimo-island-background)"
+  }
 }).plot({
   height: 280,
   y: {grid: true, label: "Close ($)"}
@@ -55,7 +62,11 @@ source = """
 Plot.areaY(aapl, {
   x: "Date",
   y: "Close",
-  tip: {fill: "var(--marimo-island-background)"}
+  tip: {
+    // This example references a theme variable used by mdx-marimo.
+    // Replace it with a CSS color or remove `fill` in another host.
+    fill: "var(--marimo-island-background)"
+  }
 }).plot({
   height: 280,
   y: {grid: true, label: "Close ($)"}
@@ -75,7 +86,7 @@ as an area chart.
 ## Source-backed notebooks
 
 A notebook loaded from HTML keeps that Notebook Kit document as its
-definition. The document owns its theme. Assigning `notebook.theme` raises
+definition. Its theme comes from the document. Assigning `notebook.theme` raises
 `traitlets.TraitError`.
 
 Everything else works the same as a Python-authored notebook: `view()`

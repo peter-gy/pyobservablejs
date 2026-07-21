@@ -3,7 +3,7 @@
 	"private": true,
 	"scripts": {
 		"build": "vp run -F './packages/*' build",
-		"check": "vp check --no-error-on-unmatched-pattern .github apps development_docs packages scripts \"*.ipynb\" \"*.json\" \"*.md\" \"*.toml\" \"*.ts\" \"*.yaml\" \"*.yml\"",
+		"check": "vp check --no-error-on-unmatched-pattern .github apps development_docs packages scripts AGENTS.md README.md example.ipynb package.json pnpm-lock.yaml pnpm-workspace.yaml pyproject.toml tsconfig.json vite.config.ts",
 		"dev": "vp run @pyobservablejs/python#dev",
 		"test": "vp run -r test"
 	},

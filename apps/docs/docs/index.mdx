@@ -1,7 +1,7 @@
 ---
 title: pyobservablejs
 sidebar_label: Overview
-description: Observable JavaScript notebooks from Python, with dataflow in both directions.
+description: Reactive Observable notebooks embedded in Python.
 slug: /
 ---
 
@@ -9,24 +9,28 @@ import DocCardList from "@theme/DocCardList";
 
 # pyobservablejs
 
-`pyobservablejs` renders [Observable JavaScript notebooks](https://observablehq.com/notebook-kit/)
-from Python and connects the two runtimes. It does three things:
+`pyobservablejs` embeds reactive Observable notebooks in Python. Author cells or
+load an existing notebook, render all or selected cells, synchronize Python
+values, read structured browser results, and inspect the dependency graph.
 
-1. **Creates notebooks.** Author [Notebook Kit](https://observablehq.com/notebook-kit/)
-   cells from Python, load existing Notebook Kit HTML, or import public
-   observablehq.com notebooks.
-2. **Moves values in both directions.** Python variables drive the reactive
-   graph in the browser, and rendered browser values synchronize back to
-   Python.
-3. **Exposes the dataflow graph.** Python can inspect which cell defines each
-   variable, follow dependency edges, and export Mermaid or D2 diagrams.
+It works in JupyterLab, marimo, VS Code notebooks, Google Colab, and other
+[anywidget](https://anywidget.dev/) hosts.
 
-Each view is an [anywidget](https://anywidget.dev/), so notebooks render in
-any anywidget host: JupyterLab, marimo, VS Code notebooks, Google Colab, and
-others. The live examples on this site run in marimo.
+```sh
+uv pip install pyobservablejs
+```
 
-Hover a dot to inspect a measurement. `Plot` and the `penguins` sample ship
-with Notebook Kit.
+Try it in a disposable marimo environment:
+
+```sh
+uvx --with pyobservablejs marimo edit notebook.py
+```
+
+## Live notebook
+
+Hover a dot to inspect a measurement. `Plot` and the `penguins` sample are
+Notebook Kit builtins loaded in the browser. They require browser network
+access.
 
 ```marimo-config
 requires-python = ">=3.11"
@@ -45,19 +49,23 @@ notebook = obs.Notebook(
           y: "culmen_depth_mm",
           fill: "species",
           r: 4,
-          tip: {fill: "var(--marimo-island-background)"}
+          tip: {
+            // This example references a theme variable used by mdx-marimo.
+            // Replace it with a CSS color or remove `fill` in another host.
+            fill: "var(--marimo-island-background)"
+          }
         }).plot({
           height: 320,
           color: {legend: true},
           x: {grid: true, label: "Bill length (mm)"},
           y: {grid: true, label: "Bill depth (mm)"}
         })
-        """
+        """,
+        key="penguins_plot",
     ),
 )
 
-full_view = notebook.view()
-mo.ui.anywidget(full_view)
+mo.ui.anywidget(notebook.view())
 ```
 
 ```python marimo echo=false server-output=false
@@ -72,50 +80,52 @@ notebook = obs.Notebook(
           y: "culmen_depth_mm",
           fill: "species",
           r: 4,
-          tip: {fill: "var(--marimo-island-background)"}
+          tip: {
+            // This example references a theme variable used by mdx-marimo.
+            // Replace it with a CSS color or remove `fill` in another host.
+            fill: "var(--marimo-island-background)"
+          }
         }).plot({
           height: 320,
           color: {legend: true},
           x: {grid: true, label: "Bill length (mm)"},
           y: {grid: true, label: "Bill depth (mm)"}
         })
-        """
+        """,
+        key="penguins_plot",
     ),
 )
 
-full_view = notebook.view()
-mo.ui.anywidget(full_view)
+mo.ui.anywidget(notebook.view())
 ```
 
-## Where to go next
+## Build a workflow
 
 <DocCardList
-  items={[
-    {
-      type: "link",
-      href: "/quickstart/",
-      label: "Quickstart",
-      description:
-        "Install pyobservablejs and render your first reactive notebook.",
-    },
-    {
-      type: "link",
-      href: "/mental-model/",
-      label: "Mental model",
-      description: "Notebook, NotebookCell, and NotebookView: who owns what.",
-    },
-    {
-      type: "link",
-      href: "/connect/python-to-observable/",
-      label: "Connect Python and the browser",
-      description: "Drive the reactive graph from Python and read values back.",
-    },
-    {
-      type: "link",
-      href: "/pyobservablejs-or-pyobsplot/",
-      label: "pyobservablejs or pyobsplot?",
-      description:
-        "Choose the right tool for Observable-flavored work from Python.",
-    },
-  ]}
+	items={[
+		{
+			type: "link",
+			href: "/quickstart/",
+			label: "Render a first notebook",
+			description: "Create a browser input, update it from Python, and read its result state.",
+		},
+		{
+			type: "link",
+			href: "/create/",
+			label: "Build or load a notebook",
+			description: "Author cells, load Notebook Kit HTML, or import ObservableHQ.",
+		},
+		{
+			type: "link",
+			href: "/render/",
+			label: "Render selected cells",
+			description: "Use cell keys to place whole or selected notebook views.",
+		},
+		{
+			type: "link",
+			href: "/connect/",
+			label: "Connect Python and browser state",
+			description: "Send Python values and read structured browser results.",
+		},
+	]}
 />
