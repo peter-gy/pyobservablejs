@@ -219,9 +219,15 @@ export function createRuntimeViewSync({
 			cleanups.get(name)?.();
 			views.set(name, value);
 			const onInteraction = () => {
-				if (isProgrammaticViewWrite(value)) return;
-				const wireValue = toWireValue(readViewValue(value));
-				if (isWritableSyncedViewValue(wireValue)) publish(name, wireValue);
+				const programmatic = isProgrammaticViewWrite(value);
+				// Observable Inputs can update a wrapper's value in a nested target
+				// handler. Read after event propagation while retaining the event's
+				// programmatic classification from the capture phase.
+				queueMicrotask(() => {
+					if (programmatic || signal.aborted || views.get(name) !== value) return;
+					const wireValue = toWireValue(readViewValue(value));
+					if (isWritableSyncedViewValue(wireValue)) publish(name, wireValue);
+				});
 			};
 			value.addEventListener("input", onInteraction, { capture: true });
 			value.addEventListener("change", onInteraction, { capture: true });
