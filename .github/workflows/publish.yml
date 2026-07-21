@@ -94,6 +94,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
 
       - name: Wait for the public PyPI index
@@ -115,46 +117,11 @@ jobs:
       - name: Verify the installed package
         env:
           UV_NO_CONFIG: "1"
-        run: |
-          version="${GITHUB_REF_NAME#v}"
-          uv run \
-            --no-cache \
-            --no-project \
-            --isolated \
-            --default-index https://pypi.org/simple \
-            --with "pyobservablejs==$version" \
-            python - "$version" <<'PY'
-          import sys
-          from importlib.metadata import version
-
-          import observablejs
-          from observablejs import (
-              NotebookView,
-              view_from_code,
-              view_from_html,
-              view_from_observablehq,
-              view_from_observablehq_document,
-          )
-
-          expected = sys.argv[1]
-          assert version("pyobservablejs") == expected
-          assert observablejs.__version__ == expected
-          assert all(
-              callable(factory)
-              for factory in (
-                  view_from_code,
-                  view_from_html,
-                  view_from_observablehq,
-                  view_from_observablehq_document,
-              )
-          )
-
-          view = view_from_code("answer = 42")
-          try:
-              assert isinstance(view, NotebookView)
-          finally:
-              view.close()
-          PY
+        run: >-
+          uv run --no-cache --no-project --isolated
+          --default-index https://pypi.org/simple
+          --with "pyobservablejs==${GITHUB_REF_NAME#v}"
+          python scripts/verify_release.py "${GITHUB_REF_NAME#v}"
 
   release-notes:
     needs: publish
