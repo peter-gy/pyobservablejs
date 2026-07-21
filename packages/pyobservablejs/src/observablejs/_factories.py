@@ -39,6 +39,26 @@ def view_from_code(
         ...     "viewof quantity = Inputs.range([0, 100], {step: 1})"
         ... )
         >>> view.close()
+
+    Runtime and imports:
+        Notebook Kit makes ``Inputs``, ``Plot``, ``d3``, ``DuckDBClient``,
+        ``htl``, ``html``, ``svg``, ``md``, ``tex``, ``dot``, ``_``, ``aq``,
+        ``Arrow``, ``duckdb``, ``echarts``, ``L``, ``mapboxgl``, ``mermaid``,
+        ``React``, ``ReactDOM``, ``topojson``, and ``vl`` available as cell
+        globals. It also provides ``DatabaseClient``, ``FileAttachment``,
+        ``Generators``, ``Mutable``, ``SQLite``, ``SQLiteDatabaseClient``,
+        ``now``, ``width``, ``dark``, and the Notebook Kit sample datasets.
+        Use these names directly in cells. Most library globals and datasets
+        load from jsDelivr when first used.
+
+        JavaScript and TypeScript cells resolve ``npm:`` imports through
+        jsDelivr, ``jsr:`` imports through esm.sh, and ``observable:`` imports
+        through the Observable API. Full browser URLs pass through unchanged.
+        Relative module paths resolve against the host page URL. Observable
+        JavaScript imports such as
+        ``import {name} from "@observablehq/hello-world"`` load Observable
+        notebooks. Literal dynamic imports such as
+        ``import("d3-format@3")`` load npm packages from jsDelivr.
     """
 
     notebook = Notebook(
@@ -64,35 +84,44 @@ def view_from_html(
 ) -> NotebookView:
     """Create an AnyWidget view from Notebook Kit HTML text.
 
-    The HTML can mix Notebook Kit cell types. See the official Notebook Kit
-    documentation at https://observablehq.com/notebook-kit/kit for the file
-    format and cell type details.
+    The HTML can mix Notebook Kit cell modes. See the official Notebook Kit
+    documentation at https://observablehq.com/notebook-kit/kit for the HTML
+    format and cell modes.
 
     Closing the returned view also closes its notebook session.
 
     Examples:
-        Create a view containing each Notebook Kit cell type:
+        Create a view with Markdown, JavaScript, TypeScript, Observable
+        JavaScript, HTML, TeX, DOT, and SQL cells:
 
         >>> import observablejs as obs
         >>> source = r'''
         ... <!doctype html>
         ... <notebook theme="air">
-        ...   <title>Cell types</title>
+        ...   <title>Browser cell modes</title>
         ...   <script id="1" type="text/markdown">
-        ...     # Cell types
+        ...     # Browser cell modes
         ...   </script>
         ...   <script id="2" type="module">
-        ...     const values = [1, 2, 3];
-        ...     const db = DuckDBClient.of({values: values.map(value => ({value}))});
+        ...     import {format} from "npm:d3-format@3";
+        ...     const values = [{value: 1}, {value: 2}, {value: 3}];
+        ...     const compact = format(".2s");
+        ...     const db = DuckDBClient.of({values});
         ...   </script>
         ...   <script id="3" type="text/x-typescript">
-        ...     const total: number = values.reduce((sum, value) => sum + value, 0);
+        ...     const total: number = values.reduce(
+        ...       (sum, row) => sum + row.value,
+        ...       0
+        ...     );
         ...   </script>
         ...   <script id="4" type="application/vnd.observable.javascript">
-        ...     viewof limit = Inputs.range([1, 10], {value: total})
+        ...     viewof limit = Inputs.range(
+        ...       [1, 10],
+        ...       {value: total, step: 1, label: "Limit"}
+        ...     )
         ...   </script>
         ...   <script id="5" type="text/html">
-        ...     <strong>Selected limit: ${limit}</strong>
+        ...     <strong>${compact(total)} total, limit ${limit}</strong>
         ...   </script>
         ...   <script id="6" type="application/x-tex">
         ...     \\sum_{i=1}^{3} i = 6
@@ -103,23 +132,30 @@ def view_from_html(
         ...   <script id="8" type="application/sql" database="var:db" output="rows">
         ...     SELECT sum(value) AS total FROM values
         ...   </script>
-        ...   <script id="9" type="application/vnd.node.javascript"
-        ...           format="json" output="node_data">
-        ...     process.stdout.write(JSON.stringify({runtime: "node"}));
-        ...   </script>
-        ...   <script id="10" type="text/x-python"
-        ...           format="json" output="python_data">
-        ...     import json, sys
-        ...     json.dump({"runtime": "python"}, sys.stdout)
-        ...   </script>
-        ...   <script id="11" type="text/x-r"
-        ...           format="json" output="r_data">
-        ...     cat('{"runtime":"r"}')
-        ...   </script>
         ... </notebook>
         ... '''
         >>> view = obs.view_from_html(source)
         >>> view.close()
+
+    Runtime and imports:
+        Notebook Kit makes ``Inputs``, ``Plot``, ``d3``, ``DuckDBClient``,
+        ``htl``, ``html``, ``svg``, ``md``, ``tex``, ``dot``, ``_``, ``aq``,
+        ``Arrow``, ``duckdb``, ``echarts``, ``L``, ``mapboxgl``, ``mermaid``,
+        ``React``, ``ReactDOM``, ``topojson``, and ``vl`` available as cell
+        globals. It also provides ``DatabaseClient``, ``FileAttachment``,
+        ``Generators``, ``Mutable``, ``SQLite``, ``SQLiteDatabaseClient``,
+        ``now``, ``width``, ``dark``, and the Notebook Kit sample datasets.
+        Use these names directly in cells. Most library globals and datasets
+        load from jsDelivr when first used.
+
+        JavaScript and TypeScript cells resolve ``npm:`` imports through
+        jsDelivr, ``jsr:`` imports through esm.sh, and ``observable:`` imports
+        through the Observable API. Full browser URLs pass through unchanged.
+        Relative module paths resolve against the host page URL. Pass
+        ``base_path`` and ``rewrite_imports=True`` to embed quoted relative
+        imports, export-from declarations, and literal dynamic imports as data
+        URLs. Local imports are followed recursively. Computed import
+        specifiers stay unchanged.
     """
 
     notebook = Notebook.from_html(
@@ -151,9 +187,29 @@ def view_from_observablehq(
 
         >>> import observablejs as obs
         >>> view = obs.view_from_observablehq(
-        ...     "https://observablehq.com/@d3/bar-chart"
+        ...     "https://observablehq.com/@observablehq/plot-vertical-bar-chart"
         ... )
         >>> view.close()
+
+    Runtime and imports:
+        ObservableHQ sources use the Observable runtime profile. It provides
+        classic ``require``, ``DOM``, ``Files``, ``Generators``, and
+        ``Promises`` together with ``Inputs``, ``Plot``, ``d3``,
+        ``DuckDBClient``, ``htl``, ``html``, ``svg``, ``md``, ``tex``,
+        ``dot``, ``_``, ``aq``, ``Arrow``, ``duckdb``, ``echarts``, ``L``,
+        ``mapboxgl``, ``mermaid``, ``React``, ``ReactDOM``, ``topojson``, and
+        ``vl``. ``FileAttachment``, ``Mutable``, ``SQLite``,
+        ``SQLiteDatabaseClient``, ``width``, ``dark``, and the sample datasets
+        are also available. Use these names directly in cells. Most libraries
+        and datasets load in the browser when first used.
+
+        Python fetches the initial document through the Observable document
+        API. Observable JavaScript imports such as
+        ``import {name} from "@observablehq/hello-world"`` load nested
+        notebooks through the Observable API. ``require("d3-format@3")`` and
+        literal dynamic imports such as ``import("d3-format@3")`` load
+        packages from jsDelivr. The fetched document's ``id`` and ``version``
+        preserve its nested import resolution.
     """
 
     notebook = Notebook.from_observablehq(
@@ -207,6 +263,25 @@ def view_from_observablehq_document(
         ... }
         >>> view = obs.view_from_observablehq_document(document)
         >>> view.close()
+
+    Runtime and imports:
+        ObservableHQ documents use the Observable runtime profile. It provides
+        classic ``require``, ``DOM``, ``Files``, ``Generators``, and
+        ``Promises`` together with ``Inputs``, ``Plot``, ``d3``,
+        ``DuckDBClient``, ``htl``, ``html``, ``svg``, ``md``, ``tex``,
+        ``dot``, ``_``, ``aq``, ``Arrow``, ``duckdb``, ``echarts``, ``L``,
+        ``mapboxgl``, ``mermaid``, ``React``, ``ReactDOM``, ``topojson``, and
+        ``vl``. ``FileAttachment``, ``Mutable``, ``SQLite``,
+        ``SQLiteDatabaseClient``, ``width``, ``dark``, and the sample datasets
+        are also available. Use these names directly in cells. Most libraries
+        and datasets load in the browser when first used.
+
+        Observable JavaScript imports such as
+        ``import {name} from "@observablehq/hello-world"`` load nested
+        notebooks through the Observable API. ``require("d3-format@3")`` and
+        literal dynamic imports such as ``import("d3-format@3")`` load
+        packages from jsDelivr. Include the source document's ``id`` and
+        ``version`` fields to preserve its nested import resolution.
     """
 
     notebook = Notebook.from_observablehq_document(
