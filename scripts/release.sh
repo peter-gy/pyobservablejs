@@ -98,7 +98,7 @@ CI_RUN="$(gh run list \
 	--event push \
 	--limit 1 \
 	--json databaseId,status,conclusion,url \
-	--jq 'if length == 0 then "" else (.[0] | [.databaseId, .status, .conclusion, .url] | @tsv) end')"
+	--jq 'if length == 0 then "" else (.[0] | [.databaseId, .status, .conclusion, .url] | .[]) end')"
 
 if [[ -z "$CI_RUN" ]]; then
 	error "No main CI run found for $COMMIT"
@@ -106,7 +106,13 @@ if [[ -z "$CI_RUN" ]]; then
 	exit 1
 fi
 
-IFS=$'\t' read -r CI_RUN_ID CI_STATUS CI_CONCLUSION CI_URL <<<"$CI_RUN"
+{
+	IFS= read -r CI_RUN_ID
+	IFS= read -r CI_STATUS
+	IFS= read -r CI_CONCLUSION
+	IFS= read -r CI_URL
+} <<<"$CI_RUN"
+CI_CONCLUSION="${CI_CONCLUSION:-pending}"
 if [[ "$CI_STATUS" != "completed" || "$CI_CONCLUSION" != "success" ]]; then
 	error "Main CI must pass before releasing. Current result: $CI_STATUS/$CI_CONCLUSION"
 	printf 'CI run: %s\n' "$CI_URL" >&2

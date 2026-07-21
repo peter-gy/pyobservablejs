@@ -59,7 +59,11 @@ def release_repository(tmp_path: Path) -> tuple[Path, Path, dict[str, str]]:
     gh.write_text(
         """#!/usr/bin/env bash
 if [[ "$1 $2" == "run list" ]]; then
-  printf '%s\\n' "${FAKE_CI_RUN:-123${FAKE_TAB}completed${FAKE_TAB}success${FAKE_TAB}https://example.test/actions/runs/123}"
+  if [[ -n "${FAKE_CI_RUN+x}" ]]; then
+    printf '%s\\n' "$FAKE_CI_RUN"
+  else
+    printf '%s\\n' 123 completed success https://example.test/actions/runs/123
+  fi
 elif [[ "$1 $2" == "repo view" ]]; then
   printf '%s\\n' 'https://github.com/example/pyobservablejs'
 else
@@ -73,7 +77,6 @@ fi
     env = os.environ.copy()
     env.update(
         {
-            "FAKE_TAB": "\t",
             "PATH": f"{fake_bin}{os.pathsep}{env['PATH']}",
         }
     )
@@ -161,7 +164,7 @@ def test_release_requires_successful_ci_for_current_commit(
 ) -> None:
     repository, _origin, env = release_repository
     env["FAKE_CI_RUN"] = (
-        "456\tcompleted\tfailure\thttps://example.test/actions/runs/456"
+        "456\ncompleted\nfailure\nhttps://example.test/actions/runs/456"
     )
 
     result = run_release(repository, env, "--dry-run")
@@ -169,6 +172,20 @@ def test_release_requires_successful_ci_for_current_commit(
     assert result.returncode == 1
     assert "Main CI must pass before releasing" in result.stderr
     assert "completed/failure" in result.stderr
+    assert "gh run watch 456 --exit-status" in result.stderr
+
+
+def test_release_reports_in_progress_ci_run(
+    release_repository: tuple[Path, Path, dict[str, str]],
+) -> None:
+    repository, _origin, env = release_repository
+    env["FAKE_CI_RUN"] = "456\nin_progress\n\nhttps://example.test/actions/runs/456"
+
+    result = run_release(repository, env, "--dry-run")
+
+    assert result.returncode == 1
+    assert "in_progress/pending" in result.stderr
+    assert "CI run: https://example.test/actions/runs/456" in result.stderr
     assert "gh run watch 456 --exit-status" in result.stderr
 
 
