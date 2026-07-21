@@ -4,267 +4,133 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-print_step() {
-  printf '\n==> %s\n\n' "$1"
-}
-
-print_error() {
-  printf 'ERROR: %s\n' "$1" >&2
-}
-
-confirm() {
-  local prompt="$1"
-  local response
-  printf '%s (y/N) ' "$prompt"
-  read -r response
-  [[ "$response" == "y" ]]
-}
-
 usage() {
-  cat <<'EOF'
-Usage: ./scripts/release.sh <minor|patch|X.Y.Z>
+	cat <<'EOF'
+Usage: ./scripts/release.sh [--dry-run]
 
-Validates the release and creates an annotated vX.Y.Z tag. An explicit X.Y.Z
-target may match the package version already committed at HEAD. A newer target
-also creates a release commit with the version change. Use patch or minor when
-the current version is already a final X.Y.Z version. Pushing the vX.Y.Z tag
-publishes the package to PyPI through GitHub Actions and Trusted Publishing.
+Releases the package version committed to main. The command requires a clean,
+synchronized main branch and a successful CI run for its current commit. It
+creates and pushes the annotated vX.Y.Z tag that starts trusted publishing.
+
+Add the version change to the release-bearing pull request with:
+
+  uv version --package pyobservablejs --bump patch
 EOF
+}
+
+error() {
+	printf 'ERROR: %s\n' "$1" >&2
 }
 
 require_command() {
-  if ! command -v "$1" >/dev/null 2>&1; then
-    print_error "Missing required command: $1"
-    exit 1
-  fi
+	if ! command -v "$1" >/dev/null 2>&1; then
+		error "Missing required command: $1"
+		exit 1
+	fi
 }
 
-current_version() {
-  uv version --package pyobservablejs --short
-}
+DRY_RUN=0
 
-write_version() {
-  local version="$1"
-  uv version --package pyobservablejs --frozen "$version" >/dev/null
-}
+case "${1:-}" in
+	"") ;;
+	--dry-run)
+		DRY_RUN=1
+		;;
+	-h | --help)
+		usage
+		exit 0
+		;;
+	*)
+		error "Unknown argument: $1"
+		usage >&2
+		exit 1
+		;;
+esac
 
-bump_version() {
-  local version="$1"
-  local bump="$2"
-
-  if [[ ! "$version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
-    print_error "Unsupported version format: $version"
-    print_error "Pass an explicit final X.Y.Z target when releasing from a prerelease"
-    exit 1
-  fi
-
-  local major="${BASH_REMATCH[1]}"
-  local minor="${BASH_REMATCH[2]}"
-  local patch="${BASH_REMATCH[3]}"
-
-  case "$bump" in
-    minor)
-      printf '%s.%s.0\n' "$major" "$((minor + 1))"
-      ;;
-    patch)
-      printf '%s.%s.%s\n' "$major" "$minor" "$((patch + 1))"
-      ;;
-    *)
-      print_error "Invalid version bump: $bump"
-      usage
-      exit 1
-      ;;
-  esac
-}
-
-require_current_or_newer_explicit_target() {
-  local current="$1"
-  local target="$2"
-
-  if [[ ! "$current" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(.*)$ ]]; then
-    print_error "Unsupported current version format: $current"
-    exit 1
-  fi
-
-  local current_major="${BASH_REMATCH[1]}"
-  local current_minor="${BASH_REMATCH[2]}"
-  local current_patch="${BASH_REMATCH[3]}"
-
-  if [[ ! "$target" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
-    print_error "Invalid version target: $target"
-    usage
-    exit 1
-  fi
-
-  local target_major="${BASH_REMATCH[1]}"
-  local target_minor="${BASH_REMATCH[2]}"
-  local target_patch="${BASH_REMATCH[3]}"
-
-  if ((target_major > current_major)); then
-    return
-  fi
-  if ((target_major == current_major && target_minor > current_minor)); then
-    return
-  fi
-  if ((
-    target_major == current_major
-    && target_minor == current_minor
-    && target_patch > current_patch
-  )); then
-    return
-  fi
-  if ((
-    target_major == current_major
-    && target_minor == current_minor
-    && target_patch == current_patch
-  )); then
-    return
-  fi
-
-  print_error "Version target is older than current version: $target < $current"
-  exit 1
-}
-
-target_version() {
-  local version="$1"
-  local request="$2"
-
-  case "$request" in
-    minor | patch)
-      bump_version "$version" "$request"
-      ;;
-    *)
-      if [[ ! "$request" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-        print_error "Invalid version target: $request"
-        usage
-        exit 1
-      fi
-      require_current_or_newer_explicit_target "$version" "$request"
-      printf '%s\n' "$request"
-      ;;
-  esac
-}
-
-run_release_checks() {
-  make check-release
-}
-
-build_release_artifacts() {
-  rm -rf dist
-  make build
-  uvx twine check dist/pyobservablejs-*.whl dist/pyobservablejs-*.tar.gz
-}
-
-restore_version_on_failure() {
-  local status=$?
-
-  if [[ "$status" -ne 0 && "${VERSION_UPDATED:-0}" == "1" && "${COMMITTED:-0}" == "0" ]]; then
-    write_version "$CURRENT_VERSION"
-    uv lock
-    printf '\nRestored packages/pyobservablejs/pyproject.toml and uv.lock to %s.\n' "$CURRENT_VERSION"
-  fi
-
-  exit "$status"
-}
-
-if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
-  usage
-  exit 0
+if [[ "$#" -gt 1 ]]; then
+	error "Expected at most one argument"
+	usage >&2
+	exit 1
 fi
 
-if [[ -z "${1:-}" ]]; then
-  usage
-  exit 1
-fi
-
-VERSION_REQUEST="$1"
-
+require_command gh
 require_command git
-require_command make
-require_command pnpm
 require_command uv
-require_command uvx
 
-print_step "Checking branch"
 BRANCH="$(git branch --show-current)"
 if [[ "$BRANCH" != "main" ]]; then
-  print_error "Releases must be cut from main. Current branch is $BRANCH"
-  exit 1
+	error "Releases must run from main. Current branch: $BRANCH"
+	exit 1
 fi
 
-print_step "Checking working tree"
 if [[ -n "$(git status --porcelain)" ]]; then
-  print_error "Git working directory is not clean"
-  git status --short
-  exit 1
+	error "The working tree must be clean"
+	git status --short >&2
+	exit 1
 fi
 
-print_step "Updating from origin/main"
 git fetch origin main --tags
-git pull --ff-only origin main
 
-CURRENT_VERSION="$(current_version)"
-NEW_VERSION="$(target_version "$CURRENT_VERSION" "$VERSION_REQUEST")"
-RELEASE_TAG="v$NEW_VERSION"
-
-if git rev-parse -q --verify "refs/tags/$RELEASE_TAG" >/dev/null; then
-  print_error "Tag already exists: $RELEASE_TAG"
-  exit 1
+COMMIT="$(git rev-parse HEAD)"
+REMOTE_COMMIT="$(git rev-parse origin/main)"
+if [[ "$COMMIT" != "$REMOTE_COMMIT" ]]; then
+	error "Local main must match origin/main"
+	printf 'Run git pull --ff-only origin main, then retry.\n' >&2
+	exit 1
 fi
 
-cat <<EOF
-Release summary:
-  Current version: $CURRENT_VERSION
-  Release version: $NEW_VERSION
-  Request:         $VERSION_REQUEST
-  Version commit:  $([[ "$NEW_VERSION" == "$CURRENT_VERSION" ]] && printf 'already at HEAD' || printf 'release: %s' "$NEW_VERSION")
-  Tag:             $RELEASE_TAG
-  Checks:          lockfile, package tests, package build, artifact metadata
-EOF
-
-if ! confirm "Proceed with release"; then
-  print_error "Release cancelled"
-  exit 1
+VERSION="$(uv version --package pyobservablejs --short)"
+if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+	error "Package version must be a final X.Y.Z version. Current version: $VERSION"
+	exit 1
 fi
 
-VERSION_UPDATED=0
-COMMITTED=0
-trap restore_version_on_failure EXIT
-
-if [[ "$NEW_VERSION" != "$CURRENT_VERSION" ]]; then
-  print_step "Bumping version"
-  write_version "$NEW_VERSION"
-  VERSION_UPDATED=1
-  uv lock
+TAG="v$VERSION"
+if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+	error "Release tag already exists: $TAG"
+	exit 1
 fi
 
-print_step "Running release checks"
-run_release_checks
+CI_RUN="$(gh run list \
+	--workflow ci.yml \
+	--branch main \
+	--commit "$COMMIT" \
+	--event push \
+	--limit 1 \
+	--json databaseId,status,conclusion,url \
+	--jq 'if length == 0 then "" else (.[0] | [.databaseId, .status, .conclusion, .url] | @tsv) end')"
 
-print_step "Building release artifacts"
-build_release_artifacts
-
-if [[ "$NEW_VERSION" != "$CURRENT_VERSION" ]]; then
-  print_step "Committing version"
-  git add packages/pyobservablejs/pyproject.toml uv.lock
-  git commit -m "release: $NEW_VERSION"
-  COMMITTED=1
+if [[ -z "$CI_RUN" ]]; then
+	error "No main CI run found for $COMMIT"
+	printf 'Wait for the main CI workflow to start, then retry.\n' >&2
+	exit 1
 fi
 
-print_step "Creating tag"
-git tag -a "$RELEASE_TAG" -m "release: $NEW_VERSION"
-
-cat <<EOF
-
-Release tag is ready locally.
-Push the current main branch and tag to publish:
-
-  git push origin main "$RELEASE_TAG"
-EOF
-
-if confirm "Push release commit and tag now"; then
-  git push origin main "$RELEASE_TAG"
-  printf '\nRelease %s pushed. Watch the publish workflow in GitHub Actions.\n' "$RELEASE_TAG"
-else
-  printf '\nRelease %s remains local and is not published until the tag is pushed.\n' "$RELEASE_TAG"
+IFS=$'\t' read -r CI_RUN_ID CI_STATUS CI_CONCLUSION CI_URL <<<"$CI_RUN"
+if [[ "$CI_STATUS" != "completed" || "$CI_CONCLUSION" != "success" ]]; then
+	error "Main CI must pass before releasing. Current result: $CI_STATUS/$CI_CONCLUSION"
+	printf 'CI run: %s\n' "$CI_URL" >&2
+	printf 'Run gh run watch %s --exit-status, then retry.\n' "$CI_RUN_ID" >&2
+	exit 1
 fi
+
+REPOSITORY_URL="$(gh repo view --json url --jq .url)"
+
+printf 'Release: %s\n' "$TAG"
+printf 'Commit:  %s\n' "$COMMIT"
+printf 'CI:      %s\n' "$CI_URL"
+
+if [[ "$DRY_RUN" == "1" ]]; then
+	printf '\nDry run complete. Run ./scripts/release.sh to create and push %s.\n' "$TAG"
+	exit 0
+fi
+
+git tag -a "$TAG" -m "release: $VERSION"
+if ! git push origin "$TAG"; then
+	git tag -d "$TAG" >/dev/null
+	error "Failed to push $TAG. The local tag was deleted so the command can be retried."
+	exit 1
+fi
+
+printf '\nRelease %s started.\n' "$TAG"
+printf 'Publish workflow: %s/actions/workflows/publish.yml\n' "$REPOSITORY_URL"

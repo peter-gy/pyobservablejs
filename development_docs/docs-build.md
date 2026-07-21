@@ -20,7 +20,8 @@ the visible source. The executable fence defers its output until the browser
 runtime can create the live anywidget model.
 
 Deploy the contents of `apps/docs/build` directly to a static host. The GitHub
-Pages workflow builds that directory and uploads it as the Pages artifact.
+Pages workflow validates the build for pull requests. On `main`, it uploads the
+same build as the Pages artifact and deploys it.
 
 The live pages declare `pyobservablejs` as a package dependency. Their build and
 browser environments therefore resolve the published package from the package

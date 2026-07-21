@@ -1,4 +1,4 @@
-.PHONY: build check check-release clean docs docs-serve
+.PHONY: build check clean docs docs-serve
 
 VP := node_modules/.bin/vp
 
@@ -22,13 +22,6 @@ check:
 	$(MAKE) build
 	uv run --package pyobservablejs pytest -q packages/pyobservablejs/tests
 	$(MAKE) docs
-	git diff --check
-
-check-release:
-	uv lock --check
-	$(VP) run -r test
-	$(VP) run -F @pyobservablejs/python build
-	uv run --package pyobservablejs pytest -q packages/pyobservablejs/tests
 	git diff --check
 
 clean:

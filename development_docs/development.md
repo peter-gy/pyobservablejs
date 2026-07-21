@@ -77,6 +77,27 @@ Run the local gate before sending changes for review:
 make check
 ```
 
+## Releases
+
+Put the next package version in a pull request:
+
+```sh
+uv version --package pyobservablejs --bump patch
+```
+
+Merge after the `required` and `docs` checks pass. From a clean, synchronized
+`main` branch, inspect the release and push its annotated tag:
+
+```sh
+./scripts/release.sh --dry-run
+./scripts/release.sh
+```
+
+The tag starts the Publish package workflow. That workflow checks the tag and
+package versions, builds the wheel and sdist, publishes with PyPI Trusted
+Publishing, creates the GitHub release notes, and installs the release from the
+public PyPI index.
+
 ## Browser checks
 
 For widget frontend, notebook rendering, Observable runtime, marimo or Jupyter
