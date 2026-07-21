@@ -30,6 +30,15 @@ def view_from_code(
 
     The code uses Observable JavaScript by default. Set mode to select another
     cell language. Closing the returned view also closes its notebook session.
+
+    Examples:
+        Create a slider view from one Observable JavaScript cell:
+
+        >>> import observablejs as obs
+        >>> view = obs.view_from_code(
+        ...     "viewof quantity = Inputs.range([0, 100], {step: 1})"
+        ... )
+        >>> view.close()
     """
 
     notebook = Notebook(
@@ -56,6 +65,19 @@ def view_from_html(
     """Create an AnyWidget view from Notebook Kit HTML text.
 
     Closing the returned view also closes its notebook session.
+
+    Examples:
+        Create a view from stored Notebook Kit HTML:
+
+        >>> import observablejs as obs
+        >>> source = (
+        ...     '<notebook theme="air">'
+        ...     '<script id="1" '
+        ...     'type="application/vnd.observable.javascript">'
+        ...     'answer = 42</script></notebook>'
+        ... )
+        >>> view = obs.view_from_html(source)
+        >>> view.close()
     """
 
     notebook = Notebook.from_html(
@@ -81,6 +103,15 @@ def view_from_observablehq(
     """Fetch a public ObservableHQ notebook and return its AnyWidget view.
 
     Closing the returned view also closes its notebook session.
+
+    Examples:
+        Create a view from a public ObservableHQ notebook URL:
+
+        >>> import observablejs as obs
+        >>> view = obs.view_from_observablehq(
+        ...     "https://observablehq.com/@d3/bar-chart"
+        ... )
+        >>> view.close()
     """
 
     notebook = Notebook.from_observablehq(
@@ -104,6 +135,25 @@ def view_from_observablehq_document(
     """Create an AnyWidget view from an ObservableHQ document API mapping.
 
     Closing the returned view also closes its notebook session.
+
+    Examples:
+        Create a view from an ObservableHQ document already in memory:
+
+        >>> import observablejs as obs
+        >>> from observablejs.types import ObservableDocument
+        >>> document: ObservableDocument = {
+        ...     "title": "Metrics",
+        ...     "nodes": [
+        ...         {
+        ...             "id": 1,
+        ...             "mode": "js",
+        ...             "name": "answer",
+        ...             "value": "answer = 42",
+        ...         }
+        ...     ],
+        ... }
+        >>> view = obs.view_from_observablehq_document(document)
+        >>> view.close()
     """
 
     notebook = Notebook.from_observablehq_document(
