@@ -34,6 +34,8 @@ This command installs marimo and `pyobservablejs` in the temporary environment.
 
 Paste this into the marimo editor opened above:
 
+[![Open in molab](https://molab.marimo.io/molab-shield.svg)](https://molab.marimo.io/github/peter-gy/pyobservablejs/blob/main/examples/from-code.py/wasm?utm_source=pyobservablejs)
+
 ```python
 import marimo as mo
 import observablejs as obs
@@ -88,6 +90,8 @@ metadata.
 Notebook cells execute as JavaScript in the host page. Treat imported Notebook
 Kit HTML, ObservableHQ notebooks, and remote modules as trusted code. See
 [Browser execution](https://peter-gy.github.io/pyobservablejs/customize/browser-execution/).
+
+[![Open in molab](https://molab.marimo.io/molab-shield.svg)](https://molab.marimo.io/github/peter-gy/pyobservablejs/blob/main/examples/from-observablehq.py/server?utm_source=pyobservablejs)
 
 ```python
 import marimo as mo
