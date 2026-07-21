@@ -17,7 +17,8 @@ transport, and renderable view separate.
 - `NotebookView` is the public renderable anywidget. Each call to
   `Notebook.view()` creates one view model, DOM lifecycle, Notebook Kit runtime,
   and detached `ViewState`. Views from one notebook share session inputs while
-  keeping evaluation and readback independent.
+  keeping evaluation and readback independent. Standalone `view_from_*`
+  factories return a view that owns and closes its temporary notebook session.
 - `packages/runtime/` owns Notebook Kit analysis, dependency graphs, execution,
   attachments, runtime values, and the scoped browser environment. It has no
   anywidget model or Python packaging responsibilities.

@@ -1,13 +1,21 @@
 from __future__ import annotations
 
 import inspect
+import os
+import pathlib
 from collections.abc import Mapping
 from importlib.metadata import version as package_version
 from typing import Any, assert_type, cast
 
 import observablejs as obs
 import pytest
-from helpers import DocumentTitle, ScriptTags, line_indent, notebook_session
+from helpers import (
+    DocumentTitle,
+    ScriptTags,
+    decode_data_url,
+    line_indent,
+    notebook_session,
+)
 
 
 def test_public_namespace_is_small() -> None:
@@ -140,6 +148,62 @@ def test_state_traits_have_public_static_types() -> None:
     assert_type(attachment.get("url"), str | None)
     mapping: Mapping[str, str | int] = attachment
     assert mapping["url"] == "https://example.test/data.csv"
+
+
+def test_file_spec_matches_browser_attachment_fields() -> None:
+    assert obs.types.FileSpec.__required_keys__ == frozenset({"url"})
+    assert obs.types.FileSpec.__optional_keys__ == frozenset(
+        {"mimeType", "lastModified", "size"}
+    )
+
+
+def test_file_mapping_requires_a_url() -> None:
+    with pytest.raises(
+        ValueError,
+        match=r"file mapping for 'rows\.csv' must contain a string 'url'",
+    ):
+        obs.Notebook(files={"rows.csv": cast(Any, {"path": "rows.csv"})})
+
+
+def test_file_mapping_keeps_browser_attachment_fields() -> None:
+    notebook = obs.Notebook(
+        files={
+            "rows.csv": cast(
+                Any,
+                {
+                    "url": "https://example.test/rows.csv",
+                    "path": "rows.csv",
+                },
+            )
+        }
+    )
+
+    expected = {"rows.csv": {"url": "https://example.test/rows.csv"}}
+    assert notebook.attachments == expected
+    assert notebook_session(notebook).get_state(["_attachments"]) == {
+        "_attachments": expected
+    }
+    notebook.close()
+
+
+def test_windows_drive_path_strings_are_local_files(tmp_path: pathlib.Path) -> None:
+    if os.name == "nt":
+        path = tmp_path / "rows.csv"
+        value = str(path)
+    else:
+        value = r"C:\data\rows.csv"
+        path = tmp_path / value
+    path.write_text("value\n42\n", encoding="utf-8")
+
+    notebook = obs.Notebook(
+        files={"rows.csv": value},
+        base_path=tmp_path,
+    )
+
+    assert decode_data_url(notebook.attachments["rows.csv"]["url"])[1] == (
+        b"value\n42\n"
+    )
+    notebook.close()
 
 
 def test_version_matches_package_metadata() -> None:

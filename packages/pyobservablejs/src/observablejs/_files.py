@@ -138,7 +138,18 @@ def _normalize_file_info(
     base_path: pathlib.Path | None,
 ) -> FileAttachment:
     if isinstance(value, Mapping):
-        return cast(FileAttachment, dict(value))
+        mapping = cast(Mapping[str, object], value)
+        url = mapping.get("url")
+        if not isinstance(url, str):
+            raise ValueError(f"file mapping for {name!r} must contain a string 'url'")
+        return cast(
+            FileAttachment,
+            {
+                key: mapping[key]
+                for key in ("url", "mimeType", "lastModified", "size")
+                if key in mapping
+            },
+        )
     if isinstance(value, str) and _is_url(value):
         return {"url": value, "mimeType": _guess_mime_type(name)}
     path = pathlib.Path(value).expanduser()
@@ -615,4 +626,7 @@ def _guess_mime_type(name: str) -> str:
 
 
 def _is_url(value: str) -> bool:
+    # A drive letter satisfies URI scheme grammar but names a local Windows path.
+    if re.match(r"^[a-zA-Z]:", value):
+        return False
     return bool(re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", value))

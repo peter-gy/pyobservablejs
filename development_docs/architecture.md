@@ -36,6 +36,9 @@ runtime and immutable `ViewState`. `Notebook.view()` selects every cell.
 evaluates in one runtime. Selectors are key strings, keyed authored cells, or
 same-owner cell handles.
 
+Standalone `view_from_*` factories return a view that owns its temporary
+notebook. Closing that view closes the private session and its live views.
+
 Separate views from one notebook share named Python variables. A browser input
 event on a named `viewof` value becomes session state for current and future
 views when the serialized value is writable across runtimes. Untouched source

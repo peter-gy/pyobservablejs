@@ -10,6 +10,12 @@ from ._notebook import Notebook, NotebookView
 from .types import CellMode, FileInput, ObservableDocument, Theme
 
 
+def _standalone_view(notebook: Notebook) -> NotebookView:
+    view = notebook.view()
+    view._owns_notebook = True
+    return view
+
+
 def view_from_code(
     code: str,
     *,
@@ -23,17 +29,18 @@ def view_from_code(
     """Create an AnyWidget view from one Notebook Kit source cell.
 
     The code uses Observable JavaScript by default. Set mode to select another
-    cell language.
+    cell language. Closing the returned view also closes its notebook session.
     """
 
-    return Notebook(
+    notebook = Notebook(
         Cell(code, mode=mode),
         title=title,
         theme=theme,
         files=files,
         base_path=base_path,
         variables=variables,
-    ).view()
+    )
+    return _standalone_view(notebook)
 
 
 def view_from_html(
@@ -46,9 +53,12 @@ def view_from_html(
     variables: Mapping[str, object] | None = None,
     show_pinned_source: bool = False,
 ) -> NotebookView:
-    """Create an AnyWidget view from Notebook Kit HTML text."""
+    """Create an AnyWidget view from Notebook Kit HTML text.
 
-    return Notebook.from_html(
+    Closing the returned view also closes its notebook session.
+    """
+
+    notebook = Notebook.from_html(
         source,
         files=files,
         base_path=base_path,
@@ -56,7 +66,8 @@ def view_from_html(
         rewrite_imports=rewrite_imports,
         variables=variables,
         show_pinned_source=show_pinned_source,
-    ).view()
+    )
+    return _standalone_view(notebook)
 
 
 def view_from_observablehq(
@@ -67,15 +78,19 @@ def view_from_observablehq(
     show_pinned_source: bool = False,
     timeout: float | None = 30,
 ) -> NotebookView:
-    """Fetch a public ObservableHQ notebook and return its AnyWidget view."""
+    """Fetch a public ObservableHQ notebook and return its AnyWidget view.
 
-    return Notebook.from_observablehq(
+    Closing the returned view also closes its notebook session.
+    """
+
+    notebook = Notebook.from_observablehq(
         specifier,
         variables=variables,
         files=files,
         show_pinned_source=show_pinned_source,
         timeout=timeout,
-    ).view()
+    )
+    return _standalone_view(notebook)
 
 
 def view_from_observablehq_document(
@@ -86,12 +101,16 @@ def view_from_observablehq_document(
     files: Mapping[str, FileInput] | None = None,
     show_pinned_source: bool = False,
 ) -> NotebookView:
-    """Create an AnyWidget view from an ObservableHQ document API mapping."""
+    """Create an AnyWidget view from an ObservableHQ document API mapping.
 
-    return Notebook.from_observablehq_document(
+    Closing the returned view also closes its notebook session.
+    """
+
+    notebook = Notebook.from_observablehq_document(
         document,
         title=title,
         variables=variables,
         files=files,
         show_pinned_source=show_pinned_source,
-    ).view()
+    )
+    return _standalone_view(notebook)

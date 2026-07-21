@@ -47,7 +47,7 @@ Each value can be one of these forms:
 | ------------------------------------------------ | -------------------------------------------------------- |
 | Local `str` or `pathlib.Path`                    | A data URL plus inferred `mimeType` and byte `size`.     |
 | URL string such as `https:`, `data:`, or `blob:` | The URL plus a `mimeType` inferred from the mapping key. |
-| Mapping                                          | A shallow-copied attachment record.                      |
+| Mapping                                          | A normalized record with `url` and optional metadata.    |
 
 `FileAttachment` records use camelCase field names.
 
@@ -63,10 +63,9 @@ notebook = obs.Notebook(
 )
 ```
 
-A mapping used by `FileAttachment` needs a `url`. `mimeType`,
-`lastModified`, and `size` are optional. Python preserves other mapping
-fields and does not validate the record. A missing or invalid URL therefore
-fails when the browser registers or loads the attachment.
+A mapping used by `FileAttachment` requires a string `url`. `mimeType`,
+`lastModified`, and `size` are optional. Python keeps these browser attachment
+fields in the synchronized record.
 
 ## Browser access
 

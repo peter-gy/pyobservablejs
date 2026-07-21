@@ -119,4 +119,5 @@ for hosts that transport model saves as independent requests.
 Aborting a render removes model, input, and cell listeners and disposes its
 Observable runtime. `NotebookView.close()` closes one display model.
 `Notebook.close()` closes every tracked view and then the private session model.
+Closing a standalone factory view also closes its temporary notebook session.
 Late callbacks cannot publish after either abort boundary.

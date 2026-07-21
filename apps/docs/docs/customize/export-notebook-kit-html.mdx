@@ -13,7 +13,7 @@ construction.
 import observablejs as obs
 
 notebook = obs.Notebook(
-    obs.md("# Report"),
+    obs.md("# Report", key="title"),
     obs.js(
         "const total = rows.reduce((sum, row) => sum + row.value, 0);",
         key="total",
@@ -28,19 +28,19 @@ notebook = obs.Notebook(
 print(notebook.to_notebook_html())
 ```
 
-```html
+```text
 <!doctype html>
 <notebook theme="glacier">
-	<title>Weekly report</title>
-	<script id="1" type="text/markdown" data-pyobservablejs-key="title">
-		# Report
-	</script>
-	<script id="2" type="module" data-pyobservablejs-key="total" hidden="">
-		const total = rows.reduce((sum, row) => sum + row.value, 0);
-	</script>
-	<script id="3" type="module" data-pyobservablejs-key="summary">
-		html`<p>Total: ${total}</p>`;
-	</script>
+  <title>Weekly report</title>
+  <script id="1" type="text/markdown" data-pyobservablejs-key="title">
+    # Report
+  </script>
+  <script id="2" type="module" data-pyobservablejs-key="total" hidden="">
+    const total = rows.reduce((sum, row) => sum + row.value, 0);
+  </script>
+  <script id="3" type="module" data-pyobservablejs-key="summary">
+    html`<p>Total: ${total}</p>`
+  </script>
 </notebook>
 ```
 
