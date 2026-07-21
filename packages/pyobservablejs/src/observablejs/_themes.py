@@ -4,25 +4,9 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
-from typing import Any, Literal, TypeAlias, cast, get_args
+from typing import Any, cast, get_args
 
-NotebookTheme = Literal[
-    "air",
-    "coffee",
-    "cotton",
-    "deep-space",
-    "glacier",
-    "ink",
-    "midnight",
-    "near-midnight",
-    "ocean-floor",
-    "parchment",
-    "slate",
-    "stark",
-    "sun-faded",
-]
-
-Theme: TypeAlias = NotebookTheme | dict[str, NotebookTheme]
+from .types import NotebookTheme, Theme
 
 NOTEBOOK_THEMES: tuple[NotebookTheme, ...] = get_args(NotebookTheme)
 

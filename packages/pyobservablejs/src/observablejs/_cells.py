@@ -4,23 +4,24 @@ from __future__ import annotations
 
 import dataclasses
 import textwrap
-from collections.abc import Mapping
 from typing import Any, NotRequired, TypedDict, cast
 
 from ._cell_ids import _MAX_SAFE_CELL_ID, _is_safe_cell_id
 from ._serialize import SCRIPT_TYPES, Mode
+from .types import NotebookKitCellMetadata
 
 
 class NotebookCellSpec(TypedDict):
     id: int
     value: str
     mode: Mode
-    name: NotRequired[str]
+    key: NotRequired[str]
     pinned: NotRequired[bool]
     hidden: NotRequired[bool]
     output: NotRequired[str]
     format: NotRequired[str]
     database: NotRequired[str]
+    since: NotRequired[str | int | float]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -34,19 +35,22 @@ class Cell:
     source: str
     mode: Mode = "ojs"
     key: str | None = None
-    name: str | None = None
     display: bool = True
     raw: bool = False
     id: int | None = None
     pinned: bool = False
     output: str | None = None
-    notebookkit_attrs: Mapping[str, Any] = dataclasses.field(default_factory=dict)
+    notebookkit_attrs: NotebookKitCellMetadata = dataclasses.field(
+        default_factory=lambda: cast(NotebookKitCellMetadata, {})
+    )
 
     def __post_init__(self) -> None:
         if not isinstance(self.source, str):
             raise TypeError("cell source must be a string")
         if self.mode not in SCRIPT_TYPES:
             raise ValueError(f"Unsupported Observable cell mode: {self.mode!r}")
+        if self.key is not None and (not isinstance(self.key, str) or not self.key):
+            raise ValueError("cell key must be a non-empty string or None")
         if self.id is not None and (
             not isinstance(self.id, int) or isinstance(self.id, bool)
         ):
@@ -66,9 +70,7 @@ class Cell:
         } & set(attrs)
         if collisions:
             names = ", ".join(sorted(collisions))
-            raise ValueError(
-                f"notebookkit_attrs cannot override first-class cell options: {names}"
-            )
+            raise ValueError(f"notebookkit_attrs contains reserved fields: {names}")
         object.__setattr__(self, "notebookkit_attrs", attrs)
         if self.raw:
             return
@@ -81,8 +83,8 @@ class Cell:
             "value": self.source,
             "mode": self.mode,
         }
-        if self.name is not None:
-            spec["name"] = self.name
+        if self.key is not None:
+            spec["key"] = self.key
         if not self.display:
             spec["hidden"] = True
         if self.pinned:
@@ -102,13 +104,12 @@ def ojs(
     source: str,
     *,
     key: str | None = None,
-    name: str | None = None,
     display: bool = True,
     raw: bool = False,
     id: int | None = None,
     pinned: bool = False,
     output: str | None = None,
-    notebookkit_attrs: Mapping[str, Any] | None = None,
+    notebookkit_attrs: NotebookKitCellMetadata | None = None,
 ) -> Cell:
     """Return an Observable JavaScript source cell."""
 
@@ -116,7 +117,6 @@ def ojs(
         source,
         mode="ojs",
         key=key,
-        name=name,
         display=display,
         raw=raw,
         id=id,
@@ -130,13 +130,12 @@ def js(
     source: str,
     *,
     key: str | None = None,
-    name: str | None = None,
     display: bool = True,
     raw: bool = False,
     id: int | None = None,
     pinned: bool = False,
     output: str | None = None,
-    notebookkit_attrs: Mapping[str, Any] | None = None,
+    notebookkit_attrs: NotebookKitCellMetadata | None = None,
 ) -> Cell:
     """Return a standard JavaScript module source cell."""
 
@@ -144,7 +143,6 @@ def js(
         source,
         mode="js",
         key=key,
-        name=name,
         display=display,
         raw=raw,
         id=id,
@@ -158,13 +156,12 @@ def md(
     source: str,
     *,
     key: str | None = None,
-    name: str | None = None,
     display: bool = True,
     raw: bool = False,
     id: int | None = None,
     pinned: bool = False,
     output: str | None = None,
-    notebookkit_attrs: Mapping[str, Any] | None = None,
+    notebookkit_attrs: NotebookKitCellMetadata | None = None,
 ) -> Cell:
     """Return a Markdown source cell."""
 
@@ -172,7 +169,6 @@ def md(
         source,
         mode="md",
         key=key,
-        name=name,
         display=display,
         raw=raw,
         id=id,
@@ -186,13 +182,12 @@ def html(
     source: str,
     *,
     key: str | None = None,
-    name: str | None = None,
     display: bool = True,
     raw: bool = False,
     id: int | None = None,
     pinned: bool = False,
     output: str | None = None,
-    notebookkit_attrs: Mapping[str, Any] | None = None,
+    notebookkit_attrs: NotebookKitCellMetadata | None = None,
 ) -> Cell:
     """Return an HTML source cell."""
 
@@ -200,7 +195,6 @@ def html(
         source,
         mode="html",
         key=key,
-        name=name,
         display=display,
         raw=raw,
         id=id,
@@ -215,13 +209,12 @@ def _source_cell(
     *,
     mode: Mode,
     key: str | None = None,
-    name: str | None = None,
     display: bool = True,
     raw: bool = False,
     id: int | None = None,
     pinned: bool = False,
     output: str | None = None,
-    notebookkit_attrs: Mapping[str, Any] | None = None,
+    notebookkit_attrs: NotebookKitCellMetadata | None = None,
 ) -> Cell:
     if not isinstance(source, str):
         raise TypeError("cell source must be a string")
@@ -229,7 +222,6 @@ def _source_cell(
         source=source,
         mode=mode,
         key=key,
-        name=name,
         display=display,
         raw=raw,
         id=id,

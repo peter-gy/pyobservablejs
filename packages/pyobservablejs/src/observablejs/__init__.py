@@ -2,15 +2,10 @@
 
 from importlib.metadata import version as _version
 
+from . import types
 from ._cells import Cell, html, js, md, ojs
 from ._graph import CellInfo, DependencyEdge, NotebookGraph
-from ._notebook import (
-    CellValues,
-    Notebook,
-    NotebookCell,
-    NotebookView,
-    NotRenderedError,
-)
+from ._notebook import Notebook, NotebookCell, NotebookView
 from ._themes import NOTEBOOK_THEMES
 
 __version__ = _version("pyobservablejs")
@@ -19,17 +14,16 @@ __all__ = [
     "NOTEBOOK_THEMES",
     "Cell",
     "CellInfo",
-    "CellValues",
     "DependencyEdge",
     "Notebook",
     "NotebookCell",
     "NotebookView",
     "NotebookGraph",
-    "NotRenderedError",
     "html",
     "js",
     "md",
     "ojs",
+    "types",
 ]
 
 

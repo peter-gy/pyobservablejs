@@ -1,5 +1,5 @@
 import type { RenderProps } from "@anywidget/types";
-import { analyzeNotebook } from "@pyobservablejs/runtime";
+import { analyzeNotebook, notebookAffectedIndexes } from "@pyobservablejs/runtime";
 import { notebookViewIndexes, renderNotebookView } from "./composition";
 import { createTopLevelError } from "./dom";
 import {
@@ -31,9 +31,9 @@ export function renderNotebookViewModel(props: RenderProps<WidgetModel>): void {
 		void renderCurrentView(props, attemptSignal, resetAndRerender, readback, attempt, variables).catch(
 			(error: unknown) => {
 				if (!isCurrent()) return;
-				readback.cancel(attempt);
-				attemptController.abort();
 				props.el.replaceChildren(createTopLevelError(error));
+				readback.fail(attempt, error, "rendering");
+				attemptController.abort();
 			},
 		);
 	};
@@ -42,7 +42,7 @@ export function renderNotebookViewModel(props: RenderProps<WidgetModel>): void {
 		rerender();
 	};
 	const resetAndRerender: Rerender = (variables) => {
-		readback.invalidate();
+		readback.invalidate(true);
 		rerender(variables);
 	};
 	for (const event of VIEW_MODEL_CHANGE_EVENTS) props.model.on(event, invalidateAndRerender);
@@ -89,6 +89,9 @@ async function renderCurrentView(
 	const renderIndexes = notebookViewIndexes(analysis, selectedIndexes);
 	const cellKeys = readCellKeys(sessionModel);
 	readback.syncGraph(attempt, analysis, renderIndexes, cellKeys);
+	const beginInput = (names: ReadonlySet<string>) => {
+		readback.beginInput(attempt, notebookAffectedIndexes(analysis, names));
+	};
 	const session = openNotebookRuntimeSession({
 		model: sessionModel,
 		el: props.el,
@@ -96,6 +99,7 @@ async function renderCurrentView(
 		analysis,
 		signal,
 		onInputReset,
+		onInput: beginInput,
 		variablesOverride,
 	});
 	if (!session) return;

@@ -16,6 +16,8 @@ import sys
 from collections.abc import Collection, Iterable, Iterator, Mapping
 from typing import Any
 
+from .types import BrowserErrorValue
+
 TYPE_KEY = "__observablejs_type__"
 _MAX_SAFE_JS_INTEGER = 9_007_199_254_740_991
 
@@ -155,24 +157,6 @@ def validate_variable_name(
     return name
 
 
-def variable_updates_from_args(
-    name: str,
-    values: Mapping[str, Any] | Iterable[tuple[str, Any]] | None,
-    kwargs: Mapping[str, Any],
-) -> dict[str, Any]:
-    updates: dict[str, Any] = {}
-    if values is not None:
-        if isinstance(values, Mapping):
-            updates.update(values)
-        else:
-            try:
-                updates.update(dict(values))
-            except (TypeError, ValueError) as exc:
-                raise TypeError(f"{name} expects a mapping or key/value pairs") from exc
-    updates.update(kwargs)
-    return updates
-
-
 def serialize_value(value: Any) -> Any:
     """Convert one Python value into the JSON-compatible wire format."""
 
@@ -226,9 +210,9 @@ def deserialize_value(value: Any) -> Any:
     """Convert browser wire values into Python-facing values.
 
     Dates, bytes, array buffers, typed arrays, bigints, maps, sets, files, and
-    blobs are decoded to Python values or metadata. DOM elements, functions,
-    errors, regular expressions, circular references, and unknown tags become
-    strings or plain dictionaries.
+    blobs are decoded to Python values or metadata. DOM elements and functions
+    become readable strings. Error values become ``BrowserErrorValue`` records.
+    Other browser-only values become summaries or plain dictionaries.
     """
 
     if isinstance(value, list):
@@ -267,7 +251,10 @@ def deserialize_value(value: Any) -> Any:
     if tag == "function":
         return f"[Function {value.get('value')}]"
     if tag == "error":
-        return f"{value.get('name')}: {value.get('message')}"
+        return BrowserErrorValue(
+            name=str(value.get("name") or "Error"),
+            message=str(value.get("message") or ""),
+        )
     if tag == "regexp":
         return str(value.get("value"))
     if tag == "summary":

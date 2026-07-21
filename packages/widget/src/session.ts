@@ -24,6 +24,7 @@ type NotebookRuntimeSessionOptions = {
 	analysis: NotebookAnalysis;
 	signal: AbortSignal;
 	onInputReset(variables: Record<string, unknown>): void;
+	onInput(names: ReadonlySet<string>): void;
 	variablesOverride?: Record<string, unknown>;
 };
 
@@ -44,6 +45,7 @@ export function openNotebookRuntimeSession({
 	analysis,
 	signal,
 	onInputReset,
+	onInput,
 	variablesOverride,
 }: NotebookRuntimeSessionOptions): NotebookRuntimeSession | undefined {
 	prepareWidgetShell(el);
@@ -73,9 +75,15 @@ export function openNotebookRuntimeSession({
 			viewNames: notebookViewNamesFromAnalysis(analysis),
 			signal: sessionSignal,
 			onReset: onInputReset,
+			onInput,
 			writeViewValue: writeProgrammaticViewValue,
 		});
-		const viewSync = createRuntimeViewSync({ model, variables: variablesSync, signal: sessionSignal });
+		const viewSync = createRuntimeViewSync({
+			model,
+			variables: variablesSync,
+			signal: sessionSignal,
+			onInput,
+		});
 		signal.addEventListener("abort", cleanup, { once: true });
 		return { root, runtime, options, variablesSync, viewSync, signal: sessionSignal, cleanup };
 	} catch (error) {

@@ -7,24 +7,15 @@ import re
 from collections.abc import Mapping
 from typing import Any, Literal
 
+from .types import CellMode
+
 from ._themes import serialize_theme
 
-Mode = Literal[
-    "js",
-    "ts",
-    "ojs",
-    "md",
-    "html",
-    "tex",
-    "dot",
-    "sql",
-    "node",
-    "python",
-    "r",
-]
+Mode = CellMode
 RuntimeProfile = Literal["notebook-kit", "observable"]
 
 RUNTIME_PROFILE_ATTRIBUTE = "data-pyobservablejs-runtime-profile"
+CELL_KEY_ATTRIBUTE = "data-pyobservablejs-key"
 
 SCRIPT_TYPES = {
     "js": "module",
@@ -69,10 +60,13 @@ def _serialize_cell(item: Mapping[str, Any]) -> str:
     if script_type is None:
         raise ValueError(f"Unsupported Observable cell mode: {mode!r}")
     attrs = [f'id="{int(item["id"])}"', f'type="{script_type}"']
+    key = item.get("key")
+    if key is not None:
+        attrs.append(f'{CELL_KEY_ATTRIBUTE}="{_html.escape(str(key), quote=True)}"')
     for key in ("pinned", "hidden"):
         if item.get(key):
             attrs.append(f'{key}=""')
-    for key in ("database", "format", "name", "output"):
+    for key in ("database", "format", "output", "since"):
         value = item.get(key)
         if value is not None:
             attrs.append(f'{key}="{_html.escape(str(value), quote=True)}"')

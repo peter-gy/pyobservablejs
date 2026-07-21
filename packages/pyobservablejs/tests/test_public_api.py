@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import inspect
+from collections.abc import Mapping
 from importlib.metadata import version as package_version
-from typing import Any
+from typing import Any, assert_type, cast
 
 import observablejs as obs
 import pytest
@@ -14,17 +15,16 @@ def test_public_namespace_is_small() -> None:
         "NOTEBOOK_THEMES",
         "Cell",
         "CellInfo",
-        "CellValues",
         "DependencyEdge",
         "Notebook",
         "NotebookCell",
         "NotebookView",
         "NotebookGraph",
-        "NotRenderedError",
         "html",
         "js",
         "md",
         "ojs",
+        "types",
     }
     assert set(obs.__all__) == expected_public
     assert {name for name in dir(obs) if not name.startswith("_")} == expected_public
@@ -40,7 +40,7 @@ def test_public_object_discovery_matches_ownership_model() -> None:
     view = notebook.view()
 
     try:
-        assert {name for name in dir(notebook) if not name.startswith("_")} == {
+        assert {
             "attachments",
             "cell",
             "cells",
@@ -50,17 +50,19 @@ def test_public_object_discovery_matches_ownership_model() -> None:
             "from_observablehq_document",
             "replace_variables",
             "reset_variables",
+            "state",
             "theme",
             "to_notebook_html",
             "update_variables",
             "variables",
             "view",
-        }
-        assert {name for name in dir(notebook.cell(0)) if not name.startswith("_")} == {
+        } <= {name for name in dir(notebook) if not name.startswith("_")}
+        assert {
+            name for name in dir(notebook.cell("answer")) if not name.startswith("_")
+        } == {
+            "id",
             "index",
             "key",
-            "name",
-            "view",
         }
         assert all(
             not hasattr(view, name)
@@ -73,6 +75,67 @@ def test_public_object_discovery_matches_ownership_model() -> None:
         )
     finally:
         notebook.close()
+
+
+def test_view_and_variable_mutation_signatures_have_one_argument_shape() -> None:
+    view_parameters = tuple(inspect.signature(obs.Notebook.view).parameters.values())
+    assert [parameter.name for parameter in view_parameters] == ["self", "selectors"]
+    assert view_parameters[1].kind is inspect.Parameter.VAR_POSITIONAL
+
+    cell_parameters = tuple(inspect.signature(obs.Notebook.cell).parameters.values())
+    assert [parameter.name for parameter in cell_parameters] == ["self", "key"]
+    assert cell_parameters[1].annotation in {"str", str}
+
+    for method in (obs.Notebook.update_variables, obs.Notebook.replace_variables):
+        parameters = tuple(inspect.signature(method).parameters.values())
+        assert [parameter.name for parameter in parameters] == ["self", "values"]
+        assert parameters[1].kind is inspect.Parameter.POSITIONAL_ONLY
+
+
+def test_advanced_types_are_namespaced_and_complete() -> None:
+    assert set(obs.types.__all__) == {
+        "BrowserErrorValue",
+        "CellError",
+        "CellFormat",
+        "CellMode",
+        "CellResult",
+        "CellSelector",
+        "CellStatus",
+        "ErrorPhase",
+        "FileInput",
+        "FileSnapshot",
+        "FileSpec",
+        "NotebookKitCellMetadata",
+        "NotebookState",
+        "NotebookTheme",
+        "ObservableData",
+        "ObservableDisplay",
+        "ObservableDocument",
+        "ObservableFile",
+        "ObservableNode",
+        "ObservableSource",
+        "Theme",
+        "ThemePair",
+        "ThemeSnapshot",
+        "ViewError",
+        "ViewState",
+    }
+
+
+def test_state_traits_have_public_static_types() -> None:
+    notebook = obs.Notebook(
+        obs.ojs("answer = 42", key="answer"),
+        files={"data.csv": "https://example.test/data.csv"},
+    )
+    view = notebook.view()
+
+    assert_type(notebook.state, obs.types.NotebookState)
+    assert_type(view.state, obs.types.ViewState)
+    attachment = notebook.attachments["data.csv"]
+    assert_type(attachment, obs.types.FileSnapshot)
+    assert_type(attachment.get("url"), str | None)
+    mapping: Mapping[str, str | int] = attachment
+    assert mapping["url"] == "https://example.test/data.csv"
 
 
 def test_version_matches_package_metadata() -> None:
@@ -145,7 +208,6 @@ def test_notebook_themes_match_notebook_kit_theme_names() -> None:
             (
                 "source",
                 "key",
-                "name",
                 "display",
                 "raw",
                 "id",
@@ -179,7 +241,6 @@ def test_cell_options_serialize_to_notebook_html(
     cell = obs.ojs(
         "answer = 42",
         key="answer",
-        name="answer_cell",
         display=False,
         id=7,
         pinned=True,
@@ -197,7 +258,8 @@ def test_cell_options_serialize_to_notebook_html(
     assert scripts[0]["text"].strip() == "answer = 42"
     assert attrs.get("id") == "7"
     assert attrs.get("type") == "application/vnd.observable.javascript"
-    assert attrs.get("name") == "answer_cell"
+    assert attrs.get("data-pyobservablejs-key") == "answer"
+    assert attrs.get("name") is None
     assert attrs.get("output") == "answer"
     assert attrs.get("database") == "duckdb"
     assert "hidden" in attrs
@@ -261,13 +323,14 @@ def test_notebook_rejects_duplicate_explicit_cell_ids() -> None:
 
 def test_show_pinned_source_sets_renderer_option() -> None:
     notebook = obs.Notebook(
+        obs.ojs("plain = 1", pinned=False),
         obs.ojs("answer = 42", pinned=True),
         show_pinned_source=True,
     )
 
-    assert notebook_session(notebook).get_state(["_options"]) == {
-        "_options": {"show_source": True}
-    }
+    state = notebook_session(notebook).get_state(["_options", "_spec"])
+    assert state["_options"] == {"show_source": True}
+    assert [cell["pinned"] for cell in state["_spec"]["cells"]] == [False, True]
 
 
 def test_notebook_kit_sources_sync_notebook_kit_runtime_profile() -> None:
@@ -297,15 +360,18 @@ def test_observablehq_html_round_trip_preserves_classic_runtime_profile() -> Non
     restored = obs.Notebook.from_html(notebook.to_notebook_html())
 
     with pytest.raises(ValueError, match="Reserved Observable runtime name: 'require'"):
-        restored.update_variables(require="shadowed")
+        restored.update_variables({"require": "shadowed"})
 
 
-def test_cell_notebookkit_attrs_reject_first_class_option_collisions() -> None:
-    with pytest.raises(ValueError, match="first-class cell options: hidden, output"):
+def test_cell_notebookkit_attrs_reject_reserved_fields() -> None:
+    with pytest.raises(ValueError, match="reserved fields: hidden, output"):
         obs.ojs(
             "answer = 42",
             output="answer",
-            notebookkit_attrs={"hidden": True, "output": "other"},
+            notebookkit_attrs=cast(
+                Any,
+                {"hidden": True, "output": "other"},
+            ),
         )
 
 
@@ -314,7 +380,6 @@ def test_cell_and_helpers_share_one_first_class_schema() -> None:
         "answer = 42",
         mode="ojs",
         key="answer",
-        name="answer_cell",
         display=False,
         raw=True,
         id=7,
@@ -326,7 +391,6 @@ def test_cell_and_helpers_share_one_first_class_schema() -> None:
     actual = obs.ojs(
         "answer = 42",
         key="answer",
-        name="answer_cell",
         display=False,
         raw=True,
         id=7,
@@ -343,11 +407,11 @@ def test_cell_validates_mode_and_attribute_collisions_at_construction() -> None:
     with pytest.raises(ValueError, match="Unsupported Observable cell mode"):
         obs.Cell("answer = 42", mode=bad_mode)
 
-    with pytest.raises(ValueError, match="first-class cell options: name"):
+    with pytest.raises(ValueError, match="reserved fields: key, name"):
         obs.Cell(
             "answer = 42",
-            name="answer",
-            notebookkit_attrs={"name": "other"},
+            key="answer",
+            notebookkit_attrs=cast(Any, {"key": "other", "name": "answer"}),
         )
 
 
@@ -360,7 +424,7 @@ def test_cell_helpers_require_source_strings() -> None:
 
 @pytest.mark.parametrize("theme", obs.NOTEBOOK_THEMES)
 def test_notebook_accepts_shipped_notebook_kit_themes(
-    theme: str,
+    theme: obs.types.NotebookTheme,
     document_title: DocumentTitle,
 ) -> None:
     notebook = obs.Notebook(obs.ojs("answer = 42"), title="Demo", theme=theme)
@@ -375,7 +439,7 @@ def test_notebook_accepts_shipped_notebook_kit_themes(
 def test_notebook_theme_mapping_normalizes_and_serializes() -> None:
     notebook = obs.Notebook(
         obs.ojs("answer = 42"),
-        theme={"light": " Cotton ", "dark": "Near-Midnight"},
+        theme=cast(Any, {"light": " Cotton ", "dark": "Near-Midnight"}),
     )
 
     assert notebook.theme == {"light": "cotton", "dark": "near-midnight"}
@@ -401,7 +465,7 @@ def test_notebook_rejects_unsupported_themes(theme: Any) -> None:
 def test_notebook_theme_setter_syncs_spec_transport() -> None:
     notebook = obs.Notebook(obs.ojs("answer = 42"), theme="air")
 
-    notebook.theme = "slate"
+    cast(Any, notebook).theme = "slate"
 
     assert notebook.theme == "slate"
     state = notebook_session(notebook).get_state(["theme", "_spec"])
@@ -414,7 +478,7 @@ def test_closed_notebook_rejects_theme_mutation() -> None:
     notebook.close()
 
     with pytest.raises(RuntimeError, match="closed Notebook"):
-        notebook.theme = "slate"
+        cast(Any, notebook).theme = "slate"
 
     assert notebook.theme == "air"
     assert '<notebook theme="air">' in notebook.to_notebook_html()
@@ -429,7 +493,7 @@ def test_source_backed_notebook_theme_trait_is_source_owned() -> None:
     notebook = obs.Notebook.from_html(source)
 
     with pytest.raises(Exception, match="source HTML"):
-        notebook.theme = {"light": "cotton", "dark": "slate"}
+        cast(Any, notebook).theme = {"light": "cotton", "dark": "slate"}
 
     assert notebook.theme == "coffee"
     assert notebook.to_notebook_html() == source

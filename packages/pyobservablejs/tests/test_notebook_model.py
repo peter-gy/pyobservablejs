@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import cast
+
 import observablejs as obs
 import pytest
 from helpers import DocumentTitle, ScriptTags
@@ -33,6 +35,7 @@ def test_notebook_model_serializes_python_authored_nodes(
                 "id": 7,
                 "value": "answer = 42",
                 "mode": "ojs",
+                "key": "answer",
                 "pinned": True,
                 "output": "answer",
             }
@@ -41,8 +44,21 @@ def test_notebook_model_serializes_python_authored_nodes(
     [script] = script_tags(model.to_notebook_html())
     assert script["attrs"].get("id") == "7"
     assert script["attrs"].get("type") == "application/vnd.observable.javascript"
+    assert script["attrs"].get("data-pyobservablejs-key") == "answer"
     assert "name" not in script["attrs"]
     assert script["text"].strip() == "answer = 42"
+
+
+def test_notebook_model_rejects_name_identity_metadata() -> None:
+    with pytest.raises(ValueError, match="use key for public identity"):
+        NotebookNode.from_spec(
+            {
+                "id": 1,
+                "value": "answer = 42",
+                "mode": "ojs",
+                "name": "answer",
+            }
+        )
 
 
 def test_html_model_preserves_source_and_exposes_cell_nodes() -> None:
@@ -70,7 +86,6 @@ def test_html_model_preserves_source_and_exposes_cell_nodes() -> None:
             "id": 3,
             "value": "answer = 42",
             "mode": "ojs",
-            "name": "answer",
         }
     ]
 
@@ -179,7 +194,9 @@ def test_observablehq_document_model_accepts_nodes_and_files(
         ],
     }
 
-    model = notebook_model_from_observablehq_document(document)
+    model = notebook_model_from_observablehq_document(
+        cast(obs.types.ObservableDocument, document)
+    )
 
     assert model.title == "Hosted"
     assert model.attachments["flare-2.json"] == {
@@ -206,7 +223,9 @@ def test_observablehq_document_assigns_unused_ids_to_invalid_inputs() -> None:
         ]
     }
 
-    model = notebook_model_from_observablehq_document(document)
+    model = notebook_model_from_observablehq_document(
+        cast(obs.types.ObservableDocument, document)
+    )
 
     assert [node.id for node in model.nodes] == [2, 1, 3, 4, 5]
 
@@ -222,7 +241,9 @@ def test_observablehq_document_falls_back_for_non_ascii_integer_ids(
         ]
     }
 
-    model = notebook_model_from_observablehq_document(document)
+    model = notebook_model_from_observablehq_document(
+        cast(obs.types.ObservableDocument, document)
+    )
 
     assert [node.id for node in model.nodes] == [1, 2]
 
@@ -234,14 +255,18 @@ def test_observablehq_document_rejects_unsafe_explicit_ids(
     document = {"nodes": [{"id": cell_id, "mode": "md", "value": "unsafe"}]}
 
     with pytest.raises(ValueError, match="between 1 and 9007199254740991"):
-        notebook_model_from_observablehq_document(document)
+        notebook_model_from_observablehq_document(
+            cast(obs.types.ObservableDocument, document)
+        )
 
 
 def test_observablehq_document_rejects_oversized_decimal_strings() -> None:
     document = {"nodes": [{"id": "9" * 5000, "mode": "md", "value": "unsafe"}]}
 
     with pytest.raises(ValueError, match="between 1 and 9007199254740991"):
-        notebook_model_from_observablehq_document(document)
+        notebook_model_from_observablehq_document(
+            cast(obs.types.ObservableDocument, document)
+        )
 
 
 def test_observablehq_document_rejects_duplicate_explicit_ids() -> None:
@@ -253,17 +278,19 @@ def test_observablehq_document_rejects_duplicate_explicit_ids() -> None:
     }
 
     with pytest.raises(ValueError, match="Notebook cell ids must be unique: 7"):
-        notebook_model_from_observablehq_document(document)
+        notebook_model_from_observablehq_document(
+            cast(obs.types.ObservableDocument, document)
+        )
 
 
 def test_notebook_accepts_observablehq_document_nodes_with_files(
     document_title: DocumentTitle,
     script_tags: ScriptTags,
 ) -> None:
-    nodes = [
+    nodes: list[obs.types.ObservableNode] = [
         {"id": 1, "mode": "js", "value": "answer = 42", "pinned": True},
     ]
-    files = [
+    files: list[obs.types.ObservableFile] = [
         {
             "name": "rows.csv",
             "download_url": "https://static.example/rows.csv",

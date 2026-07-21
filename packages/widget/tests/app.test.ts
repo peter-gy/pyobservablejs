@@ -13,6 +13,30 @@ import {
 } from "./testing";
 
 describe("widget graph and notebook readback", () => {
+	test("shows source only for cells explicitly pinned by Python", async () => {
+		const { view, host } = createNotebookFixture({
+			_spec: {
+				cells: [
+					{ id: 1, mode: "js", value: "const plain = 1;", pinned: false },
+					{ id: 2, mode: "js", value: "const featured = 2;", pinned: true },
+				],
+			},
+			_options: { show_source: true },
+			_cell_keys: ["plain", "featured"],
+		});
+		const controller = new AbortController();
+		const el = document.createElement("div");
+
+		try {
+			widget.render(renderProps(view, el, controller.signal, host));
+			const panel = await waitFor(() => el.querySelector<HTMLElement>(".pyobservablejs-source-panel") ?? undefined);
+			expect(el.querySelectorAll(".pyobservablejs-source-panel")).toHaveLength(1);
+			expect(panel.textContent).toContain("const featured = 2;");
+		} finally {
+			controller.abort();
+		}
+	});
+
 	test("marks an empty notebook rendered with a complete graph", async () => {
 		const { view, host } = createNotebookFixture({ _spec: { cells: [] } });
 		const controller = new AbortController();
@@ -21,7 +45,13 @@ describe("widget graph and notebook readback", () => {
 			widget.render(renderProps(view, document.createElement("div"), controller.signal, host));
 			expect(await waitFor(() => (hasRendered(view) ? true : undefined))).toBe(true);
 			expect(graphValue(view)).toEqual({ cells: [], edges: [] });
-			expect(view.savedReadbacks().at(-1)).toMatchObject({ rendered: true, cells: {} });
+			expect(view.savedReadbacks().at(-1)).toMatchObject({
+				input_revision: 0,
+				settled_revision: 0,
+				pending: false,
+				results: {},
+				errors: [],
+			});
 		} finally {
 			controller.abort();
 		}
@@ -50,6 +80,30 @@ describe("widget graph and notebook readback", () => {
 		expect(await waitFor(() => (variableValue(view, "readout") === 43 ? 43 : undefined))).toBe(43);
 		expect(await waitFor(() => (hasRendered(view) ? true : undefined))).toBe(true);
 		controller.abort();
+	});
+
+	test("publishes only internally consistent readback snapshots", async () => {
+		const { view, host } = createNotebookFixture({
+			_spec: { cells: [{ id: 1, mode: "ojs", value: "answer = 42" }] },
+			_cell_keys: ["answer"],
+		});
+		const controller = new AbortController();
+
+		try {
+			widget.render(renderProps(view, document.createElement("div"), controller.signal, host));
+			await waitFor(() => (hasRendered(view) ? true : undefined));
+
+			expect(
+				view.savedReadbacks().every((snapshot) => {
+					if (snapshot.input_revision === null) {
+						return snapshot.settled_revision === null && !snapshot.pending;
+					}
+					return snapshot.pending || snapshot.settled_revision === snapshot.input_revision;
+				}),
+			).toBe(true);
+		} finally {
+			controller.abort();
+		}
 	});
 
 	test("marks a multi-output cell and notebook rendered after every output settles", async () => {
@@ -81,7 +135,7 @@ describe("widget graph and notebook readback", () => {
 		try {
 			widget.render(renderProps(view, document.createElement("div"), controller.signal, host));
 			await waitFor(() => (evaluationStarted ? true : undefined));
-			expect(cellRecord(view, 0)).toBeUndefined();
+			expect(cellRecord(view, 0)).toMatchObject({ status: "pending", values: {}, errors: [] });
 			expect(hasRendered(view)).toBe(false);
 
 			resolveY(2);
@@ -121,7 +175,8 @@ describe("widget graph and notebook readback", () => {
 			widget.render(renderProps(view, document.createElement("div"), controller.signal, host));
 			await waitFor(() => (delayedEvaluationStarted ? true : undefined));
 
-			expect(cellRecord(view, 0)).toBeUndefined();
+			expect(cellRecord(view, 0)).toMatchObject({ status: "success", values: { answer: 42 } });
+			expect(cellRecord(view, 1)).toMatchObject({ status: "pending", values: {}, errors: [] });
 			expect(hasRendered(view)).toBe(false);
 
 			resolveDelayed(7);
@@ -133,13 +188,64 @@ describe("widget graph and notebook readback", () => {
 				snapshots.every((snapshot, index) => index === 0 || snapshot.revision > snapshots[index - 1]!.revision),
 			).toBe(true);
 			expect(snapshots.at(-1)).toMatchObject({
-				rendered: true,
+				pending: false,
 				graph: { cells: [{ index: 0 }, { index: 1 }] },
-				cells: { "0": { rendered: true }, "1": { rendered: true } },
+				results: { "0": { status: "success" }, "1": { status: "success" } },
 			});
 		} finally {
 			controller.abort();
 			Reflect.deleteProperty(globalThis, "__pyobservablejsDelayedValue");
+		}
+	});
+
+	test("keeps an unaffected cell pending across an overlapping input revision", async () => {
+		let resolveSlow!: (value: number) => void;
+		let slowEvaluationStarted = false;
+		const slow = new Promise<number>((resolve) => {
+			resolveSlow = resolve;
+		});
+		Object.defineProperty(globalThis, "__pyobservablejsOverlappingSlow", {
+			configurable: true,
+			get() {
+				slowEvaluationStarted = true;
+				return slow;
+			},
+		});
+		const { session, view, host } = createNotebookFixture({
+			_spec: {
+				cells: [
+					{ id: 1, mode: "ojs", value: "slow = await globalThis.__pyobservablejsOverlappingSlow" },
+					{ id: 2, mode: "ojs", value: "doubled = base * 2" },
+				],
+			},
+			_variables: { base: 1 },
+			_cell_keys: ["slow", "doubled"],
+		});
+		const controller = new AbortController();
+		try {
+			widget.render(renderProps(view, document.createElement("div"), controller.signal, host));
+			await waitFor(() => (slowEvaluationStarted ? true : undefined));
+			expect(await waitFor(() => (variableValue(view, "doubled") === 2 ? true : undefined))).toBe(true);
+
+			session.set("_variable_update", { seq: 1, kind: "set", values: { base: 2 } });
+			session.set("_variables", { base: 2 });
+			expect(await waitFor(() => (variableValue(view, "doubled") === 4 ? true : undefined))).toBe(true);
+			expect(cellRecord(view, 0)).toMatchObject({ status: "pending" });
+			expect(view.savedReadbacks().at(-1)).toMatchObject({ pending: true });
+
+			resolveSlow(7);
+			expect(await waitFor(() => (variableValue(view, "slow") === 7 ? true : undefined), 1500)).toBe(true);
+			expect(await waitFor(() => (hasRendered(view) ? true : undefined), 1500)).toBe(true);
+			expect(view.savedReadbacks().at(-1)).toMatchObject({
+				pending: false,
+				results: {
+					"0": { status: "success", values: { slow: 7 } },
+					"1": { status: "success", values: { doubled: 4 } },
+				},
+			});
+		} finally {
+			controller.abort();
+			Reflect.deleteProperty(globalThis, "__pyobservablejsOverlappingSlow");
 		}
 	});
 
@@ -222,9 +328,14 @@ describe("widget graph and notebook readback", () => {
 		widget.render(renderProps(view, document.createElement("div"), controller.signal, host));
 
 		expect(await waitFor(() => (variableValue(view, "readout") === 43 ? 43 : undefined))).toBe(43);
-		const error = await waitFor(() => variableValue(view, "broken") as Record<string, unknown> | undefined);
-		expect(error).toMatchObject({ __observablejs_type__: "error", name: "RuntimeError" });
-		expect(String(error.message)).toContain("missing is not defined");
+		const broken = await waitFor(() => {
+			const result = cellRecord(view, 2);
+			return result?.status === "error" ? result : undefined;
+		});
+		expect(broken.values).toEqual({});
+		expect(broken.errors).toHaveLength(1);
+		expect(broken.errors[0]).toMatchObject({ phase: "evaluation" });
+		expect(String((broken.errors[0] as { message?: unknown }).message)).toContain("missing is not defined");
 		controller.abort();
 	});
 
@@ -311,7 +422,7 @@ describe("widget graph and notebook readback", () => {
 			session.set("_variables", { base: 2 });
 
 			expect(hasRendered(view)).toBe(false);
-			expect(cellRecord(view, 0)).toBeUndefined();
+			expect(cellRecord(view, 0)).toMatchObject({ status: "pending", values: {}, errors: [] });
 			expect(graphValue(view)).toBeUndefined();
 
 			resolveGate(0);
@@ -333,8 +444,253 @@ describe("widget graph and notebook readback", () => {
 
 		expect(await waitFor(() => alertText(el))).toContain("SyntaxError");
 		expect(await waitFor(() => (hasRendered(view) ? true : undefined))).toBe(true);
-		expect(cellRecord(view, 0)).toMatchObject({ rendered: true, values: {} });
+		expect(cellRecord(view, 0)).toMatchObject({ status: "error", values: {} });
+		expect(cellRecord(view, 0)?.errors[0]).toMatchObject({ phase: "analysis" });
 		controller.abort();
+	});
+
+	test("returns intentional JavaScript Error values as successful structured data", async () => {
+		const { view, host } = createNotebookFixture({
+			_spec: { cells: [{ id: 1, mode: "ojs", value: 'problem = new TypeError("invalid value")' }] },
+			_cell_keys: ["problem"],
+		});
+		const controller = new AbortController();
+		widget.render(renderProps(view, document.createElement("div"), controller.signal, host));
+
+		const result = await waitFor(() => {
+			const current = cellRecord(view, 0);
+			return current?.status === "success" ? current : undefined;
+		});
+		expect(result.errors).toEqual([]);
+		expect(result.values.problem).toEqual({
+			__observablejs_type__: "error",
+			name: "TypeError",
+			message: "invalid value",
+		});
+		controller.abort();
+	});
+
+	test("keeps successful outputs beside a rejected output error", async () => {
+		const { view, host } = createNotebookFixture({
+			_spec: {
+				cells: [
+					{
+						id: 1,
+						mode: "js",
+						value: 'const good = 42; const bad = Promise.reject(new TypeError("invalid value"));',
+					},
+				],
+			},
+			_cell_keys: ["mixed"],
+		});
+		const controller = new AbortController();
+		widget.render(renderProps(view, document.createElement("div"), controller.signal, host));
+
+		const result = await waitFor(() => {
+			const current = cellRecord(view, 0);
+			return current?.status === "error" ? current : undefined;
+		});
+		expect(result.values).toEqual({ good: 42 });
+		expect(result.errors).toHaveLength(1);
+		expect(result.errors[0]).toMatchObject({
+			name: "RuntimeError",
+			message: "invalid value",
+			phase: "evaluation",
+			variable: "bad",
+		});
+		controller.abort();
+	});
+
+	test("classifies hidden output serialization failures", async () => {
+		const { view, host } = createNotebookFixture({
+			_spec: {
+				cells: [
+					{
+						id: 1,
+						mode: "ojs",
+						hidden: true,
+						value: `value = new Proxy({}, {
+  ownKeys() { throw new TypeError("cannot serialize"); }
+})`,
+					},
+				],
+			},
+			_cell_keys: ["value"],
+		});
+		const controller = new AbortController();
+		widget.render(renderProps(view, document.createElement("div"), controller.signal, host));
+
+		const result = await waitFor(() => {
+			const current = cellRecord(view, 0);
+			return current?.status === "error" ? current : undefined;
+		});
+		expect(result.errors[0]).toMatchObject({
+			name: "TypeError",
+			message: "cannot serialize",
+			phase: "serialization",
+			variable: "value",
+		});
+		controller.abort();
+	});
+
+	test("classifies display inspection failures as rendering errors", async () => {
+		const { view, host } = createNotebookFixture({
+			_spec: {
+				cells: [
+					{
+						id: 1,
+						mode: "ojs",
+						value: `new Proxy({}, {
+  ownKeys() { throw new TypeError("cannot inspect"); }
+})`,
+					},
+				],
+			},
+			_cell_keys: ["preview"],
+		});
+		const controller = new AbortController();
+		widget.render(renderProps(view, document.createElement("div"), controller.signal, host));
+
+		const result = await waitFor(() => {
+			const current = cellRecord(view, 0);
+			return current?.status === "error" ? current : undefined;
+		});
+		expect(result.errors[0]).toMatchObject({
+			name: "TypeError",
+			message: "cannot inspect",
+			phase: "rendering",
+			variable: "preview",
+		});
+		controller.abort();
+	});
+
+	test("reports named display failures beside successfully serialized values", async () => {
+		const { view, host } = createNotebookFixture({
+			_spec: {
+				cells: [
+					{
+						id: 1,
+						mode: "ojs",
+						value: `value = new Proxy({}, {
+  get(target, property) {
+    if (property === Symbol.toStringTag) throw new TypeError("cannot inspect");
+    return Reflect.get(target, property);
+  }
+})`,
+					},
+				],
+			},
+			_cell_keys: ["value"],
+		});
+		const controller = new AbortController();
+		widget.render(renderProps(view, document.createElement("div"), controller.signal, host));
+
+		const result = await waitFor(() => {
+			const current = cellRecord(view, 0);
+			return current?.status === "error" ? current : undefined;
+		});
+		expect(result.values).toEqual({ value: {} });
+		expect(result.errors).toContainEqual({
+			name: "TypeError",
+			message: "cannot inspect",
+			phase: "rendering",
+		});
+		controller.abort();
+	});
+
+	test("recovers a failed cell on the next Python input revision", async () => {
+		const { session, view, host } = createNotebookFixture({
+			_spec: {
+				cells: [
+					{
+						id: 1,
+						mode: "ojs",
+						value: `answer = {
+  if (broken) throw new TypeError("invalid value");
+  return 42;
+}`,
+					},
+				],
+			},
+			_variables: { broken: true },
+			_cell_keys: ["answer"],
+		});
+		const controller = new AbortController();
+		widget.render(renderProps(view, document.createElement("div"), controller.signal, host));
+
+		const failed = await waitFor(() => {
+			const current = cellRecord(view, 0);
+			return current?.status === "error" ? current : undefined;
+		});
+		const failedRevision = failed.revision;
+		expect(view.savedReadbacks().at(-1)).toMatchObject({
+			input_revision: failedRevision,
+			settled_revision: failedRevision,
+			pending: false,
+		});
+
+		session.set("_variable_update", { seq: 1, kind: "set", values: { broken: false } });
+		session.set("_variables", { broken: false });
+
+		const recovered = await waitFor(() => {
+			const current = cellRecord(view, 0);
+			return current?.status === "success" && current.revision > failedRevision ? current : undefined;
+		});
+		expect(recovered.values).toEqual({ answer: 42 });
+		expect(recovered.errors).toEqual([]);
+		expect(view.savedReadbacks().at(-1)).toMatchObject({
+			input_revision: recovered.revision,
+			settled_revision: recovered.revision,
+			pending: false,
+		});
+		controller.abort();
+	});
+
+	test("opens a fresh revision for spontaneous generator output", async () => {
+		let releaseNext!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			releaseNext = resolve;
+		});
+		Object.defineProperty(globalThis, "__pyobservablejsPulseSequence", {
+			configurable: true,
+			value: async function* () {
+				yield 1;
+				await gate;
+				yield 2;
+			},
+		});
+		const { view, host } = createNotebookFixture({
+			_spec: {
+				cells: [{ id: 1, mode: "ojs", value: "pulse = globalThis.__pyobservablejsPulseSequence()" }],
+			},
+			_cell_keys: ["pulse"],
+		});
+		const controller = new AbortController();
+		try {
+			widget.render(renderProps(view, document.createElement("div"), controller.signal, host));
+			const first = await waitFor(() => {
+				const current = cellRecord(view, 0);
+				return current?.status === "success" && current.values.pulse === 1 ? current : undefined;
+			});
+
+			releaseNext();
+
+			const second = await waitFor(() => {
+				const current = cellRecord(view, 0);
+				return current?.status === "success" && current.revision > first.revision && current.values.pulse === 2
+					? current
+					: undefined;
+			}, 1500);
+			expect(second.errors).toEqual([]);
+			expect(view.savedReadbacks().at(-1)).toMatchObject({
+				input_revision: second.revision,
+				settled_revision: second.revision,
+				pending: false,
+			});
+		} finally {
+			controller.abort();
+			Reflect.deleteProperty(globalThis, "__pyobservablejsPulseSequence");
+		}
 	});
 
 	test("ending the widget lifecycle disconnects session updates", async () => {

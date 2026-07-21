@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import dataclasses
 import pathlib
+import types as _types
 import weakref
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any, cast
@@ -12,9 +12,9 @@ import anywidget
 import traitlets
 from anywidget_bundle import Bundle, BundledWidget
 
-from ._cells import NotebookCellInput
-from ._files import FileAttachment, FileInput
-from ._graph import NotebookGraph, graph_from_raw
+from ._cells import Cell, NotebookCellInput
+from ._files import FileAttachment
+from ._graph import graph_from_raw
 from ._model import (
     NotebookModel,
     notebook_model_from_cells,
@@ -22,16 +22,29 @@ from ._model import (
     notebook_model_from_observablehq,
     notebook_model_from_observablehq_document,
 )
-from ._observable import ObservableDocument
 from ._serialize import serialize
-from ._themes import Theme, normalize_theme
+from ._themes import normalize_theme
+from .types import (
+    CellError,
+    CellResult,
+    CellSelector,
+    CellStatus,
+    ErrorPhase,
+    FileInput,
+    FileSnapshot,
+    NotebookState,
+    ObservableDocument,
+    Theme,
+    ThemeSnapshot,
+    ViewError,
+    ViewState,
+)
 from ._variables import (
     OBSERVABLE_RESERVED_VARIABLE_NAMES,
     deserialize_value,
     prepare_variables,
     same_wire_value,
     validate_variable_name,
-    variable_updates_from_args,
 )
 
 _WIDGET_TRAIT = anywidget.WidgetTrait()
@@ -44,24 +57,19 @@ _OBSERVABLE_WIDGET_BUNDLE = Bundle(
     dev_server_env=_OBSERVABLE_WIDGET_DEV_SERVER_ENV,
 )
 _MISSING_VARIABLE = object()
+_MAX_SAFE_REVISION = (1 << 53) - 1
 
 
-def _require_sequence_container(value: object, *, message: str) -> None:
-    if isinstance(value, str | bytes | bytearray) or not isinstance(value, Sequence):
-        raise TypeError(message)
-
-
-class NotRenderedError(RuntimeError):
-    """Raised when browser-synchronized view state is read before render."""
-
-
-@dataclasses.dataclass(frozen=True)
-class CellValues:
-    """Browser-synchronized values for one rendered cell."""
-
-    index: int
-    key: str | None
-    values: dict[str, Any]
+def _freeze(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return _types.MappingProxyType(
+            {str(key): _freeze(item) for key, item in value.items()}
+        )
+    if isinstance(value, list | tuple):
+        return tuple(_freeze(item) for item in value)
+    if isinstance(value, set | frozenset):
+        return frozenset(_freeze(item) for item in value)
+    return value
 
 
 class _ObservableWidget(BundledWidget):
@@ -71,7 +79,7 @@ class _ObservableWidget(BundledWidget):
 
 
 class NotebookCell:
-    """Stable selection handle for one notebook cell."""
+    """Canonical handle for one cell owned by a ``Notebook``."""
 
     __slots__ = ("_owner", "_index")
     _owner: Notebook
@@ -95,20 +103,15 @@ class NotebookCell:
 
     @property
     def key(self) -> str | None:
-        """Python selection key assigned to this cell."""
+        """Public cell identity, or ``None`` for an anonymous cell."""
 
         return self._owner._session._cell_keys[self._index] or None
 
     @property
-    def name(self) -> str | None:
-        """Notebook Kit name assigned to this cell."""
+    def id(self) -> int:
+        """Notebook Kit serialization identifier."""
 
-        return self._owner._session._cell_names[self._index] or None
-
-    def view(self) -> NotebookView:
-        """Create a display model for this cell and its dependencies."""
-
-        return self._owner.view([self])
+        return self._owner._session._cell_ids[self._index]
 
 
 class _NotebookSession(anywidget.AnyWidget):
@@ -145,13 +148,16 @@ class _NotebookSession(anywidget.AnyWidget):
             else frozenset()
         )
         self._variable_values, variable_wire = self._prepare_variables(variables)
-        self._cell_names = tuple(model.cell_names)
+        self._cell_ids = tuple(node.id for node in model.nodes)
         self._views: weakref.WeakSet[NotebookView] = weakref.WeakSet()
         self._notebook_closed = False
         self._variable_update_seq = 0
         spec = dict(model.spec)
         if not model.source:
             spec["theme"] = model.theme
+            spec["cells"] = [
+                {**node.to_spec(), "pinned": node.pinned} for node in model.nodes
+            ]
         self._initializing_notebook = True
         try:
             super().__init__(
@@ -199,30 +205,29 @@ class _NotebookSession(anywidget.AnyWidget):
 
     def update_variables(
         self,
-        values: Mapping[str, Any] | Iterable[tuple[str, Any]] | None = None,
+        values: Mapping[str, object],
         /,
-        **kwargs: Any,
-    ) -> None:
+    ) -> bool:
         self._require_open()
-        updates = variable_updates_from_args("update_variables", values, kwargs)
-        if updates:
-            self._patch_variables(updates)
+        if not isinstance(values, Mapping):
+            raise TypeError("update_variables expects one mapping")
+        return bool(values) and self._patch_variables(values)
 
     def replace_variables(
         self,
-        values: Mapping[str, Any] | Iterable[tuple[str, Any]] | None = None,
+        values: Mapping[str, object],
         /,
-        **kwargs: Any,
-    ) -> None:
+    ) -> bool:
         self._require_open()
-        replacement = variable_updates_from_args("replace_variables", values, kwargs)
-        prepared, serialized = self._prepare_variables(replacement)
-        self._apply_variable_replacement(prepared, serialized)
+        if not isinstance(values, Mapping):
+            raise TypeError("replace_variables expects one mapping")
+        prepared, serialized = self._prepare_variables(values)
+        return self._apply_variable_replacement(prepared, serialized)
 
-    def reset_variables(self, *names: str) -> None:
+    def reset_variables(self, *names: str) -> bool:
         self._require_open()
         if not names:
-            return
+            return False
         validated_names = tuple(self._validate_variable_name(name) for name in names)
         values = dict(self._variable_values)
         serialized = dict(self._variables)
@@ -233,13 +238,14 @@ class _NotebookSession(anywidget.AnyWidget):
                 serialized.pop(name, None)
                 changed = True
         if changed:
-            self._apply_variable_replacement(values, serialized)
+            return self._apply_variable_replacement(values, serialized)
+        return False
 
     def _require_open(self) -> None:
         if self._notebook_closed:
             raise RuntimeError("Cannot mutate a closed Notebook")
 
-    def _patch_variables(self, updates: Mapping[str, Any]) -> None:
+    def _patch_variables(self, updates: Mapping[str, Any]) -> bool:
         prepared_updates, serialized_updates = self._prepare_variables(updates)
         cleared_view_names = self._clear_view_values(serialized_updates)
         changed = {
@@ -251,7 +257,7 @@ class _NotebookSession(anywidget.AnyWidget):
             )
         }
         if not changed:
-            return
+            return False
         changed_wire = {name: serialized_updates[name] for name in changed}
         self._variable_values = {**self._variable_values, **changed}
         self._variable_update_seq += 1
@@ -264,6 +270,7 @@ class _NotebookSession(anywidget.AnyWidget):
             },
         )
         self.set_trait("_variables", {**self._variables, **changed_wire})
+        return True
 
     def _prepare_variables(
         self, values: Mapping[str, Any] | None
@@ -280,11 +287,11 @@ class _NotebookSession(anywidget.AnyWidget):
         self,
         values: Mapping[str, Any],
         serialized: Mapping[str, Any],
-    ) -> None:
+    ) -> bool:
         python_names = set(self._variable_values).union(serialized)
         cleared_view_names = self._clear_view_values(python_names)
         if same_wire_value(self._variables, serialized) and not cleared_view_names:
-            return
+            return False
         self._variable_values = dict(values)
         wire = dict(serialized)
         self._variable_update_seq += 1
@@ -297,6 +304,7 @@ class _NotebookSession(anywidget.AnyWidget):
             },
         )
         self.set_trait("_variables", wire)
+        return True
 
     def _clear_view_values(self, names: Iterable[str]) -> set[str]:
         cleared_names = set(names).intersection(self._view_values)
@@ -323,23 +331,23 @@ class _NotebookSession(anywidget.AnyWidget):
         super().close()
 
 
-class Notebook:
+class Notebook(traitlets.HasTraits):
     """Notebook definition and Python-owned session state.
 
-    The browser evaluates the definition through a ``NotebookView`` created by
-    ``view()`` or by a ``NotebookCell`` handle.
+    ``state`` is a detached read-only snapshot. Observe that trait in reactive
+    environments and use the mutation methods to change variables or ``theme``.
     """
 
-    __slots__ = ("_session", "_cell_cache")
+    state: NotebookState = cast(Any, traitlets.Any(read_only=True))
 
     def __init__(
         self,
         *cells: NotebookCellInput,
         title: str = "Untitled",
-        theme: str | Mapping[str, str] = "air",
+        theme: Theme = "air",
         files: Mapping[str, FileInput] | None = None,
         base_path: str | pathlib.Path | None = None,
-        variables: Mapping[str, Any] | None = None,
+        variables: Mapping[str, object] | None = None,
         show_pinned_source: bool = False,
     ) -> None:
         """Create a notebook from Python-authored cells."""
@@ -362,7 +370,7 @@ class Notebook:
         cls,
         model: NotebookModel,
         *,
-        variables: Mapping[str, Any] | None,
+        variables: Mapping[str, object] | None,
         show_pinned_source: bool,
     ) -> Notebook:
         notebook = cls.__new__(cls)
@@ -377,128 +385,157 @@ class Notebook:
         self,
         model: NotebookModel,
         *,
-        variables: Mapping[str, Any] | None,
+        variables: Mapping[str, object] | None,
         show_pinned_source: bool,
     ) -> None:
+        traitlets.HasTraits.__init__(self)
         self._cell_cache: dict[int, NotebookCell] = {}
         self._session = _NotebookSession(
             model,
             variables=variables,
             show_pinned_source=show_pinned_source,
         )
+        self._publish_state()
+
+    def _publish_state(self) -> None:
+        variables = deserialize_value(self._session._variables)
+        snapshot = NotebookState(
+            variables=cast(Mapping[str, object], _freeze(variables)),
+            attachments=cast(
+                Mapping[str, FileSnapshot],
+                _freeze(dict(self._session._attachments)),
+            ),
+            theme=cast(ThemeSnapshot, _freeze(self._session.theme)),
+        )
+        self.set_trait("state", snapshot)
 
     @property
-    def variables(self) -> dict[str, Any]:
-        """Current Python-owned Observable variables."""
+    def variables(self) -> Mapping[str, object]:
+        """Detached read-only snapshot of Python-owned variables.
 
-        return self._session.variables
+        Mutating construction inputs does not change the session. The snapshot
+        cannot update the notebook. Use ``update_variables``,
+        ``replace_variables``, or ``reset_variables`` for writes and observe
+        ``state`` in reactive environments.
+        """
+
+        return self.state.variables
 
     @property
-    def attachments(self) -> dict[str, FileAttachment]:
-        """File records registered with ``FileAttachment`` in each view."""
+    def attachments(self) -> Mapping[str, FileSnapshot]:
+        """Detached read-only snapshot of normalized file records.
 
-        return self._session.attachments
+        Mutating construction inputs does not change the session. The snapshot
+        cannot update the notebook. Create a new notebook to change attachments
+        and observe ``state`` in reactive environments.
+        """
+
+        return self.state.attachments
 
     @property
-    def theme(self) -> Theme:
-        """Notebook Kit theme used by each view."""
+    def theme(self) -> ThemeSnapshot:
+        """Immutable snapshot of the Notebook Kit theme.
 
-        return cast(Theme, self._session.theme)
+        Mutating construction inputs does not change the session. Assign this
+        property to update the notebook and observe ``state`` in reactive
+        environments.
+        """
+
+        return self.state.theme
 
     @theme.setter
-    def theme(self, value: str | Mapping[str, str]) -> None:
+    def theme(self, value: Theme) -> None:
+        previous = self._session.theme
         self._session.theme = value
+        if previous != self._session.theme:
+            self._publish_state()
 
     def update_variables(
         self,
-        values: Mapping[str, Any] | Iterable[tuple[str, Any]] | None = None,
+        values: Mapping[str, object],
         /,
-        **kwargs: Any,
     ) -> None:
         """Merge Python-owned variable updates into every active view."""
 
-        self._session.update_variables(values, **kwargs)
+        if self._session.update_variables(values):
+            self._publish_state()
 
     def replace_variables(
         self,
-        values: Mapping[str, Any] | Iterable[tuple[str, Any]] | None = None,
+        values: Mapping[str, object],
         /,
-        **kwargs: Any,
     ) -> None:
         """Replace the Python-owned variable environment for every active view."""
 
-        self._session.replace_variables(values, **kwargs)
+        if self._session.replace_variables(values):
+            self._publish_state()
 
     def reset_variables(self, *names: str) -> None:
         """Release Python ownership of variables in every active view."""
 
-        self._session.reset_variables(*names)
+        if self._session.reset_variables(*names):
+            self._publish_state()
 
     @property
     def cells(self) -> tuple[NotebookCell, ...]:
         """Cell handles in notebook order."""
 
-        return tuple(self.cell(index) for index in range(len(self._session._cell_keys)))
+        return tuple(
+            self._cell_at(index) for index in range(len(self._session._cell_keys))
+        )
 
-    def cell(self, selector: int | str) -> NotebookCell:
-        """Return a cell by zero-based index or Python selection key."""
+    def cell(self, key: str) -> NotebookCell:
+        """Return the cell identified by the unique public ``key``."""
 
-        if isinstance(selector, int) and not isinstance(selector, bool):
-            count = len(self._session._cell_keys)
-            index = selector if selector >= 0 else count + selector
-            if index < 0 or index >= count:
-                raise IndexError("notebook cell index out of range")
-        elif isinstance(selector, str):
-            matches = [
-                index
-                for index, key in enumerate(self._session._cell_keys)
-                if key and key == selector
-            ]
-            if not matches:
-                raise KeyError(f"Unknown Observable cell key: {selector!r}")
-            if len(matches) > 1:
-                raise KeyError(f"Ambiguous Observable cell key: {selector!r}")
-            index = matches[0]
-        else:
-            raise TypeError("cell selector must be an integer index or string key")
+        if not isinstance(key, str):
+            raise TypeError("cell key must be a string")
+        matches = [
+            index
+            for index, candidate in enumerate(self._session._cell_keys)
+            if candidate and candidate == key
+        ]
+        if not matches:
+            raise KeyError(f"Unknown Observable cell key: {key!r}")
+        if len(matches) > 1:
+            raise KeyError(f"Ambiguous Observable cell key: {key!r}")
+        return self._cell_at(matches[0])
+
+    def _cell_at(self, index: int) -> NotebookCell:
         cached = self._cell_cache.get(index)
         if cached is None:
             cached = NotebookCell._create(self, index)
             self._cell_cache[index] = cached
         return cached
 
-    def view(
-        self,
-        cells: Sequence[int | str | NotebookCell] | None = None,
-    ) -> NotebookView:
-        """Create a display model for all cells or an explicit selection."""
+    def view(self, *selectors: CellSelector) -> NotebookView:
+        """Create one view for all cells or positional cell selectors.
+
+        Selectors may be keys, keyed authored ``Cell`` objects, or
+        ``NotebookCell`` handles from this notebook. Selected outputs render in
+        notebook order.
+        """
 
         self._session._require_open()
-        indexes = None if cells is None else self._normalize_view_cells(cells)
+        indexes = None if not selectors else self._normalize_view_cells(selectors)
         return NotebookView._create(self, indexes)
 
-    def _normalize_view_cells(
-        self, cells: Sequence[int | str | NotebookCell]
-    ) -> list[int]:
-        _require_sequence_container(
-            cells,
-            message=(
-                "view cells must be a sequence of indexes, keys, or "
-                "NotebookCell objects"
-            ),
-        )
-        if len(cells) == 0:
-            raise ValueError("view cells must contain at least one selection")
+    def _normalize_view_cells(self, selectors: Sequence[CellSelector]) -> list[int]:
         indexes: list[int] = []
-        for selection in cells:
+        for selection in selectors:
             if isinstance(selection, NotebookCell):
                 if selection._owner is not self:
                     raise ValueError("NotebookCell belongs to another Notebook")
                 index = selection.index
-            else:
+            elif isinstance(selection, Cell):
+                if selection.key is None:
+                    raise ValueError("authored cell selectors require a key")
+                index = self.cell(selection.key).index
+            elif isinstance(selection, str):
                 index = self.cell(selection).index
+            else:
+                raise TypeError("cell selector must be a key, Cell, or NotebookCell")
             if index in indexes:
-                raise ValueError("view cells must select each notebook cell once")
+                raise ValueError("view selectors must identify distinct cells")
             indexes.append(index)
         return sorted(indexes)
 
@@ -517,7 +554,7 @@ class Notebook:
         base_path: str | pathlib.Path | None = None,
         embed_file_attachments: bool = False,
         rewrite_imports: bool = False,
-        variables: Mapping[str, Any] | None = None,
+        variables: Mapping[str, object] | None = None,
         show_pinned_source: bool = False,
     ) -> Notebook:
         """Create a notebook from Notebook Kit HTML text."""
@@ -540,7 +577,7 @@ class Notebook:
         cls,
         specifier: str,
         *,
-        variables: Mapping[str, Any] | None = None,
+        variables: Mapping[str, object] | None = None,
         files: Mapping[str, FileInput] | None = None,
         show_pinned_source: bool = False,
         timeout: float | None = 30,
@@ -561,10 +598,10 @@ class Notebook:
     @classmethod
     def from_observablehq_document(
         cls,
-        document: ObservableDocument | Mapping[str, Any],
+        document: ObservableDocument,
         *,
         title: str | None = None,
-        variables: Mapping[str, Any] | None = None,
+        variables: Mapping[str, object] | None = None,
         files: Mapping[str, FileInput] | None = None,
         show_pinned_source: bool = False,
     ) -> Notebook:
@@ -588,7 +625,7 @@ class Notebook:
 
 
 class NotebookView(_ObservableWidget):
-    """Renderable view of a notebook cell selection."""
+    """Renderable view with structured browser evaluation ``state``."""
 
     _owner: Notebook
     _view_closed: bool
@@ -601,11 +638,15 @@ class NotebookView(_ObservableWidget):
     _readback = traitlets.Dict(
         default_value={
             "revision": 0,
-            "rendered": False,
+            "input_revision": None,
+            "settled_revision": None,
+            "pending": False,
             "graph": {},
-            "cells": {},
+            "results": {},
+            "errors": [],
         }
     ).tag(sync=True)
+    state: ViewState = cast(Any, traitlets.Any(read_only=True))
 
     def __init__(self) -> None:
         raise TypeError("NotebookView objects are created with Notebook.view()")
@@ -626,6 +667,7 @@ class NotebookView(_ObservableWidget):
             _session=notebook._session,
             _cell_indexes=indexes,
         )
+        view.set_trait("state", view._state_from_readback(view._readback))
         notebook._session._views.add(view)
         return view
 
@@ -664,20 +706,8 @@ class NotebookView(_ObservableWidget):
 
     @traitlets.validate("_readback")
     def _validate_readback(self, proposal: Any) -> dict[str, Any]:
-        value = proposal["value"]
-        revision = value.get("revision")
-        if (
-            not isinstance(revision, int)
-            or isinstance(revision, bool)
-            or revision < 0
-            or revision > (1 << 53) - 1
-            or not isinstance(value.get("rendered"), bool)
-            or not isinstance(value.get("graph"), Mapping)
-            or not isinstance(value.get("cells"), Mapping)
-        ):
-            raise traitlets.TraitError(
-                "_readback must be a revisioned browser snapshot"
-            )
+        value = _validate_readback_wire(proposal["value"], self._selected_indexes())
+        revision = cast(int, value["revision"])
         current = self._trait_values.get("_readback")
         current_revision = (
             current.get("revision") if isinstance(current, Mapping) else -1
@@ -686,7 +716,55 @@ class NotebookView(_ObservableWidget):
         # snapshot when an earlier save arrives after it.
         if isinstance(current_revision, int) and revision <= current_revision:
             return cast(dict[str, Any], current)
-        return cast(dict[str, Any], value)
+        return value
+
+    @traitlets.observe("_readback")
+    def _publish_readback_state(self, change: Any) -> None:
+        if not hasattr(self, "_owner"):
+            return
+        self.set_trait("state", self._state_from_readback(change["new"]))
+
+    def _selected_indexes(self) -> tuple[int, ...]:
+        indexes = self._trait_values.get("_cell_indexes")
+        if indexes is None:
+            return tuple(range(len(self._session._cell_keys)))
+        return tuple(cast(Sequence[int], indexes))
+
+    def _state_from_readback(self, value: Mapping[str, Any]) -> ViewState:
+        raw_results = cast(Mapping[str, Any], value["results"])
+        results: list[CellResult] = []
+        for index in self._selected_indexes():
+            raw = raw_results.get(str(index))
+            if not isinstance(raw, Mapping):
+                continue
+            errors = tuple(
+                _cell_error_from_wire(item)
+                for item in cast(Sequence[Any], raw["errors"])
+            )
+            decoded = {
+                name: deserialize_value(item)
+                for name, item in cast(Mapping[str, Any], raw["values"]).items()
+            }
+            results.append(
+                CellResult(
+                    cell=self._owner._cell_at(index),
+                    revision=cast(int, raw["revision"]),
+                    status=cast(CellStatus, raw["status"]),
+                    values=cast(Mapping[str, object], _freeze(decoded)),
+                    errors=errors,
+                )
+            )
+        view_errors = tuple(
+            _view_error_from_wire(item) for item in cast(Sequence[Any], value["errors"])
+        )
+        return ViewState(
+            input_revision=cast(int | None, value["input_revision"]),
+            settled_revision=cast(int | None, value["settled_revision"]),
+            pending=cast(bool, value["pending"]),
+            results=tuple(results),
+            errors=view_errors,
+            graph=graph_from_raw(value["graph"]),
+        )
 
     @property
     def notebook(self) -> Notebook:
@@ -703,86 +781,7 @@ class NotebookView(_ObservableWidget):
             if self._cell_indexes is None
             else self._cell_indexes
         )
-        return tuple(self._owner.cell(index) for index in indexes)
-
-    @property
-    def has_rendered(self) -> bool:
-        """Whether this view has synchronized a complete browser render."""
-
-        return self._readback.get("rendered") is True
-
-    @property
-    def has_graph_snapshot(self) -> bool:
-        """Whether this view has synchronized notebook graph metadata."""
-
-        return graph_from_raw(self._readback.get("graph")) is not None
-
-    def _require_rendered(self) -> None:
-        if not self.has_rendered:
-            raise NotRenderedError(
-                "NotebookView values are available after the view renders in a browser"
-            )
-
-    @property
-    def graph(self) -> NotebookGraph:
-        """Symbolic cell graph synchronized from this browser view."""
-
-        graph = graph_from_raw(self._readback.get("graph"))
-        if graph is None:
-            raise NotRenderedError(
-                "NotebookView graph metadata is available after graph synchronization"
-            )
-        return graph
-
-    @property
-    def values(self) -> dict[str, Any]:
-        """Latest browser values with one owning cell in this view."""
-
-        self._require_rendered()
-        owners: dict[str, tuple[int, Any]] = {}
-        cells = self._readback.get("cells")
-        for record in cells.values() if isinstance(cells, Mapping) else ():
-            if not isinstance(record, Mapping):
-                continue
-            values = record.get("values")
-            if not isinstance(values, Mapping):
-                continue
-            for name, value in values.items():
-                if not isinstance(name, str):
-                    continue
-                count, _previous = owners.get(name, (0, None))
-                owners[name] = (count + 1, value)
-        return {
-            name: deserialize_value(value)
-            for name, (count, value) in owners.items()
-            if count == 1
-        }
-
-    @property
-    def cell_values(self) -> tuple[CellValues, ...]:
-        """Browser-synchronized values for the selected cells."""
-
-        self._require_rendered()
-        return tuple(
-            CellValues(
-                index=cell.index,
-                key=cell.key,
-                values=self._cell_values(cell.index),
-            )
-            for cell in self.cells
-        )
-
-    def _cell_values(self, index: int) -> dict[str, Any]:
-        cells = self._readback.get("cells")
-        record = cells.get(str(index)) if isinstance(cells, Mapping) else None
-        values = record.get("values") if isinstance(record, Mapping) else None
-        if not isinstance(values, Mapping):
-            return {}
-        return {
-            name: deserialize_value(value)
-            for name, value in values.items()
-            if isinstance(name, str)
-        }
+        return tuple(self._owner._cell_at(index) for index in indexes)
 
     def close(self) -> None:
         """Close this display model."""
@@ -794,3 +793,289 @@ class NotebookView(_ObservableWidget):
         if session is not None:
             session._views.discard(self)
         super().close()
+
+
+def _validate_readback_wire(
+    value: object, selected_indexes: Sequence[int]
+) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise traitlets.TraitError("_readback must be a mapping")
+    value = cast(Mapping[str, object], value)
+    required = {
+        "revision",
+        "input_revision",
+        "settled_revision",
+        "pending",
+        "graph",
+        "results",
+        "errors",
+    }
+    if set(value) != required:
+        raise traitlets.TraitError("_readback has an invalid field set")
+    revision = _wire_revision(value["revision"], "revision")
+    input_revision = _optional_wire_revision(value["input_revision"], "input_revision")
+    settled_revision = _optional_wire_revision(
+        value["settled_revision"], "settled_revision"
+    )
+    pending = value["pending"]
+    raw_graph = value["graph"]
+    raw_results = value["results"]
+    raw_errors = value["errors"]
+    if not isinstance(pending, bool):
+        raise traitlets.TraitError("_readback pending must be a boolean")
+    if not isinstance(raw_graph, Mapping):
+        raise traitlets.TraitError("_readback graph must be a mapping")
+    if not isinstance(raw_results, Mapping):
+        raise traitlets.TraitError("_readback results must be a mapping")
+    if not isinstance(raw_errors, list | tuple):
+        raise traitlets.TraitError("_readback errors must be a list")
+    if input_revision is None:
+        if settled_revision is not None or pending or raw_results:
+            raise traitlets.TraitError("idle readback state is inconsistent")
+    else:
+        if settled_revision is not None and settled_revision > input_revision:
+            raise traitlets.TraitError("settled_revision cannot exceed input_revision")
+        if pending and settled_revision == input_revision:
+            raise traitlets.TraitError("pending readback cannot be settled")
+        if not pending and settled_revision != input_revision:
+            raise traitlets.TraitError("non-pending readback must be settled")
+    selected = set(selected_indexes)
+    results: dict[str, Any] = {}
+    pending_results = 0
+    for raw_index, raw_result in raw_results.items():
+        if not isinstance(raw_index, str) or not raw_index.isdecimal():
+            raise traitlets.TraitError("readback result keys must be cell indexes")
+        index = int(raw_index)
+        if index not in selected:
+            raise traitlets.TraitError("readback contains an unselected cell result")
+        result = _validate_result_wire(raw_result, input_revision)
+        if result["status"] == "pending":
+            pending_results += 1
+        results[raw_index] = result
+    if (
+        input_revision is not None
+        and set(map(int, results)) != selected
+        and not raw_errors
+    ):
+        raise traitlets.TraitError(
+            "evaluating readback must contain every selected cell"
+        )
+    if pending != (pending_results > 0):
+        raise traitlets.TraitError("readback pending state does not match results")
+    errors = [_validate_error_wire(item, cell=False) for item in raw_errors]
+    graph = _validate_graph_wire(raw_graph)
+    return {
+        "revision": revision,
+        "input_revision": input_revision,
+        "settled_revision": settled_revision,
+        "pending": pending,
+        "graph": dict(graph),
+        "results": results,
+        "errors": errors,
+    }
+
+
+def _validate_graph_wire(value: Mapping[Any, Any]) -> dict[str, Any]:
+    if not value:
+        return {}
+    if set(value) != {"cells", "edges"}:
+        raise traitlets.TraitError("_readback graph has an invalid field set")
+    raw_cells = value["cells"]
+    raw_edges = value["edges"]
+    if not isinstance(raw_cells, list | tuple) or not isinstance(
+        raw_edges, list | tuple
+    ):
+        raise traitlets.TraitError("_readback graph cells and edges must be lists")
+
+    required_cell_fields = {
+        "id",
+        "index",
+        "key",
+        "mode",
+        "defines",
+        "references",
+        "output",
+        "outputs",
+        "runtime_outputs",
+        "autodisplay",
+        "autoview",
+        "automutable",
+    }
+    cells: list[dict[str, Any]] = []
+    ids: set[int] = set()
+    indexes: set[int] = set()
+    for item in raw_cells:
+        if not isinstance(item, Mapping):
+            raise traitlets.TraitError("graph cells must be mappings")
+        item = cast(Mapping[Any, Any], item)
+        fields = set(item)
+        if (
+            fields - (required_cell_fields | {"error"})
+            or not required_cell_fields <= fields
+        ):
+            raise traitlets.TraitError("graph cell has an invalid shape")
+        cell_id = _wire_revision(item["id"], "graph cell id")
+        index = _wire_revision(item["index"], "graph cell index")
+        key = item["key"]
+        mode = item["mode"]
+        output = item["output"]
+        error = item.get("error")
+        if cell_id == 0:
+            raise traitlets.TraitError("graph cell id must be positive")
+        if cell_id in ids or index in indexes:
+            raise traitlets.TraitError("graph cell ids and indexes must be unique")
+        if not isinstance(key, str) or not isinstance(mode, str) or not mode:
+            raise traitlets.TraitError("graph cell key and mode must be strings")
+        if output is not None and not isinstance(output, str):
+            raise traitlets.TraitError("graph cell output must be a string or null")
+        if error is not None and not isinstance(error, str):
+            raise traitlets.TraitError("graph cell error must be a string")
+        sequences = {
+            field: _validate_string_sequence(item[field], f"graph cell {field}")
+            for field in ("defines", "references", "outputs", "runtime_outputs")
+        }
+        flags = {}
+        for field in ("autodisplay", "autoview", "automutable"):
+            flag = item[field]
+            if not isinstance(flag, bool):
+                raise traitlets.TraitError(f"graph cell {field} must be a boolean")
+            flags[field] = flag
+        ids.add(cell_id)
+        indexes.add(index)
+        cells.append(
+            {
+                "id": cell_id,
+                "index": index,
+                "key": key,
+                "mode": mode,
+                **sequences,
+                "output": output,
+                **flags,
+                **({"error": error} if error is not None else {}),
+            }
+        )
+
+    edges: list[dict[str, Any]] = []
+    for item in raw_edges:
+        if not isinstance(item, Mapping) or set(item) != {
+            "from",
+            "to",
+            "variable",
+        }:
+            raise traitlets.TraitError("graph edge has an invalid shape")
+        item = cast(Mapping[Any, Any], item)
+        source = _wire_revision(item["from"], "graph edge source")
+        target = _wire_revision(item["to"], "graph edge target")
+        variable = item["variable"]
+        if source not in ids or target not in ids:
+            raise traitlets.TraitError("graph edge must reference known cells")
+        if not isinstance(variable, str) or not variable:
+            raise traitlets.TraitError("graph edge variable must be a non-empty string")
+        edges.append({"from": source, "to": target, "variable": variable})
+    return {"cells": cells, "edges": edges}
+
+
+def _validate_string_sequence(value: object, field: str) -> list[str]:
+    if not isinstance(value, list | tuple) or any(
+        not isinstance(item, str) for item in value
+    ):
+        raise traitlets.TraitError(f"{field} must be a list of strings")
+    return cast(list[str], list(value))
+
+
+def _validate_result_wire(value: object, input_revision: int | None) -> dict[str, Any]:
+    if not isinstance(value, Mapping) or set(value) != {
+        "revision",
+        "status",
+        "values",
+        "errors",
+    }:
+        raise traitlets.TraitError("cell result has an invalid shape")
+    value = cast(Mapping[str, object], value)
+    revision = _wire_revision(value["revision"], "cell result revision")
+    if input_revision is None or revision > input_revision:
+        raise traitlets.TraitError("cell result revision is newer than the input")
+    status = value["status"]
+    if status not in {"pending", "success", "error"}:
+        raise traitlets.TraitError("cell result has an invalid status")
+    values = value["values"]
+    raw_errors = value["errors"]
+    if not isinstance(values, Mapping) or any(
+        not isinstance(name, str) for name in values
+    ):
+        raise traitlets.TraitError("cell result values must use string keys")
+    if not isinstance(raw_errors, list | tuple):
+        raise traitlets.TraitError("cell result errors must be a list")
+    errors = [_validate_error_wire(item, cell=True) for item in raw_errors]
+    if status == "error" and not errors:
+        raise traitlets.TraitError("error results require a structured error")
+    if status != "error" and errors:
+        raise traitlets.TraitError("structured cell errors require error status")
+    if status == "pending" and values:
+        raise traitlets.TraitError("pending results cannot expose values")
+    return {
+        "revision": revision,
+        "status": status,
+        "values": dict(values),
+        "errors": errors,
+    }
+
+
+def _validate_error_wire(value: object, *, cell: bool) -> dict[str, Any]:
+    required = {"name", "message", "phase"}
+    allowed = required | ({"variable"} if cell else set())
+    if (
+        not isinstance(value, Mapping)
+        or set(value) - allowed
+        or not required <= set(value)
+    ):
+        raise traitlets.TraitError("structured error has an invalid shape")
+    value = cast(Mapping[str, object], value)
+    name = value["name"]
+    message = value["message"]
+    phase = value["phase"]
+    variable = value.get("variable")
+    if not isinstance(name, str) or not name or not isinstance(message, str):
+        raise traitlets.TraitError("structured error name and message are required")
+    if phase not in {"analysis", "evaluation", "rendering", "serialization"}:
+        raise traitlets.TraitError("structured error phase is invalid")
+    if variable is not None and not isinstance(variable, str):
+        raise traitlets.TraitError("structured error variable must be a string")
+    result: dict[str, Any] = {"name": name, "message": message, "phase": phase}
+    if cell:
+        result["variable"] = variable
+    return result
+
+
+def _cell_error_from_wire(value: object) -> CellError:
+    error = _validate_error_wire(value, cell=True)
+    return CellError(
+        name=cast(str, error["name"]),
+        message=cast(str, error["message"]),
+        phase=cast(ErrorPhase, error["phase"]),
+        variable=cast(str | None, error["variable"]),
+    )
+
+
+def _view_error_from_wire(value: object) -> ViewError:
+    error = _validate_error_wire(value, cell=False)
+    return ViewError(
+        name=cast(str, error["name"]),
+        message=cast(str, error["message"]),
+        phase=cast(ErrorPhase, error["phase"]),
+    )
+
+
+def _wire_revision(value: object, field: str) -> int:
+    if (
+        not isinstance(value, int)
+        or isinstance(value, bool)
+        or value < 0
+        or value > _MAX_SAFE_REVISION
+    ):
+        raise traitlets.TraitError(f"{field} must be a safe non-negative integer")
+    return value
+
+
+def _optional_wire_revision(value: object, field: str) -> int | None:
+    return None if value is None else _wire_revision(value, field)
