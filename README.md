@@ -5,6 +5,9 @@
 [![Python versions](https://img.shields.io/pypi/pyversions/pyobservablejs.svg)](https://pypi.org/project/pyobservablejs/)
 [![License](https://img.shields.io/pypi/l/pyobservablejs.svg)](https://github.com/peter-gy/pyobservablejs/blob/main/LICENSE)
 
+> **Experimental:** `pyobservablejs` is experimental software. Its API is
+> subject to breaking changes.
+
 `pyobservablejs` embeds reactive Observable notebooks in Python. Author cells or
 load an existing notebook, render all or selected cells, synchronize Python
 values, read structured browser results, and inspect the dependency graph.
