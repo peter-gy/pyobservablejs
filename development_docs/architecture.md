@@ -11,42 +11,30 @@ as marimo and Jupyter.
 See [View composition](view-composition.md) for the selection, model-resolution,
 synchronization, readback, and teardown paths behind `NotebookView`.
 
-```text
-public Notebook controller
-  definition, attachments, variables, cell handles
-        |
-        +---- private anywidget session model
-        |          definition and shared input state
-        |
-        +---- cell(...).view() or view(cells=[...])
-                   |
-                   v
-             NotebookView widget
-             selection + session reference
-                   |
-                   v
-          one Notebook Kit runtime
-                   |
-                   v
-       view-owned values and graph snapshot
+```mermaid
+flowchart TB
+  notebook["Public Notebook controller"] --> session["Private session model"]
+  notebook -->|"view(selectors...)"| view["NotebookView"]
+  session -->|"definition and shared inputs"| view
+  view --> runtime["Notebook Kit runtime"]
+  runtime --> state["ViewState snapshot"]
 ```
 
 ## Ownership boundaries
 
-`Notebook` is a plain Python controller. It owns the definition, cell handles,
-attachments, theme, Python variables, and lifecycle. Its private anywidget
-session model carries the definition and shareable named browser input values to
-each view.
+`Notebook` is a traitlets controller. It owns the definition, canonical cell
+handles, immutable controller state, and lifecycle. Its private anywidget
+session model carries the definition and shareable named browser input values
+to each view.
 
-`NotebookCell` owns a stable cell selection. `NotebookCell.view()` creates a
-`NotebookView` for the selected cell and its dependency closure. The resulting
-view owns the browser runtime and readback state.
+`NotebookCell` is the stable handle for one cell. Its public key selects the
+cell. Its id and index are serialization and notebook-order metadata.
 
 `NotebookView` is the public renderable anywidget. It owns one Notebook Kit
-runtime, selected cell handles, render gates, synchronized values, per-cell
-values, and graph metadata. `Notebook.view()` selects every cell.
-`Notebook.view(cells=[...])` creates a composite selection that evaluates in one
-runtime.
+runtime and immutable `ViewState`. `Notebook.view()` selects every cell.
+`Notebook.view(*selectors)` creates a focused or composite selection that
+evaluates in one runtime. Selectors are key strings, keyed authored cells, or
+same-owner cell handles.
 
 Separate views from one notebook share named Python variables. A browser input
 event on a named `viewof` value becomes session state for current and future
@@ -68,8 +56,8 @@ composite view when multiple cells require the same runtime and graph snapshot.
 5. Notebook Kit parses or transpiles the definition. The runtime profile
    selects the standard library before creating one Observable runtime for that
    view.
-6. The browser writes synchronized values, per-cell values, graph metadata, and
-   render status to the view model.
+6. The browser writes input and settled revisions, pending state, structured
+   results, errors, and graph metadata to the view model.
 7. Teardown disposes the runtime, model listeners, and DOM owned by that view.
 
 Creating another view repeats steps 2 through 7 with a distinct model and
@@ -96,16 +84,17 @@ recreating the shared session.
 
 ## Readback ownership
 
-Each view owns its render flag, graph snapshot, values, and per-cell values.
-Python reads them through `NotebookView.values`, `NotebookView.cell_values`, and
-`NotebookView.graph`.
+Each view owns one immutable `ViewState` snapshot. Python reads revisions,
+pending state, structured cell results, view errors, and graph metadata through
+`NotebookView.state`.
 
-Each render attempt carries one monotonic token. Writes from an aborted or
-superseded attempt are dropped. Changes that rebuild a view invalidate its
-runtime snapshot before the replacement attempt publishes readback. The view
-publishes its render flag, graph, and cell values as one revisioned snapshot.
-Python rejects delayed snapshots after accepting a newer revision, which keeps
-independent model-save requests from restoring stale readback.
+Each render attempt carries one monotonic token. Each evaluation wave carries
+an input revision, and each observer channel carries a generation. Writes from
+an aborted or superseded attempt, revision, or generation are dropped. The
+settled revision advances when every selected result reaches a terminal state.
+The view publishes its graph, results, errors, and revision fields as one wire
+snapshot. Python rejects delayed transport revisions and validates the complete
+shape before replacing `NotebookView.state` once.
 
 ## Source-backed notebooks
 
