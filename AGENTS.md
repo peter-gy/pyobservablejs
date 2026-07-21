@@ -34,6 +34,10 @@ transport, and renderable view separate.
 - `apps/docs/` owns the Docusaurus site and mdx-marimo integration.
   `development_docs/` owns contributor architecture, workspace, build, and
   runtime composition documentation.
+- A release-bearing pull request owns the package version. `scripts/release.sh`
+  tags a clean, synchronized `main` commit after CI passes. The Publish package
+  workflow owns artifact validation, Trusted Publishing, public PyPI
+  verification, and release notes.
 
 Read [Architecture](development_docs/architecture.md) before changing runtime
 ownership. Read [View composition](development_docs/view-composition.md) before
@@ -131,7 +135,8 @@ and package-boundary violations.
 - Test TypeScript behavior through runtime, widget, Vite, DOM, and generated
   artifact contracts. Wait on observable state, not elapsed time.
 - Validate Docusaurus MDX source with `make docs`. Serve the generated site with
-  `make docs-serve` when browser inspection is required.
+  `make docs-serve` when browser inspection is required. The GitHub Pages
+  workflow owns pull-request docs validation and `main` deployment.
 - Validate frontend, notebook, and docs behavior with `$agent-browser`. Exercise
   JupyterLab, mdx-marimo pages, and Python variable synchronization as relevant.
   Check console and page errors, then stop every browser session and local
