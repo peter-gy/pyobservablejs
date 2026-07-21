@@ -86,14 +86,16 @@ ThemeSnapshot: TypeAlias = (
 )
 
 
-class FileSpec(TypedDict, total=False):
-    """Normalized browser file attachment metadata."""
-
-    url: str
-    path: str
+class _OptionalFileSpec(TypedDict, total=False):
     mimeType: str
     lastModified: int
     size: int
+
+
+class FileSpec(_OptionalFileSpec):
+    """Browser file attachment metadata with a required URL."""
+
+    url: str
 
 
 FileInput: TypeAlias = str | pathlib.Path | FileSpec
@@ -106,7 +108,7 @@ class FileSnapshot(Mapping[str, str | int]):
     """Read-only normalized file record from ``Notebook.state``."""
 
     @overload
-    def __getitem__(self, key: Literal["url", "path", "mimeType"]) -> str: ...
+    def __getitem__(self, key: Literal["url", "mimeType"]) -> str: ...
 
     @overload
     def __getitem__(self, key: Literal["lastModified", "size"]) -> int: ...
@@ -119,12 +121,12 @@ class FileSnapshot(Mapping[str, str | int]):
 
     @overload
     def get(
-        self, key: Literal["url", "path", "mimeType"], default: None = None, /
+        self, key: Literal["url", "mimeType"], default: None = None, /
     ) -> str | None: ...
 
     @overload
     def get(
-        self, key: Literal["url", "path", "mimeType"], default: _DefaultT, /
+        self, key: Literal["url", "mimeType"], default: _DefaultT, /
     ) -> str | _DefaultT: ...
 
     @overload
