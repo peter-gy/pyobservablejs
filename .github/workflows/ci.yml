@@ -156,34 +156,24 @@ jobs:
           uv build --wheel dist/pyobservablejs-*.tar.gz --out-dir dist/from-sdist
           uv run --no-project --with dist/from-sdist/pyobservablejs-*.whl python -c "import observablejs"
 
-  docs:
+  required:
+    if: always()
+    needs: [quality, test-python, test-js, package]
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-
-      - name: Read Node.js version
-        id: node-version
-        run: echo "version=$(cat .node-version)" >> "$GITHUB_OUTPUT"
-
-      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
-        with:
-          enable-cache: true
-          cache-dependency-glob: uv.lock
-
-      - uses: voidzero-dev/setup-vp@13e7afb99c66525824db54e107d667216e795d37 # v1.14.0
-        with:
-          version: 0.2.4
-          node-version: ${{ steps.node-version.outputs.version }}
-          cache: true
-          sfw: true
-          run-install: |
-            - args: ['--frozen-lockfile']
-
-      - name: Build docs
-        run: make docs
-
-      - name: Check docs source and whitespace
+      - name: Verify required jobs
+        env:
+          QUALITY: ${{ needs.quality.result }}
+          TEST_PYTHON: ${{ needs.test-python.result }}
+          TEST_JS: ${{ needs.test-js.result }}
+          PACKAGE: ${{ needs.package.result }}
         run: |
-          git diff --check
-          git diff --exit-code -- apps/docs
+          if [ "$QUALITY" != success ] || \
+             [ "$TEST_PYTHON" != success ] || \
+             [ "$TEST_JS" != success ] || \
+             [ "$PACKAGE" != success ]; then
+            printf 'Required jobs: quality=%s test-python=%s test-js=%s package=%s\n' \
+              "$QUALITY" "$TEST_PYTHON" "$TEST_JS" "$PACKAGE" >&2
+            exit 1
+          fi
