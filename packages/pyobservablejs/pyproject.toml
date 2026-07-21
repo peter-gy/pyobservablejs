@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pyobservablejs"
-version = "0.0.3"
+version = "0.0.4"
 description = "Observable JavaScript notebooks as reusable Python widgets"
 readme = "README.md"
 license = "MIT"
