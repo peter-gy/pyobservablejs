@@ -255,6 +255,66 @@ viewof gain = {
 		controller.abort();
 	});
 
+	test("publishes wrapper values after nested input handlers run", async () => {
+		const { session, view, host } = createNotebookFixture({
+			_spec: {
+				cells: [
+					{
+						id: 1,
+						mode: "ojs",
+						value: `
+viewof gain = {
+  const form = document.createElement("form");
+  const input = document.createElement("input");
+  input.type = "range";
+  input.min = "0";
+  input.max = "10";
+  input.value = "5";
+  form.value = 5;
+  input.addEventListener("input", () => {
+    form.value = input.valueAsNumber;
+  });
+  form.appendChild(input);
+  return form;
+}`,
+					},
+					{ id: 2, mode: "ojs", value: "doubled = gain * 2" },
+				],
+			},
+		});
+		const el = document.createElement("div");
+		const controller = new AbortController();
+
+		widget.render(renderProps(view, el, controller.signal, host));
+
+		const input = await waitStep("wrapper input", () => rangeWithValue(el, 5), view);
+		input.value = "8";
+		input.dispatchEvent(new Event("input", { bubbles: true }));
+
+		expect(
+			await waitStep(
+				"first wrapper interaction",
+				() => (session.get("_view_values")?.gain === 8 ? 8 : undefined),
+				view,
+			),
+		).toBe(8);
+		expect(
+			await waitStep("first wrapper value", () => (variableValue(view, "doubled") === 16 ? 16 : undefined), view),
+		).toBe(16);
+
+		input.value = "3";
+		input.dispatchEvent(new Event("input", { bubbles: true }));
+
+		expect(
+			await waitStep(
+				"second wrapper interaction",
+				() => (session.get("_view_values")?.gain === 3 ? 3 : undefined),
+				view,
+			),
+		).toBe(3);
+		controller.abort();
+	});
+
 	test("keeps view controls unchanged for lossy element summaries", async () => {
 		const { view, host } = createNotebookFixture({
 			_spec: {

@@ -1,27 +1,35 @@
 ---
 title: Bidirectional inputs
-description: Share a named browser input across views and set it from Python.
+description: Set one browser input from Python and read browser changes back.
 ---
 
 # Bidirectional inputs
 
-When a Python variable and named `viewof` input use the same name, the initial
-Python value sets the control. Browser changes update sibling views. A later
-Python update sets the value again in every view.
+One named input can receive updates from Python and the browser. The Python
+slider writes through `update_variables`. The Observable slider changes the
+browser value, and a Python readout follows the finished result.
 
 ```marimo-config
 requires-python = ">=3.11"
 dependencies = ["pyobservablejs"]
 ```
 
-Use separate marimo cells for the Python slider, notebook, and update.
+Create and display the Python control in its own marimo cell.
 
 ```python
 import marimo as mo
 import observablejs as obs
 
-python_gain = mo.ui.slider(start=0, stop=12, value=5, label="Gain from Python")
+python_gain = mo.ui.slider(
+    start=0,
+    stop=12,
+    value=5,
+    label="Set gain from Python",
+)
+python_gain
 ```
+
+Create and display the browser view in another cell.
 
 ```python
 notebook = obs.Notebook(
@@ -51,18 +59,50 @@ notebook = obs.Notebook(
 
 view = notebook.view()
 widget = mo.ui.anywidget(view)
+widget
 ```
+
+Send Python slider changes from a cell that references `python_gain` and
+`notebook`.
 
 ```python
 notebook.update_variables({"gain": python_gain.value})
-mo.vstack([python_gain, widget])
+```
+
+Read the current browser value after the latest input revision settles.
+
+```python
+widget.value  # subscribe this cell to view synchronization
+state = view.state
+
+if (
+    not state.pending
+    and state.input_revision is not None
+    and state.settled_revision == state.input_revision
+):
+    gain = state.result("gain_control")
+    gain_report = (
+        f"Python reads `gain = {gain.values['gain']}`."
+        if gain.status == "success"
+        else f"Browser error: {gain.errors}"
+    )
+else:
+    gain_report = "Waiting for the Observable view to render."
+
+mo.md(gain_report)
 ```
 
 ```python marimo echo=false server-output=false
 import marimo as mo
 import observablejs as obs
 
-python_gain = mo.ui.slider(start=0, stop=12, value=5, label="Gain from Python")
+python_gain = mo.ui.slider(
+    start=0,
+    stop=12,
+    value=5,
+    label="Set gain from Python",
+)
+python_gain
 ```
 
 ```python marimo echo=false server-output=false
@@ -93,25 +133,48 @@ notebook = obs.Notebook(
 
 view = notebook.view()
 widget = mo.ui.anywidget(view)
+widget
 ```
 
 ```python marimo echo=false server-output=false
 notebook.update_variables({"gain": python_gain.value})
-mo.vstack([python_gain, widget])
 ```
 
-The value moves in four steps:
+```python marimo echo=false server-output=false
+widget.value  # subscribe this cell to view synchronization
+state = view.state
 
-1. The initial Python value sets the input.
-2. Changing the browser input updates sibling views.
-3. `update_variables({"gain": value})` sets a new Python value in every view.
-4. `reset_variables("gain")` returns the value to the notebook definition.
+if (
+    not state.pending
+    and state.input_revision is not None
+    and state.settled_revision == state.input_revision
+):
+    gain = state.result("gain_control")
+    gain_report = (
+        f"Python reads `gain = {gain.values['gain']}`."
+        if gain.status == "success"
+        else f"Browser error: {gain.errors}"
+    )
+else:
+    gain_report = "Waiting for the Observable view to render."
+
+mo.md(gain_report)
+```
+
+Each direction has one path:
+
+1. The Python slider calls `update_variables`.
+2. The Observable slider updates the named `viewof gain` input.
+3. The synchronized anywidget state updates `view.state`.
+4. The readout displays the finished `gain_control` result.
+
+The Python slider shows the last value Python sent. The Observable slider and
+readout show the current browser value.
 
 Shared input state supports JSON-like values, `BigInt`, dates, maps, and sets.
 Functions, DOM elements, files, and binary buffers stay in the view where they
 were created. Use the same input shape for a shared name across views.
 
-Read the current browser result through `view.state.result("gain_control")`.
 See [Widget composition](../render/widget-composition.mdx) for separate views
 and [Variables and
 serialization](../reference/variables-and-serialization.mdx#shared-viewof-inputs)
