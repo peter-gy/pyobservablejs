@@ -628,6 +628,7 @@ class NotebookView(_ObservableWidget):
     """Renderable view with structured browser evaluation ``state``."""
 
     _owner: Notebook
+    _owns_notebook: bool
     _view_closed: bool
     _session = traitlets.Instance(_NotebookSession).tag(
         sync=True,
@@ -660,6 +661,7 @@ class NotebookView(_ObservableWidget):
         notebook._session._require_open()
         view = cls.__new__(cls)
         view._owner = notebook
+        view._owns_notebook = False
         view._view_closed = False
         indexes = None if cell_indexes is None else list(cell_indexes)
         _ObservableWidget.__init__(
@@ -789,10 +791,17 @@ class NotebookView(_ObservableWidget):
         if getattr(self, "_view_closed", False):
             return
         self._view_closed = True
+        owner = (
+            getattr(self, "_owner", None)
+            if getattr(self, "_owns_notebook", False)
+            else None
+        )
         session = getattr(self, "_trait_values", {}).get("_session")
         if session is not None:
             session._views.discard(self)
         super().close()
+        if owner is not None:
+            owner.close()
 
 
 def _validate_readback_wire(

@@ -6,6 +6,7 @@ from helpers import (
     DocumentTitle,
     ObservableHQResponseInstaller,
     ScriptTags,
+    notebook_session,
 )
 
 
@@ -21,6 +22,7 @@ def test_view_from_code_returns_full_anywidget_view(
         files={"data.csv": "https://example.test/data.csv"},
         variables={"rows": [{"value": 1}]},
     )
+    session = notebook_session(view.notebook)
 
     try:
         assert isinstance(view, anywidget.AnyWidget)
@@ -35,7 +37,9 @@ def test_view_from_code_returns_full_anywidget_view(
         assert document_title(source) == "Code view"
         assert script_tags(source)[0]["attrs"]["type"] == "module"
     finally:
-        view.notebook.close()
+        view.close()
+
+    assert session.comm is None
 
 
 def test_imported_source_factories_return_full_anywidget_views(
@@ -58,6 +62,10 @@ def test_imported_source_factories_return_full_anywidget_views(
             ],
         }
     )
+    sessions = [
+        notebook_session(html_view.notebook),
+        notebook_session(document_view.notebook),
+    ]
 
     try:
         for view in (html_view, document_view):
@@ -68,8 +76,10 @@ def test_imported_source_factories_return_full_anywidget_views(
         assert html_view.notebook.variables == {"precision": 2}
         assert document_title(document_view.notebook.to_notebook_html()) == "Remote"
     finally:
-        html_view.notebook.close()
-        document_view.notebook.close()
+        html_view.close()
+        document_view.close()
+
+    assert all(session.comm is None for session in sessions)
 
 
 def test_view_from_observablehq_accepts_url_factory_input(
@@ -88,6 +98,7 @@ def test_view_from_observablehq_accepts_url_factory_input(
         "https://observablehq.com/@d3/bar-chart",
         timeout=1,
     )
+    session = notebook_session(view.notebook)
 
     try:
         assert isinstance(view, anywidget.AnyWidget)
@@ -96,4 +107,6 @@ def test_view_from_observablehq_accepts_url_factory_input(
         assert view.cells[0].key == "answer"
         assert requests == [("https://api.observablehq.com/document/@d3/bar-chart", 1)]
     finally:
-        view.notebook.close()
+        view.close()
+
+    assert session.comm is None

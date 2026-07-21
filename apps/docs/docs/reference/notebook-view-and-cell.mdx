@@ -11,7 +11,8 @@ Call `Notebook.view(...)` to create a `NotebookView`. `Notebook.cell` and
 ## Standalone view factories
 
 The standalone factories construct a notebook and return its full
-`NotebookView`. The view keeps its controller available as `view.notebook`.
+`NotebookView`. The view keeps its controller available as `view.notebook` and
+owns that notebook session. Calling `view.close()` closes the view and session.
 
 ```python
 import observablejs as obs
@@ -130,9 +131,11 @@ view from the notebook when the same selection must appear in two outputs.
 
 ## `NotebookView.close()`
 
-Closes this view and its browser runtime. Other views and the notebook session
-remain active. Repeated calls are no-ops. Late browser callbacks cannot publish
-new state after close.
+For a view created by `Notebook.view()`, this closes the view and its browser
+runtime while the notebook session remains active. A view returned by a
+standalone factory owns its notebook session, so closing it also closes any
+other views created from `view.notebook`. Repeated calls are no-ops. Late
+browser callbacks cannot publish new state after close.
 
 See [View state and graph](values-and-graph.mdx) for the result, error, revision,
 and dependency records.
