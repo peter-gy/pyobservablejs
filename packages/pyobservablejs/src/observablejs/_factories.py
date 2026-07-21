@@ -64,18 +64,60 @@ def view_from_html(
 ) -> NotebookView:
     """Create an AnyWidget view from Notebook Kit HTML text.
 
+    The HTML can mix Notebook Kit cell types. See the official Notebook Kit
+    documentation at https://observablehq.com/notebook-kit/kit for the file
+    format and cell type details.
+
     Closing the returned view also closes its notebook session.
 
     Examples:
-        Create a view from stored Notebook Kit HTML:
+        Create a view containing each Notebook Kit cell type:
 
         >>> import observablejs as obs
-        >>> source = (
-        ...     '<notebook theme="air">'
-        ...     '<script id="1" '
-        ...     'type="application/vnd.observable.javascript">'
-        ...     'answer = 42</script></notebook>'
-        ... )
+        >>> source = r'''
+        ... <!doctype html>
+        ... <notebook theme="air">
+        ...   <title>Cell types</title>
+        ...   <script id="1" type="text/markdown">
+        ...     # Cell types
+        ...   </script>
+        ...   <script id="2" type="module">
+        ...     const values = [1, 2, 3];
+        ...     const db = DuckDBClient.of({values: values.map(value => ({value}))});
+        ...   </script>
+        ...   <script id="3" type="text/x-typescript">
+        ...     const total: number = values.reduce((sum, value) => sum + value, 0);
+        ...   </script>
+        ...   <script id="4" type="application/vnd.observable.javascript">
+        ...     viewof limit = Inputs.range([1, 10], {value: total})
+        ...   </script>
+        ...   <script id="5" type="text/html">
+        ...     <strong>Selected limit: ${limit}</strong>
+        ...   </script>
+        ...   <script id="6" type="application/x-tex">
+        ...     \\sum_{i=1}^{3} i = 6
+        ...   </script>
+        ...   <script id="7" type="text/vnd.graphviz">
+        ...     digraph { values -> total -> limit }
+        ...   </script>
+        ...   <script id="8" type="application/sql" database="var:db" output="rows">
+        ...     SELECT sum(value) AS total FROM values
+        ...   </script>
+        ...   <script id="9" type="application/vnd.node.javascript"
+        ...           format="json" output="node_data">
+        ...     process.stdout.write(JSON.stringify({runtime: "node"}));
+        ...   </script>
+        ...   <script id="10" type="text/x-python"
+        ...           format="json" output="python_data">
+        ...     import json, sys
+        ...     json.dump({"runtime": "python"}, sys.stdout)
+        ...   </script>
+        ...   <script id="11" type="text/x-r"
+        ...           format="json" output="r_data">
+        ...     cat('{"runtime":"r"}')
+        ...   </script>
+        ... </notebook>
+        ... '''
         >>> view = obs.view_from_html(source)
         >>> view.close()
     """
@@ -144,12 +186,23 @@ def view_from_observablehq_document(
         >>> document: ObservableDocument = {
         ...     "title": "Metrics",
         ...     "nodes": [
+        ...         {"id": 1, "mode": "md", "value": "# Metrics"},
         ...         {
-        ...             "id": 1,
+        ...             "id": 2,
         ...             "mode": "js",
-        ...             "name": "answer",
-        ...             "value": "answer = 42",
-        ...         }
+        ...             "name": "values",
+        ...             "value": "values = [3, 5, 8]",
+        ...         },
+        ...         {
+        ...             "id": 3,
+        ...             "mode": "html",
+        ...             "value": "<strong>${values.length} values</strong>",
+        ...         },
+        ...         {
+        ...             "id": 4,
+        ...             "mode": "tex",
+        ...             "value": r"\\sum_{i=1}^{3} x_i",
+        ...         },
         ...     ],
         ... }
         >>> view = obs.view_from_observablehq_document(document)
