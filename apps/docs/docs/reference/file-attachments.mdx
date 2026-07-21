@@ -115,8 +115,9 @@ read and metadata failures raise the corresponding `OSError` subclass.
 
 ## Attachment records
 
-`notebook.attachments` returns a new outer dictionary containing the
-registered records. For a local file, the record has this shape:
+`notebook.attachments` is the attachment mapping from the latest detached,
+recursively read-only `NotebookState` snapshot. For a local file, the record
+has this shape:
 
 ```python
 {
@@ -134,6 +135,9 @@ Apache Arrow and Apache Parquet media types. Unknown suffixes use
 
 Names absent from `notebook.attachments` resolve against the browser document
 base URI.
+
+Frameworks that listen to traitlets can observe `notebook.state` for changes.
+Attachments are fixed at construction, so create a new notebook to change them.
 
 ## Source HTML discovery
 

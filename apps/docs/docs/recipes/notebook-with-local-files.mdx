@@ -41,7 +41,11 @@ Plot.barY(penguinCounts, {
   x: "species",
   y: "count",
   fill: "species",
-  tip: {fill: "var(--marimo-island-background)"}
+  tip: {
+    // This example references a theme variable used by mdx-marimo.
+    // Replace it with a CSS color or remove `fill` in another host.
+    fill: "var(--marimo-island-background)"
+  }
 }).plot({
   height: 260,
   color: {legend: true},
@@ -85,7 +89,11 @@ Plot.barY(penguinCounts, {
   x: "species",
   y: "count",
   fill: "species",
-  tip: {fill: "var(--marimo-island-background)"}
+  tip: {
+    // This example references a theme variable used by mdx-marimo.
+    // Replace it with a CSS color or remove `fill` in another host.
+    fill: "var(--marimo-island-background)"
+  }
 }).plot({
   height: 260,
   color: {legend: true},

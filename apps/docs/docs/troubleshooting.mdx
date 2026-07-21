@@ -7,22 +7,41 @@ description: Symptoms, causes, and fixes for common pyobservablejs failures.
 
 Start with the symptom. Each entry names the contract behind the fix.
 
-## `NotRenderedError` when reading values or the graph
+## State has no results yet
 
-Readback exists only after the browser produces it. `values` and
-`cell_values` require a completed render. `graph` requires a graph snapshot.
-Guard with the gates:
+`NotebookView.state` starts empty before a browser mounts the widget. Inspect
+the revisions and pending flag before consuming a result:
 
 ```python
-if full_view.has_rendered:
-    values = full_view.values
-if full_view.has_graph_snapshot:
-    graph = full_view.graph
+state = full_view.state
+
+if (
+    not state.pending
+    and state.input_revision is not None
+    and state.settled_revision == state.input_revision
+):
+    result = state.result("chart")
 ```
 
-The gates are per-view: rendering one view does not unlock a sibling. They
-also reset while a `replace_variables` or `reset_variables` rebuild is in
-flight. See [Manage view lifecycle](render/view-lifecycle.mdx).
+Both revisions are `None` before mount. `pending=True` means a newer input
+revision is still evaluating. Readback belongs to one view, so rendering a
+sibling does not populate this state. See [Read results](connect/observable-to-python.mdx).
+
+## A cell result has `status="error"`
+
+Inspect `result.errors`. Every error includes a `name`, `message`, and phase.
+Cell errors may also identify the failed output variable.
+
+```python
+result = full_view.state.result("chart")
+
+for error in result.errors:
+    print(error.phase, error.variable, error.message)
+```
+
+The phase distinguishes source analysis, evaluation, rendering, and value
+serialization. A multi-output cell can retain successful values beside an
+error.
 
 ## The view displays nothing
 
@@ -38,9 +57,9 @@ flight. See [Manage view lifecycle](render/view-lifecycle.mdx).
 
 ## The same view appears twice and one copy froze
 
-A `NotebookView` owns one live writable output. Mounting the same view
-object in two places leaves only one output writable. Create one view per
-placement. The views stay synchronized through the session. See [Display a
+A `NotebookView` can appear in one live location at a time. Displaying the same
+view object twice leaves one copy frozen. Create one view per location. Views
+from the same notebook stay synchronized. See [Display a
 NotebookView](render/display-views.mdx#one-view-per-placement).
 
 ## `ValueError` for a variable name
@@ -53,24 +72,28 @@ serialization](reference/variables-and-serialization.mdx#variable-names).
 ## `TypeError: Value of type ... is not serializable`
 
 The [serialization
-table](reference/variables-and-serialization.mdx#python-to-browser) lists
-the types that cross the wire. Convert custom objects to plain mappings,
+table](reference/variables-and-serialization.mdx#python-to-browser-conversion) lists
+the types that can move between Python and the browser. Convert custom objects to plain mappings,
 lists, or DataFrames first. Use [file
 attachments](create/files-and-modules.mdx) for large tables and binary data.
 
-## A name is missing from `values`
+## A value is missing from a cell result
 
-`values` omits names produced by more than one selected cell because no
-unique owner exists. Read the value per cell with `cell_values`, or
-restructure the notebook so one cell defines the name.
+Read values from the result for the cell that defines them. Results stay
+separate even when several cells define the same JavaScript variable name.
+
+```python
+value = full_view.state.result("summary").values["total"]
+```
 
 ## The chart did not react to `update_variables`
 
-- The update is a no-op when the serialized value is unchanged. Mutating a
-  list in place and passing the same object still changes the wire value
-  only if the contents differ.
+- An unchanged value is a no-op unless the browser has changed a shared input
+  with that name. In that case, the update clears the browser-owned value and
+  reapplies the Python value. Mutating a list in place changes the browser value
+  only when its contents differ.
 - The cell must reference the variable by that exact name. Check
-  `full_view.graph.external_references` to see what the cells actually
+  `full_view.state.graph.external_references` to see what the cells actually
   resolve from the environment. See [Inspect the dependency
   graph](connect/dependency-graph.mdx).
 
@@ -85,7 +108,7 @@ widget = mo.ui.anywidget(full_view)
 
 ```python
 widget.value  # subscribe
-full_view.values if full_view.has_rendered else None
+full_view.state
 ```
 
 ## `TraitError` when assigning `notebook.theme`

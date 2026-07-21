@@ -1,271 +1,124 @@
 ---
 title: Quickstart
-description: Load or author a notebook, synchronize values, and inspect its dependency graph.
+description: Render a keyed notebook, update a variable, and read structured results.
 ---
 
 # Quickstart
 
-`pyobservablejs` views render in JupyterLab, marimo, VS Code notebooks, Google
-Colab, and other [anywidget](https://anywidget.dev/) hosts. The live examples
-use marimo and require Python 3.11 or newer.
+`pyobservablejs` requires Python 3.11 or newer. Add it to an existing
+environment:
+
+```sh
+uv pip install pyobservablejs
+```
+
+Or open an isolated marimo editor with the package available:
 
 ```sh
 uvx --with pyobservablejs marimo edit notebook.py
 ```
+
+## Create and render a notebook
+
+Paste this into a marimo cell or another anywidget notebook host:
 
 ```marimo-config
 requires-python = ">=3.11"
 dependencies = ["pyobservablejs"]
 ```
 
-```python marimo echo=false server-output=false
-import marimo as mo
-import observablejs as obs
-```
-
-## Load an existing Observable notebook
-
-`Notebook.from_observablehq` loads a public ObservableHQ notebook as a Python
-`Notebook`. Call `view()` to create its renderable notebook view.
-
-```python
-import observablejs as obs
-
-notebook = obs.Notebook.from_observablehq("@d3/world-tour")
-notebook.view()
-```
-
-`@d3/world-tour` resolves to
-[observablehq.com/@d3/world-tour](https://observablehq.com/@d3/world-tour).
-See [Import ObservableHQ notebooks](create/observablehq.mdx) for accepted
-specifiers, network behavior, and pinned source revisions.
-
-## Author a notebook from code
-
-Combine HTML, Observable JavaScript, and Notebook Kit JavaScript cells in one
-notebook. Changing the species input recomputes the plot in the browser.
-
-```python
-import observablejs as obs
-
-notebook = obs.Notebook(
-    obs.html(
-        """
-        <h2>Palmer penguins</h2>
-        <p>Choose a species to filter the chart.</p>
-        """
-    ),
-    obs.ojs(
-        """
-        viewof species = Inputs.select(
-          ["All", ...new Set(penguins.map((d) => d.species))],
-          {label: "Species", value: "All"}
-        )
-        """,
-    ),
-    obs.js(
-        """
-        Plot.dot(
-          species === "All"
-            ? penguins
-            : penguins.filter((d) => d.species === species),
-          {
-            x: "culmen_length_mm",
-            y: "culmen_depth_mm",
-            fill: "species",
-            tip: true
-          }
-        ).plot({
-          height: 320,
-          color: {legend: true},
-          x: {grid: true, label: "Bill length (mm)"},
-          y: {grid: true, label: "Bill depth (mm)"}
-        })
-        """,
-    ),
-)
-
-notebook.view()
-```
-
-```python marimo echo=false server-output=false
-penguins_notebook = obs.Notebook(
-    obs.html(
-        """
-        <h2>Palmer penguins</h2>
-        <p>Choose a species to filter the chart.</p>
-        """
-    ),
-    obs.ojs(
-        """
-        viewof species = Inputs.select(
-          ["All", ...new Set(penguins.map((d) => d.species))],
-          {label: "Species", value: "All"}
-        )
-        """,
-    ),
-    obs.js(
-        """
-        Plot.dot(
-          species === "All"
-            ? penguins
-            : penguins.filter((d) => d.species === species),
-          {
-            x: "culmen_length_mm",
-            y: "culmen_depth_mm",
-            fill: "species",
-            tip: true
-          }
-        ).plot({
-          height: 320,
-          color: {legend: true},
-          x: {grid: true, label: "Bill length (mm)"},
-          y: {grid: true, label: "Bill depth (mm)"}
-        })
-        """,
-    ),
-)
-
-mo.ui.anywidget(penguins_notebook.view())
-```
-
-`penguins`, `Inputs`, and `Plot` come from Notebook Kit. The Observable
-JavaScript [`viewof` operator](https://observablehq.com/@observablehq/views)
-updates `species` when the selection changes.
-
-## Sync values with Python
-
-Pass Python values to the browser through `variables`. A named `viewof` input
-with the same name starts from the Python value and reports browser interactions
-through the rendered view.
-
-```python
-import observablejs as obs
-
-notebook = obs.Notebook(
-    obs.ojs(
-        """
-        viewof threshold = Inputs.range([0, 1], {
-          value: 0.75,
-          step: 0.05,
-          label: "Threshold"
-        })
-        """
-    ),
-    obs.js('html`<p>Threshold: <strong>${threshold}</strong></p>`'),
-    variables={"threshold": 0.75},
-)
-
-notebook_view = notebook.view()
-notebook_view
-```
-
-```python marimo echo=false server-output=false
-variables_notebook = obs.Notebook(
-    obs.ojs(
-        """
-        viewof threshold = Inputs.range([0, 1], {
-          value: 0.75,
-          step: 0.05,
-          label: "Threshold"
-        })
-        """
-    ),
-    obs.js('html`<p>Threshold: <strong>${threshold}</strong></p>`'),
-    variables={"threshold": 0.75},
-)
-
-variables_view = variables_notebook.view()
-mo.ui.anywidget(variables_view)
-```
-
-While the view stays mounted,
-`notebook.update_variables(threshold=0.9)` updates the control from Python.
-After the view renders, `notebook_view.values["threshold"]` reads its current
-browser value.
-
-## Inspect the notebook graph
-
-Each mounted view synchronizes a dependency graph with the cells, variables,
-and edges evaluated in its browser runtime. This notebook builds a cylinders
-control, a hidden filter cell, and a table. Once the graph snapshot arrives,
-it renders the result with
-`mo.mermaid(full_view.graph.to_mermaid())`.
-
 ```python
 import marimo as mo
 import observablejs as obs
 
+control = obs.ojs(
+    """
+    viewof threshold = Inputs.range([0, 1], {
+      value: 0.5,
+      step: 0.1,
+      label: "Threshold"
+    })
+    """,
+    key="threshold",
+)
+
+result = obs.js(
+    'html`<strong>Threshold: ${threshold}</strong>`',
+    key="result",
+)
+
 notebook = obs.Notebook(
-    obs.js(
-        """
-        const cylinders = view(Inputs.select(
-          ["All", ...new Set(cars.map((d) => d.cylinders))],
-          {label: "Cylinders", value: "All"}
-        ));
-        """,
-        key="cylinder_control",
-    ),
-    obs.js(
-        """
-        const filteredCars = cylinders === "All"
-          ? cars
-          : cars.filter((d) => d.cylinders === cylinders);
-        """,
-        key="filtered_cars",
-        display=False,
-    ),
-    obs.js("Inputs.table(filteredCars)", key="table"),
+    control,
+    result,
+    variables={"threshold": 0.5},
 )
 
-full_view = mo.ui.anywidget(notebook.view())
-full_view
+view = notebook.view()
+widget = mo.ui.anywidget(view)
+widget
 ```
 
 ```python marimo echo=false server-output=false
-graph_notebook = obs.Notebook(
-    obs.js(
-        """
-        const cylinders = view(Inputs.select(
-          ["All", ...new Set(cars.map((d) => d.cylinders))],
-          {label: "Cylinders", value: "All"}
-        ));
-        """,
-        key="cylinder_control",
-    ),
-    obs.js(
-        """
-        const filteredCars = cylinders === "All"
-          ? cars
-          : cars.filter((d) => d.cylinders === cylinders);
-        """,
-        key="filtered_cars",
-        display=False,
-    ),
-    obs.js("Inputs.table(filteredCars)", key="table"),
+import marimo as mo
+import observablejs as obs
+
+control = obs.ojs(
+    """
+    viewof threshold = Inputs.range([0, 1], {
+      value: 0.5,
+      step: 0.1,
+      label: "Threshold"
+    })
+    """,
+    key="threshold",
 )
 
-full_view = mo.ui.anywidget(graph_notebook.view())
-full_view
+result = obs.js(
+    'html`<strong>Threshold: ${threshold}</strong>`',
+    key="result",
+)
+
+notebook = obs.Notebook(
+    control,
+    result,
+    variables={"threshold": 0.5},
+)
+
+view = notebook.view()
+widget = mo.ui.anywidget(view)
+widget
 ```
 
-```python marimo echo=false server-output=false
-full_view.has_graph_snapshot and mo.mermaid(full_view.graph.to_mermaid())
+## Update the browser from Python
+
+`Notebook.update_variables` accepts one mapping. Every mounted view from this
+notebook receives the update.
+
+```python
+notebook.update_variables({"threshold": 0.8})
 ```
 
-Use `full_view.graph` to inspect the records from Python. Call `to_d2()` or
-`to_mermaid()` to export the same graph as D2 or Mermaid. See [Inspect the
-dependency graph](connect/dependency-graph.mdx) for the full workflow.
+## Read a settled result
 
-## Next steps
+`NotebookView.state` is one consistent, read-only snapshot. Read a result after
+the current input revision finishes.
 
-- [Mental model](mental-model.mdx) explains `Notebook`, `NotebookCell`, and
-  `NotebookView` ownership.
-- [Author cells from Python](create/author-cells.mdx) covers cell modes,
-  selection keys, names, and display options.
-- [Python to Observable](connect/python-to-observable.mdx) updates a mounted
-  notebook from Python.
-- [Observable to Python](connect/observable-to-python.mdx) reads rendered
-  browser values back.
-- [Display views](render/display-views.mdx) covers marimo, JupyterLab, and other
-  anywidget hosts.
+```python
+widget.value  # rerun this cell when synchronized widget state changes
+state = view.state
+
+if (
+    not state.pending
+    and state.input_revision is not None
+    and state.settled_revision == state.input_revision
+):
+    result_state = state.result("result")
+    if result_state.status == "success":
+        print(result_state.values)
+    else:
+        print(result_state.errors)
+```
+
+Continue with [Core concepts](mental-model.mdx), [Build
+notebooks](create/author-cells.mdx), [Select cells](render/select-cells.mdx), or
+[Read results](connect/observable-to-python.mdx).

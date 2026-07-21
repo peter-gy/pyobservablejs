@@ -70,7 +70,11 @@ notebook = obs.Notebook(
           x: "letter",
           y: (d) => Math.max(d.frequency * gain, floor),
           fill: "letter",
-          tip: {fill: "var(--marimo-island-background)"}
+          tip: {
+            // This example references a theme variable used by mdx-marimo.
+            // Replace it with a CSS color or remove `fill` in another host.
+            fill: "var(--marimo-island-background)"
+          }
         }).plot({
           height: 260,
           y: {grid: true, label: "Scaled frequency"},
@@ -111,7 +115,11 @@ notebook = obs.Notebook(
           x: "letter",
           y: (d) => Math.max(d.frequency * gain, floor),
           fill: "letter",
-          tip: {fill: "var(--marimo-island-background)"}
+          tip: {
+            // This example references a theme variable used by mdx-marimo.
+            // Replace it with a CSS color or remove `fill` in another host.
+            fill: "var(--marimo-island-background)"
+          }
         }).plot({
           height: 260,
           y: {grid: true, label: "Scaled frequency"},
@@ -128,22 +136,30 @@ widget = mo.ui.anywidget(full_view)
 ```
 
 ```python
-notebook.update_variables(floor=floor_slider.value)
+notebook.update_variables({"floor": floor_slider.value})
 mo.vstack([floor_slider, widget])
 ```
 
 ```python marimo echo=false server-output=false
-notebook.update_variables(floor=floor_slider.value)
+notebook.update_variables({"floor": floor_slider.value})
 mo.vstack([floor_slider, widget])
 ```
 
 ```python
 widget.value  # subscribe this cell to view synchronization
+state = full_view.state
 
-if full_view.has_rendered:
+if (
+    not state.pending
+    and state.input_revision is not None
+    and state.settled_revision == state.input_revision
+):
+    gain = state.result("gain_control")
     gain_report = (
-        f"Python reads `gain = {full_view.values.get('gain')}` "
-        f"while it owns `floor = {notebook.variables['floor']}`."
+        f"Python reads `gain = {gain.values['gain']}` "
+        f"while Python sets `floor = {notebook.variables['floor']}`."
+        if gain.status == "success"
+        else f"Browser error: {gain.errors}"
     )
 else:
     gain_report = "Waiting for the Observable view to render."
@@ -152,31 +168,38 @@ mo.md(gain_report)
 
 ```python marimo echo=false server-output=false
 widget.value  # subscribe this cell to view synchronization
+state = full_view.state
 
-if full_view.has_rendered:
+if (
+    not state.pending
+    and state.input_revision is not None
+    and state.settled_revision == state.input_revision
+):
+    gain = state.result("gain_control")
     gain_report = (
-        f"Python reads `gain = {full_view.values.get('gain')}` "
-        f"while it owns `floor = {notebook.variables['floor']}`."
+        f"Python reads `gain = {gain.values['gain']}` "
+        f"while Python sets `floor = {notebook.variables['floor']}`."
+        if gain.status == "success"
+        else f"Browser error: {gain.errors}"
     )
 else:
     gain_report = "Waiting for the Observable view to render."
 mo.md(gain_report)
 ```
 
-## The division of labor
+## Where each value comes from
 
-| Value     | Owner   | Path                                                               |
+| Value     | Set by  | Path                                                               |
 | --------- | ------- | ------------------------------------------------------------------ |
-| `letters` | Python  | `variables=` at construction                                       |
-| `floor`   | Python  | `update_variables` on every marimo slider change                   |
-| `gain`    | Browser | `view(Inputs.range(...))`, then read through `values` after render |
+| `letters` | Python  | `variables=` when the notebook is created                          |
+| `floor`   | Python  | `update_variables` after each marimo slider change                 |
+| `gain`    | Browser | `view(Inputs.range(...))`, then the finished `gain_control` result |
 
 Two rules keep this pattern predictable:
 
-- **Keep each name owned by one side.** Python asserts `floor`. The browser
-  asserts `gain`. When a name genuinely needs both owners, use the seeding
-  contract in [Bidirectional inputs](../connect/bidirectional-inputs.mdx)
-  deliberately.
+- **Choose where each name is set.** Python sets `floor`. The browser sets
+  `gain`. See [Bidirectional inputs](../connect/bidirectional-inputs.mdx) when
+  both sides need to change one name.
 - **Subscribe the reading cell.** The readout references `widget.value`, so
   marimo reruns it whenever the view synchronizes. Keep that reference in
   the reading cell to receive every synchronized update.

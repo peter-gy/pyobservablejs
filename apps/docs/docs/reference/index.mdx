@@ -5,44 +5,25 @@ description: Public Python API reference for pyobservablejs.
 
 # API reference
 
-The `observablejs` package exports notebook definitions, renderable views,
-cell constructors, synchronized value records, and dependency graph records.
-
 ```python
 import observablejs as obs
-
-notebook = obs.Notebook(
-    obs.md("# Summary"),
-    obs.ojs("answer = 40 + 2", key="answer"),
-)
-full_view = notebook.view()
 ```
 
-## Public exports
+The top-level package exports the runtime objects and cell helpers:
 
-| Export                                                      | Kind              | Contract                                                                         |
-| ----------------------------------------------------------- | ----------------- | -------------------------------------------------------------------------------- |
-| [`Notebook`](notebook.mdx)                                  | Class             | Owns the definition, attachments, theme, variables, and shared input values.     |
-| [`NotebookView`](notebook-view-and-cell.mdx#notebookview)   | Class             | Renders selected cells and owns its browser runtime, values, and graph snapshot. |
-| [`NotebookCell`](notebook-view-and-cell.mdx#notebookcell)   | Class             | Identifies one cell by index, optional key, and optional Notebook Kit name.      |
-| [`Cell`](cell-helpers.mdx#cell)                             | Frozen data class | Describes one Python-authored Notebook Kit cell and its metadata.                |
-| [`ojs`](cell-helpers.mdx#helper-functions)                  | Function          | Creates an Observable JavaScript `Cell`.                                         |
-| [`js`](cell-helpers.mdx#helper-functions)                   | Function          | Creates a JavaScript module `Cell`.                                              |
-| [`md`](cell-helpers.mdx#helper-functions)                   | Function          | Creates a Markdown `Cell`.                                                       |
-| [`html`](cell-helpers.mdx#helper-functions)                 | Function          | Creates an HTML `Cell`.                                                          |
-| [`CellValues`](values-and-graph.mdx#cellvalues)             | Frozen data class | Carries the synchronized values for one selected cell.                           |
-| [`NotebookGraph`](values-and-graph.mdx#notebookgraph)       | Frozen data class | Contains decoded cells and symbolic dependency edges.                            |
-| [`CellInfo`](values-and-graph.mdx#cellinfo)                 | Frozen data class | Describes one cell in a synchronized graph snapshot.                             |
-| [`DependencyEdge`](values-and-graph.mdx#dependencyedge)     | Frozen data class | Describes one variable dependency between two cells.                             |
-| [`NotRenderedError`](values-and-graph.mdx#notrenderederror) | Exception         | Reports that the browser snapshot required for readback has not synchronized.    |
-| [`NOTEBOOK_THEMES`](themes.mdx)                             | Tuple             | Lists the accepted Notebook Kit theme names.                                     |
+| Export                                                         | Contract                                                         |
+| -------------------------------------------------------------- | ---------------------------------------------------------------- |
+| [`Notebook`](notebook.mdx)                                     | Controls a notebook definition and Python-owned state.           |
+| [`NotebookView`](notebook-view-and-cell.mdx#notebookview)      | Renders selected cells and exposes one consistent browser state. |
+| [`NotebookCell`](notebook-view-and-cell.mdx#notebookcell)      | Identifies one notebook-owned cell by key.                       |
+| [`Cell`](cell-helpers.mdx#cell)                                | Describes one authored cell.                                     |
+| [`ojs`, `js`, `md`, `html`](cell-helpers.mdx#helper-functions) | Create common cell modes.                                        |
+| [`NotebookGraph`](values-and-graph.mdx#notebookgraph)          | Contains cells and symbolic dependencies.                        |
+| [`CellInfo`](values-and-graph.mdx#cellinfo)                    | Describes one graph cell.                                        |
+| [`DependencyEdge`](values-and-graph.mdx#dependencyedge)        | Links source and target cells through one variable.              |
+| [`NOTEBOOK_THEMES`](themes.mdx)                                | Lists accepted Notebook Kit themes.                              |
+| [`types`](types.mdx)                                           | Namespaces advanced typed mappings and state records.            |
 
-The reference pages cover these related entry points:
-
-- [Variables and serialization](variables-and-serialization.mdx) defines
-  both directions of value serialization and the variable update lifecycle.
-- [Source constructors](source-constructors.mdx) defines the
-  `Notebook.from_*` constructors.
-- [File attachments](file-attachments.mdx) defines `files`, `base_path`, and
-  `FileAttachment` resolution.
-- [Themes](themes.mdx) defines accepted theme names and validation.
+Use [Source constructors](source-constructors.mdx) for imported notebooks,
+[File attachments](file-attachments.mdx) for `files`, and [Variables and
+serialization](variables-and-serialization.mdx) for state conversion.

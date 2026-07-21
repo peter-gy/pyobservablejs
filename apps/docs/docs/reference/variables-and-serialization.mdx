@@ -1,184 +1,106 @@
 ---
 title: Variables and serialization
-description: Variable names, Python-to-browser serialization, updates, and browser readback conversion.
+description: Mapping-only variable updates, read-only snapshots, and browser value conversion.
 ---
 
 # Variables and serialization
 
-`variables` defines Python-owned values in the Observable runtime. Values
-are serialized recursively and preserve the supported browser types with
-tagged records where JSON has no direct equivalent.
+`variables` sends named Python values to the Observable notebook.
 
 ```python
 import observablejs as obs
 
 notebook = obs.Notebook(
-    obs.ojs("md`threshold is ${threshold}`"),
+    obs.ojs("md`threshold is ${threshold}`", key="readout"),
     variables={"threshold": 0.75},
 )
 ```
 
 ## Variable names
 
-Names must match this ASCII JavaScript identifier pattern:
+Names must match `^[A-Za-z_$][0-9A-Za-z_$]*$`. Observable runtime builtins such
+as `Inputs`, `Plot`, `FileAttachment`, `width`, and `invalidation` are reserved.
+ObservableHQ sources also reserve classic runtime names such as `require`.
+Invalid or reserved names raise `ValueError`.
 
-```text
-^[A-Za-z_$][0-9A-Za-z_$]*$
-```
-
-The Observable runtime owns these names, so Python variables cannot use
-them:
-
-```text
-Arrow DOM DatabaseClient DuckDBClient FileAttachment Files Generators Inputs
-Interpreter L Mutable Plot Promises React ReactDOM SQLite SQLiteDatabaseClient
-_ __ojs_observer aapl alphabet aq cars citywages d3 dark diamonds document dot
-duckdb echarts flare htl html industries invalidation mapboxgl md mermaid
-miserables now olympians penguins pizza svg tex topojson visibility vl weather
-width
-```
-
-The classic Observable standard library also owns `__query`, `require`, and
-`resolve`. ObservableHQ constructors reserve these names for classic source
-execution. Invalid identifiers and reserved names raise `ValueError` during
-construction or a variable update.
-
-## Python to browser
-
-| Python input                                                        | Observable value               | Boundary                                                                         |
-| ------------------------------------------------------------------- | ------------------------------ | -------------------------------------------------------------------------------- |
-| `None`                                                              | `null`                         | Plain JSON                                                                       |
-| `bool`, `str`                                                       | `boolean`, `string`            | Plain JSON                                                                       |
-| `int` from `-9_007_199_254_740_991` through `9_007_199_254_740_991` | `number`                       | Inclusive JavaScript safe-integer range                                          |
-| `int` outside the safe-integer range                                | `BigInt`                       | Decimal text in a tagged record                                                  |
-| Finite `float`                                                      | `number`                       | Plain JSON                                                                       |
-| `float("nan")`, positive infinity, negative infinity                | `NaN`, `Infinity`, `-Infinity` | Tagged record                                                                    |
-| `datetime.date`, `datetime.datetime`                                | `Date`                         | Python `isoformat()` text passed to the JavaScript `Date` constructor            |
-| `bytes`, `bytearray`, `memoryview`                                  | `Uint8Array`                   | Base64 in a tagged record                                                        |
-| `Mapping`                                                           | Plain object                   | Keys converted with `str`, values converted recursively                          |
-| `range`                                                             | Array                          | Materialized directly. Elements should stay in the JavaScript safe-integer range |
-| `list`, `tuple`, and other iterables                                | Array                          | Materialized and converted recursively                                           |
-| pandas or Polars `DataFrame`                                        | Array of row objects           | pandas uses `to_dict(orient="records")`, Polars uses `to_dicts()`                |
-| pandas or Polars `Series`                                           | Array                          | pandas uses `tolist()`, Polars uses `to_list()`                                  |
-| NumPy array or scalar                                               | Array or scalar                | Uses `tolist()` or `item()`, then converts the result recursively                |
-
-One-shot iterators such as generators are materialized once and stored as
-replayable lists. Mapping keys with the same string form collapse to one
-JavaScript property. A mapping that contains `__observablejs_type__` uses
-tagged serialization and revives as a JavaScript object.
-
-`range` uses direct JSON number encoding. Elements outside the JavaScript
-safe-integer range can lose precision in the browser. Use a list when those
-elements need `BigInt` conversion.
-
-Values outside these contracts raise `TypeError` during construction or
-mutation, before synchronized state changes. Use [file
-attachments](file-attachments.mdx) for large tables and binary data that
-the browser can load through `FileAttachment`.
-
-## `Notebook.variables`
+## Write variables
 
 ```python
-current = notebook.variables
-```
-
-Returns a shallow copy of the current Python-owned variable mapping. Browser
-evaluation and readback remain separate from this mapping.
-
-## Python values and `viewof` inputs
-
-When a Python variable has the same name as a `viewof` input, the initial
-Python value seeds the control. A browser interaction then becomes shared
-input state for current and future views when its value has a supported
-shared shape. Another view attempts to write that state to an input with the
-same name. A successful round trip dispatches `input` and `change` events. A
-failed round trip suppresses those events, though the attempted property
-write can still coerce or clear the target. Use the same input type for a
-shared name across views.
-
-Shared input state accepts `null`, booleans, strings, numbers including
-special numeric values, `BigInt`, valid dates, arrays, plain objects, maps,
-and sets. Container values must contain supported values recursively. Values
-such as `undefined`, functions, DOM elements, files, blobs, regular
-expressions, errors, binary buffers, circular references, and depth or size
-summaries remain local to the view that produced them.
-
-An `update_variables` or `replace_variables` call that includes the name
-clears the interacted value and applies the Python value to every active
-view. This also reasserts a configured Python value that has not changed in
-Python. Releasing the name through `replace_variables` or `reset_variables`
-restores the source-defined input default.
-
-## `Notebook.update_variables(values=None, /, **kwargs)`
-
-```python
-notebook.update_variables({"threshold": 0.8}, label="selected")
-```
-
-Merges a mapping or iterable of key-value pairs into the Python-owned
-environment. Keyword arguments are applied after `values` and win when a
-name appears in both. Active views receive a live `set` update for
-wire-level changes and names whose interacted input state is cleared. A
-wire-identical update with no interacted state is a no-op. An empty update
-is also a no-op.
-
-The method returns `None`. Invalid names raise `ValueError`. A malformed
-key-value iterable or unsupported value raises `TypeError`.
-
-## `Notebook.replace_variables(values=None, /, **kwargs)`
-
-```python
+notebook.update_variables({"threshold": 0.8})
 notebook.replace_variables({"rows": rows})
+notebook.reset_variables("threshold")
 ```
 
-Replaces the Python-owned environment and returns `None`. Names absent from
-the replacement are released. Active views rebuild when the serialized
-environment changes or the replacement clears interacted input state. This
-restores notebook definitions for released names. A wire-identical
-replacement with no interacted state is a no-op. Keyword arguments win over
-matching entries in `values`.
+`update_variables(values, /)` merges exactly one mapping.
+`replace_variables(values, /)` replaces the complete mapping sent from Python.
+`reset_variables(*names)` removes selected Python values so the notebook can
+define them again. Keyword updates, pair iterables, and `None` are invalid for
+update and replacement.
 
-## `Notebook.reset_variables(*names)`
+Sending the same serialized value does not emit a controller `state` event. It
+is also a browser no-op unless the browser has changed a shared input with that
+name. In that case, the update clears the browser-owned value and reapplies the
+Python value. A real change reaches every active view.
+
+## Read controller variables
+
+`Notebook.variables` is the variable mapping from the latest
+`NotebookState`. It is detached from construction inputs and recursively
+read-only. After serialization, sequences are tuples, nested mappings are
+read-only, byte-like values are bytes, and DataFrame-like inputs are row records.
 
 ```python
-notebook.reset_variables("threshold", "label")
+def on_state(change):
+    print(change["new"].variables)
+
+notebook.observe(on_state, names="state")
 ```
 
-Releases the listed names when Python currently owns them and returns
-`None`. An empty call and names outside the current environment are no-ops.
-Releasing at least one name follows the replacement lifecycle and restores
-the original notebook definitions in each active runtime.
+Mutating the snapshot cannot update the notebook. Use the mutation methods for
+writes.
 
-## Browser to Python readback
+## Python to browser conversion
 
-`NotebookView.values` and `NotebookView.cell_values` decode browser values
-back to Python after the view renders. See
-[`NotRenderedError`](values-and-graph.mdx#notrenderederror) for the required
-lifecycle state.
+| Python input                         | Browser value              |
+| ------------------------------------ | -------------------------- |
+| `None`, `bool`, `str`                | `null`, boolean, string    |
+| Safe `int`, finite `float`           | number                     |
+| Large `int`                          | `BigInt`                   |
+| `NaN` and infinities                 | matching JavaScript number |
+| `date`, `datetime`                   | `Date`                     |
+| `bytes`, `bytearray`, `memoryview`   | `Uint8Array`               |
+| Mapping                              | plain object               |
+| Range, sequence, iterable            | array                      |
+| pandas or Polars DataFrame           | array of row objects       |
+| pandas or Polars Series, NumPy array | array                      |
 
-| Browser value                               | Python readback                                             |
-| ------------------------------------------- | ----------------------------------------------------------- |
-| `undefined`, `null`                         | `None`                                                      |
-| Boolean, string, finite number              | `bool`, `str`, `int` or `float` supplied by JSON decoding   |
-| `NaN`, positive infinity, negative infinity | Python `float` special value                                |
-| `BigInt`                                    | `int`                                                       |
-| Valid `Date`                                | `datetime.datetime`                                         |
-| Array                                       | `list`                                                      |
-| Plain object                                | `dict` containing own enumerable data properties            |
-| `Map`                                       | `list` of key-value tuples                                  |
-| `Set`                                       | `list`                                                      |
-| `ArrayBuffer`, typed array, or `DataView`   | `bytes`                                                     |
-| DOM element                                 | String such as `"<div>"`                                    |
-| Function                                    | String such as `"[Function update]"`                        |
-| `Symbol`                                    | Tagged dictionary containing `"symbol"` and its string form |
-| `Error`                                     | String such as `"TypeError: invalid value"`                 |
-| `RegExp`                                    | String form of the expression                               |
-| `File`                                      | `{"name": ..., "size": ..., "mime_type": ...}`              |
-| `Blob`                                      | `{"size": ..., "mime_type": ...}`                           |
-| Circular reference                          | String such as `"[Circular reference 1]"`                   |
+One-shot iterators materialize once. Unsupported values raise `TypeError`
+before state changes. Use [file attachments](file-attachments.mdx) for data
+that should load through `FileAttachment`.
 
-Readback summarizes a value when traversal reaches a depth of 100 or 50,000
-container nodes. The summary is a string such as `"Array(10)"`, `"Map(3)"`,
-or the object's constructor name. Detached array buffers and invalid dates
-also return summary strings. Typed-array class and map or set container
-identity are therefore absent from the Python readback value.
+## Shared `viewof` inputs
+
+When a Python variable and named `viewof` input use the same name, the initial
+Python value sets the control. Browser changes then update sibling views. A
+later Python update sets the value again in every view. Use the same input shape
+for a shared name across views.
+
+## Browser result conversion
+
+Cell values in `NotebookView.state` decode into detached read-only mappings.
+
+| Browser value                             | Python result value        |
+| ----------------------------------------- | -------------------------- |
+| `undefined`, `null`                       | `None`                     |
+| Number, boolean, string                   | JSON-compatible scalar     |
+| `BigInt`                                  | `int`                      |
+| Valid `Date`                              | `datetime.datetime`        |
+| Array, plain object                       | tuple or read-only mapping |
+| `Map`, `Set`                              | tuple-based records        |
+| Array buffer or typed array               | `bytes`                    |
+| `Error` returned as data                  | `BrowserErrorValue`        |
+| DOM element, function, regular expression | stable summary string      |
+| `File`, `Blob`                            | read-only metadata mapping |
+
+Evaluation, rendering, and serialization failures appear in structured
+`CellError` records. See [View state and graph](values-and-graph.mdx).

@@ -1,23 +1,19 @@
 ---
 title: Source constructors
-description: Notebook.from_html, Notebook.from_observablehq, and ObservableHQ imports.
+description: Contracts for Notebook Kit HTML and ObservableHQ notebook sources.
 ---
 
 # Source constructors
 
-`Notebook.from_html` loads Notebook Kit HTML text.
-`Notebook.from_observablehq` fetches a public ObservableHQ document, while
-`Notebook.from_observablehq_document` accepts an existing document mapping.
-Both ObservableHQ constructors select the classic Observable standard
-library.
-
-Source notebook cells run JavaScript in the notebook page and can load
-remote modules or data.
+Source constructors return a `Notebook` with the same view, variable, state,
+and close APIs as a Python-authored notebook. Imported cells and remote modules
+run with the host page's browser privileges. Read the trust boundary in
+[Browser execution](../customize/browser-execution.mdx).
 
 ## `Notebook.from_html`
 
 ```python
-obs.Notebook.from_html(
+Notebook.from_html(
     source,
     *,
     files=None,
@@ -26,84 +22,55 @@ obs.Notebook.from_html(
     rewrite_imports=False,
     variables=None,
     show_pinned_source=False,
-)
+) -> Notebook
 ```
 
-Creates a notebook from a Notebook Kit HTML string.
-
-```python
-import observablejs as obs
-
-source = """<!doctype html>
-<notebook theme="air">
-  <script id="1" type="application/vnd.observable.javascript">
-    answer = 40 + 2
-  </script>
-</notebook>
-"""
-
-notebook = obs.Notebook.from_html(source)
-```
-
-`source` must be a string. Read or fetch the source before calling
-`from_html`:
+Creates a source-backed notebook from Notebook Kit HTML text. The notebook
+theme comes from the HTML. Each `data-pyobservablejs-key` becomes the public
+cell key.
 
 ```python
 from pathlib import Path
 
 import observablejs as obs
 
-source_path = Path("notebooks/report.html")
+path = Path("notebooks/report.html")
 notebook = obs.Notebook.from_html(
-    source_path.read_text(encoding="utf-8"),
-    base_path=source_path.parent,
+    path.read_text(encoding="utf-8"),
+    base_path=path.parent,
+    embed_file_attachments=True,
+    rewrite_imports=True,
 )
 ```
 
-`base_path` resolves local files and supplies the base used when
-`rewrite_imports=True`. `files` registers explicit Python file inputs and
-local paths are normalized against `base_path`.
+- `source` is a string containing Notebook Kit HTML.
+- `files` registers explicit attachment URLs, paths, or typed file records.
+- `base_path` resolves relative attachment and module paths.
+- `embed_file_attachments` embeds referenced local files as data URLs.
+- `rewrite_imports` embeds quoted relative JavaScript modules.
+- `variables` sets the initial Python-owned variable mapping.
+- `show_pinned_source` displays source for cells marked as pinned.
 
-HTML returned by an ObservableHQ notebook's `to_notebook_html()` method
-keeps its classic Observable standard-library semantics when loaded through
-`from_html`.
-
-`embed_file_attachments=True` registers existing local `FileAttachment`
-references as data URLs. `rewrite_imports=True` embeds existing local
-modules referenced by quoted relative specifiers in static imports,
-`export ... from` declarations, and dynamic `import(...)` calls. Computed
-specifiers and paths that do not resolve to files stay unchanged. Either
-option requires `base_path`.
-
-Explicit `files` override discovered files with the same name. See [File
-attachments](file-attachments.mdx) for accepted `files` values,
-construction-time data URLs, and discovery boundaries.
-
-A non-string `source` raises `TypeError`. Unsupported theme or
-runtime-profile attributes, finite numeric cell ids above
-9,007,199,254,740,991, and duplicate nonempty cell names raise `ValueError`.
-Numeric ids are floored. Missing, malformed, nonfinite, nonpositive, and
-duplicate ids follow Notebook Kit's ordered id allocation.
-Explicit local files can raise `FileNotFoundError` or `OSError` when files are
-missing or unreadable. Import rewriting raises `ValueError` for a circular
-local graph. Reading an imported module can raise an `OSError` or `UnicodeError`
-subclass.
+The constructor raises `TypeError` for an invalid source type or file mapping.
+It raises `ValueError` for malformed notebook metadata, duplicate cell ids or
+keys, unsupported themes, and invalid local import graphs. File reads may raise
+`OSError` or `UnicodeError`.
 
 ## `Notebook.from_observablehq`
 
 ```python
-obs.Notebook.from_observablehq(
+Notebook.from_observablehq(
     specifier,
     *,
     variables=None,
     files=None,
     show_pinned_source=False,
     timeout=30,
-)
+) -> Notebook
 ```
 
-Fetches a public ObservableHQ notebook through the document API and
-evaluates its cells with the classic Observable standard library.
+Fetches a public ObservableHQ notebook through its document API. The specifier
+may be a notebook URL, slug, id, or document API URL.
 
 ```python
 import observablejs as obs
@@ -111,107 +78,52 @@ import observablejs as obs
 notebook = obs.Notebook.from_observablehq("@d3/bar-chart", timeout=10)
 ```
 
-The specifier may be an ObservableHQ URL, slug, notebook id, or document API
-URL. Remote uploaded files become URL-backed attachments. The fetched
-document's `id` and `version` pin imported Observable notebooks to the
-dependency revisions selected by that source revision.
+Remote uploaded files become URL-backed attachments. Explicit `files` replace
+records with the same file name. The fetched document id and version pin its
+Observable notebook imports. `timeout=None` disables the per-request timeout.
 
-`timeout` is the network timeout in seconds. `None` disables the per-request
-timeout.
-
-Invalid specifiers, non-JSON responses, unsupported document API shapes, and
-conversion failures raise `ValueError`. HTTP and network failures raise
-`OSError`. Response text decoding failures raise `UnicodeError`.
+Invalid specifiers and document shapes raise `ValueError`. Network failures
+raise `OSError`. Response decoding may raise `UnicodeError`.
 
 ## `Notebook.from_observablehq_document`
 
 ```python
-obs.Notebook.from_observablehq_document(
+Notebook.from_observablehq_document(
     document,
     *,
     title=None,
     variables=None,
     files=None,
     show_pinned_source=False,
-)
+) -> Notebook
 ```
 
-Creates a notebook from an already-fetched ObservableHQ document API mapping
-and evaluates its cells with the classic Observable standard library.
+Creates a notebook from an existing `observablejs.types.ObservableDocument`.
+ObservableHQ node names become public cell keys at this adapter boundary.
 
 ```python
 import observablejs as obs
 
-document = {
+document: obs.types.ObservableDocument = {
     "id": "1234567890abcdef",
     "version": 7,
     "title": "Report",
     "nodes": [
-        {"id": 1, "mode": "js", "name": "answer", "value": "answer = 42"}
+        {"id": 1, "mode": "js", "name": "answer", "value": "answer = 42"},
     ],
 }
+
 notebook = obs.Notebook.from_observablehq_document(document)
 ```
 
-Document `files` become URL-backed file records. Explicit `files` override
-uploaded files with the same name. `title=None` uses the document title,
-then falls back to `"Untitled"`. An empty title follows the same fallback.
-Preserve the document `id` as 16 lowercase hexadecimal characters and
-`version` as a nonnegative integer so imported Observable notebooks stay
-pinned to the source revision. Other shapes leave imports unpinned.
+`title=None` uses the document title and then `"Untitled"`. Document files
+become URL-backed attachments, with explicit `files` taking precedence.
+Preserve a valid source `id` and `version` when imported Observable notebooks
+must keep the source revision's dependency resolution.
 
-### Document records
+The document must be a mapping with a node sequence. Unsupported node modes,
+unsafe or duplicate ids, duplicate public keys, and malformed node records
+raise `TypeError` or `ValueError`.
 
-The `nodes` field contains the ObservableHQ cell records. A document assembled
-from an existing node collection can use this shape:
-
-```python
-document = {
-    "title": "Imported notebook",
-    "nodes": [
-        {"id": 1, "mode": "js", "name": "answer", "value": "answer = 42"}
-    ],
-    "files": [],
-}
-notebook = obs.Notebook.from_observablehq_document(document)
-```
-
-Each node is a mapping. These fields are recognized:
-
-| Field                              | Contract                                                                                                                                                             |
-| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `id`                               | Unique positive integer through 9,007,199,254,740,991. ASCII decimal integer strings are converted. Missing, malformed, and nonpositive values receive an unused id. |
-| `mode`                             | Cell mode. The default is `"js"`. The accepted modes follow this table.                                                                                              |
-| `value`                            | Code-cell source.                                                                                                                                                    |
-| `name`                             | A string names a code cell. A table or chart name is used only when it is a valid JavaScript identifier.                                                             |
-| `pinned`, `hidden`                 | Enabled when the value is exactly `true`.                                                                                                                            |
-| `database`, `format`, and `output` | Notebook Kit metadata copied from code nodes to the resulting cell.                                                                                                  |
-| `data`                             | Table, chart, and SQL source or configuration metadata.                                                                                                              |
-
-Accepted modes are `js`, `ts`, `ojs`, `md`, `html`, `tex`, `dot`, `sql`,
-`node`, `python`, `r`, `table`, and `chart`. ObservableHQ `js`, `table`, and
-`chart` records are lowered to Observable JavaScript cells. Unsupported
-modes raise `ValueError`.
-
-The document's `files` field accepts a sequence of mappings. Each usable
-record has a string `name` and `download_url`. Optional `mime_type`, integer
-`size`, and ISO 8601 `create_time` values become attachment metadata. Records
-with a missing or non-string name or URL are skipped. String names and URLs
-are retained as supplied, including empty names and URLs that the browser
-cannot load.
-
-ObservableHQ `js` nodes are imported with Observable JavaScript semantics
-and use the classic Observable standard library. Remote uploaded files
-become URL-backed file records. Explicit `files` override uploaded files
-with the same name.
-
-Documents without a valid source `id` and `version` resolve imported
-notebooks from the specifiers stored in their nodes at render time.
-
-The resulting attachments follow the contract described in [File
-attachments](file-attachments.mdx).
-
-A non-mapping document raises `TypeError`. A document without a node list
-raises `ValueError`. A node that is not a mapping, lowers to an unsupported
-cell mode, has an id above 9,007,199,254,740,991, or produces a duplicate cell
-id or nonempty cell key also raises `ValueError`.
+See [`observablejs.types`](types.mdx) for the document, node, file, source,
+data, and display records.

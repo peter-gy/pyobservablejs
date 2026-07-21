@@ -1,9 +1,9 @@
 # /// script
 # dependencies = [
 #     "marimo",
-#     "pyobservablejs==0.0.2",
+#     "pyobservablejs",
 # ]
-# requires-python = ">=3.14"
+# requires-python = ">=3.11"
 # ///
 
 import marimo
@@ -51,7 +51,8 @@ def _(mo, obs):
 
 @app.cell(hide_code=True)
 def _(full_view, mo):
-    full_view.has_graph_snapshot and mo.mermaid(full_view.graph.to_mermaid())
+    graph = full_view.state.graph
+    graph is not None and mo.mermaid(graph.to_mermaid())
     return
 
 

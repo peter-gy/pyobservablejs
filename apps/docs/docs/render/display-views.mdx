@@ -1,13 +1,12 @@
 ---
-title: Display a NotebookView
-description: Mount views in marimo, Jupyter, VS Code, Colab, and other anywidget hosts.
+title: Display views
+description: Mount NotebookView in anywidget hosts and manage its lifecycle.
 ---
 
-# Display a NotebookView
+# Display views
 
-`notebook.view()` returns a `NotebookView`, an
-[anywidget](https://anywidget.dev/) that any anywidget host can display.
-Browser evaluation begins when the host mounts the view.
+`notebook.view()` returns a `NotebookView`. Browser evaluation starts when an
+anywidget host mounts it.
 
 ```marimo-config
 requires-python = ">=3.11"
@@ -25,13 +24,17 @@ notebook = obs.Notebook(
           [0, 1],
           {label: "Threshold", step: 0.05, value: 0.5}
         ));
-        """
+        """,
+        key="threshold",
     ),
-    obs.js('html`<p>Threshold: <strong>${threshold}</strong></p>`'),
+    obs.js(
+        'html`<p>Threshold: <strong>${threshold}</strong></p>`',
+        key="readout",
+    ),
 )
 
-full_view = notebook.view()
-mo.ui.anywidget(full_view)
+view = notebook.view()
+mo.ui.anywidget(view)
 ```
 
 ```python marimo echo=false server-output=false
@@ -45,67 +48,89 @@ notebook = obs.Notebook(
           [0, 1],
           {label: "Threshold", step: 0.05, value: 0.5}
         ));
-        """
+        """,
+        key="threshold",
     ),
-    obs.js('html`<p>Threshold: <strong>${threshold}</strong></p>`'),
+    obs.js(
+        'html`<p>Threshold: <strong>${threshold}</strong></p>`',
+        key="readout",
+    ),
 )
 
-full_view = notebook.view()
-mo.ui.anywidget(full_view)
+view = notebook.view()
+mo.ui.anywidget(view)
 ```
 
 ## Host idioms
 
-Each host has its own display convention. The `NotebookView` is the same
-object in all of them.
+In marimo, wrap the view with `mo.ui.anywidget(view)`. In JupyterLab, Jupyter
+Notebook, VS Code notebooks, and Google Colab, leave the view as the final cell
+expression or pass it to `IPython.display.display`.
 
-### marimo
-
-Wrap views with `mo.ui.anywidget`. The wrapper also makes readback reactive:
-a marimo cell that references the wrapped widget's `value` runs again when
-the browser synchronizes new state.
-
-```python
-import marimo as mo
-
-widget = mo.ui.anywidget(full_view)
-widget
-```
-
-### JupyterLab and Jupyter Notebook
-
-Display the view directly by leaving it as the final expression in a cell,
-or pass it to `IPython.display.display`.
-
-```python
-full_view
-```
-
-### VS Code notebooks and Google Colab
-
-Both are anywidget hosts and follow the Jupyter idiom: the view displays as
-the final cell expression. Colab requires enabling third-party widget
-support, as documented by
+Colab requires the third-party widget support described by
 [anywidget](https://anywidget.dev/en/notebooks/colab/).
 
 ## One view per placement
 
-A `NotebookView` owns one live writable output. When the same cells should
-appear in two places at once, create one view per placement. The views stay
-connected through the notebook session.
+One `NotebookView` can appear in one live location at a time. Create a separate
+view for each location.
 
 ```python
-chart_a = notebook.view()
-chart_b = notebook.view()
+chart_a = notebook.view("readout")
+chart_b = notebook.view("readout")
 
 mo.hstack([mo.ui.anywidget(chart_a), mo.ui.anywidget(chart_b)])
 ```
 
-Python variable updates reach both views, and named `viewof` inputs share
-supported values across them. See [Mental model](../mental-model.mdx#what-views-share)
-for what is shared and what stays per-view. [How views share a notebook
-session](widget-composition.mdx) explains how anywidget composition connects
-the view models to one session.
+The views receive the same notebook values and supported browser inputs. Each
+keeps its own rendered output, progress, results, errors, and graph.
 
-Continue with [Select cells and create subsets](select-cells.mdx) to render a
-selected slice of a notebook.
+## Evaluation lifecycle
+
+Before display, both revision fields are `None`. Display starts revision `0`
+and sets `pending=True`. A revision finishes after every selected cell either
+succeeds or fails.
+
+```python
+state = view.state
+ready = (
+    not state.pending
+    and state.input_revision is not None
+    and state.settled_revision == state.input_revision
+)
+```
+
+Python variable updates and browser inputs start a new revision when selected
+cells need to run again. Assigning a new theme restarts each open view. Create a
+new view for a different selection. Create a new notebook for a different cell
+definition or set of files. A restarted view clears its previous graph while
+work is pending.
+
+## Close views
+
+```python
+view.close()
+notebook.close()
+```
+
+`view.close()` stops one browser run and ignores any late results.
+`notebook.close()` closes every view created from that notebook. Repeated calls
+do nothing.
+
+Cells that own browser resources should release them through Observable's
+`invalidation` promise:
+
+```python
+obs.js(
+    """
+    const controller = new AbortController();
+    invalidation.then(() => controller.abort());
+
+    const response = await fetch(dataUrl, {signal: controller.signal});
+    const records = await response.json();
+    """
+)
+```
+
+Continue with [Select cells](select-cells.mdx) or [Widget
+composition](widget-composition.mdx).

@@ -1,130 +1,83 @@
 ---
-title: Mental model
-description: Notebook, NotebookCell, and NotebookView, and the boundary between Python and the browser.
+title: Core concepts
+description: Notebook controllers, cell identity, renderable views, and state snapshots.
 ---
 
-# Mental model
+# Core concepts
 
-Three Python objects carry the whole API. Learn what each one owns and the
-rest of this site reads as detail.
+`Notebook` holds cells and values. `NotebookCell` points to one cell in that
+notebook. `NotebookView` renders all or selected cells in the browser.
 
-| Object         | What it is                   | What it owns                                                                            |
-| -------------- | ---------------------------- | --------------------------------------------------------------------------------------- |
-| `Notebook`     | A plain Python object        | Cells or source HTML, file attachments, theme, Python variables, and shared inputs      |
-| `NotebookCell` | A stable handle for one cell | Its index, optional Python key, optional Notebook Kit name, and `view()` selection path |
-| `NotebookView` | A renderable anywidget       | One browser runtime, selected cells, rendered output, and synchronized readback         |
+| Object         | Contract                                                                                   |
+| -------------- | ------------------------------------------------------------------------------------------ |
+| `Notebook`     | Holds cells or imported source, files, theme, Python variables, and shared browser inputs. |
+| `NotebookCell` | Points to a cell by `key`. Its `index` and `id` are metadata.                              |
+| `NotebookView` | Renders selected cells and reports one read-only `state` snapshot.                         |
+
+Authored helpers such as `obs.js(..., key="chart")` return immutable `Cell`
+objects. The `key` becomes the portable public identity after the cell enters a
+notebook.
 
 ```python
 import observablejs as obs
 
+readout = obs.js(
+    'html`<p>Doubled: <strong>${doubled}</strong></p>`',
+    key="readout",
+)
+
 notebook = obs.Notebook(
     obs.js("const doubled = base * 2;", key="doubled", display=False),
-    obs.js('html`<p>Doubled: <strong>${doubled}</strong></p>`', key="readout"),
+    readout,
     variables={"base": 21},
 )
 
-full_view = notebook.view()              # every cell, one runtime
-readout_view = notebook.cell("readout").view()  # one cell + hidden dependencies
+full_view = notebook.view()
+readout_view = notebook.view(readout)
+same_view = notebook.view(notebook.cell("readout"))
 ```
 
-## Python defines, the browser evaluates
+## Python defines, the browser runs
 
-`pyobservablejs` is browser-first. Python owns the notebook definition,
-serialization, attachments, and session state. The browser evaluates
-Observable JavaScript through Notebook Kit. No JavaScript executes in Python,
-and no Python executes in the browser.
+Python sends the notebook and its values to the browser. Notebook Kit runs the
+cells there. Each view sends structured results back to Python.
 
 ```mermaid
-flowchart TB
-  subgraph python["Python"]
-    direction LR
-    notebook["Notebook"]
-    cell["NotebookCell"]
-    view["NotebookView"]
-
-    notebook -->|"cell(...)"| cell
-    notebook -->|"view()"| view
-    cell -->|"view()"| view
-  end
-
-  subgraph browser["Browser"]
-    direction LR
-    session["Synchronized session state"]
-    runtime["Notebook Kit runtime"]
-
-    session -->|"definition and variables"| runtime
-  end
-
-  notebook -->|"definition and variables"| session
-  view -->|"host mounts selected cells"| runtime
-  runtime -.->|"rendered flag, values, graph"| view
+flowchart LR
+  notebook["Notebook"] -->|"cells and values"| shared["Shared notebook data"]
+  notebook -->|"view(selectors...)"| view["NotebookView"]
+  shared --> browser["Notebook Kit in the browser"]
+  view --> browser
+  browser --> state["NotebookView.state"]
 ```
 
-A `NotebookView` starts evaluating when an anywidget host mounts it. The
-browser then writes readback to that view: a rendered flag, the values of the
-selected cells, and the dependency graph. Python reads them through
-`has_rendered`, `values`, `cell_values`, and `graph`.
-
-## One runtime per view
-
-Every `NotebookView` runs its selected cells and their hidden dependency
-closure in its own Observable runtime. Two views of the same cell evaluate
-that cell twice, once per runtime.
-
-This is why readback is per-view: `full_view.values` and
-`readout_view.values` come from different runtimes and can disagree
-while one of them has not rendered yet. When several outputs must share one
-runtime and one graph snapshot, select them into a single composite view with
-`notebook.view(cells=[...])`.
-
-## What views share
-
-Views created from the same `Notebook` stay connected through the session:
-
-- **Python variables.** `notebook.update_variables(...)` reaches every active
-  view.
-- **Named `viewof` input values.** When a user changes a named input in one
-  view, sibling views that render the same input receive the value, provided
-  it has a [supported shared
-  shape](reference/variables-and-serialization.mdx#python-values-and-viewof-inputs).
-- **Definition state.** Cells, attachments, and theme.
-
-Everything else is per-view: the runtime, the DOM output, the render gates,
-and the readback snapshot.
-
-## The word "view" appears twice
-
-The name is shared between the two runtimes on purpose, but the meanings
-differ:
-
-- In **Python**, `notebook.view()` and `cell.view()` create renderable
-  `NotebookView` widgets.
-- In a **JavaScript cell**, `view(input)` displays a browser input and
-  defines its current value as a reactive graph variable.
+`Notebook.state` is a separate, read-only snapshot of variables, files, and
+theme. Frameworks that listen to traitlets can observe it:
 
 ```python
-obs.js('const threshold = view(Inputs.range([0, 1], {step: 0.05}));')
+def on_state(change):
+    print(change["new"].variables)
+
+notebook.observe(on_state, names="state")
+notebook.update_variables({"base": 30})
 ```
 
-Python decides _which cells render where_. JavaScript `view(...)` decides
-_which inputs feed the graph_.
+`NotebookView.state` reports progress, cell results, errors, and the dependency
+graph. Read results after `settled_revision` catches up with `input_revision`.
 
-## Lifecycle in one pass
+## One browser run per view
 
-1. Python creates a `Notebook` from authored cells, Notebook Kit HTML, or an
-   ObservableHQ document.
-2. Python creates one `NotebookView` per place the notebook appears.
-3. A host mounts the view. The browser resolves the session and starts one
-   Notebook Kit runtime.
-4. The browser writes render status, values, and graph metadata back to that
-   view.
-5. Python reads values, updates variables, or inspects the graph. Updates
-   reach every active view.
-6. `view.close()` disposes one runtime. `notebook.close()` closes the session
-   and every view created from it.
+Views from one notebook receive the same Python variables and supported
+`viewof` input values. Each keeps its own rendered output, progress, results,
+errors, and graph. Select related outputs in one call when they should run
+together:
 
-Continue with [Display a NotebookView](render/display-views.mdx) for host
-idioms, and [Select cells and create subsets](render/select-cells.mdx) for
-full, focused, and composite selections. [How views share a notebook
-session](render/widget-composition.mdx) traces the anywidget model reference,
-per-view runtimes, synchronization paths, and teardown mechanics.
+```python
+dashboard = notebook.view("doubled", "readout")
+```
+
+Selected cells render in notebook order. Cells they need also run, with their
+output hidden.
+
+Continue with [Display views](render/display-views.mdx), [Select
+cells](render/select-cells.mdx), and [Connect state](connect/python-to-observable.mdx).

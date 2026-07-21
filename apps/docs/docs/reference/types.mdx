@@ -1,0 +1,57 @@
+---
+title: observablejs.types
+description: Advanced input mappings, selector aliases, and immutable state records.
+---
+
+# `observablejs.types`
+
+`observablejs.types` publishes annotations for advanced inputs and synchronized
+state.
+
+```python
+import observablejs as obs
+
+file: obs.types.FileSpec = {
+    "url": "https://example.test/data.csv",
+    "mimeType": "text/csv",
+}
+
+document: obs.types.ObservableDocument = {
+    "title": "Report",
+    "nodes": [{"id": 1, "mode": "js", "value": "answer = 42"}],
+}
+```
+
+## Input contracts
+
+| Type                                                      | Contract                                                       |
+| --------------------------------------------------------- | -------------------------------------------------------------- |
+| `CellMode`, `CellFormat`                                  | Supported Notebook Kit cell modes and file formats.            |
+| `CellSelector`                                            | String key, authored `Cell`, or notebook-owned `NotebookCell`. |
+| `NotebookTheme`, `ThemePair`, `Theme`                     | Theme names and light or dark pairs.                           |
+| `FileSpec`, `FileInput`                                   | File input record, URL, or filesystem path.                    |
+| `NotebookKitCellMetadata`                                 | Mode metadata for database, format, and since.                 |
+| `ObservableDocument`, `ObservableNode`, `ObservableFile`  | ObservableHQ document API records.                             |
+| `ObservableSource`, `ObservableData`, `ObservableDisplay` | Nested ObservableHQ source and display records.                |
+
+Runtime parsing remains defensive when JSON data does not match an annotation.
+
+## State contracts
+
+`CellStatus` is `pending`, `success`, or `error`. `ErrorPhase` is `analysis`,
+`evaluation`, `rendering`, or `serialization`.
+
+The immutable records are:
+
+- `NotebookState`
+- `ViewState`
+- `CellResult`
+- `CellError`
+- `ViewError`
+- `BrowserErrorValue`
+
+`FileSnapshot` and `ThemeSnapshot` describe the read-only mappings inside
+`NotebookState`.
+
+See [Notebook](notebook.mdx#controller-state) for controller snapshots and
+[View state and graph](values-and-graph.mdx) for browser revisions and results.

@@ -5,198 +5,112 @@
 [![Python versions](https://img.shields.io/pypi/pyversions/pyobservablejs.svg)](https://pypi.org/project/pyobservablejs/)
 [![License](https://img.shields.io/pypi/l/pyobservablejs.svg)](https://github.com/peter-gy/pyobservablejs/blob/main/LICENSE)
 
-`pyobservablejs` brings interactive Observable notebooks into Python workflows.
-Author a notebook in Python or load an existing one, render the views you need,
-and keep its controls and results connected to your Python code.
+`pyobservablejs` embeds reactive Observable notebooks in Python. Author cells or
+load an existing notebook, render all or selected cells, synchronize Python
+values, read structured browser results, and inspect the dependency graph.
 
-Use it in JupyterLab, marimo, VS Code notebooks, Google Colab, and other
+![An authored notebook with an interactive filter and plot](https://files.peter.gy/projects/pyobservablejs/assets/from-code.gif)
+
+It works in JupyterLab, marimo, VS Code notebooks, Google Colab, and other
 environments that support [anywidget](https://anywidget.dev/).
 
-## Quick start
+## Install
+
+Add `pyobservablejs` to an existing Python 3.11 or newer environment:
+
+```sh
+uv pip install pyobservablejs
+```
+
+Or open a disposable marimo environment with the package available:
 
 ```sh
 uvx --with pyobservablejs marimo edit notebook.py
 ```
 
-### Load an existing Observable notebook
+This command installs marimo and `pyobservablejs` in the temporary environment.
 
-[![Open in molab](https://molab.marimo.io/molab-shield.svg)](https://molab.marimo.io/github/peter-gy/pyobservablejs/blob/main/examples/from-observablehq.py/server?utm_source=pyobservablejs)
+## Quickstart
 
-```python
-import observablejs as obs
-
-notebook = obs.Notebook.from_observablehq("@d3/world-tour")
-notebook.view()
-```
-
-`@d3/world-tour` resolves to
-[observablehq.com/@d3/world-tour](https://observablehq.com/@d3/world-tour).
-
-![from-observablehq-output](https://files.peter.gy/projects/pyobservablejs/assets/from-slug.gif)
-
-### Author a notebook from code
-
-[![Open in molab](https://molab.marimo.io/molab-shield.svg)](https://molab.marimo.io/github/peter-gy/pyobservablejs/blob/main/examples/from-code.py/wasm?utm_source=pyobservablejs)
-
-```python
-import observablejs as obs
-
-notebook = obs.Notebook(
-    obs.html(
-        """
-        <h2>Palmer penguins</h2>
-        <p>Choose a species to filter the chart.</p>
-        """
-    ),
-    obs.ojs(
-        """
-        viewof species = Inputs.select(
-          ["All", ...new Set(penguins.map((d) => d.species))],
-          {label: "Species", value: "All"}
-        )
-        """,
-    ),
-    obs.js(
-        """
-        Plot.dot(
-          species === "All"
-            ? penguins
-            : penguins.filter((d) => d.species === species),
-          {
-            x: "culmen_length_mm",
-            y: "culmen_depth_mm",
-            fill: "species",
-            tip: true
-          }
-        ).plot({
-          height: 320,
-          color: {legend: true},
-          x: {grid: true, label: "Bill length (mm)"},
-          y: {grid: true, label: "Bill depth (mm)"}
-        })
-        """,
-    ),
-)
-
-notebook.view()
-```
-
-`penguins`, `Inputs`, and `Plot` come from Notebook Kit. The Observable
-JavaScript [`viewof` operator](https://observablehq.com/@observablehq/views)
-updates `species` when the selection changes, which recomputes the plot in the
-browser.
-
-![from-code-output](https://files.peter.gy/projects/pyobservablejs/assets/from-code.gif)
-
-### Sync values with Python
-
-[![Open in molab](https://molab.marimo.io/molab-shield.svg)](https://molab.marimo.io/github/peter-gy/pyobservablejs/blob/main/examples/sync-variables.py/wasm?utm_source=pyobservablejs)
-
-Pass Python values to the browser through `variables`:
-
-```python
-import observablejs as obs
-
-notebook = obs.Notebook(
-    obs.ojs(
-        """
-        viewof threshold = Inputs.range([0, 1], {
-          value: 0.75,
-          step: 0.05,
-          label: "Threshold"
-        })
-        """
-    ),
-    obs.js('html`<p>Threshold: <strong>${threshold}</strong></p>`'),
-    variables={"threshold": 0.75},
-)
-
-notebook_view = notebook.view()
-notebook_view
-```
-
-![sync-variables-output](https://files.peter.gy/projects/pyobservablejs/assets/sync-variables.gif)
-
-While the view stays mounted, call `notebook.update_variables(threshold=0.9)`
-to update the value. The update takes place through
-[Observable's runtime](https://github.com/observablehq/runtime), meaning
-that the Python notebook object does not need to be recreated.
-
-After the view renders, `notebook_view.values["threshold"]` reads the current
-browser value.
-
-### Inspect the notebook graph
-
-Each mounted view synchronizes a dependency graph with the cells, variables,
-and edges evaluated in its browser runtime. This notebook builds a cylinders
-control, a hidden filter cell, and a table. Once the graph snapshot arrives,
-it renders the result with
-`mo.mermaid(full_view.graph.to_mermaid())`.
+Paste this into the marimo editor opened above:
 
 ```python
 import marimo as mo
 import observablejs as obs
 
-notebook = obs.Notebook(
-    obs.js(
-        """
-        const cylinders = view(Inputs.select(
-          ["All", ...new Set(cars.map((d) => d.cylinders))],
-          {label: "Cylinders", value: "All"}
-        ));
-        """,
-        key="cylinder_control",
-    ),
-    obs.js(
-        """
-        const filteredCars = cylinders === "All"
-          ? cars
-          : cars.filter((d) => d.cylinders === cylinders);
-        """,
-        key="filtered_cars",
-        display=False,
-    ),
-    obs.js("Inputs.table(filteredCars)", key="table"),
+control = obs.ojs(
+    """
+    viewof threshold = Inputs.range([0, 1], {
+      value: 0.5,
+      step: 0.1,
+      label: "Threshold"
+    })
+    """,
+    key="threshold",
 )
 
-full_view = mo.ui.anywidget(notebook.view())
-full_view
+result = obs.js(
+    'html`<strong>Threshold: ${threshold}</strong>`',
+    key="result",
+)
+
+notebook = obs.Notebook(
+    control,
+    result,
+    variables={"threshold": 0.5},
+)
+
+mo.ui.anywidget(notebook.view())
 ```
 
-```mermaid
-flowchart LR
-  cell_0["Cell 0: cylinder_control, defines: cylinders"]
-  cell_1["Cell 1: filtered_cars, defines: filteredCars"]
-  cell_2["Cell 2: table"]
-  external_0["external: view"]
-  external_1["external: Inputs"]
-  external_2["external: cars"]
-  cell_0 -->|cylinders| cell_1
-  cell_1 -->|filteredCars| cell_2
-  external_0 -->|view| cell_0
-  external_1 -->|Inputs| cell_0
-  external_2 -->|cars| cell_0
-  external_2 -->|cars| cell_1
-  external_1 -->|Inputs| cell_2
+Each cell `key` is its portable Python identity. Render one result with
+`notebook.view("result")`.
+
+## Capabilities
+
+| Task                                                               | API                                                |
+| ------------------------------------------------------------------ | -------------------------------------------------- |
+| Author JavaScript, Observable JavaScript, Markdown, and HTML cells | `obs.js`, `obs.ojs`, `obs.md`, `obs.html`          |
+| Load Notebook Kit HTML or an ObservableHQ notebook                 | `Notebook.from_html`, `Notebook.from_observablehq` |
+| Render a whole notebook or selected keyed cells                    | `notebook.view()` and `notebook.view("chart")`     |
+| Update Python-owned variables                                      | `notebook.update_variables({"threshold": 0.8})`    |
+| Read pending, successful, and failed browser results               | `view.state` and `view.state.result("chart")`      |
+| Inspect dependencies or export a diagram                           | `view.state.graph`, `to_mermaid()`, and `to_d2()`  |
+
+Views from one `Notebook` share controller variables and supported browser
+inputs. Each view keeps its own result state plus input and settled revision
+metadata.
+
+![Python and browser values updating one notebook](https://files.peter.gy/projects/pyobservablejs/assets/sync-variables.gif)
+
+### Import notebooks
+
+Notebook cells execute as JavaScript in the host page. Treat imported Notebook
+Kit HTML, ObservableHQ notebooks, and remote modules as trusted code. See
+[Browser execution](https://peter-gy.github.io/pyobservablejs/customize/browser-execution/).
+
+```python
+import marimo as mo
+import observablejs as obs
+
+notebook = obs.Notebook.from_observablehq("@d3/world-tour")
+mo.ui.anywidget(notebook.view())
 ```
 
-Use `full_view.graph` to inspect the records from Python. Call `to_d2()` or
-`to_mermaid()` to export the same graph as D2 or Mermaid.
+![An imported ObservableHQ notebook](https://files.peter.gy/projects/pyobservablejs/assets/from-slug.gif)
 
 ## Documentation
 
-Read the [documentation](https://peter-gy.github.io/pyobservablejs/) to learn more about
-notebook sources, cells and views, Python and browser dataflow, runtime values, graph
-inspection, recipes, and the API reference.
+Read the [documentation](https://peter-gy.github.io/pyobservablejs/) for the
+quickstart, task guides, recipes, troubleshooting, and API reference.
 
 ## Acknowledgements
 
 Thanks to the Observable team for [Notebook
 Kit](https://github.com/observablehq/notebook-kit), which provides the notebook
-APIs and runtime used throughout this project.
-[`pyobsplot`](https://github.com/juba/pyobsplot) informed the Python variable
-API, and [Trevor Manz](https://github.com/manzt)'s anywidget composition demo
-shaped the widget design.
+format and runtime. [`pyobsplot`](https://github.com/juba/pyobsplot) informed
+the Python variable API. [Trevor Manz](https://github.com/manzt)'s anywidget
+composition demo shaped the shared-session design.
 
 ## License
 

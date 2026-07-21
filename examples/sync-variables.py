@@ -1,9 +1,9 @@
 # /// script
-# requires-python = ">=3.11"
 # dependencies = [
 #     "marimo",
 #     "pyobservablejs",
 # ]
+# requires-python = ">=3.11"
 # ///
 
 import marimo
@@ -30,9 +30,13 @@ def _(mo, obs):
             step: 0.05,
             label: "Threshold"
           })
-          """
+          """,
+            key="threshold_control",
         ),
-        obs.js("html`<p>Threshold: <strong>${threshold}</strong></p>`"),
+        obs.js(
+            "html`<p>Threshold: <strong>${threshold}</strong></p>`",
+            key="readout",
+        ),
         variables={"threshold": 0.75},
     )
 
@@ -43,15 +47,25 @@ def _(mo, obs):
 
 @app.cell
 def _(mo, notebook_view):
+    state = notebook_view.state
+    threshold = "..."
+    if (
+        not state.pending
+        and state.input_revision is not None
+        and state.settled_revision == state.input_revision
+    ):
+        result = state.result("threshold_control")
+        if result.status == "success":
+            threshold = result.values["threshold"]
     mo.md(rf"""
-    The `threshold` value from JS is ${notebook_view.values["threshold"] if notebook_view.has_rendered else "..."}$.
+    The `threshold` value from JS is ${threshold}$.
     """)
     return
 
 
 @app.cell
 def _(notebook):
-    notebook.update_variables(threshold=0.9)
+    notebook.update_variables({"threshold": 0.9})
     return
 
 

@@ -25,7 +25,11 @@ notebook = obs.Notebook(
         Plot.lineY(aapl, {
           x: "Date",
           y: "Close",
-          tip: {fill: "var(--marimo-island-background)"}
+          tip: {
+            // This example references a theme variable used by mdx-marimo.
+            // Replace it with a CSS color or remove `fill` in another host.
+            fill: "var(--marimo-island-background)"
+          }
         }).plot({
           height: 260,
           y: {grid: true, label: "Close ($)"}
@@ -53,7 +57,11 @@ notebook = obs.Notebook(
         Plot.lineY(aapl, {
           x: "Date",
           y: "Close",
-          tip: {fill: "var(--marimo-island-background)"}
+          tip: {
+            // This example references a theme variable used by mdx-marimo.
+            // Replace it with a CSS color or remove `fill` in another host.
+            fill: "var(--marimo-island-background)"
+          }
         }).plot({
           height: 260,
           y: {grid: true, label: "Close ($)"}

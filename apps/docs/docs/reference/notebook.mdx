@@ -1,32 +1,17 @@
 ---
 title: Notebook
-description: Notebook construction, session state, variable mutation, and serialization.
+description: Notebook construction, keyed views, controller state, and mutation methods.
 ---
 
 # `Notebook`
 
-`Notebook` is a plain Python object that owns a notebook definition, Python
-variables, attachments, theme, and synchronized browser input values. Call
-`view()` to create a renderable `NotebookView` for all cells or a selected
-group of cells.
+`Notebook` is a traitlets controller for one notebook definition and the values
+set from Python. It creates renderable `NotebookView` objects.
+
+## Constructor
 
 ```python
-import observablejs as obs
-
-notebook = obs.Notebook(
-    obs.md("# Summary"),
-    obs.ojs("answer = 40 + 2", key="answer"),
-    obs.ojs("md`Answer: **${answer}**`"),
-)
-
-full_view = notebook.view()
-full_view
-```
-
-## `Notebook(*cells, ...)`
-
-```python
-obs.Notebook(
+Notebook(
     *cells,
     title="Untitled",
     theme="air",
@@ -37,190 +22,138 @@ obs.Notebook(
 )
 ```
 
-Creates a Python-authored notebook definition and session. See [Cell
-helpers](cell-helpers.mdx), [Variables and
-serialization](variables-and-serialization.mdx), [File
-attachments](file-attachments.mdx), and [Themes](themes.mdx) for the nested
-input contracts.
+```python
+import observablejs as obs
 
-| Argument             | Default      | Contract                                                                                                |
-| -------------------- | ------------ | ------------------------------------------------------------------------------------------------------- |
-| `*cells`             | Empty        | `Cell` objects from `ojs`, `js`, `md`, `html`, or direct `Cell` construction.                           |
-| `title`              | `"Untitled"` | Notebook Kit document title written to generated HTML.                                                  |
-| `theme`              | `"air"`      | Theme name or `{"light": name, "dark": name}` mapping. Names are normalized to lowercase.               |
-| `files`              | `None`       | Named local paths, URLs, or attachment records for `FileAttachment`.                                    |
-| `base_path`          | `None`       | Base directory for relative local paths in `files`. The current working directory is used when omitted. |
-| `variables`          | `None`       | Mapping of Python-owned Observable variable names to serializable values.                               |
-| `show_pinned_source` | `False`      | Shows source for selected cells whose `pinned` option is enabled.                                       |
+notebook = obs.Notebook(
+    obs.md("# Summary", key="title"),
+    obs.ojs("answer = 40 + 2", key="answer"),
+    variables={"precision": 2},
+)
+```
 
-### Construction errors
+| Argument             | Contract                                                              |
+| -------------------- | --------------------------------------------------------------------- |
+| `*cells`             | `Cell` objects from the public helpers or direct `Cell` construction. |
+| `title`              | Notebook Kit document title.                                          |
+| `theme`              | Theme name or typed light and dark theme pair.                        |
+| `files`              | Mapping of attachment names to URLs, paths, or typed file records.    |
+| `base_path`          | Base directory for relative paths in `files`.                         |
+| `variables`          | Initial mapping of Python-owned Observable variables.                 |
+| `show_pinned_source` | Shows source for selected cells marked as pinned.                     |
 
-- `TypeError` reports a non-`Cell` positional input, a non-mapping
-  `variables` value, an unsupported variable value, or an invalid theme
-  value type.
-- `ValueError` reports an out-of-range or duplicate cell id, a duplicate
-  nonempty cell key, an invalid or reserved variable name, an unknown theme,
-  or a malformed theme mapping. `Cell` construction reports unknown cell modes
-  and conflicting cell attributes.
-- `FileNotFoundError` reports a missing explicit local attachment.
-- Other `OSError` subclasses report local attachment read or metadata
-  failures.
+Invalid cell types, mappings, or serializable values raise `TypeError`.
+Duplicate cell ids or keys, invalid variable names, and unsupported themes
+raise `ValueError`. Local attachment access may raise `OSError`.
 
-## Create views
+## `Notebook.view(*selectors)`
 
-### `Notebook.view(cells=None)`
+Returns a new `NotebookView`. With no selectors, it renders every cell.
 
 ```python
+import observablejs as obs
+
+answer = obs.ojs("answer = 40 + 2", key="answer")
+double = obs.ojs("double = answer * 2", key="double")
+notebook = obs.Notebook(answer, double)
+
 full_view = notebook.view()
-summary_view = notebook.view(cells=[0, 1])
-keyed_view = notebook.view(cells=["answer"])
+answer_view = notebook.view("answer")
+mixed_view = notebook.view(double, notebook.cell("answer"))
 ```
 
-Returns a new [`NotebookView`](notebook-view-and-cell.mdx#notebookview).
-With `cells=None`, the view selects all cells in notebook order. `cells`
-accepts a sequence containing cell indices, Python cell keys, or
-`NotebookCell` handles. The selected cells and their dependencies evaluate
-in one Notebook Kit runtime after a frontend mounts the view. Negative
-indices count from the end. Dependency cells evaluate with hidden output
-unless they are also selected.
+Each positional selector is one of:
 
-Each call creates a view with its own runtime and readback state. Views
-created from the same notebook share Python variables and [supported
-`viewof` input
-values](variables-and-serialization.mdx#python-values-and-viewof-inputs).
-[How views share a notebook
-session](../render/widget-composition.mdx) documents the anywidget composition
-and lifecycle mechanics behind that contract.
+- a string public cell key
+- an authored `Cell` with a key
+- a `NotebookCell` owned by this notebook
 
-See [Select cells and create subsets](../render/select-cells.mdx) for the
-full, focused, and composite selection patterns.
+Each selector resolves to one cell, then cells render in notebook order.
+Unknown keys raise `KeyError`. Authored `Cell` selectors need a key, and
+`NotebookCell` selectors must belong to the notebook. Duplicate selections and
+foreign handles raise `ValueError`. Invalid selector types raise `TypeError`.
 
-An empty selection, a duplicate selection, or a handle from another notebook
-raises `ValueError`. An invalid selection type raises `TypeError`. Unknown
-keys raise `KeyError`, and out-of-range indices raise `IndexError`. Calling
-`view()` after `notebook.close()` raises `RuntimeError`.
+Every view has its own browser run and `state` snapshot. Views from the same
+notebook receive the same Python variables and supported browser input values.
 
-### `Notebook.cell(selector)`
+## `Notebook.cell(key)`
+
+Returns the stable `NotebookCell` for one unique string key.
 
 ```python
-first_cell = notebook.cell(0)
-answer_cell = notebook.cell("answer")
-answer_view = answer_cell.view()
+answer = notebook.cell("answer")
 ```
 
-Returns the cached
-[`NotebookCell`](notebook-view-and-cell.mdx#notebookcell) selected by a
-zero-based index or Python cell key. Negative indices count from the end.
-Unknown or ambiguous keys raise `KeyError`, out-of-range indices raise
-`IndexError`, and other selector types raise `TypeError`. Cell lookup is
-available before a view renders.
+Unknown keys raise `KeyError`. Non-string selectors raise `TypeError`. The
+Notebook Kit `id` and notebook-order `index` are metadata and are not selectors.
 
-### `Notebook.cells`
+## `Notebook.cells`
+
+Returns all `NotebookCell` handles in notebook order. Anonymous cells remain
+available in this tuple.
+
+## Controller state
+
+`Notebook.state` is a separate, deeply read-only `NotebookState` snapshot. It
+contains `variables`, `attachments`, and `theme`.
 
 ```python
-cells: tuple[obs.NotebookCell, ...] = notebook.cells
+def on_state(change):
+    print(change["new"].variables)
+
+notebook.observe(on_state, names="state")
 ```
 
-Returns cached selection handles in notebook order. Accessing this property
-materializes every handle. While the notebook is open, each handle keeps
-object identity across later `cells` and `cell()` calls.
+`Notebook.variables`, `Notebook.attachments`, and `Notebook.theme` read from the
+latest snapshot. Changing an object passed during construction does not change
+the notebook. Snapshot values cannot be edited. Use the variable methods or
+assign `notebook.theme` for changes. Each real change publishes one `state`
+event. Sending the same serialized value publishes none.
 
-## Notebook state
+An unchanged variable update can still clear a browser-owned input with the
+same name and reapply the Python value. The controller snapshot stays the same.
 
-### `Notebook.attachments`
-
-```python
-attachments: dict[str, dict[str, object]] = notebook.attachments
-```
-
-Returns a shallow copy of the named `FileAttachment` records. Local files
-appear as data URLs. URL-backed records retain their URL and optional
-metadata. See [File attachments](file-attachments.mdx) for path resolution
-and serialized HTML boundaries.
-
-### `Notebook.theme`
-
-```python
-theme = notebook.theme
-notebook.theme = "slate"
-```
-
-Returns the normalized theme name or light and dark mapping. Assigning a
-valid theme on a Python-authored notebook updates its active views.
-Source-backed notebooks take their theme from source HTML, and changing that
-theme raises `traitlets.TraitError`.
-
-### `Notebook.variables`
-
-```python
-variables: dict[str, object] = notebook.variables
-```
-
-Returns a shallow copy of the Python-owned variable environment. See
-[Variables and serialization](variables-and-serialization.mdx) for
-serialization and mutation contracts.
+Source-backed notebooks read their theme from source HTML. Assigning a theme
+to one raises `traitlets.TraitError`.
 
 ## Variable mutation
 
-### `Notebook.update_variables(values=None, /, **kwargs)`
+### `Notebook.update_variables(values, /)`
 
-Merges a mapping or iterable of key-value pairs into the Python-owned
-environment and returns `None`. Active views receive a live `set` update for
-wire-level changes and names whose interacted input state is cleared.
-Keyword arguments win over matching entries in `values`. Empty updates are
-no-ops. A wire-identical update is also a no-op when it clears no interacted
-state.
+Merges exactly one `Mapping[str, object]` into the Python-owned environment.
 
-### `Notebook.replace_variables(values=None, /, **kwargs)`
+```python
+notebook.update_variables({"threshold": 0.8})
+```
 
-Replaces the Python-owned environment and returns `None`. Omitted names are
-released. Active views rebuild when the serialized environment changes or
-the replacement clears interacted input state, so notebook definitions
-resume ownership of released names. A wire-identical replacement with no
-interacted state is a no-op.
+### `Notebook.replace_variables(values, /)`
+
+Replaces the environment with exactly one mapping. Omitted names return to
+their notebook-defined values.
+
+```python
+notebook.replace_variables({"rows": [{"x": 1}, {"x": 2}]})
+```
 
 ### `Notebook.reset_variables(*names)`
 
-Releases listed names that Python currently owns and returns `None`. Empty
-calls and unknown names are no-ops. Releasing at least one name follows the
-replacement lifecycle.
+Releases the listed Python-owned names. Unknown names and an empty call are
+no-ops.
 
-These methods apply the name and value errors documented on the [Variables
-and serialization](variables-and-serialization.mdx) page.
-
-## `Notebook.close()`
-
-Closes the notebook session and every live `NotebookView` created from it.
-Repeated calls are no-ops. Creating views, changing variables, or assigning
-a theme after close raises `RuntimeError`. Cells, attachments, variables, and
-theme remain readable.
+All three methods return `None`. Invalid or reserved variable names raise
+`ValueError`. Non-mapping update and replacement arguments or unsupported
+values raise `TypeError`.
 
 ## `Notebook.to_notebook_html()`
 
-```python
-html: str = notebook.to_notebook_html()
-```
+Returns the definition as Notebook Kit HTML. Public cell keys use the
+`data-pyobservablejs-key` script attribute. Controller variables remain
+session state.
 
-Returns the current notebook definition as Notebook Kit HTML. The document
-includes authored cells and source rewrites. File attachment records and
-Python variables remain session state, as described by [File
-attachments](file-attachments.mdx) and [Variables and
-serialization](variables-and-serialization.mdx). ObservableHQ-derived HTML
-preserves classic standard-library semantics when loaded again through
-`from_html`.
+## `Notebook.close()`
 
-## Alternative constructors
+Closes the shared session and every live view. Repeated calls are no-ops.
+Creating a view or mutating a closed notebook raises `RuntimeError`.
 
-`Notebook` also provides these class methods:
-
-```python
-Notebook.from_html(source, *, files=None, base_path=None, embed_file_attachments=False, rewrite_imports=False, variables=None, show_pinned_source=False)
-Notebook.from_observablehq(specifier, *, variables=None, files=None, show_pinned_source=False, timeout=30)
-Notebook.from_observablehq_document(document, *, title=None, variables=None, files=None, show_pinned_source=False)
-```
-
-Each method returns a `Notebook` backed by imported Notebook Kit HTML.
-ObservableHQ constructors use the classic Observable standard library. See
-[Source constructors](source-constructors.mdx) for accepted source shapes,
-defaults, network failures, file precedence, and source-revision import
-resolution.
+See [Source constructors](source-constructors.mdx) for `from_html`,
+`from_observablehq`, and `from_observablehq_document`.

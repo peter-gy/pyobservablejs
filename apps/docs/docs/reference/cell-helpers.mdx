@@ -1,21 +1,19 @@
 ---
 title: Cell helpers
-description: Cell data model and helper function contracts.
+description: Authored Cell identity, source modes, and Notebook Kit metadata.
 ---
 
 # Cell helpers
 
-`Cell` describes one Notebook Kit cell. The `ojs`, `js`, `md`, and `html`
-helpers create cells in the modes used most often by Python-authored
-notebooks.
+`Cell` is the immutable authored-cell record. `ojs`, `js`, `md`, and `html`
+create the modes used most often from Python.
 
 ```python
 import observablejs as obs
 
 notebook = obs.Notebook(
-    obs.md("# Report"),
+    obs.md("# Report", key="title"),
     obs.ojs("total = rows.length", key="total", display=False),
-    obs.html("<p>Rendered in Notebook Kit</p>"),
     variables={"rows": [{"x": 1}, {"x": 2}]},
 )
 ```
@@ -23,11 +21,10 @@ notebook = obs.Notebook(
 ## `Cell`
 
 ```python
-obs.Cell(
+Cell(
     source,
     mode="ojs",
     key=None,
-    name=None,
     display=True,
     raw=False,
     id=None,
@@ -37,61 +34,32 @@ obs.Cell(
 )
 ```
 
-Creates a frozen data-class record. `Notebook` adds each `Cell` to its
-Notebook Kit definition during construction.
+| Argument            | Contract                                                                                          |
+| ------------------- | ------------------------------------------------------------------------------------------------- |
+| `source`            | Cell source string.                                                                               |
+| `mode`              | `js`, `ts`, `ojs`, `md`, `html`, `tex`, `dot`, `sql`, `node`, `python`, or `r`.                   |
+| `key`               | Nonempty portable public identity. Serialized as `data-pyobservablejs-key`.                       |
+| `display`           | `False` emits the Notebook Kit `hidden` attribute.                                                |
+| `raw`               | `True` preserves indentation and surrounding newlines.                                            |
+| `id`                | Optional unique positive Notebook Kit serialization id through JavaScript's safe integer maximum. |
+| `pinned`            | Marks source for display when the notebook enables pinned source.                                 |
+| `output`            | Notebook Kit output metadata.                                                                     |
+| `notebookkit_attrs` | Typed mode metadata for `database`, `format`, or `since`.                                         |
 
-| Argument            | Default       | Contract                                                                                                                     |
-| ------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `source`            | Required      | Source string for the cell.                                                                                                  |
-| `mode`              | `"ojs"`       | Notebook Kit mode. Accepted values are `js`, `ts`, `ojs`, `md`, `html`, `tex`, `dot`, `sql`, `node`, `python`, and `r`.      |
-| `key`               | `None`        | Python selection key used by `Notebook.cell`. The key stays outside serialized Notebook Kit HTML.                            |
-| `name`              | `None`        | Notebook Kit cell name written to serialized HTML.                                                                           |
-| `display`           | `True`        | Controls the Notebook Kit `hidden` attribute.                                                                                |
-| `raw`               | `False`       | Preserves source indentation and surrounding newlines when true.                                                             |
-| `id`                | `None`        | Notebook Kit cell id from 1 through 9,007,199,254,740,991. Ids must be unique. `Notebook` assigns an unused id when omitted. |
-| `pinned`            | `False`       | Marks the cell as pinned so a selected view can show its source.                                                             |
-| `output`            | `None`        | Sets the Notebook Kit output attribute.                                                                                      |
-| `notebookkit_attrs` | Empty mapping | Adds mode-specific Notebook Kit attributes such as `database` or `format`.                                                   |
-
-With `raw=False`, construction applies `textwrap.dedent` and strips leading
-and trailing newline characters. A non-string `source` raises `TypeError`,
-and an unknown `mode` raises `ValueError`. `notebookkit_attrs` raises
-`ValueError` when it contains `hidden`, `id`, `key`, `mode`, `name`, `output`,
-`pinned`, or `value`. Use `display` for `hidden`, `source` for `value`, and
-the matching first-class field for the other attributes.
+With `raw=False`, construction dedents the source and strips surrounding
+newlines. Invalid source or id types raise `TypeError`. Unsupported modes,
+empty keys, unsafe ids, and collisions between first-class fields and
+`notebookkit_attrs` raise `ValueError`.
 
 ## Helper functions
 
 ```python
-obs.ojs(source, *, key=None, name=None, display=True, raw=False, id=None, pinned=False, output=None, notebookkit_attrs=None)
-obs.js(source, *, key=None, name=None, display=True, raw=False, id=None, pinned=False, output=None, notebookkit_attrs=None)
-obs.md(source, *, key=None, name=None, display=True, raw=False, id=None, pinned=False, output=None, notebookkit_attrs=None)
-obs.html(source, *, key=None, name=None, display=True, raw=False, id=None, pinned=False, output=None, notebookkit_attrs=None)
+ojs(source, *, key=None, display=True, raw=False, id=None, pinned=False, output=None, notebookkit_attrs=None) -> Cell
+js(source, *, key=None, display=True, raw=False, id=None, pinned=False, output=None, notebookkit_attrs=None) -> Cell
+md(source, *, key=None, display=True, raw=False, id=None, pinned=False, output=None, notebookkit_attrs=None) -> Cell
+html(source, *, key=None, display=True, raw=False, id=None, pinned=False, output=None, notebookkit_attrs=None) -> Cell
 ```
 
-Each helper returns a `Cell` with a fixed mode:
-
-| Helper | Mode   | Source semantics      |
-| ------ | ------ | --------------------- |
-| `ojs`  | `ojs`  | Observable JavaScript |
-| `js`   | `js`   | JavaScript module     |
-| `md`   | `md`   | Markdown              |
-| `html` | `html` | HTML                  |
-
-The keyword arguments have the following contracts:
-
-- `key` sets the Python `NotebookCell` selection key. Observable variable
-  names come from the cell source.
-- `name` sets the Notebook Kit cell name written to serialized HTML.
-- `display=False` emits the Notebook Kit `hidden` attribute.
-- `raw=True` preserves the source string exactly.
-- `id` sets a unique Notebook Kit cell id from 1 through
-  9,007,199,254,740,991. `Notebook` assigns an unused id when it is omitted.
-- `pinned=True` emits the Notebook Kit `pinned` attribute. An active view
-  renders source for a selected pinned cell when `show_pinned_source=True`.
-- `output` sets the Notebook Kit `output` attribute.
-- `notebookkit_attrs` adds mode-specific Notebook Kit attributes such as
-  `database` or `format`.
-
-Each helper requires a source string. Pass a previously created `Cell`
-directly to `Notebook`.
+The helper fixes the corresponding mode and forwards every other argument to
+`Cell`. Observable variable names come from source code. Cell selection uses
+the public key.
