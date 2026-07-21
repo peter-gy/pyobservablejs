@@ -11,18 +11,19 @@ import observablejs as obs
 
 The top-level package exports the runtime objects and cell helpers:
 
-| Export                                                         | Contract                                                         |
-| -------------------------------------------------------------- | ---------------------------------------------------------------- |
-| [`Notebook`](notebook.mdx)                                     | Controls a notebook definition and Python-owned state.           |
-| [`NotebookView`](notebook-view-and-cell.mdx#notebookview)      | Renders selected cells and exposes one consistent browser state. |
-| [`NotebookCell`](notebook-view-and-cell.mdx#notebookcell)      | Identifies one notebook-owned cell by key.                       |
-| [`Cell`](cell-helpers.mdx#cell)                                | Describes one authored cell.                                     |
-| [`ojs`, `js`, `md`, `html`](cell-helpers.mdx#helper-functions) | Create common cell modes.                                        |
-| [`NotebookGraph`](values-and-graph.mdx#notebookgraph)          | Contains cells and symbolic dependencies.                        |
-| [`CellInfo`](values-and-graph.mdx#cellinfo)                    | Describes one graph cell.                                        |
-| [`DependencyEdge`](values-and-graph.mdx#dependencyedge)        | Links source and target cells through one variable.              |
-| [`NOTEBOOK_THEMES`](themes.mdx)                                | Lists accepted Notebook Kit themes.                              |
-| [`types`](types.mdx)                                           | Namespaces advanced typed mappings and state records.            |
+| Export                                                                | Contract                                                         |
+| --------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| [`Notebook`](notebook.mdx)                                            | Controls a notebook definition and Python-owned state.           |
+| [`NotebookView`](notebook-view-and-cell.mdx#notebookview)             | Renders selected cells and exposes one consistent browser state. |
+| [`view_from_*`](notebook-view-and-cell.mdx#standalone-view-factories) | Builds a full AnyWidget view through a standalone factory.       |
+| [`NotebookCell`](notebook-view-and-cell.mdx#notebookcell)             | Identifies one notebook-owned cell by key.                       |
+| [`Cell`](cell-helpers.mdx#cell)                                       | Describes one authored cell.                                     |
+| [`ojs`, `js`, `md`, `html`](cell-helpers.mdx#helper-functions)        | Create common cell modes.                                        |
+| [`NotebookGraph`](values-and-graph.mdx#notebookgraph)                 | Contains cells and symbolic dependencies.                        |
+| [`CellInfo`](values-and-graph.mdx#cellinfo)                           | Describes one graph cell.                                        |
+| [`DependencyEdge`](values-and-graph.mdx#dependencyedge)               | Links source and target cells through one variable.              |
+| [`NOTEBOOK_THEMES`](themes.mdx)                                       | Lists accepted Notebook Kit themes.                              |
+| [`types`](types.mdx)                                                  | Namespaces advanced typed mappings and state records.            |
 
 Use [Source constructors](source-constructors.mdx) for imported notebooks,
 [File attachments](file-attachments.mdx) for `files`, and [Variables and
