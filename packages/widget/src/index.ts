@@ -1,3 +1,5 @@
+import "./styles/widget.css";
+
 import type { InitializeProps, RenderProps } from "@anywidget/types";
 import { createTopLevelError } from "./dom";
 import type { WidgetModel } from "./model";
