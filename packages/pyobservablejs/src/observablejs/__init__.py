@@ -4,6 +4,12 @@ from importlib.metadata import version as _version
 
 from . import types
 from ._cells import Cell, html, js, md, ojs
+from ._factories import (
+    view_from_code,
+    view_from_html,
+    view_from_observablehq,
+    view_from_observablehq_document,
+)
 from ._graph import CellInfo, DependencyEdge, NotebookGraph
 from ._notebook import Notebook, NotebookCell, NotebookView
 from ._themes import NOTEBOOK_THEMES
@@ -24,6 +30,10 @@ __all__ = [
     "md",
     "ojs",
     "types",
+    "view_from_code",
+    "view_from_html",
+    "view_from_observablehq",
+    "view_from_observablehq_document",
 ]
 
 

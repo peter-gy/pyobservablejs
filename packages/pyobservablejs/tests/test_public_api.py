@@ -25,6 +25,10 @@ def test_public_namespace_is_small() -> None:
         "md",
         "ojs",
         "types",
+        "view_from_code",
+        "view_from_html",
+        "view_from_observablehq",
+        "view_from_observablehq_document",
     }
     assert set(obs.__all__) == expected_public
     assert {name for name in dir(obs) if not name.startswith("_")} == expected_public
@@ -178,7 +182,21 @@ def test_notebook_themes_match_notebook_kit_theme_names() -> None:
             id="Notebook",
         ),
         pytest.param(
-            (obs.Notebook.from_html,),
+            (obs.view_from_code,),
+            (
+                "code",
+                "mode",
+                "title",
+                "theme",
+                "files",
+                "base_path",
+                "variables",
+            ),
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            id="view_from_code",
+        ),
+        pytest.param(
+            (obs.Notebook.from_html, obs.view_from_html),
             (
                 "source",
                 "files",
@@ -192,13 +210,16 @@ def test_notebook_themes_match_notebook_kit_theme_names() -> None:
             id="from_html",
         ),
         pytest.param(
-            (obs.Notebook.from_observablehq,),
+            (obs.Notebook.from_observablehq, obs.view_from_observablehq),
             ("specifier", "variables", "files", "show_pinned_source", "timeout"),
             inspect.Parameter.POSITIONAL_OR_KEYWORD,
             id="from_observablehq",
         ),
         pytest.param(
-            (obs.Notebook.from_observablehq_document,),
+            (
+                obs.Notebook.from_observablehq_document,
+                obs.view_from_observablehq_document,
+            ),
             ("document", "title", "variables", "files", "show_pinned_source"),
             inspect.Parameter.POSITIONAL_OR_KEYWORD,
             id="from_observablehq_document",

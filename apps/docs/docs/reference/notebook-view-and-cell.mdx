@@ -8,6 +8,69 @@ description: Renderable views, cell handles, and observable browser state.
 Call `Notebook.view(...)` to create a `NotebookView`. `Notebook.cell` and
 `Notebook.cells` return stable `NotebookCell` handles.
 
+## Standalone view factories
+
+The standalone factories construct a notebook and return its full
+`NotebookView`. The view keeps its controller available as `view.notebook`.
+
+```python
+import observablejs as obs
+
+view = obs.view_from_code("viewof n = Inputs.range([0, 10])")
+```
+
+```python
+view_from_code(
+    code,
+    *,
+    mode="ojs",
+    title="Untitled",
+    theme="air",
+    files=None,
+    base_path=None,
+    variables=None,
+) -> NotebookView
+
+view_from_html(
+    source,
+    *,
+    files=None,
+    base_path=None,
+    embed_file_attachments=False,
+    rewrite_imports=False,
+    variables=None,
+    show_pinned_source=False,
+) -> NotebookView
+
+view_from_observablehq(
+    specifier,
+    *,
+    variables=None,
+    files=None,
+    show_pinned_source=False,
+    timeout=30,
+) -> NotebookView
+
+view_from_observablehq_document(
+    document,
+    *,
+    title=None,
+    variables=None,
+    files=None,
+    show_pinned_source=False,
+) -> NotebookView
+```
+
+The imported-source factories accept the same keyword options as their
+matching `Notebook.from_*` constructors. `view_from_code` accepts notebook
+title, theme, files, base path, and initial variables. The `specifier` may be a
+public ObservableHQ URL, slug, id, or document API URL. `document` accepts an
+`observablejs.types.ObservableDocument` mapping.
+
+Each function has explicit named inputs, so it can be registered directly by
+tools that serve AnyWidget factories. Validation, file, and network errors
+come from the matching cell or notebook constructor.
+
 ## `NotebookCell`
 
 ```python
