@@ -2072,7 +2072,7 @@ wheels = [
 
 [[package]]
 name = "pyobservablejs"
-version = "0.0.6"
+version = "0.0.7"
 source = { editable = "packages/pyobservablejs" }
 dependencies = [
     { name = "anywidget" },
