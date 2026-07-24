@@ -25,7 +25,6 @@ dependencies = ["pyobservablejs"]
 ```
 
 ```python
-import marimo as mo
 import observablejs as obs
 
 notebook = obs.Notebook(
@@ -45,11 +44,10 @@ notebook = obs.Notebook(
 )
 
 full_view = notebook.view()
-mo.ui.anywidget(full_view)
+full_view
 ```
 
 ```python marimo echo=false server-output=false
-import marimo as mo
 import observablejs as obs
 
 notebook = obs.Notebook(
@@ -69,7 +67,7 @@ notebook = obs.Notebook(
 )
 
 full_view = notebook.view()
-mo.ui.anywidget(full_view)
+full_view
 ```
 
 The first cell defines `exponent`. The readout references it, so Notebook Kit

@@ -18,7 +18,6 @@ dependencies = ["pyobservablejs"]
 from pathlib import Path
 import tempfile
 
-import marimo as mo
 import observablejs as obs
 
 data_dir = Path(tempfile.mkdtemp(prefix="observable-files-"))
@@ -57,14 +56,13 @@ notebook = obs.Notebook(
 )
 
 full_view = notebook.view()
-mo.ui.anywidget(full_view)
+full_view
 ```
 
 ```python marimo echo=false server-output=false
 from pathlib import Path
 import tempfile
 
-import marimo as mo
 import observablejs as obs
 
 data_dir = Path(tempfile.mkdtemp(prefix="observable-files-"))
@@ -103,7 +101,7 @@ notebook = obs.Notebook(
 )
 
 full_view = notebook.view()
-mo.ui.anywidget(full_view)
+full_view
 ```
 
 The mapping key is the name used by `FileAttachment`. `typed: true` asks the

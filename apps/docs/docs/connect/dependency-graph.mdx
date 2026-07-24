@@ -14,7 +14,6 @@ dependencies = ["pyobservablejs"]
 ```
 
 ```python
-import marimo as mo
 import observablejs as obs
 
 notebook = obs.Notebook(
@@ -54,12 +53,10 @@ notebook = obs.Notebook(
 )
 
 view = notebook.view()
-widget = mo.ui.anywidget(view)
-widget
+view
 ```
 
 ```python marimo echo=false server-output=false
-import marimo as mo
 import observablejs as obs
 
 notebook = obs.Notebook(
@@ -99,8 +96,7 @@ notebook = obs.Notebook(
 )
 
 view = notebook.view()
-widget = mo.ui.anywidget(view)
-widget
+view
 ```
 
 After the graph arrives:

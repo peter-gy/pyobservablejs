@@ -14,14 +14,13 @@ app = marimo.App(width="medium")
 
 @app.cell(hide_code=True)
 def _():
-    import marimo as mo
     import observablejs as obs
 
-    return mo, obs
+    return (obs,)
 
 
 @app.cell(hide_code=True)
-def _(mo, obs):
+def _(obs):
     notebook = obs.Notebook(
         obs.md(
             """
@@ -59,7 +58,7 @@ def _(mo, obs):
         ),
     )
 
-    mo.ui.anywidget(notebook.view())
+    notebook.view()
     return
 
 

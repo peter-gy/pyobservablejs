@@ -17,7 +17,6 @@ dependencies = ["pyobservablejs"]
 ```
 
 ```python
-import marimo as mo
 import observablejs as obs
 
 species_stats = [
@@ -64,11 +63,10 @@ notebook = obs.Notebook(
 )
 
 full_view = notebook.view()
-mo.ui.anywidget(full_view)
+full_view
 ```
 
 ```python marimo echo=false server-output=false
-import marimo as mo
 import observablejs as obs
 
 species_stats = [
@@ -115,7 +113,7 @@ notebook = obs.Notebook(
 )
 
 full_view = notebook.view()
-mo.ui.anywidget(full_view)
+full_view
 ```
 
 ## What this shows

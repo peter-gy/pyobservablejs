@@ -21,7 +21,7 @@ def _():
 
 
 @app.cell(hide_code=True)
-def _(mo, obs):
+def _(obs):
     notebook = obs.Notebook(
         obs.js(
             """
@@ -44,7 +44,7 @@ def _(mo, obs):
         obs.js("Inputs.table(filteredCars)", key="table"),
     )
 
-    full_view = mo.ui.anywidget(notebook.view())
+    full_view = notebook.view()
     full_view
     return (full_view,)
 

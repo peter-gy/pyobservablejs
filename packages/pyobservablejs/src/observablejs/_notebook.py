@@ -60,6 +60,17 @@ _MISSING_VARIABLE = object()
 _MAX_SAFE_REVISION = (1 << 53) - 1
 
 
+def _wrap_marimo(instance: Any) -> Any:
+    try:
+        import marimo
+
+        if marimo.running_in_notebook():
+            return marimo.ui.anywidget(instance)
+    except (ImportError, ModuleNotFoundError):
+        pass
+    return instance
+
+
 def _freeze(value: Any) -> Any:
     if isinstance(value, Mapping):
         return _types.MappingProxyType(
@@ -512,12 +523,13 @@ class Notebook(traitlets.HasTraits):
 
         Selectors may be keys, keyed authored ``Cell`` objects, or
         ``NotebookCell`` handles from this notebook. Selected outputs render in
-        notebook order.
+        notebook order. In a running marimo notebook, the returned UI element
+        proxies the underlying ``NotebookView``.
         """
 
         self._session._require_open()
         indexes = None if not selectors else self._normalize_view_cells(selectors)
-        return NotebookView._create(self, indexes)
+        return _wrap_marimo(NotebookView._create(self, indexes))
 
     def _normalize_view_cells(self, selectors: Sequence[CellSelector]) -> list[int]:
         indexes: list[int] = []

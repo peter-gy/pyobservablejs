@@ -22,7 +22,6 @@ dependencies = ["pyobservablejs"]
 from pathlib import Path
 import tempfile
 
-import marimo as mo
 import observablejs as obs
 
 base = Path(tempfile.mkdtemp(prefix="observable-source-"))
@@ -63,14 +62,13 @@ notebook = obs.Notebook.from_html(
     embed_file_attachments=True,
 )
 full_view = notebook.view()
-mo.ui.anywidget(full_view)
+full_view
 ```
 
 ```python marimo echo=false server-output=false
 from pathlib import Path
 import tempfile
 
-import marimo as mo
 import observablejs as obs
 
 base = Path(tempfile.mkdtemp(prefix="observable-source-"))
@@ -111,7 +109,7 @@ notebook = obs.Notebook.from_html(
     embed_file_attachments=True,
 )
 full_view = notebook.view()
-mo.ui.anywidget(full_view)
+full_view
 ```
 
 The output renders species counts from the local CSV. The counts come from

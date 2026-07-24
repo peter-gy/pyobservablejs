@@ -87,7 +87,6 @@ notebook = obs.Notebook(
 )
 
 full_view = notebook.view()
-widget = mo.ui.anywidget(full_view)
 ```
 
 ```python marimo echo=false server-output=false
@@ -132,21 +131,20 @@ notebook = obs.Notebook(
 )
 
 full_view = notebook.view()
-widget = mo.ui.anywidget(full_view)
 ```
 
 ```python
 notebook.update_variables({"floor": floor_slider.value})
-mo.vstack([floor_slider, widget])
+mo.vstack([floor_slider, full_view])
 ```
 
 ```python marimo echo=false server-output=false
 notebook.update_variables({"floor": floor_slider.value})
-mo.vstack([floor_slider, widget])
+mo.vstack([floor_slider, full_view])
 ```
 
 ```python
-widget.value  # subscribe this cell to view synchronization
+full_view.value  # subscribe this cell to view synchronization
 state = full_view.state
 
 if (
@@ -167,7 +165,7 @@ mo.md(gain_report)
 ```
 
 ```python marimo echo=false server-output=false
-widget.value  # subscribe this cell to view synchronization
+full_view.value  # subscribe this cell to view synchronization
 state = full_view.state
 
 if (
@@ -200,7 +198,7 @@ Two rules keep this pattern predictable:
 - **Choose where each name is set.** Python sets `floor`. The browser sets
   `gain`. See [Bidirectional inputs](../connect/bidirectional-inputs.mdx) when
   both sides need to change one name.
-- **Subscribe the reading cell.** The readout references `widget.value`, so
+- **Subscribe the reading cell.** The readout references `full_view.value`, so
   marimo reruns it whenever the view synchronizes. Keep that reference in
   the reading cell to receive every synchronized update.
 

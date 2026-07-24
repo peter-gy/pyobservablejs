@@ -45,8 +45,7 @@ error.
 
 ## The view displays nothing
 
-- **marimo:** wrap the view with `mo.ui.anywidget(full_view)`. marimo renders
-  the returned UI element.
+- **marimo:** use the view as the cell output or pass it to a marimo layout.
 - **Jupyter and most hosts:** the view must be the final expression of a
   cell, or passed to `display(...)`.
 - **Colab:** enable third-party widget support, per
@@ -100,14 +99,14 @@ value = full_view.state.result("summary").values["total"]
 ## A marimo cell shows stale readback
 
 marimo reruns a cell when a UI element it references changes. Reference the
-wrapped widget's `value` in the reading cell:
+view's `value` in the reading cell:
 
 ```python
-widget = mo.ui.anywidget(full_view)
+full_view
 ```
 
 ```python
-widget.value  # subscribe
+full_view.value  # subscribe
 full_view.state
 ```
 
