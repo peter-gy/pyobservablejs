@@ -51,8 +51,8 @@ composite view when multiple cells require the same runtime and graph snapshot.
    ObservableHQ document.
 2. Python creates a `NotebookView` with a full, single-cell, or composite
    selection.
-3. An anywidget host displays the view. marimo wraps it with
-   `mo.ui.anywidget`, and Jupyter displays it directly.
+3. `Notebook.view()` adapts the view to a marimo UI element when it runs in a
+   marimo notebook. Other anywidget hosts receive the `NotebookView` directly.
 4. The frontend resolves the private session model referenced by the view and
    reads its definition, runtime profile, attachments, variables, renderer
    options, and shared input values.

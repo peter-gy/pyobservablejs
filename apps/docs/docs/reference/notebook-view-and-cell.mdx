@@ -5,14 +5,15 @@ description: Renderable views, cell handles, and observable browser state.
 
 # `NotebookView` and `NotebookCell`
 
-Call `Notebook.view(...)` to create a `NotebookView`. `Notebook.cell` and
-`Notebook.cells` return stable `NotebookCell` handles.
+Call `Notebook.view(...)` to create a renderable view backed by a
+`NotebookView`. `Notebook.cell` and `Notebook.cells` return stable
+`NotebookCell` handles.
 
 ## Standalone view factories
 
-The standalone factories construct a notebook and return its full
-`NotebookView`. The view keeps its controller available as `view.notebook` and
-owns that notebook session. Calling `view.close()` closes the view and session.
+The standalone factories construct a notebook and return its full renderable
+view. The view keeps its controller available as `view.notebook` and owns that
+notebook session. Calling `view.close()` closes the view and session.
 
 ```python
 import observablejs as obs
@@ -90,21 +91,18 @@ not select cells.
 
 ## `NotebookView`
 
-A view is an anywidget model with one browser run. It evaluates its selected
-cells and any other cells they need.
+The underlying `NotebookView` is an anywidget model with one browser run. It
+evaluates its selected cells and any other cells they need.
 
 ```python
 view = notebook.view("answer")
 view
 ```
 
-marimo can wrap it explicitly:
-
-```python
-import marimo as mo
-
-mo.ui.anywidget(view)
-```
+In a running marimo notebook, `Notebook.view()` returns a marimo UI element
+that proxies the underlying `NotebookView`. Use the returned view directly in
+cell output and layouts. Other anywidget hosts receive the `NotebookView`
+model directly.
 
 | Member     | Contract                                           |
 | ---------- | -------------------------------------------------- |

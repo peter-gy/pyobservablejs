@@ -40,7 +40,6 @@ Paste this into the marimo editor opened above:
 [![Open in molab](https://molab.marimo.io/molab-shield.svg)](https://molab.marimo.io/github/peter-gy/pyobservablejs/blob/main/examples/from-code.py/wasm?utm_source=pyobservablejs)
 
 ```python
-import marimo as mo
 import observablejs as obs
 
 control = obs.ojs(
@@ -65,7 +64,7 @@ notebook = obs.Notebook(
     variables={"threshold": 0.5},
 )
 
-mo.ui.anywidget(notebook.view())
+notebook.view()
 ```
 
 Each cell `key` is its portable Python identity. Render one result with
@@ -97,11 +96,10 @@ Kit HTML, ObservableHQ notebooks, and remote modules as trusted code. See
 [![Open in molab](https://molab.marimo.io/molab-shield.svg)](https://molab.marimo.io/github/peter-gy/pyobservablejs/blob/main/examples/from-observablehq.py/server?utm_source=pyobservablejs)
 
 ```python
-import marimo as mo
 import observablejs as obs
 
 notebook = obs.Notebook.from_observablehq("@d3/world-tour")
-mo.ui.anywidget(notebook.view())
+notebook.view()
 ```
 
 ![An imported ObservableHQ notebook](https://files.peter.gy/projects/pyobservablejs/assets/from-slug.gif)

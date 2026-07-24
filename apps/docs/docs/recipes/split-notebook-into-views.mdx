@@ -85,9 +85,6 @@ notebook = obs.Notebook(
 
 chart_view = notebook.view("chart")
 summary_view = notebook.view("summary")
-
-chart_widget = mo.ui.anywidget(chart_view)
-summary_widget = mo.ui.anywidget(summary_view)
 ```
 
 ```python marimo echo=false server-output=false
@@ -132,9 +129,6 @@ notebook = obs.Notebook(
 
 chart_view = notebook.view("chart")
 summary_view = notebook.view("summary")
-
-chart_widget = mo.ui.anywidget(chart_view)
-summary_widget = mo.ui.anywidget(summary_view)
 ```
 
 ```python
@@ -142,7 +136,7 @@ notebook.update_variables({"minMass": mass_slider.value})
 mo.vstack(
     [
         mass_slider,
-        mo.hstack([chart_widget, summary_widget], widths=[2, 1]),
+        mo.hstack([chart_view, summary_view], widths=[2, 1]),
     ]
 )
 ```
@@ -152,7 +146,7 @@ notebook.update_variables({"minMass": mass_slider.value})
 mo.vstack(
     [
         mass_slider,
-        mo.hstack([chart_widget, summary_widget], widths=[2, 1]),
+        mo.hstack([chart_view, summary_view], widths=[2, 1]),
     ]
 )
 ```

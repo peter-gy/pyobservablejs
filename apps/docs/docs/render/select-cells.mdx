@@ -22,7 +22,6 @@ dependencies = ["pyobservablejs"]
 ```
 
 ```python
-import marimo as mo
 import observablejs as obs
 
 numbers = obs.js(
@@ -58,11 +57,10 @@ summary = obs.js(
 
 notebook = obs.Notebook(numbers, chart, summary, variables={"scale": 2})
 selected = notebook.view(summary, "chart")
-mo.ui.anywidget(selected)
+selected
 ```
 
 ```python marimo echo=false server-output=false
-import marimo as mo
 import observablejs as obs
 
 numbers = obs.js(
@@ -98,7 +96,7 @@ summary = obs.js(
 
 notebook = obs.Notebook(numbers, chart, summary, variables={"scale": 2})
 selected = notebook.view(summary, "chart")
-mo.ui.anywidget(selected)
+selected
 ```
 
 Although `summary` was passed first, the chart renders first because it appears

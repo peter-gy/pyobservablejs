@@ -26,7 +26,7 @@ def view_from_code(
     base_path: str | pathlib.Path | None = None,
     variables: Mapping[str, object] | None = None,
 ) -> NotebookView:
-    """Create an AnyWidget view from one Notebook Kit source cell.
+    """Create a renderable view from one Notebook Kit source cell.
 
     The code uses Observable JavaScript by default. Set mode to select another
     cell language. Closing the returned view also closes its notebook session.
@@ -82,7 +82,7 @@ def view_from_html(
     variables: Mapping[str, object] | None = None,
     show_pinned_source: bool = False,
 ) -> NotebookView:
-    """Create an AnyWidget view from Notebook Kit HTML text.
+    """Create a renderable view from Notebook Kit HTML text.
 
     The HTML can mix Notebook Kit cell modes. See the official Notebook Kit
     documentation at https://observablehq.com/notebook-kit/kit for the HTML
@@ -178,7 +178,7 @@ def view_from_observablehq(
     show_pinned_source: bool = False,
     timeout: float | None = 30,
 ) -> NotebookView:
-    """Fetch a public ObservableHQ notebook and return its AnyWidget view.
+    """Fetch a public ObservableHQ notebook and return its renderable view.
 
     Closing the returned view also closes its notebook session.
 
@@ -230,7 +230,7 @@ def view_from_observablehq_document(
     files: Mapping[str, FileInput] | None = None,
     show_pinned_source: bool = False,
 ) -> NotebookView:
-    """Create an AnyWidget view from an ObservableHQ document API mapping.
+    """Create a renderable view from an ObservableHQ document API mapping.
 
     Closing the returned view also closes its notebook session.
 

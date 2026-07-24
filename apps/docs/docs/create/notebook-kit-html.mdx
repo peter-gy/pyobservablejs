@@ -19,7 +19,6 @@ dependencies = ["pyobservablejs"]
 ```
 
 ```python
-import marimo as mo
 import observablejs as obs
 
 source = """
@@ -46,11 +45,10 @@ Plot.areaY(aapl, {
 
 notebook = obs.Notebook.from_html(source)
 full_view = notebook.view()
-mo.ui.anywidget(full_view)
+full_view
 ```
 
 ```python marimo echo=false server-output=false
-import marimo as mo
 import observablejs as obs
 
 source = """
@@ -77,7 +75,7 @@ Plot.areaY(aapl, {
 
 notebook = obs.Notebook.from_html(source)
 full_view = notebook.view()
-mo.ui.anywidget(full_view)
+full_view
 ```
 
 The widget preserves the `glacier` theme and renders the built-in AAPL sample

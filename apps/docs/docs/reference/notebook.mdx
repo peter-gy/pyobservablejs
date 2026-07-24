@@ -6,7 +6,7 @@ description: Notebook construction, keyed views, controller state, and mutation 
 # `Notebook`
 
 `Notebook` is a traitlets controller for one notebook definition and the values
-set from Python. It creates renderable `NotebookView` objects.
+set from Python. It creates renderable views backed by `NotebookView` objects.
 
 ## Constructor
 
@@ -48,7 +48,9 @@ raise `ValueError`. Local attachment access may raise `OSError`.
 
 ## `Notebook.view(*selectors)`
 
-Returns a new `NotebookView`. With no selectors, it renders every cell.
+Returns a new renderable view. With no selectors, it renders every cell. In a
+running marimo notebook, the return value is a marimo UI element that proxies
+its `NotebookView`.
 
 ```python
 import observablejs as obs

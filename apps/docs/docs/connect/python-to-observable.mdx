@@ -68,12 +68,11 @@ notebook = obs.Notebook(
 )
 
 view = notebook.view()
-widget = mo.ui.anywidget(view)
 ```
 
 ```python
 notebook.update_variables({"minimumMass": minimum_mass.value})
-mo.vstack([minimum_mass, widget])
+mo.vstack([minimum_mass, view])
 ```
 
 ```python marimo echo=false server-output=false
@@ -129,12 +128,11 @@ notebook = obs.Notebook(
 )
 
 view = notebook.view()
-widget = mo.ui.anywidget(view)
 ```
 
 ```python marimo echo=false server-output=false
 notebook.update_variables({"minimumMass": minimum_mass.value})
-mo.vstack([minimum_mass, widget])
+mo.vstack([minimum_mass, view])
 ```
 
 ## Update, replace, or release

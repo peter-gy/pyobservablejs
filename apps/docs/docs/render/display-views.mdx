@@ -5,8 +5,8 @@ description: Mount NotebookView in anywidget hosts and manage its lifecycle.
 
 # Display views
 
-`notebook.view()` returns a `NotebookView`. Browser evaluation starts when an
-anywidget host mounts it.
+`notebook.view()` returns a renderable view backed by a `NotebookView`. Browser
+evaluation starts when an anywidget host mounts it.
 
 ```marimo-config
 requires-python = ">=3.11"
@@ -34,7 +34,7 @@ notebook = obs.Notebook(
 )
 
 view = notebook.view()
-mo.ui.anywidget(view)
+view
 ```
 
 ```python marimo echo=false server-output=false
@@ -58,14 +58,14 @@ notebook = obs.Notebook(
 )
 
 view = notebook.view()
-mo.ui.anywidget(view)
+view
 ```
 
 ## Host idioms
 
-In marimo, wrap the view with `mo.ui.anywidget(view)`. In JupyterLab, Jupyter
-Notebook, VS Code notebooks, and Google Colab, leave the view as the final cell
-expression or pass it to `IPython.display.display`.
+In marimo, use the returned view as a cell output or layout child. In
+JupyterLab, Jupyter Notebook, VS Code notebooks, and Google Colab, leave the
+view as the final cell expression or pass it to `IPython.display.display`.
 
 Colab requires the third-party widget support described by
 [anywidget](https://anywidget.dev/en/notebooks/colab/).
@@ -79,7 +79,7 @@ view for each location.
 chart_a = notebook.view("readout")
 chart_b = notebook.view("readout")
 
-mo.hstack([mo.ui.anywidget(chart_a), mo.ui.anywidget(chart_b)])
+mo.hstack([chart_a, chart_b])
 ```
 
 The views receive the same notebook values and supported browser inputs. Each

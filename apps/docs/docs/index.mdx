@@ -38,7 +38,6 @@ dependencies = ["pyobservablejs"]
 ```
 
 ```python
-import marimo as mo
 import observablejs as obs
 
 notebook = obs.Notebook(
@@ -65,11 +64,10 @@ notebook = obs.Notebook(
     ),
 )
 
-mo.ui.anywidget(notebook.view())
+notebook.view()
 ```
 
 ```python marimo echo=false server-output=false
-import marimo as mo
 import observablejs as obs
 
 notebook = obs.Notebook(
@@ -96,7 +94,7 @@ notebook = obs.Notebook(
     ),
 )
 
-mo.ui.anywidget(notebook.view())
+notebook.view()
 ```
 
 ## Build a workflow

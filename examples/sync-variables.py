@@ -21,7 +21,7 @@ def _():
 
 
 @app.cell
-def _(mo, obs):
+def _(obs):
     notebook = obs.Notebook(
         obs.ojs(
             """
@@ -40,7 +40,7 @@ def _(mo, obs):
         variables={"threshold": 0.75},
     )
 
-    notebook_view = mo.ui.anywidget(notebook.view())
+    notebook_view = notebook.view()
     notebook_view
     return notebook, notebook_view
 

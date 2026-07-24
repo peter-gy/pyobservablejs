@@ -13,7 +13,6 @@ dependencies = ["pyobservablejs"]
 ```
 
 ```python
-import marimo as mo
 import observablejs as obs
 
 notebook = obs.Notebook(
@@ -29,12 +28,10 @@ notebook = obs.Notebook(
 )
 
 view = notebook.view()
-widget = mo.ui.anywidget(view)
-widget
+view
 ```
 
 ```python marimo echo=false server-output=false
-import marimo as mo
 import observablejs as obs
 
 notebook = obs.Notebook(
@@ -50,14 +47,14 @@ notebook = obs.Notebook(
 )
 
 view = notebook.view()
-widget = mo.ui.anywidget(view)
-widget
+view
 ```
 
-Read a result after the latest input revision settles:
+Read a result after the latest input revision settles. In marimo, reference
+`view.value` first so the reading cell reruns when the view synchronizes:
 
 ```python
-widget.value  # rerun this cell when synchronized widget state changes
+view.value  # rerun this cell when synchronized widget state changes
 state = view.state
 
 if (
@@ -89,9 +86,8 @@ def on_state(change):
 view.observe(on_state, names="state")
 ```
 
-In marimo, reference the wrapped widget in the reading cell so that the cell
-reruns when synchronized widget state changes, then read `view.state` from the
-underlying view.
+In marimo, reference `view.value` in the reading cell so that the cell reruns
+when synchronized widget state changes, then read `view.state`.
 
 State belongs to the view whose runtime produced it. A focused view reports
 its selected result while hidden dependencies still evaluate:

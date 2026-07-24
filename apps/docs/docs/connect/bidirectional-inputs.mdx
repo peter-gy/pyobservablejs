@@ -58,8 +58,7 @@ notebook = obs.Notebook(
 )
 
 view = notebook.view()
-widget = mo.ui.anywidget(view)
-widget
+view
 ```
 
 Send Python slider changes from a cell that references `python_gain` and
@@ -72,7 +71,7 @@ notebook.update_variables({"gain": python_gain.value})
 Read the current browser value after the latest input revision settles.
 
 ```python
-widget.value  # subscribe this cell to view synchronization
+view.value  # subscribe this cell to view synchronization
 state = view.state
 
 if (
@@ -132,8 +131,7 @@ notebook = obs.Notebook(
 )
 
 view = notebook.view()
-widget = mo.ui.anywidget(view)
-widget
+view
 ```
 
 ```python marimo echo=false server-output=false
@@ -141,7 +139,7 @@ notebook.update_variables({"gain": python_gain.value})
 ```
 
 ```python marimo echo=false server-output=false
-widget.value  # subscribe this cell to view synchronization
+view.value  # subscribe this cell to view synchronization
 state = view.state
 
 if (

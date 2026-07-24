@@ -28,7 +28,6 @@ dependencies = ["pyobservablejs"]
 ```
 
 ```python
-import marimo as mo
 import observablejs as obs
 
 control = obs.ojs(
@@ -54,12 +53,10 @@ notebook = obs.Notebook(
 )
 
 view = notebook.view()
-widget = mo.ui.anywidget(view)
-widget
+view
 ```
 
 ```python marimo echo=false server-output=false
-import marimo as mo
 import observablejs as obs
 
 control = obs.ojs(
@@ -85,8 +82,7 @@ notebook = obs.Notebook(
 )
 
 view = notebook.view()
-widget = mo.ui.anywidget(view)
-widget
+view
 ```
 
 ## Update the browser from Python
@@ -101,10 +97,11 @@ notebook.update_variables({"threshold": 0.8})
 ## Read a settled result
 
 `NotebookView.state` is one consistent, read-only snapshot. Read a result after
-the current input revision finishes.
+the current input revision finishes. In marimo, reference `view.value` first so
+the cell reruns when the view synchronizes.
 
 ```python
-widget.value  # rerun this cell when synchronized widget state changes
+view.value  # rerun this cell when synchronized widget state changes
 state = view.state
 
 if (
