@@ -86,6 +86,12 @@ ThemeSnapshot: TypeAlias = (
 )
 
 
+class NotebookViewOptions(TypedDict, total=False):
+    """Options accepted by ``Notebook.view()`` and standalone view factories."""
+
+    capture_state: bool
+
+
 class _OptionalFileSpec(TypedDict, total=False):
     mimeType: str
     lastModified: int
@@ -332,6 +338,7 @@ __all__ = [
     "NotebookKitCellMetadata",
     "NotebookState",
     "NotebookTheme",
+    "NotebookViewOptions",
     "ObservableData",
     "ObservableDisplay",
     "ObservableDocument",

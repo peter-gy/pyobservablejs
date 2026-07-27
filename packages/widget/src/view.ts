@@ -18,7 +18,13 @@ import { openNotebookRuntimeSession } from "./session";
 type Rerender = (variables?: Record<string, unknown>) => void;
 
 export function renderNotebookViewModel(props: RenderProps<WidgetModel>): void {
-	const readback = new ViewReadback(props.model, props.signal);
+	let readback: ViewReadback;
+	try {
+		readback = new ViewReadback(props.model, props.signal);
+	} catch (error) {
+		props.el.replaceChildren(createTopLevelError(error));
+		return;
+	}
 	let current = new AbortController();
 
 	const rerender: Rerender = (variables) => {

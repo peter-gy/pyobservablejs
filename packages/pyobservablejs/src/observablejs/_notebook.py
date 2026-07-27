@@ -6,7 +6,7 @@ import pathlib
 import types as _types
 import weakref
 from collections.abc import Iterable, Mapping, Sequence
-from typing import Any, cast
+from typing import Any, Unpack, cast
 
 import anywidget
 import traitlets
@@ -24,6 +24,10 @@ from ._model import (
 )
 from ._serialize import serialize
 from ._themes import normalize_theme
+from ._view_options import (
+    ResolvedNotebookViewOptions,
+    resolve_notebook_view_options,
+)
 from .types import (
     CellError,
     CellResult,
@@ -33,6 +37,7 @@ from .types import (
     FileInput,
     FileSnapshot,
     NotebookState,
+    NotebookViewOptions,
     ObservableDocument,
     Theme,
     ThemeSnapshot,
@@ -518,18 +523,36 @@ class Notebook(traitlets.HasTraits):
             self._cell_cache[index] = cached
         return cached
 
-    def view(self, *selectors: CellSelector) -> NotebookView:
+    def view(
+        self,
+        *selectors: CellSelector,
+        **options: Unpack[NotebookViewOptions],
+    ) -> NotebookView:
         """Create one view for all cells or positional cell selectors.
 
         Selectors may be keys, keyed authored ``Cell`` objects, or
         ``NotebookCell`` handles from this notebook. Selected outputs render in
         notebook order. In a running marimo notebook, the returned UI element
-        proxies the underlying ``NotebookView``.
+        proxies the underlying ``NotebookView``. Set ``capture_state=False`` to
+        render without synchronizing browser evaluation results to Python.
         """
 
+        return self._create_view(selectors, resolve_notebook_view_options(options))
+
+    def _create_view(
+        self,
+        selectors: Sequence[CellSelector],
+        options: ResolvedNotebookViewOptions,
+    ) -> NotebookView:
         self._session._require_open()
         indexes = None if not selectors else self._normalize_view_cells(selectors)
-        return _wrap_marimo(NotebookView._create(self, indexes))
+        return _wrap_marimo(
+            NotebookView._create(
+                self,
+                indexes,
+                options=options,
+            )
+        )
 
     def _normalize_view_cells(self, selectors: Sequence[CellSelector]) -> list[int]:
         indexes: list[int] = []
@@ -648,6 +671,7 @@ class NotebookView(_ObservableWidget):
         from_json=_WIDGET_FROM_JSON,
     )
     _cell_indexes = traitlets.Any(default_value=None, allow_none=True).tag(sync=True)
+    _capture_state = traitlets.Bool(default_value=True).tag(sync=True)
     _readback = traitlets.Dict(
         default_value={
             "revision": 0,
@@ -669,6 +693,8 @@ class NotebookView(_ObservableWidget):
         cls,
         notebook: Notebook,
         cell_indexes: Sequence[int] | None,
+        *,
+        options: ResolvedNotebookViewOptions,
     ) -> NotebookView:
         notebook._session._require_open()
         view = cls.__new__(cls)
@@ -680,6 +706,7 @@ class NotebookView(_ObservableWidget):
             view,
             _session=notebook._session,
             _cell_indexes=indexes,
+            _capture_state=options.capture_state,
         )
         view.set_trait("state", view._state_from_readback(view._readback))
         notebook._session._views.add(view)
@@ -734,7 +761,7 @@ class NotebookView(_ObservableWidget):
 
     @traitlets.observe("_readback")
     def _publish_readback_state(self, change: Any) -> None:
-        if not hasattr(self, "_owner"):
+        if not hasattr(self, "_owner") or not self._capture_state:
             return
         self.set_trait("state", self._state_from_readback(change["new"]))
 

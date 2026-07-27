@@ -61,7 +61,7 @@ export function renderNotebookView({
 			cell,
 			showSource: selected && options.showSource,
 			visible: selected,
-			sync: selected ? cellSync(index, readback, attempt) : undefined,
+			sync: selected && readback.captureState ? cellSync(index, readback, attempt) : undefined,
 			cellName: selected ? cellKeys[index] || undefined : undefined,
 		});
 	}
