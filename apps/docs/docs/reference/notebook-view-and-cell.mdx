@@ -31,6 +31,7 @@ view_from_code(
     files=None,
     base_path=None,
     variables=None,
+    **view_options,
 ) -> NotebookView
 
 view_from_html(
@@ -42,6 +43,7 @@ view_from_html(
     rewrite_imports=False,
     variables=None,
     show_pinned_source=False,
+    **view_options,
 ) -> NotebookView
 
 view_from_observablehq(
@@ -51,6 +53,7 @@ view_from_observablehq(
     files=None,
     show_pinned_source=False,
     timeout=30,
+    **view_options,
 ) -> NotebookView
 
 view_from_observablehq_document(
@@ -60,6 +63,7 @@ view_from_observablehq_document(
     variables=None,
     files=None,
     show_pinned_source=False,
+    **view_options,
 ) -> NotebookView
 ```
 
@@ -69,9 +73,12 @@ title, theme, files, base path, and initial variables. The `specifier` may be a
 public ObservableHQ URL, slug, id, or document API URL. `document` accepts an
 `observablejs.types.ObservableDocument` mapping.
 
-Each function has explicit named inputs, so it can be registered directly by
-tools that serve AnyWidget factories. Validation, file, and network errors
-come from the matching cell or notebook constructor.
+Each factory accepts the typed `Notebook.view()` options through
+`**view_options`. `capture_state` defaults to `True`. Set it to `False` to
+render while leaving the Python `ViewState` at its initial snapshot.
+Cell and notebook validation errors come from the matching constructor.
+Factories validate view options before notebook construction, local file
+access, or network requests.
 
 ## `NotebookCell`
 

@@ -28,8 +28,9 @@ model carries the definition, runtime profile, attachments, theme, Python
 variables, named browser inputs, render options, and cell keys.
 
 `NotebookView` carries an anywidget reference to that session, normalized cell
-indexes, and one `_readback` mapping. The frontend resolves the reference with
-`host.getModel` and requires `_model_role="session"`.
+indexes, a `_capture_state` boolean, and one `_readback` mapping. The frontend
+resolves the reference with `host.getModel` and requires
+`_model_role="session"`.
 
 ```mermaid
 flowchart TB
@@ -73,11 +74,14 @@ Each render attempt owns an `AbortController` and attempt token:
 2. Subscribe to session changes that require a new runtime.
 3. Deserialize or construct the notebook and analyze its graph.
 4. Resolve selected and dependency indexes.
-5. Publish the selected graph for the current attempt.
+5. Publish the selected graph for the current attempt when state capture is
+   enabled.
 6. Open a runtime with variables, inputs, attachments, theme, and runtime profile.
-7. Mark selected cells pending and define all included cells.
+7. Publish selected cells as pending when state capture is enabled, then define
+   all included cells.
 8. Restore shared named inputs and apply Python-owned values.
-9. Publish terminal cell results and settle the input revision.
+9. Publish terminal cell results and settle the input revision when state
+   capture is enabled.
 
 Selection, source, spec, theme, attachments, base URL, runtime profile, options,
 or cell keys abort the current attempt and rebuild. Python `set` updates apply
@@ -100,6 +104,11 @@ shared browser value before applying the Python value.
 
 `_readback` is one mapping with `revision`, `input_revision`,
 `settled_revision`, `pending`, `graph`, `results`, and `errors` fields.
+
+`_capture_state` defaults to `true`. When false, `ViewReadback` still owns
+render-attempt tokens while cell-result synchronization and model saves are
+skipped. The Python `ViewState` therefore remains at its initial snapshot while
+the runtime stays live.
 
 `revision` protects anywidget transport ordering. `input_revision` identifies
 the current evaluation wave. `settled_revision` remains on the previous wave

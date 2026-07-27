@@ -46,7 +46,7 @@ Invalid cell types, mappings, or serializable values raise `TypeError`.
 Duplicate cell ids or keys, invalid variable names, and unsupported themes
 raise `ValueError`. Local attachment access may raise `OSError`.
 
-## `Notebook.view(*selectors)`
+## `Notebook.view(*selectors, **options)`
 
 Returns a new renderable view. With no selectors, it renders every cell. In a
 running marimo notebook, the return value is a marimo UI element that proxies
@@ -62,6 +62,7 @@ notebook = obs.Notebook(answer, double)
 full_view = notebook.view()
 answer_view = notebook.view("answer")
 mixed_view = notebook.view(double, notebook.cell("answer"))
+render_only_view = notebook.view(capture_state=False)
 ```
 
 Each positional selector is one of:
@@ -77,6 +78,9 @@ foreign handles raise `ValueError`. Invalid selector types raise `TypeError`.
 
 Every view has its own browser run and `state` snapshot. Views from the same
 notebook receive the same Python variables and supported browser input values.
+`capture_state` defaults to `True`. Set it to `False` to render while leaving
+the Python `ViewState` at its initial snapshot. Rendering, Python variable
+updates, and shared browser inputs remain active.
 
 ## `Notebook.cell(key)`
 
