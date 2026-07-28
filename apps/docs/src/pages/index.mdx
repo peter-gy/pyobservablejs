@@ -166,7 +166,9 @@ notebook = obs.Notebook(
             x: "culmen_length_mm",
             y: "culmen_depth_mm",
             fill: "species",
-            tip: true
+            tip: {
+              fill: "var(--marimo-island-background)"
+            }
           }).plot({
             width,
             height: 460,
