@@ -3,10 +3,10 @@ from __future__ import annotations
 import json
 from collections.abc import Sequence
 from html.parser import HTMLParser
-from typing import Any, cast
+from typing import Any, Self, cast
 
-import pytest
 import observablejs as obs
+import pytest
 from helpers import (
     BrowserGraphCell,
     BrowserGraphCellBuilder,
@@ -89,7 +89,7 @@ class _ObservableHQResponse:
     def __init__(self, payload: dict[str, Any]) -> None:
         self._payload = payload
 
-    def __enter__(self) -> "_ObservableHQResponse":
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, *_args: object) -> bool:

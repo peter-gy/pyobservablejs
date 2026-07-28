@@ -34,7 +34,7 @@ _FILE_ATTACHMENT_ARGUMENT_RE = (
 _STDLIB_IMPORT_RE = re.compile(
     rf"\bimport{_JS_TRIVIA_RE}\{{(?P<imports>.*?)\}}{_JS_TRIVIA_RE}"
     rf"from{_JS_TRIVIA_RE}(?P<quote>[\"'])observablehq:stdlib(?P=quote)",
-    re.S,
+    re.DOTALL,
 )
 _NON_JAVASCRIPT_SCRIPT_TYPES = {
     "application/sql",
@@ -79,12 +79,12 @@ _STATIC_IMPORT_RE = re.compile(
     rf"(?P<prefix>\b(?:import|export){_JS_TRIVIA_RE}"
     rf"(?:{_JS_IMPORT_CLAUSE_RE}\bfrom{_JS_TRIVIA_RE})?)"
     r"(?P<quote>[\"'])(?P<path>\.{1,2}/[^\"']+)(?P=quote)",
-    re.S,
+    re.DOTALL,
 )
 _DYNAMIC_IMPORT_RE = re.compile(
     rf"(?P<prefix>\bimport{_JS_TRIVIA_RE}\({_JS_TRIVIA_RE})"
     r"(?P<quote>[\"'])(?P<path>\.{1,2}/[^\"']+)(?P=quote)",
-    re.S,
+    re.DOTALL,
 )
 
 
@@ -139,9 +139,11 @@ def _normalize_file_info(
 ) -> FileAttachment:
     if isinstance(value, Mapping):
         mapping = cast(Mapping[str, object], value)
-        url = mapping.get("url")
-        if not isinstance(url, str):
+        if "url" not in mapping:
             raise ValueError(f"file mapping for {name!r} must contain a string 'url'")
+        url = mapping["url"]
+        if not isinstance(url, str):
+            raise TypeError(f"file mapping for {name!r} 'url' must be a string")
         return cast(
             FileAttachment,
             {
@@ -339,7 +341,7 @@ def _file_attachment_call_re(names: set[str]) -> re.Pattern[str]:
     return re.compile(
         rf"(?P<callee>{alternatives})(?![0-9A-Za-z_$]){_JS_TRIVIA_RE}"
         rf"\({_JS_TRIVIA_RE}{_FILE_ATTACHMENT_ARGUMENT_RE}{_JS_TRIVIA_RE}\)",
-        re.S,
+        re.DOTALL,
     )
 
 

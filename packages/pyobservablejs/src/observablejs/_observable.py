@@ -12,12 +12,16 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, cast
 
-from ._cell_ids import _CellIdAllocator, _MAX_SAFE_CELL_ID, _is_safe_cell_id
+from ._cell_ids import _MAX_SAFE_CELL_ID, _CellIdAllocator, _is_safe_cell_id
 from ._cells import NotebookCellSpec
 from ._files import FileAttachment
 from .types import (
     ObservableDocument,
+)
+from .types import (
     ObservableFile as ObservableFileRecord,
+)
+from .types import (
     ObservableNode as ObservableNodeRecord,
 )
 
@@ -177,7 +181,7 @@ def fetch_observablehq_document(
             f"ObservableHQ document response was not JSON: {api_url}"
         ) from error
     if not isinstance(document, Mapping):
-        raise ValueError(f"ObservableHQ document response was not an object: {api_url}")
+        raise TypeError(f"ObservableHQ document response was not an object: {api_url}")
     return cast(ObservableDocument, document)
 
 
@@ -221,7 +225,7 @@ def _normalize_nodes(nodes: Sequence[ObservableNodeInput]) -> list[ObservableNod
     reserved: set[int] = set()
     for index, node in enumerate(nodes):
         if not isinstance(node, Mapping):
-            raise ValueError("Observable document node must be an object")
+            raise TypeError("Observable document node must be an object")
         cell_id = _explicit_node_id(node.get("id"))
         records.append((node, index, cell_id))
         if cell_id is not None:
@@ -241,8 +245,6 @@ def _normalize_node(
     index: int,
     cell_id: int,
 ) -> ObservableNode:
-    if not isinstance(node, Mapping):
-        raise ValueError("Observable document node must be an object")
     raw = dict(node)
     mode = raw.get("mode") or "js"
     if not isinstance(mode, str):
@@ -386,9 +388,8 @@ def _pin_observable_import(source: str, resolution: str | None) -> str:
     if specifier.startswith("observable:"):
         specifier = specifier.removeprefix("observable:")
     parsed = urllib.parse.urlsplit(specifier)
-    if parsed.scheme:
-        if parsed.hostname != "api.observablehq.com":
-            return source
+    if parsed.scheme and parsed.hostname != "api.observablehq.com":
+        return source
     path = parsed.path.lstrip("/")
     if not path:
         return source
@@ -823,11 +824,11 @@ def _table_slice_clause(slice_spec: object) -> str | None:
 
 def _chart_options_dict(data: object) -> dict[str, Any]:
     if not isinstance(data, Mapping):
-        raise ValueError("Observable chart node is missing chart data")
+        raise TypeError("Observable chart node data must be an object")
     data_map = cast(Mapping[str, Any], data)
     config = data_map.get("config")
     if not isinstance(config, Mapping):
-        raise ValueError("Observable chart node is missing chart config")
+        raise TypeError("Observable chart node config must be an object")
     config_map = cast(Mapping[str, Any], config)
 
     extra = config_map.get("options")

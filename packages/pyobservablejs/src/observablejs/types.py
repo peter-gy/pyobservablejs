@@ -13,8 +13,8 @@ from typing import (
     TYPE_CHECKING,
     Literal,
     TypeAlias,
-    TypeVar,
     TypedDict,
+    TypeVar,
     Union,
     overload,
 )

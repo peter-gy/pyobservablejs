@@ -5,7 +5,6 @@ from typing import cast
 import observablejs as obs
 import pytest
 from helpers import DocumentTitle, ScriptTags
-
 from observablejs._model import (
     NotebookModel,
     NotebookNode,
@@ -59,6 +58,11 @@ def test_notebook_model_rejects_name_identity_metadata() -> None:
                 "name": "answer",
             }
         )
+
+
+def test_notebook_node_rejects_non_integer_id() -> None:
+    with pytest.raises(TypeError, match="Notebook cell id must be an integer"):
+        NotebookNode.from_spec({"id": True})
 
 
 def test_html_model_preserves_source_and_exposes_cell_nodes() -> None:

@@ -24,6 +24,13 @@ from ._model import (
 )
 from ._serialize import serialize
 from ._themes import normalize_theme
+from ._variables import (
+    OBSERVABLE_RESERVED_VARIABLE_NAMES,
+    deserialize_value,
+    prepare_variables,
+    same_wire_value,
+    validate_variable_name,
+)
 from ._view_options import (
     ResolvedNotebookViewOptions,
     resolve_notebook_view_options,
@@ -43,13 +50,6 @@ from .types import (
     ThemeSnapshot,
     ViewError,
     ViewState,
-)
-from ._variables import (
-    OBSERVABLE_RESERVED_VARIABLE_NAMES,
-    deserialize_value,
-    prepare_variables,
-    same_wire_value,
-    validate_variable_name,
 )
 
 _WIDGET_TRAIT = anywidget.WidgetTrait()
@@ -97,7 +97,7 @@ class _ObservableWidget(BundledWidget):
 class NotebookCell:
     """Canonical handle for one cell owned by a ``Notebook``."""
 
-    __slots__ = ("_owner", "_index")
+    __slots__ = ("_index", "_owner")
     _owner: Notebook
     _index: int
 
@@ -263,7 +263,7 @@ class _NotebookSession(anywidget.AnyWidget):
 
     def _patch_variables(self, updates: Mapping[str, Any]) -> bool:
         prepared_updates, serialized_updates = self._prepare_variables(updates)
-        cleared_view_names = self._clear_view_values(serialized_updates)
+        cleared_view_names = set(serialized_updates).intersection(self._view_values)
         changed = {
             name: value
             for name, value in prepared_updates.items()
@@ -277,15 +277,17 @@ class _NotebookSession(anywidget.AnyWidget):
         changed_wire = {name: serialized_updates[name] for name in changed}
         self._variable_values = {**self._variable_values, **changed}
         self._variable_update_seq += 1
-        self.set_trait(
-            "_variable_update",
-            {
-                "seq": self._variable_update_seq,
-                "kind": "set",
-                "values": changed_wire,
-            },
-        )
-        self.set_trait("_variables", {**self._variables, **changed_wire})
+        with self.hold_sync():
+            self._clear_view_values(serialized_updates)
+            self.set_trait("_variables", {**self._variables, **changed_wire})
+            self.set_trait(
+                "_variable_update",
+                {
+                    "seq": self._variable_update_seq,
+                    "kind": "set",
+                    "values": changed_wire,
+                },
+            )
         return True
 
     def _prepare_variables(
@@ -305,21 +307,23 @@ class _NotebookSession(anywidget.AnyWidget):
         serialized: Mapping[str, Any],
     ) -> bool:
         python_names = set(self._variable_values).union(serialized)
-        cleared_view_names = self._clear_view_values(python_names)
+        cleared_view_names = python_names.intersection(self._view_values)
         if same_wire_value(self._variables, serialized) and not cleared_view_names:
             return False
         self._variable_values = dict(values)
         wire = dict(serialized)
         self._variable_update_seq += 1
-        self.set_trait(
-            "_variable_update",
-            {
-                "seq": self._variable_update_seq,
-                "kind": "replace",
-                "values": wire,
-            },
-        )
-        self.set_trait("_variables", wire)
+        with self.hold_sync():
+            self._clear_view_values(python_names)
+            self.set_trait("_variables", wire)
+            self.set_trait(
+                "_variable_update",
+                {
+                    "seq": self._variable_update_seq,
+                    "kind": "replace",
+                    "values": wire,
+                },
+            )
         return True
 
     def _clear_view_values(self, names: Iterable[str]) -> set[str]:

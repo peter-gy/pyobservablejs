@@ -5,7 +5,6 @@ import sys
 from importlib.metadata import version
 from pathlib import Path
 
-
 REPOSITORY_ROOT = Path(__file__).parents[3]
 VERIFY_RELEASE_SCRIPT = REPOSITORY_ROOT / "scripts" / "verify_release.py"
 

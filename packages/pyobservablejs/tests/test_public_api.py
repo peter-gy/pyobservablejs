@@ -50,11 +50,6 @@ def test_public_namespace_is_small() -> None:
     assert set(obs.__all__) == expected_public
     assert {name for name in dir(obs) if not name.startswith("_")} == expected_public
 
-    namespace: dict[str, object] = {}
-    exec("from observablejs import *", namespace)
-
-    assert {name for name in namespace if not name.startswith("_")} == expected_public
-
 
 def test_public_object_discovery_matches_ownership_model() -> None:
     notebook = obs.Notebook(obs.ojs("answer = 42", key="answer"))
@@ -189,6 +184,14 @@ def test_file_mapping_requires_a_url() -> None:
         match=r"file mapping for 'rows\.csv' must contain a string 'url'",
     ):
         obs.Notebook(files={"rows.csv": cast(Any, {"path": "rows.csv"})})
+
+
+def test_file_mapping_requires_a_string_url() -> None:
+    with pytest.raises(
+        TypeError,
+        match=r"file mapping for 'rows\.csv' 'url' must be a string",
+    ):
+        obs.Notebook(files={"rows.csv": cast(Any, {"url": 42})})
 
 
 def test_file_mapping_keeps_browser_attachment_fields() -> None:

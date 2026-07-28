@@ -21,7 +21,7 @@ def _():
 
 
 @app.cell
-def _(obs):
+def _(mo, obs):
     notebook = obs.Notebook(
         obs.ojs(
             """
@@ -41,7 +41,7 @@ def _(obs):
     )
 
     notebook_view = notebook.view()
-    notebook_view
+    mo.output.replace(notebook_view)
     return notebook, notebook_view
 
 
@@ -60,13 +60,11 @@ def _(mo, notebook_view):
     mo.md(rf"""
     The `threshold` value from JS is ${threshold}$.
     """)
-    return
 
 
 @app.cell
 def _(notebook):
     notebook.update_variables({"threshold": 0.9})
-    return
 
 
 if __name__ == "__main__":

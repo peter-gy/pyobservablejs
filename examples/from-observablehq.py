@@ -23,7 +23,6 @@ def _():
 def _(obs):
     notebook = obs.Notebook.from_observablehq("@d3/world-tour")
     notebook.view()
-    return
 
 
 if __name__ == "__main__":

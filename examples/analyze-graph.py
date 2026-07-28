@@ -21,7 +21,7 @@ def _():
 
 
 @app.cell(hide_code=True)
-def _(obs):
+def _(mo, obs):
     notebook = obs.Notebook(
         obs.js(
             """
@@ -45,7 +45,7 @@ def _(obs):
     )
 
     full_view = notebook.view()
-    full_view
+    mo.output.replace(full_view)
     return (full_view,)
 
 
@@ -53,7 +53,6 @@ def _(obs):
 def _(full_view, mo):
     graph = full_view.state.graph
     graph is not None and mo.mermaid(graph.to_mermaid())
-    return
 
 
 if __name__ == "__main__":

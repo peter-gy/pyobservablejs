@@ -12,9 +12,9 @@ from helpers import (
     decode_data_url,
     decoded_data_imports,
     javascript_imports,
-    notebook_from_html_path,
     normalized_source,
     normalized_source_with_embedded_imports,
+    notebook_from_html_path,
     script_by_id,
 )
 
