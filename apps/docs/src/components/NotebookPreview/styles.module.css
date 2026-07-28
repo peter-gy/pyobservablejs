@@ -1,0 +1,89 @@
+.root {
+	background: var(--ifm-background-surface-color);
+	border: 1px solid var(--ifm-color-emphasis-200);
+	border-radius: 6px;
+	min-height: 43rem;
+	overflow: visible;
+	padding: 1.25rem;
+	position: relative;
+}
+
+.root :global(marimo-island > .relative > .absolute) {
+	display: none !important;
+}
+
+.content[data-loading="true"] {
+	visibility: hidden;
+}
+
+.error {
+	color: var(--ifm-color-emphasis-700);
+	margin: 0;
+}
+
+.skeleton {
+	display: grid;
+	gap: 1.25rem;
+	inset: 1.25rem;
+	position: absolute;
+}
+
+.skeleton span {
+	background: var(--ifm-color-emphasis-100);
+	border: 1px solid var(--ifm-color-emphasis-200);
+	border-radius: 4px;
+	display: block;
+}
+
+.title {
+	height: 2rem;
+	width: 46%;
+}
+
+.control {
+	height: 2.25rem;
+	margin-top: 0.5rem;
+	width: 38%;
+}
+
+.summary {
+	height: 1.25rem;
+	margin-top: 0.5rem;
+	width: 31%;
+}
+
+.legend {
+	height: 1rem;
+	width: 52%;
+}
+
+.chart {
+	height: 28rem;
+	width: 100%;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+	.skeleton {
+		animation: notebook-skeleton-pulse 1.6s ease-in-out infinite alternate;
+	}
+}
+
+@keyframes notebook-skeleton-pulse {
+	from {
+		opacity: 0.55;
+	}
+
+	to {
+		opacity: 1;
+	}
+}
+
+@media screen and (max-width: 700px) {
+	.root {
+		padding: 1rem;
+	}
+
+	.skeleton {
+		inset: 1rem;
+	}
+}

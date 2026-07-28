@@ -1,0 +1,181 @@
+---
+title: Split one notebook into several views
+description: Mount focused views side by side and drive them from one Python control.
+---
+
+# Split one notebook into several views
+
+One notebook definition can power several placements. This example defines a
+hidden filter, a chart, and a summary in a single `Notebook`, then mounts the
+chart and the summary as separate focused views in a two-column layout.
+
+The views stay connected through the notebook session: one Python slider
+updates the `minMass` variable, and both runtimes recompute.
+
+```marimo-config
+requires-python = ">=3.11"
+dependencies = ["pyobservablejs"]
+```
+
+```python
+import marimo as mo
+import observablejs as obs
+
+mass_slider = mo.ui.slider(
+    start=2700,
+    stop=6300,
+    step=100,
+    value=4000,
+    label="Minimum body mass (g)",
+)
+```
+
+```python marimo echo=false server-output=false
+import marimo as mo
+import observablejs as obs
+
+mass_slider = mo.ui.slider(
+    start=2700,
+    stop=6300,
+    step=100,
+    value=4000,
+    label="Minimum body mass (g)",
+)
+```
+
+```python
+notebook = obs.Notebook(
+    obs.js(
+        "const heavyPenguins = penguins.filter((d) => d.body_mass_g >= minMass);",
+        key="heavy_penguins",
+        display=False,
+    ),
+    obs.js(
+        """
+        Plot.dot(heavyPenguins, {
+          x: "culmen_length_mm",
+          y: "body_mass_g",
+          fill: "species",
+          r: 4,
+          tip: {
+            // This example references a theme variable used by mdx-marimo.
+            // Replace it with a CSS color or remove `fill` in another host.
+            fill: "var(--marimo-island-background)"
+          }
+        }).plot({
+          height: 260,
+          color: {legend: true},
+          x: {grid: true, label: "Bill length (mm)"},
+          y: {grid: true, label: "Body mass (g)"}
+        })
+        """,
+        key="chart",
+    ),
+    obs.js(
+        """
+        html`<p>
+          <strong>${heavyPenguins.length}</strong> of ${penguins.length}
+          penguins are at or above <strong>${minMass} g</strong>.
+        </p>`
+        """,
+        key="summary",
+    ),
+    variables={"minMass": 4000},
+)
+
+chart_view = notebook.view("chart")
+summary_view = notebook.view("summary")
+```
+
+```python marimo echo=false server-output=false
+notebook = obs.Notebook(
+    obs.js(
+        "const heavyPenguins = penguins.filter((d) => d.body_mass_g >= minMass);",
+        key="heavy_penguins",
+        display=False,
+    ),
+    obs.js(
+        """
+        Plot.dot(heavyPenguins, {
+          x: "culmen_length_mm",
+          y: "body_mass_g",
+          fill: "species",
+          r: 4,
+          tip: {
+            // This example references a theme variable used by mdx-marimo.
+            // Replace it with a CSS color or remove `fill` in another host.
+            fill: "var(--marimo-island-background)"
+          }
+        }).plot({
+          height: 260,
+          color: {legend: true},
+          x: {grid: true, label: "Bill length (mm)"},
+          y: {grid: true, label: "Body mass (g)"}
+        })
+        """,
+        key="chart",
+    ),
+    obs.js(
+        """
+        html`<p>
+          <strong>${heavyPenguins.length}</strong> of ${penguins.length}
+          penguins are at or above <strong>${minMass} g</strong>.
+        </p>`
+        """,
+        key="summary",
+    ),
+    variables={"minMass": 4000},
+)
+
+chart_view = notebook.view("chart")
+summary_view = notebook.view("summary")
+```
+
+```python
+notebook.update_variables({"minMass": mass_slider.value})
+mo.vstack(
+    [
+        mass_slider,
+        mo.hstack([chart_view, summary_view], widths=[2, 1]),
+    ]
+)
+```
+
+```python marimo echo=false server-output=false
+notebook.update_variables({"minMass": mass_slider.value})
+mo.vstack(
+    [
+        mass_slider,
+        mo.hstack([chart_view, summary_view], widths=[2, 1]),
+    ]
+)
+```
+
+## How the views stay connected
+
+- **Focused views carry their dependencies.** Each view selects one cell.
+  The hidden `heavy_penguins` cell evaluates inside both runtimes because
+  the selected cells depend on it.
+- **One session update reaches every view.** The final cell calls
+  `update_variables` once. Both views receive the new `minMass` and run their
+  cells again.
+- **Each view has its own state.** `chart_view.state` and `summary_view.state`
+  update independently.
+
+## Sharing browser inputs across views
+
+Named `viewof` inputs also share values across views of the same notebook:
+when a user interacts with an input in one view, sibling views that render
+an input with the same name receive the value in interactive hosts such as
+marimo and JupyterLab. The contract, including which value shapes are
+shared, is described in [Bidirectional
+inputs](../guide/connect/shared-inputs.mdx).
+
+## Choose a composite view
+
+If the chart and summary belong in _one_ placement, select them into one
+view. `notebook.view("chart", "summary")` evaluates everything once
+in a single runtime. Separate views fit separate placements such as different
+cells of the host notebook, different layout columns, or different dashboard
+pages. See [Select cells and create
+subsets](../guide/display/cells.mdx#one-composite-view-or-separate-views).

@@ -1,0 +1,97 @@
+---
+title: Export Notebook Kit HTML
+description: Serialize notebooks to Notebook Kit documents and round-trip them.
+---
+
+# Export Notebook Kit HTML
+
+`to_notebook_html()` returns the current notebook definition as a Notebook
+Kit document. Loaded documents preserve import rewrites requested during
+construction.
+
+```python
+import observablejs as obs
+
+notebook = obs.Notebook(
+    obs.md("# Report", key="title"),
+    obs.js(
+        "const total = rows.reduce((sum, row) => sum + row.value, 0);",
+        key="total",
+        display=False,
+    ),
+    obs.js("html`<p>Total: ${total}</p>`", key="summary"),
+    title="Weekly report",
+    theme="glacier",
+    variables={"rows": [{"value": 12}, {"value": 30}]},
+)
+
+print(notebook.to_notebook_html())
+```
+
+```text
+<!doctype html>
+<notebook theme="glacier">
+  <title>Weekly report</title>
+  <script id="1" type="text/markdown" data-pyobservablejs-key="title">
+    # Report
+  </script>
+  <script id="2" type="module" data-pyobservablejs-key="total" hidden="">
+    const total = rows.reduce((sum, row) => sum + row.value, 0);
+  </script>
+  <script id="3" type="module" data-pyobservablejs-key="summary">
+    html`<p>Total: ${total}</p>`
+  </script>
+</notebook>
+```
+
+The output is a standard [Notebook
+Kit](https://observablehq.com/notebook-kit/) document: `title` becomes a
+`<title>`, the theme becomes the `<notebook>` attribute, `display=False`
+becomes `hidden`, and each cell keeps its key and assigned id.
+
+## Definition and session state
+
+The document carries the notebook definition. Python keeps two kinds of state
+in the session:
+
+- **Python variables.** The exported HTML references `rows`, but the value
+  lives in the session. A consumer of the document must define `rows` itself
+  or load the HTML back with `from_html(..., variables=...)`.
+- **File attachment records.** `FileAttachment("name")` calls stay in the
+  source, but the registered data URLs and URL records are session state.
+  When the text is consumed independently, its environment must provide the
+  referenced files.
+
+Cell keys use the `data-pyobservablejs-key` script attribute. Loading the HTML
+restores the same public identity. The script `id` remains Notebook Kit
+serialization metadata.
+
+## Round trips
+
+Exported HTML loads back with full fidelity of the definition:
+
+```python
+html_text = notebook.to_notebook_html()
+restored = obs.Notebook.from_html(html_text, variables={"rows": []})
+```
+
+ObservableHQ-derived notebooks record their classic standard-library profile
+in the exported document, so a round trip through `from_html` preserves
+`require` and the other classic builtins.
+
+## Use with Notebook Kit tooling
+
+The exported file is valid input for Notebook Kit's own tooling, so a
+notebook authored in Python can graduate to a standalone Observable project:
+
+```python
+from pathlib import Path
+
+Path("report.html").write_text(notebook.to_notebook_html(), encoding="utf-8")
+```
+
+See
+[`Notebook.to_notebook_html`](../../reference/notebook.mdx#notebookto_notebook_html)
+for the serialization contract and [File
+attachments](../../reference/file-attachments.mdx#serialized-html-boundary) for
+the attachment boundary.

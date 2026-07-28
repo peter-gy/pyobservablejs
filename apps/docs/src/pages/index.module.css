@@ -1,0 +1,238 @@
+:global(.pyobservablejs-home) :global(main.container.container--fluid) {
+	margin: 0 !important;
+	max-width: none;
+	padding: 0;
+}
+
+:global(.pyobservablejs-home) :global(main.container.container--fluid > .row) {
+	margin: 0;
+}
+
+:global(.pyobservablejs-home) :global(main.container.container--fluid > .row > .col) {
+	padding: 0;
+}
+
+:global(.pyobservablejs-home) :global(main.container.container--fluid > .row > .col > article) {
+	column-gap: 2rem;
+	display: grid;
+	grid-template-areas:
+		"hero hero"
+		"features features"
+		"example-heading example-heading"
+		"python-heading notebook-heading"
+		"python-source notebook-preview";
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	margin: 0 auto;
+	max-width: 1180px;
+	padding: 4.5rem 2rem 6rem;
+}
+
+.hero {
+	align-items: center;
+	display: grid;
+	gap: clamp(2rem, 6vw, 5.5rem);
+	grid-area: hero;
+	grid-template-columns: minmax(0, 48rem) auto;
+}
+
+.intro {
+	max-width: 48rem;
+}
+
+.heroLogo {
+	display: block;
+	height: auto;
+	justify-self: end;
+	width: clamp(12rem, 20vw, 17rem);
+}
+
+.intro h1 {
+	font-size: 2.65rem;
+	letter-spacing: -0.035em;
+	line-height: 1.08;
+	margin: 0;
+}
+
+.lead {
+	font-size: 1.17rem;
+	line-height: 1.7;
+	margin: 1.35rem 0 0;
+}
+
+.boundary {
+	color: var(--ifm-color-emphasis-700);
+	line-height: 1.65;
+	margin: 0.8rem 0 0;
+}
+
+.start {
+	align-items: center;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.8rem 1.25rem;
+	margin-top: 1.5rem;
+}
+
+.start code {
+	font-size: 0.9rem;
+	padding: 0.35rem 0.55rem;
+}
+
+.start a {
+	font-weight: 600;
+}
+
+.features {
+	border-bottom: 1px solid var(--ifm-color-emphasis-200);
+	border-top: 1px solid var(--ifm-color-emphasis-200);
+	display: grid;
+	grid-area: features;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	margin-top: 3.5rem;
+}
+
+.features div {
+	display: grid;
+	gap: 0.35rem;
+	padding: 1.25rem 1.5rem;
+}
+
+.features div:first-child {
+	padding-left: 0;
+}
+
+.features div + div {
+	border-left: 1px solid var(--ifm-color-emphasis-200);
+}
+
+.features strong {
+	font-size: 0.98rem;
+}
+
+.features span {
+	color: var(--ifm-color-emphasis-700);
+	font-size: 0.9rem;
+	line-height: 1.5;
+}
+
+.exampleHeading {
+	grid-area: example-heading;
+	margin-top: 4.5rem;
+	max-width: 42rem;
+}
+
+.exampleHeading h2 {
+	font-size: 1.75rem;
+	letter-spacing: -0.02em;
+	margin: 0;
+}
+
+.exampleHeading p {
+	color: var(--ifm-color-emphasis-700);
+	line-height: 1.65;
+	margin: 0.75rem 0 0;
+}
+
+.columnHeading {
+	border-top: 2px solid var(--ifm-color-emphasis-300);
+	font-size: 1.08rem;
+	margin: 1.75rem 0 1rem;
+	padding-top: 0.8rem;
+}
+
+.pythonHeading {
+	grid-area: python-heading;
+}
+
+.notebookHeading {
+	border-top-color: var(--ifm-color-primary);
+	grid-area: notebook-heading;
+}
+
+.notebookPreview {
+	grid-area: notebook-preview;
+	min-width: 0;
+}
+
+:global(.pyobservablejs-home) :global(article > .theme-code-block) {
+	grid-area: python-source;
+	margin: 0;
+	min-width: 0;
+}
+
+:global(.pyobservablejs-home) :global(article > .theme-code-block pre) {
+	font-size: 0.78rem;
+	line-height: 1.5;
+	white-space: pre;
+}
+
+:global(.pyobservablejs-home) :global(article > .theme-code-block code) {
+	overflow-wrap: normal;
+	word-break: normal;
+}
+
+@media screen and (max-width: 900px) {
+	:global(.pyobservablejs-home) :global(main.container.container--fluid > .row > .col > article) {
+		grid-template-areas:
+			"hero"
+			"features"
+			"example-heading"
+			"python-heading"
+			"python-source"
+			"notebook-heading"
+			"notebook-preview";
+		grid-template-columns: minmax(0, 1fr);
+		padding-top: 3.5rem;
+	}
+
+	.hero {
+		gap: 2rem;
+	}
+
+	.heroLogo {
+		width: clamp(10rem, 20vw, 12rem);
+	}
+}
+
+@media screen and (max-width: 700px) {
+	:global(.pyobservablejs-home) :global(main.container.container--fluid > .row > .col > article) {
+		padding: 2.75rem 1.25rem 4rem;
+	}
+
+	.hero {
+		grid-template-columns: 1fr;
+	}
+
+	.heroLogo {
+		justify-self: center;
+		order: -1;
+		width: min(48vw, 12rem);
+	}
+
+	.intro h1 {
+		font-size: 2.2rem;
+	}
+
+	.lead {
+		font-size: 1.05rem;
+	}
+
+	.features {
+		grid-template-columns: 1fr;
+		margin-top: 2.75rem;
+	}
+
+	.features div,
+	.features div:first-child {
+		padding: 1rem 0;
+	}
+
+	.features div + div {
+		border-left: 0;
+		border-top: 1px solid var(--ifm-color-emphasis-200);
+	}
+
+	.exampleHeading {
+		margin-top: 3.5rem;
+	}
+}

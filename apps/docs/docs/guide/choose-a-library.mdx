@@ -1,0 +1,18 @@
+---
+title: Choose a library
+description: Compare pyobservablejs and pyobsplot by the unit you want to render.
+---
+
+# Choose pyobservablejs or pyobsplot
+
+Both libraries bring Observable tools into Python notebooks. Choose by the unit
+you want to create.
+
+| Need                                                                                   | Library                                          | Result                                             |
+| -------------------------------------------------------------------------------------- | ------------------------------------------------ | -------------------------------------------------- |
+| A reactive notebook with JavaScript, Markdown, HTML, inputs, files, and selected views | `pyobservablejs`                                 | A Notebook Kit notebook rendered through anywidget |
+| An Observable Plot figure described with a Python Plot specification                   | [`pyobsplot`](https://github.com/juba/pyobsplot) | A widget or static figure                          |
+
+Use `pyobservablejs` when cells depend on one another or when Python and browser
+inputs need to share values. Use `pyobsplot` when the Plot figure is the complete
+output.

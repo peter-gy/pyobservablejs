@@ -66,8 +66,8 @@ make docs-serve
 
 The build executes `python marimo` cells in the uv environments declared by
 their `marimo-config` fences and writes the site to `apps/docs/build`. The
-GitHub Pages workflow passes its configured deployment path through
-`BASE_PATH`.
+local preview runs at `http://127.0.0.1:27331/`. The GitHub Pages workflow
+applies its deployment path to the published build.
 
 ## Checks
 

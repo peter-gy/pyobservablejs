@@ -1,0 +1,121 @@
+---
+title: Quickstart
+description: Render a keyed notebook, update a variable, and read structured results.
+---
+
+# Quickstart
+
+`pyobservablejs` requires Python 3.11 or newer. Add it to an existing
+environment:
+
+```sh
+uv pip install pyobservablejs
+```
+
+Or open an isolated marimo editor with the package available:
+
+```sh
+uvx --with pyobservablejs marimo edit notebook.py
+```
+
+## Create and render a notebook
+
+Paste this into a marimo cell or another anywidget notebook host:
+
+```marimo-config
+requires-python = ">=3.11"
+dependencies = ["pyobservablejs"]
+```
+
+```python
+import observablejs as obs
+
+control = obs.ojs(
+    """
+    viewof threshold = Inputs.range([0, 1], {
+      value: 0.5,
+      step: 0.1,
+      label: "Threshold"
+    })
+    """,
+    key="threshold",
+)
+
+result = obs.js(
+    'html`<strong>Threshold: ${threshold}</strong>`',
+    key="result",
+)
+
+notebook = obs.Notebook(
+    control,
+    result,
+    variables={"threshold": 0.5},
+)
+
+view = notebook.view()
+view
+```
+
+```python marimo echo=false server-output=false
+import observablejs as obs
+
+control = obs.ojs(
+    """
+    viewof threshold = Inputs.range([0, 1], {
+      value: 0.5,
+      step: 0.1,
+      label: "Threshold"
+    })
+    """,
+    key="threshold",
+)
+
+result = obs.js(
+    'html`<strong>Threshold: ${threshold}</strong>`',
+    key="result",
+)
+
+notebook = obs.Notebook(
+    control,
+    result,
+    variables={"threshold": 0.5},
+)
+
+view = notebook.view()
+view
+```
+
+## Update the browser from Python
+
+`Notebook.update_variables` accepts one mapping. Every mounted view from this
+notebook receives the update.
+
+```python
+notebook.update_variables({"threshold": 0.8})
+```
+
+## Read a settled result
+
+`NotebookView.state` is one consistent, read-only snapshot. Read a result after
+the current input revision finishes. In marimo, reference `view.value` first so
+the cell reruns when the view synchronizes.
+
+```python
+view.value  # rerun this cell when synchronized widget state changes
+state = view.state
+
+if (
+    not state.pending
+    and state.input_revision is not None
+    and state.settled_revision == state.input_revision
+):
+    result_state = state.result("result")
+    if result_state.status == "success":
+        print(result_state.values)
+    else:
+        print(result_state.errors)
+```
+
+Continue with [How pyobservablejs works](how-it-works.mdx), [Author notebook
+cells](create/cells.mdx), [Select cells](display/cells.mdx), or [Read browser
+results](connect/browser-results.mdx).

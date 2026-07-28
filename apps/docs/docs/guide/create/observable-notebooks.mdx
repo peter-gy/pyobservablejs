@@ -1,0 +1,84 @@
+---
+title: Import ObservableHQ notebooks
+description: Fetch public observablehq.com notebooks and render them from Python.
+---
+
+# Import ObservableHQ notebooks
+
+`Notebook.from_observablehq` fetches a public ObservableHQ notebook through
+the document API and returns a `Notebook` definition. Call `view()` to create
+its renderable view. Imported cells run with the classic Observable standard
+library, including `require`, `html`, `Generators`, `Mutable`, and `DOM`.
+
+Imported notebooks and remote modules run with the host page's browser
+privileges. Review the trust boundary in [Browser
+execution](../customize/browser-execution.mdx).
+
+```python
+import observablejs as obs
+
+notebook = obs.Notebook.from_observablehq("@observablehq/plot-scatterplot/2")
+full_view = notebook.view()
+full_view
+```
+
+The `specifier` can be an ObservableHQ URL, a notebook slug, a notebook id,
+or a document API URL. Use `timeout` to bound the fetch.
+
+```python
+obs.Notebook.from_observablehq("https://observablehq.com/@d3/bar-chart")
+obs.Notebook.from_observablehq("@d3/bar-chart", timeout=10)
+```
+
+The constructor fetches the document on every call. To skip that request
+during a build or test, save the response once and pass it to
+[`Notebook.from_observablehq_document(...)`](../../reference/source-constructors.mdx#notebookfrom_observablehq_document).
+Imports, uploaded files, libraries, and datasets may still load from the
+network when the view renders.
+
+## Keep imported notebooks pinned
+
+The fetched document identifies its source revision. `pyobservablejs` uses
+that revision when resolving imported Observable notebooks, so their
+dependency versions match the source notebook.
+
+Keep `id` and `version` when saving a document API response. Passing the
+saved mapping to `from_observablehq_document` restores the same import
+resolution. For a node collection, pass a document mapping such as
+`{"nodes": nodes}`. Add the source `id` and `version` when imports must stay
+pinned to that published revision.
+
+## Override variables
+
+Pass `variables` to override notebook-defined values from Python.
+
+```python
+document = {
+    "id": "1234567890abcdef",
+    "version": 7,
+    "title": "Report",
+    "nodes": [
+        {"id": 1, "mode": "js", "name": "answer", "value": "answer = 42"},
+        {"id": 2, "mode": "js", "value": "md`Answer: ${answer}`"},
+    ],
+}
+notebook = obs.Notebook.from_observablehq_document(
+    document,
+    variables={"answer": 100},
+)
+```
+
+Remote uploaded files become URL-backed file records. Explicit `files`
+override fetched files with the same name.
+
+## Runtime profile
+
+Every ObservableHQ constructor selects the _observable_ runtime profile,
+which supplies the classic Observable standard library and `require`.
+Python-authored notebooks select the Notebook Kit builtins. The profile is
+fixed for the notebook session and survives
+`to_notebook_html()` round trips. See [Browser execution and network
+access](../customize/browser-execution.mdx#runtime-profiles).
+
+See [Source constructors](../../reference/source-constructors.mdx) for the
+constructor contracts, error behavior, and source-revision import resolution.

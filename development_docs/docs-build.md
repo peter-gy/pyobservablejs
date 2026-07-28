@@ -1,8 +1,9 @@
 # Documentation build
 
-The published site is a Docusaurus application under `apps/docs`. Its `docs/`
-directory contains the MDX pages, and the app owns navigation, theme styles,
-and browser runtime registration.
+The published site is a Docusaurus application under `apps/docs`. The standalone
+landing page lives in `src/pages`, the guide and reference pages live in
+`docs/`, and the app owns navigation, theme styles, and browser runtime
+registration.
 
 ```sh
 make docs
@@ -28,20 +29,14 @@ browser environments therefore resolve the published package from the package
 index. Exercise worktree widget changes through the JupyterLab workflow in
 [Development](development.md#browser-checks).
 
-Set `BASE_PATH` when testing a site below the origin root:
-
-```sh
-BASE_PATH=/preview make docs
-```
-
-The build uses that path for Docusaurus routes and assets. The GitHub Pages
-workflow reads the deployment path from `actions/configure-pages` and passes it
-to the build. An unset `BASE_PATH` builds the site for `/`.
-
-Build and preview the root-hosted site locally:
+Build and preview the site locally:
 
 ```sh
 make docs-serve
 ```
 
 Open `http://127.0.0.1:27331/`.
+
+Local builds and previews use `/`. The GitHub Pages workflow reads its
+deployment path from `actions/configure-pages` and applies it to the published
+build.

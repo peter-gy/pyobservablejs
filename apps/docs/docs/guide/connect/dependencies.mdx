@@ -1,0 +1,128 @@
+---
+title: Inspect dependencies
+description: Inspect keyed cells, variable dependencies, and diagram exports.
+---
+
+# Inspect dependencies
+
+Each displayed view reports the dependencies for its selected cells and the
+cells they need. Read them from `view.state.graph`.
+
+```marimo-config
+requires-python = ">=3.11"
+dependencies = ["pyobservablejs"]
+```
+
+```python
+import observablejs as obs
+
+notebook = obs.Notebook(
+    obs.js(
+        """
+        const cylinders = view(Inputs.select(
+          ["All", ...new Set(cars.map((d) => d.cylinders))],
+          {label: "Cylinders", value: "All"}
+        ));
+        """,
+        key="cylinder_control",
+    ),
+    obs.js(
+        """
+        const filteredCars = cylinders === "All"
+          ? cars
+          : cars.filter((d) => d.cylinders === cylinders);
+        """,
+        key="filtered_cars",
+        display=False,
+    ),
+    obs.js(
+        """
+        Plot.dot(filteredCars, {
+          x: "weight (lb)",
+          y: "economy (mpg)",
+          fill: "cylinders",
+          tip: {
+            // This example references a theme variable used by mdx-marimo.
+            // Replace it with a CSS color or remove `fill` in another host.
+            fill: "var(--marimo-island-background)"
+          }
+        }).plot({height: 300, x: {grid: true}, y: {grid: true}})
+        """,
+        key="chart",
+    ),
+)
+
+view = notebook.view()
+view
+```
+
+```python marimo echo=false server-output=false
+import observablejs as obs
+
+notebook = obs.Notebook(
+    obs.js(
+        """
+        const cylinders = view(Inputs.select(
+          ["All", ...new Set(cars.map((d) => d.cylinders))],
+          {label: "Cylinders", value: "All"}
+        ));
+        """,
+        key="cylinder_control",
+    ),
+    obs.js(
+        """
+        const filteredCars = cylinders === "All"
+          ? cars
+          : cars.filter((d) => d.cylinders === cylinders);
+        """,
+        key="filtered_cars",
+        display=False,
+    ),
+    obs.js(
+        """
+        Plot.dot(filteredCars, {
+          x: "weight (lb)",
+          y: "economy (mpg)",
+          fill: "cylinders",
+          tip: {
+            // This example references a theme variable used by mdx-marimo.
+            // Replace it with a CSS color or remove `fill` in another host.
+            fill: "var(--marimo-island-background)"
+          }
+        }).plot({height: 300, x: {grid: true}, y: {grid: true}})
+        """,
+        key="chart",
+    ),
+)
+
+view = notebook.view()
+view
+```
+
+After the graph arrives:
+
+```python
+graph = view.state.graph
+
+if graph is not None:
+    chart = graph.cell("chart")
+    print(chart.references)
+    for edge in graph.edges:
+        print(edge.source.key, "->", edge.target.key, "via", edge.variable)
+```
+
+`graph.cell(key)` uses public cell identity. Anonymous cells remain in
+`graph.cells`. `cell_for_variable(name)` finds one unique defining cell.
+`external_references` lists names supplied outside evaluated cells, including
+referenced builtins and Python variables.
+
+Export the same snapshot as Mermaid or D2:
+
+```python
+if graph is not None:
+    mermaid_source = graph.to_mermaid()
+    d2_source = graph.to_d2()
+```
+
+Diagram labels prefer cell keys and fall back to notebook position. See [View
+state and graph](../../reference/values-and-graph.mdx) for record fields.

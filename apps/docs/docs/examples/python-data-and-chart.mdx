@@ -1,0 +1,137 @@
+---
+title: Python data to an interactive chart
+description: Publish Python records as a graph variable and explore them with an Observable input.
+---
+
+# Python data to an interactive chart
+
+A Python list of dictionaries becomes a JavaScript array of objects. This
+example passes per-species statistics from the [Palmer Penguins
+dataset](https://allisonhorst.github.io/palmerpenguins/) to the browser,
+where an Observable input chooses the plotted metric. The switch recomputes
+entirely in the browser. Python is not involved after the initial render.
+
+```marimo-config
+requires-python = ">=3.11"
+dependencies = ["pyobservablejs"]
+```
+
+```python
+import observablejs as obs
+
+species_stats = [
+    {"species": "Adelie", "count": 152, "mean_mass_g": 3701},
+    {"species": "Chinstrap", "count": 68, "mean_mass_g": 3733},
+    {"species": "Gentoo", "count": 124, "mean_mass_g": 5076},
+]
+
+notebook = obs.Notebook(
+    obs.js(
+        """
+        const metric = view(Inputs.select(
+          new Map([
+            ["Penguin count", "count"],
+            ["Mean body mass (g)", "mean_mass_g"]
+          ]),
+          {label: "Metric"}
+        ));
+        """,
+        key="metric_control",
+    ),
+    obs.js(
+        """
+        Plot.barX(speciesStats, {
+          x: metric,
+          y: "species",
+          fill: "species",
+          tip: {
+            // This example references a theme variable used by mdx-marimo.
+            // Replace it with a CSS color or remove `fill` in another host.
+            fill: "var(--marimo-island-background)"
+          }
+        }).plot({
+          height: 240,
+          marginLeft: 76,
+          color: {legend: true},
+          x: {grid: true, label: metric === "count" ? "Penguins" : "Body mass (g)"},
+          y: {label: null}
+        })
+        """,
+        key="chart",
+    ),
+    variables={"speciesStats": species_stats},
+)
+
+full_view = notebook.view()
+full_view
+```
+
+```python marimo echo=false server-output=false
+import observablejs as obs
+
+species_stats = [
+    {"species": "Adelie", "count": 152, "mean_mass_g": 3701},
+    {"species": "Chinstrap", "count": 68, "mean_mass_g": 3733},
+    {"species": "Gentoo", "count": 124, "mean_mass_g": 5076},
+]
+
+notebook = obs.Notebook(
+    obs.js(
+        """
+        const metric = view(Inputs.select(
+          new Map([
+            ["Penguin count", "count"],
+            ["Mean body mass (g)", "mean_mass_g"]
+          ]),
+          {label: "Metric"}
+        ));
+        """,
+        key="metric_control",
+    ),
+    obs.js(
+        """
+        Plot.barX(speciesStats, {
+          x: metric,
+          y: "species",
+          fill: "species",
+          tip: {
+            // This example references a theme variable used by mdx-marimo.
+            // Replace it with a CSS color or remove `fill` in another host.
+            fill: "var(--marimo-island-background)"
+          }
+        }).plot({
+          height: 240,
+          marginLeft: 76,
+          color: {legend: true},
+          x: {grid: true, label: metric === "count" ? "Penguins" : "Body mass (g)"},
+          y: {label: null}
+        })
+        """,
+        key="chart",
+    ),
+    variables={"speciesStats": species_stats},
+)
+
+full_view = notebook.view()
+full_view
+```
+
+## Data crosses once
+
+- The `variables` mapping publishes the Python list under the JavaScript
+  name `speciesStats`. The chart cell reads it like any graph variable.
+- `view(Inputs.select(...))` defines `metric` in the browser. Changing it
+  invalidates only the chart cell.
+- A pandas or Polars `DataFrame` works in place of the literal list. It
+  arrives as the same array of row objects. See [Variables and
+  serialization](../reference/variables-and-serialization.mdx#python-to-browser-conversion).
+
+## Update or scale the data path
+
+- Update the records after render with
+  `notebook.update_variables({"speciesStats": ...})`. The chart recomputes while
+  the input keeps its selection. See [Python to
+  Observable](../guide/connect/python-values.mdx).
+- For large tables, register a file with
+  [`files=`](../guide/create/files-and-modules.mdx) and load it in the browser
+  with `FileAttachment(...).csv()`.
