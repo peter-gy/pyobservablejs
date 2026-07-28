@@ -63,6 +63,7 @@ const config = {
 			onBrokenMarkdownLinks: "throw",
 		},
 	},
+	plugins: ["@orama/plugin-docusaurus-v3"],
 	themes: ["@docusaurus/theme-mermaid"],
 	i18n: {
 		defaultLocale: "en",
@@ -137,6 +138,10 @@ const config = {
 						sidebarId: "reference",
 						position: "left",
 						label: "Reference",
+					},
+					{
+						type: "search",
+						position: "right",
 					},
 					{
 						href: "https://github.com/peter-gy/pyobservablejs",

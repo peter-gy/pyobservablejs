@@ -11,6 +11,7 @@ catalog:
   "@observablehq/notebook-kit": ^2.1.9
   "@observablehq/parser": ^6.1.0
   "@observablehq/stdlib": ^5.8.8
+  "@orama/plugin-docusaurus-v3": 3.1.18
   "@shikijs/core": ^4.3.1
   "@shikijs/engine-javascript": ^4.3.1
   "@shikijs/langs": ^4.3.1

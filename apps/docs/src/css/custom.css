@@ -11,6 +11,12 @@
 	--ifm-code-font-size: 0.9rem;
 }
 
+@media (min-width: 997px) {
+	orama-search-button.DocSearch-Button {
+		width: 11rem;
+	}
+}
+
 .marimo-island-host {
 	--marimo-island-background: #ffffff;
 	--marimo-island-foreground: #0f172a;
