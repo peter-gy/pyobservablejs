@@ -31,6 +31,7 @@ view_from_code(
     files=None,
     base_path=None,
     variables=None,
+    **view_options,
 ) -> NotebookView
 
 view_from_html(
@@ -42,6 +43,7 @@ view_from_html(
     rewrite_imports=False,
     variables=None,
     show_pinned_source=False,
+    **view_options,
 ) -> NotebookView
 
 view_from_observablehq(
@@ -51,6 +53,7 @@ view_from_observablehq(
     files=None,
     show_pinned_source=False,
     timeout=30,
+    **view_options,
 ) -> NotebookView
 
 view_from_observablehq_document(
@@ -60,6 +63,7 @@ view_from_observablehq_document(
     variables=None,
     files=None,
     show_pinned_source=False,
+    **view_options,
 ) -> NotebookView
 ```
 
@@ -69,9 +73,16 @@ title, theme, files, base path, and initial variables. The `specifier` may be a
 public ObservableHQ URL, slug, id, or document API URL. `document` accepts an
 `observablejs.types.ObservableDocument` mapping.
 
-Each function has explicit named inputs, so it can be registered directly by
-tools that serve AnyWidget factories. Validation, file, and network errors
-come from the matching cell or notebook constructor.
+Each factory accepts the typed `Notebook.view()` options through
+`**view_options`. `capture_state` matches the option on `Notebook.view()`. Set
+it to `False` when the rendered output is all you need and Python will not read
+`NotebookView.state`. The view remains interactive and its state stays at its
+initial value.
+
+Cell, notebook, file, and network errors come from the matching constructor.
+Invalid view options raise `TypeError` before file or network access. See [Skip
+Python state capture](../render/display-views.mdx#skip-python-state-capture)
+for guidance.
 
 ## `NotebookCell`
 
@@ -123,6 +134,9 @@ def on_view_state(change):
 
 view.observe(on_view_state, names="state")
 ```
+
+With `capture_state=False`, `state` remains at this initial value. Rendering,
+Python variable updates, and supported input synchronization continue.
 
 One `NotebookView` can have one live writable render at a time. Create another
 view from the notebook when the same selection must appear in two outputs.

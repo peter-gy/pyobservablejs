@@ -1,5 +1,5 @@
 import { createNotebookGraphFromAnalysis, sameWireValue, type NotebookAnalysis } from "@pyobservablejs/runtime";
-import { isRecord, type AnyWidgetModel, type WidgetModel } from "./model";
+import { isRecord, readCaptureState, type AnyWidgetModel, type WidgetModel } from "./model";
 
 export type ErrorPhase = "analysis" | "evaluation" | "rendering" | "serialization";
 export type CellStatus = "pending" | "success" | "error";
@@ -37,9 +37,10 @@ export type ReadbackToken = {
 type ReadbackState = NonNullable<WidgetModel["_readback"]>;
 type CellReadbacks = ReadbackState["results"];
 
-/** Publish one NotebookView's complete evaluation state. */
+/** Track one NotebookView's render attempts and publish captured evaluation state. */
 export class ViewReadback {
 	readonly #model: AnyWidgetModel;
+	readonly #captureState: boolean;
 	#results: CellReadbacks = {};
 	#graph: ReadbackState["graph"] = {};
 	#errors: ViewErrorWire[] = [];
@@ -56,6 +57,7 @@ export class ViewReadback {
 
 	constructor(model: AnyWidgetModel, signal: AbortSignal) {
 		this.#model = model;
+		this.#captureState = readCaptureState(model);
 		const current = readState(model.get("_readback"));
 		this.#transportRevision = current.revision;
 		this.#inputRevision = current.input_revision;
@@ -97,13 +99,17 @@ export class ViewReadback {
 		return !this.#closed && attempt === this.#attempt;
 	}
 
+	get captureState(): boolean {
+		return this.#captureState;
+	}
+
 	invalidate(publishPending = false): void {
 		if (this.#closed) return;
 		this.#attempt += 1;
 		this.#settlementGeneration += 1;
 		this.#graph = {};
 		this.#errors = [];
-		if (publishPending && this.#inputRevision !== null) this.#openRevision(this.#selected);
+		if (publishPending && this.#captureState && this.#inputRevision !== null) this.#openRevision(this.#selected);
 	}
 
 	syncGraph(
@@ -112,7 +118,7 @@ export class ViewReadback {
 		includedIndexes: ReadonlySet<number>,
 		keys: readonly string[] = [],
 	): void {
-		if (!this.isCurrent(attempt)) return;
+		if (!this.#isCapturing(attempt)) return;
 		const fullGraph = createNotebookGraphFromAnalysis(analysis, keys);
 		const cells = fullGraph.cells.filter((cell) => includedIndexes.has(cell.index));
 		const cellIds = new Set(cells.map((cell) => cell.id));
@@ -123,7 +129,7 @@ export class ViewReadback {
 	}
 
 	begin(attempt: ReadbackAttempt, selectedIndexes: ReadonlySet<number>): void {
-		if (!this.isCurrent(attempt)) return;
+		if (!this.#isCapturing(attempt)) return;
 		const sameSelection =
 			selectedIndexes.size === this.#selected.size && [...selectedIndexes].every((index) => this.#selected.has(index));
 		this.#selected = new Set(selectedIndexes);
@@ -135,12 +141,12 @@ export class ViewReadback {
 	}
 
 	beginInput(attempt: ReadbackAttempt, affectedIndexes: ReadonlySet<number>): void {
-		if (!this.isCurrent(attempt)) return;
+		if (!this.#isCapturing(attempt)) return;
 		this.#openRevision(new Set([...affectedIndexes].filter((index) => this.#selected.has(index))));
 	}
 
 	beginCell(attempt: ReadbackAttempt, index: number, channel: string, generation: number): ReadbackToken | null {
-		if (!this.isCurrent(attempt) || !this.#selected.has(index)) return null;
+		if (!this.#isCapturing(attempt) || !this.#selected.has(index)) return null;
 		const channelKey = `${index}:${channel}`;
 		const previousGeneration = this.#channelGenerations.get(channelKey) ?? 0;
 		if (generation <= previousGeneration) return null;
@@ -179,7 +185,7 @@ export class ViewReadback {
 	}
 
 	fail(attempt: ReadbackAttempt, error: unknown, phase: ErrorPhase): void {
-		if (!this.isCurrent(attempt)) return;
+		if (!this.#isCapturing(attempt)) return;
 		if (this.#inputRevision === null) {
 			this.#inputRevision = 0;
 		} else if (this.#pending.size === 0) {
@@ -244,12 +250,17 @@ export class ViewReadback {
 		);
 	}
 
+	#isCapturing(attempt: ReadbackAttempt): boolean {
+		return this.#captureState && this.isCurrent(attempt);
+	}
+
 	#requireInputRevision(): number {
 		if (this.#inputRevision === null) throw new Error("NotebookView evaluation has not started");
 		return this.#inputRevision;
 	}
 
 	#save(): void {
+		if (!this.#captureState) return;
 		const state: ReadbackState = {
 			revision: ++this.#transportRevision,
 			input_revision: this.#inputRevision,

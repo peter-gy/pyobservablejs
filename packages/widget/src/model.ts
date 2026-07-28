@@ -7,6 +7,7 @@ export type WidgetModel = {
 	_runtime_profile?: "notebook-kit" | "observable";
 	_session?: string | null;
 	_cell_indexes?: number[] | null;
+	_capture_state?: boolean;
 	_source?: string;
 	_spec?: Record<string, unknown>;
 	theme?: unknown;
@@ -68,6 +69,13 @@ export const VIEW_MODEL_CHANGE_EVENTS = ["change:_session", "change:_cell_indexe
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
 	return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+export function readCaptureState(model: AnyWidgetModel): boolean {
+	const value = model.get("_capture_state");
+	if (value === undefined) return true;
+	if (typeof value !== "boolean") throw new Error("NotebookView capture state must be a boolean");
+	return value;
 }
 
 export function readNotebookVariables(model: AnyWidgetModel): Record<string, unknown> {

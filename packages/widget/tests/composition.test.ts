@@ -93,6 +93,90 @@ describe("NotebookView composition", () => {
 		inputController.abort();
 	});
 
+	test("capture-disabled views preserve rendering and shared input reactivity", async () => {
+		const session = createSession({
+			_spec: {
+				cells: [
+					{
+						id: 1,
+						mode: "ojs",
+						value: `viewof gain = {
+  const input = document.createElement("input");
+  input.type = "range";
+  input.value = "3";
+  return input;
+}`,
+					},
+					{ id: 2, mode: "ojs", value: "scaled = gain * base", output: "scaled" },
+				],
+			},
+			_variables: { base: 2 },
+			_cell_keys: ["gain", "scaled"],
+		});
+		const captured = createView("anywidget:session", null);
+		const uncaptured = createView("anywidget:session", null);
+		uncaptured.set("_capture_state", false);
+		const host = createHost(new Map([["anywidget:session", session]]));
+		const capturedController = new AbortController();
+		const uncapturedController = new AbortController();
+		const capturedEl = document.createElement("div");
+		const uncapturedEl = document.createElement("div");
+
+		try {
+			widget.render(renderProps(captured, capturedEl, capturedController.signal, host));
+			widget.render(renderProps(uncaptured, uncapturedEl, uncapturedController.signal, host));
+			const capturedInput = await waitFor(() => rangeWithValue(capturedEl, 3));
+			const uncapturedInput = await waitFor(() => rangeWithValue(uncapturedEl, 3));
+			expect(await waitFor(() => composedText(capturedEl, "6"))).toBeInstanceOf(HTMLElement);
+			expect(await waitFor(() => composedText(uncapturedEl, "6"))).toBeInstanceOf(HTMLElement);
+			expect(uncapturedEl.textContent).toBe(capturedEl.textContent);
+
+			setRange(uncapturedInput, 4);
+
+			expect(await waitFor(() => (session.get("_view_values")?.gain === 4 ? 4 : undefined))).toBe(4);
+			expect(await waitFor(() => rangeWithValue(capturedEl, 4))).toBe(capturedInput);
+			expect(await waitFor(() => composedText(capturedEl, "8"))).toBeInstanceOf(HTMLElement);
+			expect(await waitFor(() => composedText(uncapturedEl, "8"))).toBeInstanceOf(HTMLElement);
+
+			session.set("_variable_update", { seq: 1, kind: "set", values: { base: 3 } });
+			session.set("_variables", { base: 3 });
+
+			expect(await waitFor(() => composedText(capturedEl, "12"))).toBeInstanceOf(HTMLElement);
+			expect(await waitFor(() => composedText(uncapturedEl, "12"))).toBeInstanceOf(HTMLElement);
+			expect(uncaptured.saveCount()).toBe(0);
+			expect(uncaptured.savedReadbacks()).toEqual([]);
+		} finally {
+			capturedController.abort();
+			uncapturedController.abort();
+		}
+	});
+
+	test("capture-disabled selected views render through hidden dependencies", async () => {
+		const session = createSession({
+			_spec: {
+				cells: [
+					{ id: 1, mode: "ojs", value: "source = 21" },
+					{ id: 2, mode: "ojs", value: "result = source * 2", output: "result" },
+				],
+			},
+			_cell_keys: ["source", "result"],
+		});
+		const view = createView("anywidget:session", [1]);
+		view.set("_capture_state", false);
+		const host = createHost(new Map([["anywidget:session", session]]));
+		const controller = new AbortController();
+		const el = document.createElement("div");
+
+		try {
+			widget.render(renderProps(view, el, controller.signal, host));
+			expect(await waitFor(() => composedText(el, "42"))).toBeInstanceOf(HTMLElement);
+			expect(view.saveCount()).toBe(0);
+			expect(view.savedReadbacks()).toEqual([]);
+		} finally {
+			controller.abort();
+		}
+	});
+
 	test("full and data views keep their shared input stable across Python updates", async () => {
 		const session = createSession({
 			_spec: { cells },

@@ -61,7 +61,8 @@ browser checks.
   transport revisions increase monotonically. Attempt tokens, input revisions,
   and observer generations reject stale callbacks. Python validates the full
   shape, accepts a strictly newer transport revision, and replaces
-  `NotebookView.state` once.
+  `NotebookView.state` once. A view created with `capture_state=False` renders
+  with its initial `ViewState` and skips browser readback publication.
 - `_variables` carries Python-owned values. `_view_values` carries serializable
   named browser inputs across views. When Python takes ownership of a name,
   clear its browser value before applying the Python value. Variable patches

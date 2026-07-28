@@ -114,6 +114,45 @@ def test_notebook_view_serializes_session_and_cell_selection() -> None:
     }
 
 
+def test_notebook_view_capture_state_defaults_and_can_be_disabled() -> None:
+    notebook = obs.Notebook(obs.ojs("answer = 42", key="answer"))
+    options: obs.types.NotebookViewOptions = {"capture_state": False}
+
+    default_view = notebook.view()
+    view = notebook.view(**options)
+
+    assert default_view.get_state(["_capture_state"]) == {"_capture_state": True}
+    assert view.get_state(["_capture_state"]) == {"_capture_state": False}
+    assert view.state.input_revision is None
+    assert view.state.results == ()
+
+
+def test_disabled_capture_ignores_incoming_browser_readback(
+    browser_value_sync: BrowserValueSync,
+) -> None:
+    view = obs.Notebook(obs.ojs("answer = 42", key="answer")).view(capture_state=False)
+    initial_state = view.state
+    observed_states: list[obs.types.ViewState] = []
+    view.observe(
+        lambda change: observed_states.append(cast(obs.types.ViewState, change["new"])),
+        names="state",
+    )
+
+    browser_value_sync(view, {"answer": 42})
+
+    assert view.state is initial_state
+    assert observed_states == []
+
+
+def test_notebook_view_options_validate_dynamic_inputs() -> None:
+    notebook = obs.Notebook(obs.ojs("answer = 42", key="answer"))
+
+    with pytest.raises(TypeError, match="capture_state must be a boolean"):
+        notebook.view(capture_state=cast(Any, "no"))
+    with pytest.raises(TypeError, match="unexpected Notebook view option 'unknown'"):
+        notebook.view(**cast(Any, {"unknown": True}))
+
+
 def test_notebook_view_accepts_a_cell_handle() -> None:
     notebook = obs.Notebook(
         obs.ojs("answer = 42", key="answer"),
@@ -166,7 +205,7 @@ def test_notebook_view_validates_selections() -> None:
     for selection in (0, True, ["answer"], {"answer"}):
         with pytest.raises(TypeError, match="cell selector"):
             cast(Any, notebook.view)(selection)
-    with pytest.raises(TypeError, match="unexpected keyword argument 'cells'"):
+    with pytest.raises(TypeError, match="unexpected Notebook view option 'cells'"):
         cast(Any, notebook.view)(cells=["answer"])
 
 

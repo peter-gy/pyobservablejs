@@ -140,8 +140,8 @@ function defineCell(
 			root,
 			cell,
 			sourceDefinition,
-			sync
-				? createCellObserver(sync, viewSync, sourceDefinition, displayName)
+			visible
+				? createVisibleCellObserver(viewSync, sourceDefinition, displayName, sync)
 				: createRuntimeInputObserver(observer, viewSync, sourceDefinition),
 			{
 				document: runtimeDocument(runtime),
@@ -217,11 +217,11 @@ function readDefinition(cell: Cell, input: DefinitionInput | undefined): Runtime
 	throw input.error;
 }
 
-function createCellObserver(
-	sync: CellVariableSync,
+function createVisibleCellObserver(
 	viewSync: RuntimeViewSync,
 	definition: RuntimeCellDefinition,
 	displayName: string | null,
+	sync?: CellVariableSync,
 ): typeof observe {
 	return (state, runtimeDefinition) => {
 		let renderFailed = false;
@@ -229,12 +229,12 @@ function createCellObserver(
 		// Selected cell output renders the value text expected by Python callers.
 		const observer = safeObserve(state, { ...runtimeDefinition, output: undefined }, (error) => {
 			renderFailed = true;
-			sync.rejected("display", error, "rendering", displayName ?? undefined);
+			sync?.rejected("display", error, "rendering", displayName ?? undefined);
 		});
 		const pending = observer.pending.bind(observer);
 		observer.pending = () => {
 			renderFailed = false;
-			sync.pending("display");
+			sync?.pending("display");
 			pending();
 		};
 		const fulfilled = observer.fulfilled.bind(observer);
@@ -242,7 +242,7 @@ function createCellObserver(
 			const viewName = viewVariableName(definition);
 			if (viewName) viewSync.register(viewName, value);
 			fulfilled(value);
-			if (renderFailed) return;
+			if (renderFailed || !sync) return;
 			if (!displayName) {
 				sync.fulfilled("display");
 				return;
@@ -256,7 +256,7 @@ function createCellObserver(
 		const rejected = observer.rejected.bind(observer);
 		observer.rejected = (error: unknown) => {
 			rejected(error);
-			if (!renderFailed) {
+			if (!renderFailed && sync) {
 				sync.rejected("display", error, "evaluation", displayName ?? undefined);
 			}
 		};

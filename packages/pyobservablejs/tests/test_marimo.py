@@ -13,12 +13,13 @@ def test_notebook_view_is_a_marimo_ui_element_in_marimo(
     monkeypatch.setattr(marimo, "running_in_notebook", lambda: True)
     notebook = obs.Notebook(obs.ojs("answer = 42", key="answer"))
 
-    view = notebook.view()
+    view = notebook.view(capture_state=False)
 
     assert isinstance(view, marimo.ui.anywidget)
     assert isinstance(view.widget, obs.NotebookView)
     assert view.notebook is notebook
     assert view.cells == notebook.cells
+    assert view.widget.get_state(["_capture_state"]) == {"_capture_state": False}
 
     view.close()
     sibling = notebook.view()

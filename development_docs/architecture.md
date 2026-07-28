@@ -50,7 +50,7 @@ composite view when multiple cells require the same runtime and graph snapshot.
 1. Python creates a `Notebook` from authored cells, Notebook Kit HTML, or an
    ObservableHQ document.
 2. Python creates a `NotebookView` with a full, single-cell, or composite
-   selection.
+   selection and its state-capture policy.
 3. `Notebook.view()` adapts the view to a marimo UI element when it runs in a
    marimo notebook. Other anywidget hosts receive the `NotebookView` directly.
 4. The frontend resolves the private session model referenced by the view and
@@ -59,8 +59,9 @@ composite view when multiple cells require the same runtime and graph snapshot.
 5. Notebook Kit parses or transpiles the definition. The runtime profile
    selects the standard library before creating one Observable runtime for that
    view.
-6. The browser writes input and settled revisions, pending state, structured
-   results, errors, and graph metadata to the view model.
+6. When state capture is enabled, the browser writes input and settled
+   revisions, pending state, structured results, errors, and graph metadata to
+   the view model.
 7. Teardown disposes the runtime, model listeners, and DOM owned by that view.
 
 Creating another view repeats steps 2 through 7 with a distinct model and
@@ -90,6 +91,10 @@ recreating the shared session.
 Each view owns one immutable `ViewState` snapshot. Python reads revisions,
 pending state, structured cell results, view errors, and graph metadata through
 `NotebookView.state`.
+
+`capture_state=False` keeps `NotebookView.state` at its initial snapshot. The
+browser still renders cells, applies Python variable updates, and shares
+supported named browser inputs with sibling views.
 
 Each render attempt carries one monotonic token. Each evaluation wave carries
 an input revision, and each observer channel carries a generation. Writes from

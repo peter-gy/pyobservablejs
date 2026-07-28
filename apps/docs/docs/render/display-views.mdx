@@ -85,6 +85,27 @@ mo.hstack([chart_a, chart_b])
 The views receive the same notebook values and supported browser inputs. Each
 keeps its own rendered output, progress, results, errors, and graph.
 
+## Skip Python state capture
+
+Use `capture_state=False` for a screenshot, preview, or embed when Python never
+reads `view.state`.
+
+```python
+preview = notebook.view(
+    capture_state=False,
+)
+preview
+```
+
+The view still evaluates, renders, responds to input, and receives Python
+variable updates. Supported input controls continue to synchronize with other
+views from the same notebook. `preview.state` stays at its initial value.
+
+With capture disabled, result serialization and transport are skipped. The
+avoided work grows with cell result size and update frequency, so small static
+views usually see little difference. Keep the default `True` when Python reads
+or observes `view.state`.
+
 ## Evaluation lifecycle
 
 Before display, both revision fields are `None`. Display starts revision `0`

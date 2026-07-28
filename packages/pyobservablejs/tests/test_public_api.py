@@ -5,7 +5,16 @@ import os
 import pathlib
 from collections.abc import Mapping
 from importlib.metadata import version as package_version
-from typing import Any, assert_type, cast
+from typing import (
+    Any,
+    Unpack,
+    assert_type,
+    cast,
+    get_args,
+    get_origin,
+    get_type_hints,
+    is_typeddict,
+)
 
 import observablejs as obs
 import pytest
@@ -89,11 +98,27 @@ def test_public_object_discovery_matches_ownership_model() -> None:
         notebook.close()
 
 
-def test_view_and_variable_mutation_signatures_have_one_argument_shape() -> None:
+def test_notebook_view_signature_uses_typed_options() -> None:
     view_parameters = tuple(inspect.signature(obs.Notebook.view).parameters.values())
-    assert [parameter.name for parameter in view_parameters] == ["self", "selectors"]
+    assert [parameter.name for parameter in view_parameters] == [
+        "self",
+        "selectors",
+        "options",
+    ]
     assert view_parameters[1].kind is inspect.Parameter.VAR_POSITIONAL
+    assert view_parameters[2].kind is inspect.Parameter.VAR_KEYWORD
 
+    options_annotation = get_type_hints(obs.Notebook.view)["options"]
+    assert get_origin(options_annotation) is Unpack
+    view_options = get_args(options_annotation)[0]
+    assert view_options is obs.types.NotebookViewOptions
+    assert is_typeddict(view_options)
+    assert view_options.__required_keys__ == frozenset()
+    assert view_options.__optional_keys__ == frozenset({"capture_state"})
+    assert get_type_hints(view_options) == {"capture_state": bool}
+
+
+def test_cell_and_variable_mutation_signatures_have_one_argument_shape() -> None:
     cell_parameters = tuple(inspect.signature(obs.Notebook.cell).parameters.values())
     assert [parameter.name for parameter in cell_parameters] == ["self", "key"]
     assert cell_parameters[1].annotation in {"str", str}
@@ -120,6 +145,7 @@ def test_advanced_types_are_namespaced_and_complete() -> None:
         "NotebookKitCellMetadata",
         "NotebookState",
         "NotebookTheme",
+        "NotebookViewOptions",
         "ObservableData",
         "ObservableDisplay",
         "ObservableDocument",
@@ -246,21 +272,7 @@ def test_notebook_themes_match_notebook_kit_theme_names() -> None:
             id="Notebook",
         ),
         pytest.param(
-            (obs.view_from_code,),
-            (
-                "code",
-                "mode",
-                "title",
-                "theme",
-                "files",
-                "base_path",
-                "variables",
-            ),
-            inspect.Parameter.POSITIONAL_OR_KEYWORD,
-            id="view_from_code",
-        ),
-        pytest.param(
-            (obs.Notebook.from_html, obs.view_from_html),
+            (obs.Notebook.from_html,),
             (
                 "source",
                 "files",
@@ -274,16 +286,13 @@ def test_notebook_themes_match_notebook_kit_theme_names() -> None:
             id="from_html",
         ),
         pytest.param(
-            (obs.Notebook.from_observablehq, obs.view_from_observablehq),
+            (obs.Notebook.from_observablehq,),
             ("specifier", "variables", "files", "show_pinned_source", "timeout"),
             inspect.Parameter.POSITIONAL_OR_KEYWORD,
             id="from_observablehq",
         ),
         pytest.param(
-            (
-                obs.Notebook.from_observablehq_document,
-                obs.view_from_observablehq_document,
-            ),
+            (obs.Notebook.from_observablehq_document,),
             ("document", "title", "variables", "files", "show_pinned_source"),
             inspect.Parameter.POSITIONAL_OR_KEYWORD,
             id="from_observablehq_document",
@@ -318,6 +327,61 @@ def test_public_api_signatures_keep_keyword_only_options(
             parameter.kind is inspect.Parameter.KEYWORD_ONLY
             for parameter in parameters[1:]
         )
+
+
+@pytest.mark.parametrize(
+    ("api", "parameter_names"),
+    [
+        pytest.param(
+            obs.view_from_code,
+            ("code", "mode", "title", "theme", "files", "base_path", "variables"),
+            id="view_from_code",
+        ),
+        pytest.param(
+            obs.view_from_html,
+            (
+                "source",
+                "files",
+                "base_path",
+                "embed_file_attachments",
+                "rewrite_imports",
+                "variables",
+                "show_pinned_source",
+            ),
+            id="view_from_html",
+        ),
+        pytest.param(
+            obs.view_from_observablehq,
+            ("specifier", "variables", "files", "show_pinned_source", "timeout"),
+            id="view_from_observablehq",
+        ),
+        pytest.param(
+            obs.view_from_observablehq_document,
+            ("document", "title", "variables", "files", "show_pinned_source"),
+            id="view_from_observablehq_document",
+        ),
+    ],
+)
+def test_view_factory_signatures_accept_notebook_view_options(
+    api: Any,
+    parameter_names: tuple[str, ...],
+) -> None:
+    parameters = tuple(inspect.signature(api).parameters.values())
+
+    assert tuple(parameter.name for parameter in parameters) == (
+        *parameter_names,
+        "view_options",
+    )
+    assert parameters[0].kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
+    assert all(
+        parameter.kind is inspect.Parameter.KEYWORD_ONLY
+        for parameter in parameters[1:-1]
+    )
+    assert parameters[-1].kind is inspect.Parameter.VAR_KEYWORD
+    assert (
+        get_type_hints(api)["view_options"]
+        == get_type_hints(obs.Notebook.view)["options"]
+    )
 
 
 def test_cell_options_serialize_to_notebook_html(
