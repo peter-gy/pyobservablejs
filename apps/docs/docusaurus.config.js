@@ -102,6 +102,23 @@ const config = {
 			colorMode: {
 				respectPrefersColorScheme: true,
 			},
+			image: "img/brand/pyobservablejs-og-card.png",
+			metadata: [
+				{ property: "og:type", content: "website" },
+				{ property: "og:site_name", content: "pyobservablejs" },
+				{ property: "og:image:width", content: "1200" },
+				{ property: "og:image:height", content: "630" },
+				{ property: "og:image:type", content: "image/png" },
+				{
+					property: "og:image:alt",
+					content: "pyobservablejs: Reactive Observable notebooks from Python",
+				},
+				{ name: "twitter:card", content: "summary_large_image" },
+				{
+					name: "twitter:image:alt",
+					content: "pyobservablejs: Reactive Observable notebooks from Python",
+				},
+			],
 			navbar: {
 				logo: {
 					alt: "",
