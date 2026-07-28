@@ -291,6 +291,7 @@ viewof gain = {
 		input.value = "8";
 		input.dispatchEvent(new Event("input", { bubbles: true }));
 
+		expect(session.get("_view_values")).toEqual({ gain: 8 });
 		expect(
 			await waitStep(
 				"first wrapper interaction",

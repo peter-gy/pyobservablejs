@@ -219,21 +219,17 @@ export function createRuntimeViewSync({
 			cleanups.get(name)?.();
 			views.set(name, value);
 			const onInteraction = () => {
-				const programmatic = isProgrammaticViewWrite(value);
-				// Observable Inputs can update a wrapper's value in a nested target
-				// handler. Read after event propagation while retaining the event's
-				// programmatic classification from the capture phase.
-				queueMicrotask(() => {
-					if (programmatic || signal.aborted || views.get(name) !== value) return;
-					const wireValue = toWireValue(readViewValue(value));
-					if (isWritableSyncedViewValue(wireValue)) publish(name, wireValue);
-				});
+				if (isProgrammaticViewWrite(value) || signal.aborted || views.get(name) !== value) return;
+				const wireValue = toWireValue(readViewValue(value));
+				if (isWritableSyncedViewValue(wireValue)) publish(name, wireValue);
 			};
-			value.addEventListener("input", onInteraction, { capture: true });
-			value.addEventListener("change", onInteraction, { capture: true });
+			// Nested controls update a wrapper's value before the event reaches
+			// this bubble-phase listener.
+			value.addEventListener("input", onInteraction);
+			value.addEventListener("change", onInteraction);
 			const cleanup = () => {
-				value.removeEventListener("input", onInteraction, { capture: true });
-				value.removeEventListener("change", onInteraction, { capture: true });
+				value.removeEventListener("input", onInteraction);
+				value.removeEventListener("change", onInteraction);
 				if (views.get(name) === value) views.delete(name);
 				if (cleanups.get(name) === cleanup) cleanups.delete(name);
 				variables.deleteView(name, value);

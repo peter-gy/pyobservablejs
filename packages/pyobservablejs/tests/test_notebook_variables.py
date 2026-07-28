@@ -286,6 +286,62 @@ def test_variable_update_emits_frontend_protocol_packet() -> None:
     assert reset_update["seq"] > replace_update["seq"]
 
 
+def test_python_ownership_update_syncs_coherent_frontend_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    notebook = obs.Notebook(variables={"gain": 5, "other": 1})
+    session = notebook_session(notebook)
+    session.set_state({"_view_values": {"gain": 4, "browser": 2}})
+    sent_states: list[dict[str, Any]] = []
+
+    def capture_state(key: Any = None) -> None:
+        sent_states.append(session.get_state(key=key))
+
+    monkeypatch.setattr(session, "send_state", capture_state)
+
+    notebook.update_variables({"gain": 7})
+
+    assert sent_states == [
+        {
+            "_variable_update": {
+                "seq": 1,
+                "kind": "set",
+                "values": {"gain": 7},
+            },
+            "_variables": {"gain": 7, "other": 1},
+            "_view_values": {"browser": 2},
+        }
+    ]
+
+
+def test_python_ownership_replacement_syncs_coherent_frontend_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    notebook = obs.Notebook(variables={"old": 1, "keep": 2})
+    session = notebook_session(notebook)
+    session.set_state({"_view_values": {"old": 10, "new": 30, "browser": 2}})
+    sent_states: list[dict[str, Any]] = []
+
+    def capture_state(key: Any = None) -> None:
+        sent_states.append(session.get_state(key=key))
+
+    monkeypatch.setattr(session, "send_state", capture_state)
+
+    notebook.replace_variables({"keep": 2, "new": 3})
+
+    assert sent_states == [
+        {
+            "_variable_update": {
+                "seq": 1,
+                "kind": "replace",
+                "values": {"keep": 2, "new": 3},
+            },
+            "_variables": {"keep": 2, "new": 3},
+            "_view_values": {"browser": 2},
+        }
+    ]
+
+
 def test_identical_variable_mutations_are_protocol_noops() -> None:
     notebook = obs.Notebook(variables={"gain": 5, "rows": [{"x": 1}]})
     updates: list[dict[str, object]] = []
