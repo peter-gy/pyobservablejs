@@ -98,30 +98,25 @@ jobs:
 
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
 
-      - name: Wait for the public PyPI index
+      - name: Verify the public PyPI release
+        env:
+          UV_NO_CONFIG: "1"
         run: |
           version="${GITHUB_REF_NAME#v}"
           for attempt in $(seq 1 18); do
-            if page="$(curl --fail --silent --show-error https://pypi.org/simple/pyobservablejs/)" && \
-               grep -Fq "pyobservablejs-${version}" <<< "$page"; then
+            if uv run --no-cache --no-project --isolated \
+              --default-index https://pypi.org/simple \
+              --with "pyobservablejs==$version" \
+              python scripts/verify_release.py "$version"; then
               exit 0
             fi
-            printf 'PyPI index attempt %s of 18 did not find %s\n' "$attempt" "$version"
+            printf 'PyPI verification attempt %s of 18 did not verify %s\n' "$attempt" "$version"
             if [ "$attempt" -lt 18 ]; then
               sleep 10
             fi
           done
-          echo "PyPI did not publish pyobservablejs $version within three minutes" >&2
+          echo "PyPI did not verify pyobservablejs $version within three minutes" >&2
           exit 1
-
-      - name: Verify the installed package
-        env:
-          UV_NO_CONFIG: "1"
-        run: >-
-          uv run --no-cache --no-project --isolated
-          --default-index https://pypi.org/simple
-          --with "pyobservablejs==${GITHUB_REF_NAME#v}"
-          python scripts/verify_release.py "${GITHUB_REF_NAME#v}"
 
   release-notes:
     needs: publish
