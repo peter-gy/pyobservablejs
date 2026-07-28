@@ -1,0 +1,100 @@
+---
+title: Browser execution and network access
+description: Runtime profiles, builtins, module imports, and the network boundary.
+---
+
+# Browser execution and network access
+
+:::warning Trusted input
+
+Notebook cells run as JavaScript in the page that hosts the widget. Treat
+imported Notebook Kit HTML, ObservableHQ notebooks, and their remote modules as
+trusted code because they can use the page's browser privileges.
+
+:::
+
+All JavaScript evaluates in the browser page that hosts the view. Python
+never executes JavaScript, and cells never execute Python. This page
+describes what the browser runtime provides and when it reaches the network.
+
+## Runtime profiles
+
+The notebook source selects the standard-library profile before a view
+starts. The profile is fixed for the notebook session and inherited by each
+view.
+
+| Source                                                       | Profile      |
+| ------------------------------------------------------------ | ------------ |
+| Python-authored cells                                        | Notebook Kit |
+| Notebook Kit HTML                                            | Notebook Kit |
+| `Notebook.from_observablehq*`                                | Observable   |
+| ObservableHQ-derived HTML serialized by `to_notebook_html()` | Observable   |
+
+The Notebook Kit profile uses the builtins exported by Notebook Kit. The
+Observable profile uses the classic Observable standard library, which adds
+classic names such as `require` and `DOM`. Both profiles receive view-scoped
+`FileAttachment`, `document`, `width`, and `dark` values from
+`pyobservablejs`.
+
+## Builtins
+
+The selected profile resolves builtins when cells reference them.
+
+| Builtin      | Contract                                                                                                                                            |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Inputs`     | Creates controls, tables, and other input elements. Pass an input to `view(...)` to expose its changing value.                                      |
+| `Plot`       | Creates Observable Plot marks. `Plot.plot()` and a mark's `.plot()` return DOM nodes.                                                               |
+| `html`, `md` | Creates reactive HTML and Markdown DOM values from tagged templates.                                                                                |
+| `Generators` | Provides `input`, `observe`, and `queue` in both profiles. Other methods come from the selected standard library.                                   |
+| `Mutable`    | Creates a reactive source with a `.value` getter and setter. Consumers rerun after the value changes.                                               |
+| `width`      | Yields the floored notebook root width with a 320-pixel minimum. It falls back to 928 when layout has no measurable width and updates after resize. |
+| `dark`       | Yields whether the notebook root uses a dark color scheme. Theme changes rerun dependent cells.                                                     |
+
+The Notebook Kit profile also exposes sample datasets such as `aapl`,
+`cars`, and `penguins`. Runtime-owned builtin names cannot be Python
+variables. The full reserved list is in [Variables and
+serialization](../../reference/variables-and-serialization.mdx#variable-names).
+
+## Module imports and the network
+
+Standard JavaScript cells can import an npm package or browser module:
+
+```python
+obs.js(
+    """
+    import {format} from "npm:d3-format@3";
+
+    const compact = format(".2s");
+    display(compact(42000));
+    """
+)
+```
+
+External libraries, sample datasets, module imports, and source notebooks
+can require browser network access. Notebook Kit resolves `npm:` specifiers
+from jsDelivr at render time. The page content security policy must permit
+every package, data, and module origin used by its cells. To keep a widget
+self-contained, embed local modules with `rewrite_imports=True` and local
+data with `embed_file_attachments=True`. See [Add files and local
+modules](../create/files-and-modules.mdx).
+
+Network access happens at two distinct times:
+
+| When                    | What                                                                             | Where it runs |
+| ----------------------- | -------------------------------------------------------------------------------- | ------------- |
+| `Notebook` construction | `from_observablehq` fetches the document API. Local files are read and embedded. | Python        |
+| View render             | npm imports, URL-backed attachments, remote datasets, imported notebooks.        | Browser       |
+
+## Promises, generators, and invalidation
+
+Notebook Kit tracks asynchronous values as part of the graph.
+
+| Value                        | Evaluation                                                             | Invalidation                                                                       |
+| ---------------------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Promise                      | Dependent cells wait for the resolved value.                           | A stale resolution is ignored. The operation continues unless the cell cancels it. |
+| Generator or async generator | The first yield defines the value. Later yields rerun dependent cells. | The runtime calls the generator's `return()` method.                               |
+| `invalidation`               | Provides a promise for the current cell evaluation.                    | Resolves when the evaluation is invalidated or its runtime is disposed.            |
+
+Use `invalidation` to release resources owned by a cell. See [Display
+views](../display/notebooks.mdx#close-views) for the corresponding Python
+lifecycle.

@@ -1,0 +1,161 @@
+---
+title: Send Python values
+description: Publish Python values and update the reactive browser graph.
+---
+
+# Send Python values
+
+`variables` sends named Python values to the browser. `update_variables`
+changes them while views stay open. Cells that use a changed value run again.
+
+```marimo-config
+requires-python = ">=3.11"
+dependencies = ["pyobservablejs"]
+```
+
+Use separate marimo cells for the slider, notebook, and update.
+
+```python
+import marimo as mo
+import observablejs as obs
+
+minimum_mass = mo.ui.slider(
+    start=3000,
+    stop=6000,
+    step=250,
+    value=4000,
+    label="Minimum body mass (g)",
+)
+```
+
+```python
+notebook = obs.Notebook(
+    obs.js(
+        """
+        const selectedPenguins = penguins.filter(
+          (d) => d.body_mass_g >= minimumMass
+        );
+        """,
+        key="selected_penguins",
+        display=False,
+    ),
+    obs.js(
+        """
+        Plot.barX(
+          selectedPenguins,
+          Plot.groupY(
+            {x: "count"},
+            {
+              y: "species",
+              fill: "species",
+              tip: {
+                // This example references a theme variable used by mdx-marimo.
+                // Replace it with a CSS color or remove `fill` in another host.
+                fill: "var(--marimo-island-background)"
+              }
+            }
+          )
+        ).plot({
+          height: 240,
+          marginLeft: 76,
+          x: {grid: true, label: "Penguins at or above the threshold"},
+          y: {label: null}
+        })
+        """,
+        key="chart",
+    ),
+    variables={"minimumMass": 4000},
+)
+
+view = notebook.view()
+```
+
+```python
+notebook.update_variables({"minimumMass": minimum_mass.value})
+mo.vstack([minimum_mass, view])
+```
+
+```python marimo echo=false server-output=false
+import marimo as mo
+import observablejs as obs
+
+minimum_mass = mo.ui.slider(
+    start=3000,
+    stop=6000,
+    step=250,
+    value=4000,
+    label="Minimum body mass (g)",
+)
+```
+
+```python marimo echo=false server-output=false
+notebook = obs.Notebook(
+    obs.js(
+        """
+        const selectedPenguins = penguins.filter(
+          (d) => d.body_mass_g >= minimumMass
+        );
+        """,
+        key="selected_penguins",
+        display=False,
+    ),
+    obs.js(
+        """
+        Plot.barX(
+          selectedPenguins,
+          Plot.groupY(
+            {x: "count"},
+            {
+              y: "species",
+              fill: "species",
+              tip: {
+                // This example references a theme variable used by mdx-marimo.
+                // Replace it with a CSS color or remove `fill` in another host.
+                fill: "var(--marimo-island-background)"
+              }
+            }
+          )
+        ).plot({
+          height: 240,
+          marginLeft: 76,
+          x: {grid: true, label: "Penguins at or above the threshold"},
+          y: {label: null}
+        })
+        """,
+        key="chart",
+    ),
+    variables={"minimumMass": 4000},
+)
+
+view = notebook.view()
+```
+
+```python marimo echo=false server-output=false
+notebook.update_variables({"minimumMass": minimum_mass.value})
+mo.vstack([minimum_mass, view])
+```
+
+## Update, replace, or release
+
+Both write methods accept exactly one mapping:
+
+```python
+notebook.update_variables({"minimumMass": 3500})
+notebook.replace_variables({"minimumMass": 4000, "rows": rows})
+notebook.reset_variables("minimumMass")
+```
+
+Update changes the listed names and keeps the rest. Replace uses the new mapping
+as the complete set of Python values. Reset removes selected Python values so
+the notebook can define them again. A real change reaches every active view.
+An unchanged value is a no-op unless the browser has changed a shared input with
+that name. In that case, the update clears the browser-owned value and reapplies
+the Python value.
+
+`Notebook.variables` is a separate read-only snapshot. Frameworks that listen
+to traitlets can observe `Notebook.state` for changes.
+
+See [Variables and
+serialization](../../reference/variables-and-serialization.mdx) for supported
+values and [Read browser results](browser-results.mdx) for the return
+path.

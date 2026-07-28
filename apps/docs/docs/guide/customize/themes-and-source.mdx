@@ -1,0 +1,125 @@
+---
+title: Style notebooks and show source
+description: Apply Notebook Kit themes and show selected pinned cell source.
+---
+
+# Style notebooks and show source
+
+`theme` accepts a Notebook Kit theme name or a light and dark mapping.
+Pinned cells selected by the view appear in a source panel when
+`show_pinned_source=True`.
+
+```marimo-config
+requires-python = ">=3.11"
+dependencies = ["pyobservablejs"]
+```
+
+```python
+import observablejs as obs
+
+notebook = obs.Notebook(
+    obs.md("## AAPL closing price"),
+    obs.js(
+        """
+        Plot.lineY(aapl, {
+          x: "Date",
+          y: "Close",
+          tip: {
+            // This example references a theme variable used by mdx-marimo.
+            // Replace it with a CSS color or remove `fill` in another host.
+            fill: "var(--marimo-island-background)"
+          }
+        }).plot({
+          height: 260,
+          y: {grid: true, label: "Close ($)"}
+        })
+        """,
+        key="price_chart",
+        pinned=True,
+    ),
+    theme={"light": "cotton", "dark": "slate"},
+    show_pinned_source=True,
+)
+
+full_view = notebook.view()
+full_view
+```
+
+```python marimo echo=false server-output=false
+import observablejs as obs
+
+notebook = obs.Notebook(
+    obs.md("## AAPL closing price"),
+    obs.js(
+        """
+        Plot.lineY(aapl, {
+          x: "Date",
+          y: "Close",
+          tip: {
+            // This example references a theme variable used by mdx-marimo.
+            // Replace it with a CSS color or remove `fill` in another host.
+            fill: "var(--marimo-island-background)"
+          }
+        }).plot({
+          height: 260,
+          y: {grid: true, label: "Close ($)"}
+        })
+        """,
+        key="price_chart",
+        pinned=True,
+    ),
+    theme={"light": "cotton", "dark": "slate"},
+    show_pinned_source=True,
+)
+
+full_view = notebook.view()
+full_view
+```
+
+The rendered view switches between `cotton` and `slate` with the browser
+color scheme preference. It also exposes the chart source in its source
+panel.
+
+## Theme names
+
+Use a theme name exposed by `observablejs.NOTEBOOK_THEMES`:
+
+```python
+import observablejs as obs
+
+obs.NOTEBOOK_THEMES
+# ("air", "coffee", "cotton", "deep-space", "glacier", "ink", "midnight",
+#  "near-midnight", "ocean-floor", "parchment", "slate", "stark", "sun-faded")
+```
+
+Assigning `notebook.theme` on a Python-authored notebook updates its active
+views live:
+
+```python
+notebook.theme = "glacier"
+notebook.theme = {"light": "air", "dark": "near-midnight"}
+```
+
+Source-backed notebooks take their theme from the source HTML, where
+Notebook Kit expresses the same mapping as an attribute:
+
+```html
+<notebook theme="light-dark(cotton, slate)">
+	<script type="text/markdown">
+		# Report
+	</script>
+</notebook>
+```
+
+Changing `theme` on a source-backed notebook raises `traitlets.TraitError`
+so the session cannot diverge from its document.
+
+## Pinned source
+
+`pinned=True` marks a cell whose source is worth showing. The panel appears
+only when both sides opt in: the cell is pinned _and_ the notebook sets
+`show_pinned_source=True`. Source-backed notebooks respect the `pinned`
+attributes already present in the document.
+
+See [Themes](../../reference/themes.mdx) for accepted names and validation
+rules.

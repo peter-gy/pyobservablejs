@@ -1,0 +1,100 @@
+---
+title: Read browser results
+description: Read pending, successful, and failed cell results from one view state.
+---
+
+# Read browser results
+
+`NotebookView.state` reports browser work as one consistent, read-only snapshot.
+
+```marimo-config
+requires-python = ">=3.11"
+dependencies = ["pyobservablejs"]
+```
+
+```python
+import observablejs as obs
+
+notebook = obs.Notebook(
+    obs.ojs(
+        'viewof gain = Inputs.range([0, 12], {value: 5, step: 1, label: "Gain"})',
+        key="gain_control",
+    ),
+    obs.js("const doubled = gain * 2;", key="doubled", display=False),
+    obs.js(
+        'html`<p>Gain is <strong>${gain}</strong>. Doubled is <strong>${doubled}</strong>.</p>`',
+        key="readout",
+    ),
+)
+
+view = notebook.view()
+view
+```
+
+```python marimo echo=false server-output=false
+import observablejs as obs
+
+notebook = obs.Notebook(
+    obs.ojs(
+        'viewof gain = Inputs.range([0, 12], {value: 5, step: 1, label: "Gain"})',
+        key="gain_control",
+    ),
+    obs.js("const doubled = gain * 2;", key="doubled", display=False),
+    obs.js(
+        'html`<p>Gain is <strong>${gain}</strong>. Doubled is <strong>${doubled}</strong>.</p>`',
+        key="readout",
+    ),
+)
+
+view = notebook.view()
+view
+```
+
+Read a result after the latest input revision settles. In marimo, reference
+`view.value` first so the reading cell reruns when the view synchronizes:
+
+```python
+view.value  # rerun this cell when synchronized widget state changes
+state = view.state
+
+if (
+    not state.pending
+    and state.input_revision is not None
+    and state.settled_revision == state.input_revision
+):
+    doubled = state.result("doubled")
+    if doubled.status == "success":
+        print(doubled.values["doubled"])
+    else:
+        print(doubled.errors)
+```
+
+Each `CellResult` has a `status`, `revision`, read-only `values`, and structured
+`errors`. A failed output reports its error phase and optional variable name.
+A multi-output cell may contain successful values beside errors.
+
+## React to state changes
+
+Traitlets-aware environments can observe the public state trait:
+
+```python
+def on_state(change):
+    state = change["new"]
+    if not state.pending:
+        print(state.results)
+
+view.observe(on_state, names="state")
+```
+
+In marimo, reference `view.value` in the reading cell so that the cell reruns
+when synchronized widget state changes, then read `view.state`.
+
+State belongs to the view whose runtime produced it. A focused view reports
+its selected result while hidden dependencies still evaluate:
+
+```python
+gain_view = notebook.view("gain_control")
+```
+
+See [View state and graph](../../reference/values-and-graph.mdx) for revision,
+status, error, and value conversion contracts.

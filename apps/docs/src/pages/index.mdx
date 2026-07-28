@@ -1,0 +1,185 @@
+---
+title: Reactive Observable notebooks from Python
+description: Build Observable notebooks in Python, synchronize values and inputs with the browser, and embed complete or focused views in anywidget hosts.
+keywords:
+  - Python
+  - Observable
+  - Observable Notebook Kit
+  - anywidget
+image: /img/brand/pyobservablejs-og-card.png
+hide_table_of_contents: true
+wrapperClassName: pyobservablejs-home
+---
+
+import Link from "@docusaurus/Link";
+import useBaseUrl from "@docusaurus/useBaseUrl";
+import Heading from "@theme/Heading";
+import ThemedImage from "@theme/ThemedImage";
+import NotebookPreview from "../components/NotebookPreview";
+import styles from "./index.module.css";
+
+```marimo-config
+requires-python = ">=3.11"
+dependencies = ["pyobservablejs"]
+```
+
+<header className={styles.hero}>
+	<div className={styles.intro}>
+		<Heading as="h1">pyobservablejs</Heading>
+		<p className={styles.lead}>
+			{`Build reactive Observable notebooks from Python. Compose JavaScript,
+				Observable JavaScript, Markdown, HTML, inputs, and files, then display
+				the complete notebook or selected cells in anywidget hosts.`}
+		</p>
+		<p className={styles.boundary}>
+			{`Notebook Kit evaluates each view in the browser. Python owns notebook
+				construction, shared values, files, and state readback.`}
+		</p>
+		<div className={styles.start}>
+			<code>uv pip install pyobservablejs</code>
+			<Link to="/guide/quickstart/">Read the quickstart →</Link>
+		</div>
+	</div>
+	<ThemedImage
+		alt=""
+		aria-hidden="true"
+		className={styles.heroLogo}
+		sources={{
+			light: useBaseUrl("/img/brand/pyobservablejs-symbol-light.svg"),
+			dark: useBaseUrl("/img/brand/pyobservablejs-symbol-dark.svg"),
+		}}
+	/>
+</header>
+
+<section className={styles.features} aria-label="Features">
+	<div>
+		<strong>📓 Build Observable notebooks in Python</strong>
+		<span>Combine JavaScript, Observable JavaScript, Markdown, HTML, inputs, and files.</span>
+	</div>
+	<div>
+		<strong>↔️ Sync Python and browser state</strong>
+		<span>Send values from Python, share browser inputs across views, and read settled results back.</span>
+	</div>
+	<div>
+		<strong>🧩 Embed complete or focused views</strong>
+		<span>Render in JupyterLab, marimo, VS Code, Colab, and other anywidget hosts.</span>
+	</div>
+</section>
+
+<div className={styles.exampleHeading}>
+	<Heading as="h2">A reactive notebook</Heading>
+	<p>
+		{`Choose a species. The Markdown result and Plot chart update together
+		in the browser.`}
+	</p>
+</div>
+
+<Heading as="h3" className={`${styles.columnHeading} ${styles.pythonHeading}`}>
+	Python source
+</Heading>
+
+```python
+import observablejs as obs
+
+notebook = obs.Notebook(
+    obs.md("## Palmer penguins"),
+    obs.js(
+        """
+        const species = view(Inputs.select(
+          ["All", "Adelie", "Chinstrap", "Gentoo"],
+          {label: "Species", value: "All"}
+        ));
+        """
+    ),
+    obs.js(
+        """
+        const selected = species === "All"
+          ? penguins
+          : penguins.filter((d) => d.species === species);
+        """,
+        display=False,
+    ),
+    obs.js(
+        """
+        const label = species === "All"
+          ? "penguins"
+          : `${species} penguins`;
+
+        display(md`**${selected.length} ${label}**`);
+
+        display(Plot.dot(selected, {
+            x: "culmen_length_mm",
+            y: "culmen_depth_mm",
+            fill: "species",
+            tip: true
+          }).plot({
+            width,
+            height: 460,
+            x: {label: "Bill length (mm)"},
+            y: {label: "Bill depth (mm)"},
+            color: {legend: true}
+          })
+        );
+        """
+    ),
+)
+
+notebook.view()
+```
+
+<Heading as="h3" className={`${styles.columnHeading} ${styles.notebookHeading}`}>
+	Rendered notebook
+</Heading>
+
+<NotebookPreview className={styles.notebookPreview}>
+
+```python marimo echo=false server-output=false
+import observablejs as obs
+
+notebook = obs.Notebook(
+    obs.md("## Palmer penguins"),
+    obs.js(
+        """
+        const species = view(Inputs.select(
+          ["All", "Adelie", "Chinstrap", "Gentoo"],
+          {label: "Species", value: "All"}
+        ));
+        """
+    ),
+    obs.js(
+        """
+        const selected = species === "All"
+          ? penguins
+          : penguins.filter((d) => d.species === species);
+        """,
+        display=False,
+    ),
+    obs.js(
+        """
+        const label = species === "All"
+          ? "penguins"
+          : `${species} penguins`;
+
+        display(md`**${selected.length} ${label}**`);
+
+        display(Plot.dot(selected, {
+            x: "culmen_length_mm",
+            y: "culmen_depth_mm",
+            fill: "species",
+            tip: true
+          }).plot({
+            width,
+            height: 460,
+            x: {label: "Bill length (mm)"},
+            y: {label: "Bill depth (mm)"},
+            color: {legend: true}
+          })
+        );
+        """
+    ),
+)
+
+notebook.view()
+```
+
+</NotebookPreview>

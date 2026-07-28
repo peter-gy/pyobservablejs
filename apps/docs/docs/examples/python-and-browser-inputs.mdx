@@ -1,0 +1,207 @@
+---
+title: Coordinate Python and browser inputs
+description: Drive one chart from a marimo control and an Observable input, and read state back.
+---
+
+# Coordinate Python and browser inputs
+
+Interactive documents often need both kinds of control: host inputs that
+live in Python, and Observable inputs that live in the browser. This example
+drives one chart from each side and reads the browser-owned value back into
+Python.
+
+The marimo slider sets the _floor_ through a Python variable. The Observable
+input sets the _gain_ entirely in the browser. The readout at the bottom is
+a Python cell.
+
+```marimo-config
+requires-python = ">=3.11"
+dependencies = ["pyobservablejs"]
+```
+
+```python
+import marimo as mo
+import observablejs as obs
+
+floor_slider = mo.ui.slider(
+    start=0,
+    stop=40,
+    step=5,
+    value=10,
+    label="Floor from Python",
+)
+```
+
+```python marimo echo=false server-output=false
+import marimo as mo
+import observablejs as obs
+
+floor_slider = mo.ui.slider(
+    start=0,
+    stop=40,
+    step=5,
+    value=10,
+    label="Floor from Python",
+)
+```
+
+```python
+letters = [
+    {"letter": "A", "frequency": 8.2},
+    {"letter": "B", "frequency": 1.5},
+    {"letter": "C", "frequency": 2.8},
+    {"letter": "D", "frequency": 4.3},
+    {"letter": "E", "frequency": 12.7},
+]
+
+notebook = obs.Notebook(
+    obs.js(
+        """
+        const gain = view(Inputs.range(
+          [1, 8],
+          {label: "Gain in the browser", step: 1, value: 3}
+        ));
+        """,
+        key="gain_control",
+    ),
+    obs.js(
+        """
+        Plot.barY(letters, {
+          x: "letter",
+          y: (d) => Math.max(d.frequency * gain, floor),
+          fill: "letter",
+          tip: {
+            // This example references a theme variable used by mdx-marimo.
+            // Replace it with a CSS color or remove `fill` in another host.
+            fill: "var(--marimo-island-background)"
+          }
+        }).plot({
+          height: 260,
+          y: {grid: true, label: "Scaled frequency"},
+          color: {legend: false}
+        })
+        """,
+        key="chart",
+    ),
+    variables={"letters": letters, "floor": 10},
+)
+
+full_view = notebook.view()
+```
+
+```python marimo echo=false server-output=false
+letters = [
+    {"letter": "A", "frequency": 8.2},
+    {"letter": "B", "frequency": 1.5},
+    {"letter": "C", "frequency": 2.8},
+    {"letter": "D", "frequency": 4.3},
+    {"letter": "E", "frequency": 12.7},
+]
+
+notebook = obs.Notebook(
+    obs.js(
+        """
+        const gain = view(Inputs.range(
+          [1, 8],
+          {label: "Gain in the browser", step: 1, value: 3}
+        ));
+        """,
+        key="gain_control",
+    ),
+    obs.js(
+        """
+        Plot.barY(letters, {
+          x: "letter",
+          y: (d) => Math.max(d.frequency * gain, floor),
+          fill: "letter",
+          tip: {
+            // This example references a theme variable used by mdx-marimo.
+            // Replace it with a CSS color or remove `fill` in another host.
+            fill: "var(--marimo-island-background)"
+          }
+        }).plot({
+          height: 260,
+          y: {grid: true, label: "Scaled frequency"},
+          color: {legend: false}
+        })
+        """,
+        key="chart",
+    ),
+    variables={"letters": letters, "floor": 10},
+)
+
+full_view = notebook.view()
+```
+
+```python
+notebook.update_variables({"floor": floor_slider.value})
+mo.vstack([floor_slider, full_view])
+```
+
+```python marimo echo=false server-output=false
+notebook.update_variables({"floor": floor_slider.value})
+mo.vstack([floor_slider, full_view])
+```
+
+```python
+full_view.value  # subscribe this cell to view synchronization
+state = full_view.state
+
+if (
+    not state.pending
+    and state.input_revision is not None
+    and state.settled_revision == state.input_revision
+):
+    gain = state.result("gain_control")
+    gain_report = (
+        f"Python reads `gain = {gain.values['gain']}` "
+        f"while Python sets `floor = {notebook.variables['floor']}`."
+        if gain.status == "success"
+        else f"Browser error: {gain.errors}"
+    )
+else:
+    gain_report = "Waiting for the Observable view to render."
+mo.md(gain_report)
+```
+
+```python marimo echo=false server-output=false
+full_view.value  # subscribe this cell to view synchronization
+state = full_view.state
+
+if (
+    not state.pending
+    and state.input_revision is not None
+    and state.settled_revision == state.input_revision
+):
+    gain = state.result("gain_control")
+    gain_report = (
+        f"Python reads `gain = {gain.values['gain']}` "
+        f"while Python sets `floor = {notebook.variables['floor']}`."
+        if gain.status == "success"
+        else f"Browser error: {gain.errors}"
+    )
+else:
+    gain_report = "Waiting for the Observable view to render."
+mo.md(gain_report)
+```
+
+## Where each value comes from
+
+| Value     | Set by  | Path                                                               |
+| --------- | ------- | ------------------------------------------------------------------ |
+| `letters` | Python  | `variables=` when the notebook is created                          |
+| `floor`   | Python  | `update_variables` after each marimo slider change                 |
+| `gain`    | Browser | `view(Inputs.range(...))`, then the finished `gain_control` result |
+
+Two rules keep this pattern predictable:
+
+- **Choose where each name is set.** Python sets `floor`. The browser sets
+  `gain`. See [Share inputs across Python and
+  Observable](../guide/connect/shared-inputs.mdx) when
+  both sides need to change one name.
+- **Subscribe the reading cell.** The readout references `full_view.value`, so
+  marimo reruns it whenever the view synchronizes. Keep that reference in
+  the reading cell to receive every synchronized update.
+
+See [Send Python values](../guide/connect/python-values.mdx) and [Read browser
+results](../guide/connect/browser-results.mdx) for each direction in isolation.

@@ -1,0 +1,158 @@
+---
+title: Author notebook cells
+description: Create Notebook Kit cells with obs.js, obs.ojs, obs.md, and obs.html.
+---
+
+# Author notebook cells
+
+`Notebook` accepts cells from four helpers. Each helper wraps a source string
+in one Notebook Kit cell mode.
+
+| Helper          | Cell source                      |
+| --------------- | -------------------------------- |
+| `obs.js(...)`   | Standard Notebook Kit JavaScript |
+| `obs.ojs(...)`  | Observable JavaScript            |
+| `obs.md(...)`   | Markdown                         |
+| `obs.html(...)` | HTML                             |
+
+Top-level declarations in JavaScript cells form a reactive graph: when a
+value changes, every cell that references it runs again. Move the exponent
+control to recompute the readout in the browser.
+
+```marimo-config
+requires-python = ">=3.11"
+dependencies = ["pyobservablejs"]
+```
+
+```python
+import observablejs as obs
+
+notebook = obs.Notebook(
+    obs.js(
+        """
+        const exponent = view(Inputs.range(
+          [1, 8],
+          {label: "Exponent", step: 1, value: 2}
+        ));
+        """,
+        key="exponent_control",
+    ),
+    obs.js(
+        'html`<p>Two to the power of ${exponent} is <strong>${2 ** exponent}</strong>.</p>`',
+        key="readout",
+    ),
+)
+
+full_view = notebook.view()
+full_view
+```
+
+```python marimo echo=false server-output=false
+import observablejs as obs
+
+notebook = obs.Notebook(
+    obs.js(
+        """
+        const exponent = view(Inputs.range(
+          [1, 8],
+          {label: "Exponent", step: 1, value: 2}
+        ));
+        """,
+        key="exponent_control",
+    ),
+    obs.js(
+        'html`<p>Two to the power of ${exponent} is <strong>${2 ** exponent}</strong>.</p>`',
+        key="readout",
+    ),
+)
+
+full_view = notebook.view()
+full_view
+```
+
+The first cell defines `exponent`. The readout references it, so Notebook Kit
+runs that cell again when the input changes. Notebook Kit schedules cells
+from their dependencies, independent of source order.
+
+## JavaScript cells
+
+An expression cell displays its value implicitly.
+
+```python
+obs.js("Plot.lineY(aapl, {x: 'Date', y: 'Close'}).plot()")
+```
+
+A program cell contains declarations or statements. Call `display(...)` when
+a program cell should render a value.
+
+```python
+obs.js(
+    """
+    const formatter = new Intl.NumberFormat("en-US");
+    display(formatter.format(42000));
+    """
+)
+```
+
+`view(...)` displays an input and defines a reactive value from its events.
+
+```python
+obs.js(
+    'const radius = view(Inputs.range([2, 12], {value: 5, label: "Radius"}));'
+)
+```
+
+## Observable JavaScript cells
+
+`obs.ojs` creates a classic Observable JavaScript cell. Use it for existing
+Observable JavaScript source, `viewof` declarations, and imported Observable
+notebook code.
+
+```python
+obs.ojs(
+    'viewof radius = Inputs.range([2, 12], {value: 5, label: "Radius"})'
+)
+```
+
+Both cell modes participate in the same Notebook Kit graph.
+
+## Markdown and HTML cells
+
+`obs.md` renders Markdown. `obs.html` renders HTML.
+
+```python
+notebook = obs.Notebook(
+    obs.md("## Filtered records"),
+    obs.html("<p><strong>Status:</strong> loaded</p>"),
+)
+```
+
+## Cell options
+
+Every helper accepts the same options.
+
+```python
+obs.js(
+    "const filtered = [1, 2, 3].filter((value) => value >= 2);",
+    key="filtered_rows",
+    display=False,
+    pinned=True,
+)
+```
+
+- `key` is the public identity used by `notebook.cell("filtered_rows")`,
+  `notebook.view("filtered_rows")`, readback, and graph lookup. It survives
+  Notebook Kit HTML round trips.
+- `display=False` hides the cell output while keeping its values in the
+  graph.
+- `pinned=True` exposes the source when the cell is selected and the notebook
+  enables `show_pinned_source`. See [Themes and
+  source](../customize/themes-and-source.mdx).
+- `raw=True` preserves the source string exactly, including indentation and
+  surrounding newlines.
+- `id` is Notebook Kit serialization metadata. `output` and
+  `notebookkit_attrs` expose mode-specific Notebook Kit metadata.
+
+See [Cell helpers](../../reference/cell-helpers.mdx) for the full signature and
+error behavior, and [Browser execution](../customize/browser-execution.mdx)
+for the builtins available to each cell.

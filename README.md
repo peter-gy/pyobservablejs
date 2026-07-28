@@ -1,102 +1,108 @@
-# pyobservablejs
+<p align="center">
+  <a href="https://peter-gy.github.io/pyobservablejs/">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://peter-gy.github.io/pyobservablejs/img/brand/pyobservablejs-stacked-dark.svg">
+      <img alt="pyobservablejs" src="https://peter-gy.github.io/pyobservablejs/img/brand/pyobservablejs-stacked-light.svg" width="320">
+    </picture>
+  </a>
+</p>
 
-[![CI](https://github.com/peter-gy/pyobservablejs/actions/workflows/ci.yml/badge.svg)](https://github.com/peter-gy/pyobservablejs/actions/workflows/ci.yml)
-[![PyPI](https://img.shields.io/pypi/v/pyobservablejs.svg)](https://pypi.org/project/pyobservablejs/)
-[![Python versions](https://img.shields.io/pypi/pyversions/pyobservablejs.svg)](https://pypi.org/project/pyobservablejs/)
-[![License](https://img.shields.io/pypi/l/pyobservablejs.svg)](https://github.com/peter-gy/pyobservablejs/blob/main/LICENSE)
+<p align="center">
+  <a href="https://github.com/peter-gy/pyobservablejs/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/peter-gy/pyobservablejs/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://pypi.org/project/pyobservablejs/"><img alt="PyPI" src="https://img.shields.io/pypi/v/pyobservablejs.svg"></a>
+  <a href="https://pypi.org/project/pyobservablejs/"><img alt="Python versions" src="https://img.shields.io/pypi/pyversions/pyobservablejs.svg"></a>
+  <a href="https://github.com/peter-gy/pyobservablejs/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/pypi/l/pyobservablejs.svg"></a>
+</p>
 
-> **Experimental:** `pyobservablejs` is experimental software. Its API is
-> subject to breaking changes.
+> **Experimental:** `pyobservablejs` is experimental software. Its API may
+> change between releases.
 
-`pyobservablejs` embeds reactive Observable notebooks in Python. Author cells or
-load an existing notebook, render all or selected cells, synchronize Python
-values, read structured browser results, and inspect the dependency graph.
+`pyobservablejs` embeds reactive Observable notebooks in Python. A notebook can
+combine JavaScript, Observable JavaScript, Markdown, HTML, inputs, files, and
+browser libraries, then render as an anywidget in JupyterLab, marimo, VS Code
+notebooks, Google Colab, and other [anywidget](https://anywidget.dev/) hosts.
+
+Python constructs the notebook and owns shared values. Notebook Kit runs each
+view in the browser, where inputs rerun dependent cells and structured results
+can return to Python.
 
 ![An authored notebook with an interactive filter and plot](https://files.peter.gy/projects/pyobservablejs/assets/from-code.gif)
 
-It works in JupyterLab, marimo, VS Code notebooks, Google Colab, and other
-environments that support [anywidget](https://anywidget.dev/).
+[![Open in molab](https://molab.marimo.io/molab-shield.svg)](https://molab.marimo.io/github/peter-gy/pyobservablejs/blob/main/examples/from-code.py/wasm?utm_source=pyobservablejs)
 
-## Install
+## Install and render a notebook
 
-Add `pyobservablejs` to an existing Python 3.11 or newer environment:
+Add `pyobservablejs` to a Python 3.11 or newer environment:
 
 ```sh
 uv pip install pyobservablejs
 ```
 
-Or open a disposable marimo environment with the package available:
+Or open a temporary marimo environment with the package available:
 
 ```sh
 uvx --with pyobservablejs marimo edit notebook.py
 ```
 
-This command installs marimo and `pyobservablejs` in the temporary environment.
-
-## Quickstart
-
-Paste this into the marimo editor opened above:
-
-[![Open in molab](https://molab.marimo.io/molab-shield.svg)](https://molab.marimo.io/github/peter-gy/pyobservablejs/blob/main/examples/from-code.py/wasm?utm_source=pyobservablejs)
+Create a notebook with a heading, browser input, and reactive Markdown:
 
 ```python
 import observablejs as obs
 
-control = obs.ojs(
-    """
-    viewof threshold = Inputs.range([0, 1], {
-      value: 0.5,
-      step: 0.1,
-      label: "Threshold"
-    })
-    """,
-    key="threshold",
-)
-
-result = obs.js(
-    "html`<strong>Threshold: ${threshold}</strong>`",
-    key="result",
-)
-
 notebook = obs.Notebook(
-    control,
-    result,
-    variables={"threshold": 0.5},
+    obs.md("## Threshold report"),
+    obs.js(
+        """
+        const threshold = view(Inputs.range(
+          [0, 1],
+          {value: 0.5, step: 0.1, label: "Threshold"}
+        ));
+        """,
+        key="threshold_control",
+    ),
+    obs.js(
+        "md`Current threshold: **${threshold}**`",
+        key="summary",
+    ),
 )
 
-notebook.view()
+view = notebook.view()
+view
 ```
 
-Each cell `key` is its portable Python identity. Render one result with
-`notebook.view("result")`.
+The view renders the heading, slider, and current value. Moving the slider
+reruns the summary in the browser. Each cell `key` is its public identity, so
+`notebook.view("summary")` creates a focused view and evaluates its dependencies
+with their output hidden.
 
-## Capabilities
+Update the same input from Python while the view stays mounted:
 
-| Task                                                               | API                                                |
-| ------------------------------------------------------------------ | -------------------------------------------------- |
-| Author JavaScript, Observable JavaScript, Markdown, and HTML cells | `obs.js`, `obs.ojs`, `obs.md`, `obs.html`          |
-| Load Notebook Kit HTML or an ObservableHQ notebook                 | `Notebook.from_html`, `Notebook.from_observablehq` |
-| Render a whole notebook or selected keyed cells                    | `notebook.view()` and `notebook.view("chart")`     |
-| Update Python-owned variables                                      | `notebook.update_variables({"threshold": 0.8})`    |
-| Read pending, successful, and failed browser results               | `view.state` and `view.state.result("chart")`      |
-| Inspect dependencies or export a diagram                           | `view.state.graph`, `to_mermaid()`, and `to_d2()`  |
+```python
+notebook.update_variables({"threshold": 0.8})
+```
 
-Views from one `Notebook` share controller variables and supported browser
-inputs. Each view keeps its own result state plus input and settled revision
-metadata.
+## Work with notebooks
 
-Use `notebook.view(capture_state=False)` when the rendered output is all you
-need and Python will not read `view.state`. The view remains interactive and
-avoids sending result snapshots to Python. See [Display
-views](https://peter-gy.github.io/pyobservablejs/render/display-views/#skip-python-state-capture).
+| Task                                                               | Documentation                                                                                                                                                                                      |
+| ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Author JavaScript, Observable JavaScript, Markdown, and HTML cells | [Author notebook cells](https://peter-gy.github.io/pyobservablejs/guide/create/cells/)                                                                                                             |
+| Load Notebook Kit HTML or a public ObservableHQ notebook           | [Create notebooks](https://peter-gy.github.io/pyobservablejs/guide/create/)                                                                                                                        |
+| Display a whole notebook or selected keyed cells                   | [Display views](https://peter-gy.github.io/pyobservablejs/guide/display/)                                                                                                                          |
+| Send Python values and read browser results                        | [Connect Python and Observable](https://peter-gy.github.io/pyobservablejs/guide/connect/)                                                                                                          |
+| Register files or embed local JavaScript modules                   | [Add files and local modules](https://peter-gy.github.io/pyobservablejs/guide/create/files-and-modules/)                                                                                           |
+| Inspect cell results, errors, and dependencies                     | [Read browser results](https://peter-gy.github.io/pyobservablejs/guide/connect/browser-results/) and [inspect dependencies](https://peter-gy.github.io/pyobservablejs/guide/connect/dependencies/) |
+
+Views from one `Notebook` receive the same Python variables and supported
+browser input values. Each view keeps its own browser runtime, rendered output,
+results, errors, dependency graph, and lifecycle.
 
 ![Python and browser values updating one notebook](https://files.peter.gy/projects/pyobservablejs/assets/sync-variables.gif)
 
-### Import notebooks
+## Import a notebook
 
 Notebook cells execute as JavaScript in the host page. Treat imported Notebook
 Kit HTML, ObservableHQ notebooks, and remote modules as trusted code. See
-[Browser execution](https://peter-gy.github.io/pyobservablejs/customize/browser-execution/).
+[Browser execution and network access](https://peter-gy.github.io/pyobservablejs/guide/customize/browser-execution/).
 
 [![Open in molab](https://molab.marimo.io/molab-shield.svg)](https://molab.marimo.io/github/peter-gy/pyobservablejs/blob/main/examples/from-observablehq.py/server?utm_source=pyobservablejs)
 
@@ -109,10 +115,13 @@ notebook.view()
 
 ![An imported ObservableHQ notebook](https://files.peter.gy/projects/pyobservablejs/assets/from-slug.gif)
 
-## Documentation
+## Learn more
 
-Read the [documentation](https://peter-gy.github.io/pyobservablejs/) for the
-quickstart, task guides, recipes, troubleshooting, and API reference.
+Start with the [quickstart](https://peter-gy.github.io/pyobservablejs/guide/quickstart/),
+then use [complete examples](https://peter-gy.github.io/pyobservablejs/examples/),
+[troubleshooting](https://peter-gy.github.io/pyobservablejs/guide/troubleshooting/),
+or the [API reference](https://peter-gy.github.io/pyobservablejs/reference/) for
+the next task.
 
 ## Acknowledgements
 

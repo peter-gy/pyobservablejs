@@ -14,6 +14,7 @@
 		"@marimo-team/mdx-marimo": "0.0.1",
 		"@mdx-js/react": "^3.1.1",
 		"@mermaid-js/layout-elk": "catalog:",
+		"@orama/plugin-docusaurus-v3": "catalog:",
 		"react": "^19.2.8",
 		"react-dom": "^19.2.8"
 	},

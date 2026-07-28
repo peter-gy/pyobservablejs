@@ -48,7 +48,7 @@ jobs:
 
       - name: Build docs
         env:
-          BASE_PATH: ${{ steps.pages.outputs.base_path }}
+          GITHUB_PAGES_BASE_PATH: ${{ steps.pages.outputs.base_path }}
         run: make docs
 
       - name: Check docs source and whitespace

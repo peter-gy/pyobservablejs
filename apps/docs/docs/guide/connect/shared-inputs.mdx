@@ -1,0 +1,179 @@
+---
+title: Share inputs across Python and Observable
+description: Set one named browser input from Python and read browser changes back.
+---
+
+# Share inputs across Python and Observable
+
+One named input can receive updates from Python and the browser. The Python
+slider writes through `update_variables`. The Observable slider changes the
+browser value, and a Python readout follows the finished result.
+
+```marimo-config
+requires-python = ">=3.11"
+dependencies = ["pyobservablejs"]
+```
+
+Create and display the Python control in its own marimo cell.
+
+```python
+import marimo as mo
+import observablejs as obs
+
+python_gain = mo.ui.slider(
+    start=0,
+    stop=12,
+    value=5,
+    label="Set gain from Python",
+)
+python_gain
+```
+
+Create and display the browser view in another cell.
+
+```python
+notebook = obs.Notebook(
+    obs.ojs(
+        'viewof gain = Inputs.range([0, 12], {value: 5, step: 1, label: "Gain in the browser"})',
+        key="gain_control",
+    ),
+    obs.js(
+        """
+        Plot.barY(
+          Array.from({length: 8}, (_, index) => (index + 1) * gain),
+          {
+            x: (_, index) => index + 1,
+            y: (value) => value,
+            tip: {
+              // This example references a theme variable used by mdx-marimo.
+              // Replace it with a CSS color or remove `fill` in another host.
+              fill: "var(--marimo-island-background)"
+            }
+          }
+        ).plot({height: 220, x: {label: "Step"}, y: {grid: true}})
+        """,
+        key="chart",
+    ),
+    variables={"gain": 5},
+)
+
+view = notebook.view()
+view
+```
+
+Send Python slider changes from a cell that references `python_gain` and
+`notebook`.
+
+```python
+notebook.update_variables({"gain": python_gain.value})
+```
+
+Read the current browser value after the latest input revision settles.
+
+```python
+view.value  # subscribe this cell to view synchronization
+state = view.state
+
+if (
+    not state.pending
+    and state.input_revision is not None
+    and state.settled_revision == state.input_revision
+):
+    gain = state.result("gain_control")
+    gain_report = (
+        f"Python reads `gain = {gain.values['gain']}`."
+        if gain.status == "success"
+        else f"Browser error: {gain.errors}"
+    )
+else:
+    gain_report = "Waiting for the Observable view to render."
+
+mo.md(gain_report)
+```
+
+```python marimo echo=false server-output=false
+import marimo as mo
+import observablejs as obs
+
+python_gain = mo.ui.slider(
+    start=0,
+    stop=12,
+    value=5,
+    label="Set gain from Python",
+)
+python_gain
+```
+
+```python marimo echo=false server-output=false
+notebook = obs.Notebook(
+    obs.ojs(
+        'viewof gain = Inputs.range([0, 12], {value: 5, step: 1, label: "Gain in the browser"})',
+        key="gain_control",
+    ),
+    obs.js(
+        """
+        Plot.barY(
+          Array.from({length: 8}, (_, index) => (index + 1) * gain),
+          {
+            x: (_, index) => index + 1,
+            y: (value) => value,
+            tip: {
+              // This example references a theme variable used by mdx-marimo.
+              // Replace it with a CSS color or remove `fill` in another host.
+              fill: "var(--marimo-island-background)"
+            }
+          }
+        ).plot({height: 220, x: {label: "Step"}, y: {grid: true}})
+        """,
+        key="chart",
+    ),
+    variables={"gain": 5},
+)
+
+view = notebook.view()
+view
+```
+
+```python marimo echo=false server-output=false
+notebook.update_variables({"gain": python_gain.value})
+```
+
+```python marimo echo=false server-output=false
+view.value  # subscribe this cell to view synchronization
+state = view.state
+
+if (
+    not state.pending
+    and state.input_revision is not None
+    and state.settled_revision == state.input_revision
+):
+    gain = state.result("gain_control")
+    gain_report = (
+        f"Python reads `gain = {gain.values['gain']}`."
+        if gain.status == "success"
+        else f"Browser error: {gain.errors}"
+    )
+else:
+    gain_report = "Waiting for the Observable view to render."
+
+mo.md(gain_report)
+```
+
+Each direction has one path:
+
+1. The Python slider calls `update_variables`.
+2. The Observable slider updates the named `viewof gain` input.
+3. The synchronized anywidget state updates `view.state`.
+4. The readout displays the finished `gain_control` result.
+
+The Python slider shows the last value Python sent. The Observable slider and
+readout show the current browser value.
+
+Shared input state supports JSON-like values, `BigInt`, dates, maps, and sets.
+Functions, DOM elements, files, and binary buffers stay in the view where they
+were created. Use the same input shape for a shared name across views.
+
+See [Compose views](../display/compose-views.mdx) for separate views
+and [Variables and
+serialization](../../reference/variables-and-serialization.mdx#shared-viewof-inputs)
+for the value boundary.

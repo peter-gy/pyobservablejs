@@ -1,0 +1,156 @@
+---
+title: Display a notebook
+description: Mount NotebookView in anywidget hosts and manage each browser runtime.
+---
+
+# Display a notebook
+
+`notebook.view()` returns a renderable view backed by a `NotebookView`. Browser
+evaluation starts when an anywidget host mounts it.
+
+```marimo-config
+requires-python = ">=3.11"
+dependencies = ["pyobservablejs"]
+```
+
+```python
+import marimo as mo
+import observablejs as obs
+
+notebook = obs.Notebook(
+    obs.js(
+        """
+        const threshold = view(Inputs.range(
+          [0, 1],
+          {label: "Threshold", step: 0.05, value: 0.5}
+        ));
+        """,
+        key="threshold",
+    ),
+    obs.js(
+        'html`<p>Threshold: <strong>${threshold}</strong></p>`',
+        key="readout",
+    ),
+)
+
+view = notebook.view()
+view
+```
+
+```python marimo echo=false server-output=false
+import marimo as mo
+import observablejs as obs
+
+notebook = obs.Notebook(
+    obs.js(
+        """
+        const threshold = view(Inputs.range(
+          [0, 1],
+          {label: "Threshold", step: 0.05, value: 0.5}
+        ));
+        """,
+        key="threshold",
+    ),
+    obs.js(
+        'html`<p>Threshold: <strong>${threshold}</strong></p>`',
+        key="readout",
+    ),
+)
+
+view = notebook.view()
+view
+```
+
+## Display in marimo and Jupyter
+
+In marimo, use the returned view as a cell output or layout child. In
+JupyterLab, Jupyter Notebook, VS Code notebooks, and Google Colab, leave the
+view as the final cell expression or pass it to `IPython.display.display`.
+
+Colab requires the third-party widget support described by
+[anywidget](https://anywidget.dev/en/notebooks/colab/).
+
+## One view per placement
+
+One `NotebookView` can appear in one live location at a time. Create a separate
+view for each location.
+
+```python
+chart_a = notebook.view("readout")
+chart_b = notebook.view("readout")
+
+mo.hstack([chart_a, chart_b])
+```
+
+The views receive the same notebook values and supported browser inputs. Each
+keeps its own rendered output, progress, results, errors, and graph.
+
+## Skip Python state capture
+
+Use `capture_state=False` for a screenshot, preview, or embed when Python never
+reads `view.state`.
+
+```python
+preview = notebook.view(
+    capture_state=False,
+)
+preview
+```
+
+The view still evaluates, renders, responds to input, and receives Python
+variable updates. Supported input controls continue to synchronize with other
+views from the same notebook. `preview.state` stays at its initial value.
+
+With capture disabled, result serialization and transport are skipped. The
+avoided work grows with cell result size and update frequency, so small static
+views usually see little difference. Keep the default `True` when Python reads
+or observes `view.state`.
+
+## Evaluation lifecycle
+
+Before display, both revision fields are `None`. Display starts revision `0`
+and sets `pending=True`. A revision finishes after every selected cell either
+succeeds or fails.
+
+```python
+state = view.state
+ready = (
+    not state.pending
+    and state.input_revision is not None
+    and state.settled_revision == state.input_revision
+)
+```
+
+Python variable updates and browser inputs start a new revision when selected
+cells need to run again. Assigning a new theme restarts each open view. Create a
+new view for a different selection. Create a new notebook for a different cell
+definition or set of files. A restarted view clears its previous graph while
+work is pending.
+
+## Close views
+
+```python
+view.close()
+notebook.close()
+```
+
+`view.close()` stops one browser run and ignores any late results.
+`notebook.close()` closes every view created from that notebook. Repeated calls
+do nothing.
+
+Cells that own browser resources should release them through Observable's
+`invalidation` promise:
+
+```python
+obs.js(
+    """
+    const controller = new AbortController();
+    invalidation.then(() => controller.abort());
+
+    const response = await fetch(dataUrl, {signal: controller.signal});
+    const records = await response.json();
+    """
+)
+```
+
+Continue with [Select cells](cells.mdx) or [Compose views](compose-views.mdx).

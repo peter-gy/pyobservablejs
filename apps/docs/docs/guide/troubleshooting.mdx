@@ -1,0 +1,149 @@
+---
+title: Troubleshooting
+description: Symptoms, causes, and fixes for common pyobservablejs failures.
+---
+
+# Troubleshooting
+
+## State has no results yet
+
+`NotebookView.state` starts empty before a browser mounts the widget. Inspect
+the revisions and pending flag before consuming a result:
+
+```python
+state = full_view.state
+
+if (
+    not state.pending
+    and state.input_revision is not None
+    and state.settled_revision == state.input_revision
+):
+    result = state.result("chart")
+```
+
+Both revisions are `None` before mount. `pending=True` means a newer input
+revision is still evaluating. Readback belongs to one view, so rendering a
+sibling does not populate this state. See [Read browser
+results](connect/browser-results.mdx).
+
+## A cell result has `status="error"`
+
+Inspect `result.errors`. Every error includes a `name`, `message`, and phase.
+Cell errors may also identify the failed output variable.
+
+```python
+result = full_view.state.result("chart")
+
+for error in result.errors:
+    print(error.phase, error.variable, error.message)
+```
+
+The phase distinguishes source analysis, evaluation, rendering, and value
+serialization. A multi-output cell can retain successful values beside an
+error.
+
+## The view displays nothing
+
+- **marimo:** use the view as the cell output or pass it to a marimo layout.
+- **Jupyter and most hosts:** the view must be the final expression of a
+  cell, or passed to `display(...)`.
+- **Colab:** enable third-party widget support, per
+  [anywidget's Colab notes](https://anywidget.dev/en/notebooks/colab/).
+- **Program cells:** a JavaScript cell with statements renders nothing
+  unless it calls `display(...)` or `view(...)`. Expression cells display
+  implicitly. See [Author notebook
+  cells](create/cells.mdx#javascript-cells).
+
+## The same view appears twice and one copy froze
+
+A `NotebookView` can appear in one live location at a time. Displaying the same
+view object twice leaves one copy frozen. Create one view per location. Views
+from the same notebook stay synchronized. See [Display a
+NotebookView](display/notebooks.mdx#one-view-per-placement).
+
+## `ValueError` for a variable name
+
+Variable names must match `^[A-Za-z_$][0-9A-Za-z_$]*$`, and runtime-owned
+builtin names such as `penguins`, `Plot`, or `width` are reserved. Rename
+the Python variable. The reserved list is in [Variables and
+serialization](../reference/variables-and-serialization.mdx#variable-names).
+
+## `TypeError: Value of type ... is not serializable`
+
+The [serialization
+table](../reference/variables-and-serialization.mdx#python-to-browser-conversion) lists
+the types that can move between Python and the browser. Convert custom objects to plain mappings,
+lists, or DataFrames first. Use [file
+attachments](create/files-and-modules.mdx) for large tables and binary data.
+
+## A value is missing from a cell result
+
+Read values from the result for the cell that defines them. Results stay
+separate even when several cells define the same JavaScript variable name.
+
+```python
+value = full_view.state.result("summary").values["total"]
+```
+
+## The chart did not react to `update_variables`
+
+- An unchanged value is a no-op unless the browser has changed a shared input
+  with that name. In that case, the update clears the browser-owned value and
+  reapplies the Python value. Mutating a list in place changes the browser value
+  only when its contents differ.
+- The cell must reference the variable by that exact name. Check
+  `full_view.state.graph.external_references` to see what the cells actually
+  resolve from the environment. See [Inspect the dependency
+  graph](connect/dependencies.mdx).
+
+## A marimo cell shows stale readback
+
+marimo reruns a cell when a UI element it references changes. Reference the
+view's `value` in the reading cell:
+
+```python
+full_view
+```
+
+```python
+full_view.value  # subscribe
+full_view.state
+```
+
+## `TraitError` when assigning `notebook.theme`
+
+Source-backed notebooks take their theme from the source HTML. Edit the
+`<notebook theme="...">` attribute in the document. See [Themes and
+pinned source](customize/themes-and-source.mdx#theme-names).
+
+## `RuntimeError: Cannot mutate a closed Notebook`
+
+`notebook.close()` closes the session and every view. `view.close()` closes
+one view. After closing, variable mutators and `view()` raise `RuntimeError`.
+Cell handles, attachments, variables, and theme stay readable. Recreate the
+notebook to continue.
+
+## `require is not defined` in an authored notebook
+
+`require` belongs to the classic Observable standard library selected by
+ObservableHQ imports. Python-authored and Notebook Kit HTML notebooks use
+the Notebook Kit profile. Import npm packages with
+`import ... from "npm:..."`. See [Browser execution and network
+access](customize/browser-execution.mdx#runtime-profiles).
+
+## Imports or datasets fail to load in a restricted environment
+
+npm imports, URL-backed attachments, and ObservableHQ imports load from the
+network in the browser at render time, and the page content security policy
+must permit those origins. Embed local modules and files with
+`rewrite_imports=True` and `embed_file_attachments=True` to reduce runtime
+fetches. See [Browser execution and network
+access](customize/browser-execution.mdx#module-imports-and-the-network).
+
+## `OSError` or `ValueError` from `from_observablehq`
+
+The constructor fetches the document API on every call: network failures
+raise `OSError`, invalid specifiers and non-JSON responses raise
+`ValueError`. Only public notebooks are reachable. Cache the document once
+and use `from_observablehq_document` in builds and tests. See [Import
+ObservableHQ notebooks](create/observable-notebooks.mdx).

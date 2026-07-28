@@ -13,12 +13,38 @@ function normalizeBaseUrl(value) {
 	return `/${path.replace(/^\/+|\/+$/g, "")}/`;
 }
 
+const baseUrl =
+	process.env.GITHUB_ACTIONS === "true" ? normalizeBaseUrl(process.env.GITHUB_PAGES_BASE_PATH ?? "/") : "/";
+
 /** @type {import("@docusaurus/types").Config} */
 const config = {
 	title: "pyobservablejs",
-	tagline: "Observable JavaScript notebooks from Python",
+	tagline: "Reactive Observable notebooks from Python",
 	url: "https://peter-gy.github.io",
-	baseUrl: normalizeBaseUrl(process.env.BASE_PATH ?? "/"),
+	baseUrl,
+	favicon: "img/brand/pyobservablejs-favicon-on-white.png",
+	headTags: [
+		{
+			tagName: "link",
+			attributes: {
+				rel: "icon",
+				type: "image/svg+xml",
+				sizes: "any",
+				media: "(prefers-color-scheme: light)",
+				href: `${baseUrl}img/brand/pyobservablejs-favicon-on-white.svg`,
+			},
+		},
+		{
+			tagName: "link",
+			attributes: {
+				rel: "icon",
+				type: "image/svg+xml",
+				sizes: "any",
+				media: "(prefers-color-scheme: dark)",
+				href: `${baseUrl}img/brand/pyobservablejs-favicon-on-black.svg`,
+			},
+		},
+	],
 	organizationName: "peter-gy",
 	projectName: "pyobservablejs",
 	onBrokenLinks: "throw",
@@ -37,6 +63,7 @@ const config = {
 			onBrokenMarkdownLinks: "throw",
 		},
 	},
+	plugins: ["@orama/plugin-docusaurus-v3"],
 	themes: ["@docusaurus/theme-mermaid"],
 	i18n: {
 		defaultLocale: "en",
@@ -52,6 +79,9 @@ const config = {
 					sidebarPath: "./sidebars.js",
 					remarkPlugins: [[remarkMarimo, { compiler: { uvCommand: "uv" } }]],
 					editUrl: "https://github.com/peter-gy/pyobservablejs/edit/main/apps/docs/",
+				},
+				pages: {
+					remarkPlugins: [[remarkMarimo, { compiler: { uvCommand: "uv" } }]],
 				},
 				blog: false,
 				theme: {
@@ -72,14 +102,63 @@ const config = {
 			colorMode: {
 				respectPrefersColorScheme: true,
 			},
+			image: "img/brand/pyobservablejs-og-card.png",
+			metadata: [
+				{ property: "og:type", content: "website" },
+				{ property: "og:site_name", content: "pyobservablejs" },
+				{ property: "og:image:width", content: "1200" },
+				{ property: "og:image:height", content: "630" },
+				{ property: "og:image:type", content: "image/png" },
+				{
+					property: "og:image:alt",
+					content: "pyobservablejs: Reactive Observable notebooks from Python",
+				},
+				{ name: "twitter:card", content: "summary_large_image" },
+				{
+					name: "twitter:image:alt",
+					content: "pyobservablejs: Reactive Observable notebooks from Python",
+				},
+			],
 			navbar: {
-				title: "pyobservablejs",
+				logo: {
+					alt: "",
+					src: "img/brand/pyobservablejs-symbol-light.svg",
+					srcDark: "img/brand/pyobservablejs-symbol-dark.svg",
+				},
 				items: [
 					{
-						type: "docSidebar",
-						sidebarId: "docs",
+						to: "/",
 						position: "left",
-						label: "Documentation",
+						label: "Overview",
+					},
+					{
+						type: "dropdown",
+						position: "left",
+						label: "Guide",
+						items: [
+							{ label: "Quickstart", to: "/guide/quickstart/" },
+							{ label: "Create notebooks", to: "/guide/create/" },
+							{ label: "Display views", to: "/guide/display/" },
+							{ label: "Connect Python and Observable", to: "/guide/connect/" },
+							{ label: "Customize and export", to: "/guide/customize/" },
+							{ label: "Troubleshooting", to: "/guide/troubleshooting/" },
+						],
+					},
+					{
+						type: "docSidebar",
+						sidebarId: "examples",
+						position: "left",
+						label: "Examples",
+					},
+					{
+						type: "docSidebar",
+						sidebarId: "reference",
+						position: "left",
+						label: "Reference",
+					},
+					{
+						type: "search",
+						position: "right",
 					},
 					{
 						href: "https://github.com/peter-gy/pyobservablejs",
@@ -92,10 +171,17 @@ const config = {
 				style: "dark",
 				links: [
 					{
-						title: "Documentation",
+						title: "Guide",
 						items: [
-							{ label: "Quickstart", to: "/quickstart/" },
-							{ label: "Recipes", to: "/recipes/" },
+							{ label: "Quickstart", to: "/guide/quickstart/" },
+							{ label: "How it works", to: "/guide/how-it-works/" },
+							{ label: "Troubleshooting", to: "/guide/troubleshooting/" },
+						],
+					},
+					{
+						title: "Explore",
+						items: [
+							{ label: "Examples", to: "/examples/" },
 							{ label: "API reference", to: "/reference/" },
 						],
 					},
