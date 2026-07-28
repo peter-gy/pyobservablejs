@@ -122,8 +122,25 @@ def test_view_from_observablehq_accepts_url_factory_input(
     assert session.comm is None
 
 
+@pytest.mark.parametrize(
+    ("view_options", "message"),
+    [
+        pytest.param(
+            {"capture_state": "no"},
+            "capture_state must be a boolean",
+            id="invalid-value",
+        ),
+        pytest.param(
+            {"unknown": True},
+            "unexpected Notebook view option 'unknown'",
+            id="unknown-option",
+        ),
+    ],
+)
 def test_view_factory_validates_options_before_network_request(
     observablehq_response: ObservableHQResponseInstaller,
+    view_options: dict[str, object],
+    message: str,
 ) -> None:
     requests = observablehq_response(
         {
@@ -134,10 +151,10 @@ def test_view_factory_validates_options_before_network_request(
         }
     )
 
-    with pytest.raises(TypeError, match="unexpected Notebook view option 'unknown'"):
+    with pytest.raises(TypeError, match=message):
         obs.view_from_observablehq(
             "https://observablehq.com/@d3/bar-chart",
-            **cast(Any, {"unknown": True}),
+            **cast(Any, view_options),
         )
 
     assert requests == []

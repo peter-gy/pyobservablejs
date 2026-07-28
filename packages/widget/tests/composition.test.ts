@@ -151,6 +151,32 @@ describe("NotebookView composition", () => {
 		}
 	});
 
+	test("capture-disabled selected views render through hidden dependencies", async () => {
+		const session = createSession({
+			_spec: {
+				cells: [
+					{ id: 1, mode: "ojs", value: "source = 21" },
+					{ id: 2, mode: "ojs", value: "result = source * 2", output: "result" },
+				],
+			},
+			_cell_keys: ["source", "result"],
+		});
+		const view = createView("anywidget:session", [1]);
+		view.set("_capture_state", false);
+		const host = createHost(new Map([["anywidget:session", session]]));
+		const controller = new AbortController();
+		const el = document.createElement("div");
+
+		try {
+			widget.render(renderProps(view, el, controller.signal, host));
+			expect(await waitFor(() => composedText(el, "42"))).toBeInstanceOf(HTMLElement);
+			expect(view.saveCount()).toBe(0);
+			expect(view.savedReadbacks()).toEqual([]);
+		} finally {
+			controller.abort();
+		}
+	});
+
 	test("full and data views keep their shared input stable across Python updates", async () => {
 		const session = createSession({
 			_spec: { cells },

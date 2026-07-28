@@ -35,6 +35,12 @@ document: obs.types.ObservableDocument = {
 | `ObservableDocument`, `ObservableNode`, `ObservableFile`  | ObservableHQ document API records.                              |
 | `ObservableSource`, `ObservableData`, `ObservableDisplay` | Nested ObservableHQ source and display records.                 |
 
+`NotebookViewOptions` currently accepts one optional key:
+
+| Key             | Type   | Default | Contract                                           |
+| --------------- | ------ | ------- | -------------------------------------------------- |
+| `capture_state` | `bool` | `True`  | Synchronizes browser evaluation state with Python. |
+
 Runtime parsing remains defensive when JSON data does not match an annotation.
 
 ## State contracts

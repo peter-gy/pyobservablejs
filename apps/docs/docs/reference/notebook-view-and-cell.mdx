@@ -74,11 +74,15 @@ public ObservableHQ URL, slug, id, or document API URL. `document` accepts an
 `observablejs.types.ObservableDocument` mapping.
 
 Each factory accepts the typed `Notebook.view()` options through
-`**view_options`. `capture_state` defaults to `True`. Set it to `False` to
-render while leaving the Python `ViewState` at its initial snapshot.
-Cell and notebook validation errors come from the matching constructor.
-Factories validate view options before notebook construction, local file
-access, or network requests.
+`**view_options`. `capture_state` matches the option on `Notebook.view()`. Set
+it to `False` when the rendered output is all you need and Python will not read
+`NotebookView.state`. The view remains interactive and its state stays at its
+initial value.
+
+Cell, notebook, file, and network errors come from the matching constructor.
+Invalid view options raise `TypeError` before file or network access. See [Skip
+Python state capture](../render/display-views.mdx#skip-python-state-capture)
+for guidance.
 
 ## `NotebookCell`
 
@@ -130,6 +134,9 @@ def on_view_state(change):
 
 view.observe(on_view_state, names="state")
 ```
+
+With `capture_state=False`, `state` remains at this initial value. Rendering,
+Python variable updates, and supported input synchronization continue.
 
 One `NotebookView` can have one live writable render at a time. Create another
 view from the notebook when the same selection must appear in two outputs.

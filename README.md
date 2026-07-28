@@ -85,6 +85,11 @@ Views from one `Notebook` share controller variables and supported browser
 inputs. Each view keeps its own result state plus input and settled revision
 metadata.
 
+Use `notebook.view(capture_state=False)` when the rendered output is all you
+need and Python will not read `view.state`. The view remains interactive and
+avoids sending result snapshots to Python. See [Display
+views](https://peter-gy.github.io/pyobservablejs/render/display-views/#skip-python-state-capture).
+
 ![Python and browser values updating one notebook](https://files.peter.gy/projects/pyobservablejs/assets/sync-variables.gif)
 
 ### Import notebooks

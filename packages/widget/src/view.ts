@@ -96,6 +96,7 @@ async function renderCurrentView(
 	const cellKeys = readCellKeys(sessionModel);
 	readback.syncGraph(attempt, analysis, renderIndexes, cellKeys);
 	const beginInput = (names: ReadonlySet<string>) => {
+		if (!readback.captureState) return;
 		readback.beginInput(attempt, notebookAffectedIndexes(analysis, names));
 	};
 	const session = openNotebookRuntimeSession({

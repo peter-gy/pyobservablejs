@@ -103,6 +103,52 @@ describe("widget graph and notebook readback", () => {
 		}
 	});
 
+	test("renders selected values without serializing them when capture is disabled", async () => {
+		Object.defineProperty(globalThis, "__pyobservablejsSerializationAttempts", {
+			configurable: true,
+			writable: true,
+			value: 0,
+		});
+		const { view, host } = createNotebookFixture({
+			_spec: {
+				cells: [
+					{
+						id: 1,
+						mode: "ojs",
+						hidden: true,
+						value: `value = new Proxy({}, {
+  ownKeys(target) {
+    globalThis.__pyobservablejsSerializationAttempts += 1;
+    return Reflect.ownKeys(target);
+  }
+})`,
+					},
+					{
+						id: 2,
+						mode: "ojs",
+						value: "answer = 42",
+					},
+				],
+			},
+			_cell_keys: ["value", "answer"],
+		});
+		view.set("_cell_indexes", [0, 1]);
+		view.set("_capture_state", false);
+		const controller = new AbortController();
+		const el = document.createElement("div");
+
+		try {
+			widget.render(renderProps(view, el, controller.signal, host));
+			expect(await waitFor(() => (el.textContent?.includes("42") ? true : undefined))).toBe(true);
+			expect(Reflect.get(globalThis, "__pyobservablejsSerializationAttempts")).toBe(0);
+			expect(view.saveCount()).toBe(0);
+			expect(view.savedReadbacks()).toEqual([]);
+		} finally {
+			controller.abort();
+			Reflect.deleteProperty(globalThis, "__pyobservablejsSerializationAttempts");
+		}
+	});
+
 	test("rejects an invalid capture-state wire value", () => {
 		const { view, host } = createNotebookFixture({
 			_spec: { cells: [] },

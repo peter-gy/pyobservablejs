@@ -49,7 +49,9 @@ def view_from_code(
 
     The code uses Observable JavaScript by default. Set mode to select another
     cell language. Closing the returned view also closes its notebook session.
-    Set ``capture_state=False`` to skip browser evaluation readback.
+    Use ``capture_state=False`` when the rendered output is all the caller
+    needs. The view remains interactive while ``NotebookView.state`` stays at
+    its initial value.
 
     Examples:
         Create a slider view from one Observable JavaScript cell:
@@ -110,8 +112,10 @@ def view_from_html(
     documentation at https://observablehq.com/notebook-kit/kit for the HTML
     format and cell modes.
 
-    Closing the returned view also closes its notebook session. Set
-    ``capture_state=False`` to skip browser evaluation readback.
+    Closing the returned view also closes its notebook session. Use
+    ``capture_state=False`` when the rendered output is all the caller needs.
+    The view remains interactive while ``NotebookView.state`` stays at its
+    initial value.
 
     Examples:
         Create a view with Markdown, JavaScript, TypeScript, Observable
@@ -205,8 +209,10 @@ def view_from_observablehq(
 ) -> NotebookView:
     """Fetch a public ObservableHQ notebook and return its renderable view.
 
-    Closing the returned view also closes its notebook session. Set
-    ``capture_state=False`` to skip browser evaluation readback.
+    Closing the returned view also closes its notebook session. Use
+    ``capture_state=False`` when the rendered output is all the caller needs.
+    The view remains interactive while ``NotebookView.state`` stays at its
+    initial value.
 
     Examples:
         Create a view from a public ObservableHQ notebook URL:
@@ -260,8 +266,10 @@ def view_from_observablehq_document(
 ) -> NotebookView:
     """Create a renderable view from an ObservableHQ document API mapping.
 
-    Closing the returned view also closes its notebook session. Set
-    ``capture_state=False`` to skip browser evaluation readback.
+    Closing the returned view also closes its notebook session. Use
+    ``capture_state=False`` when the rendered output is all the caller needs.
+    The view remains interactive while ``NotebookView.state`` stays at its
+    initial value.
 
     Examples:
         Create a view from an ObservableHQ document already in memory:

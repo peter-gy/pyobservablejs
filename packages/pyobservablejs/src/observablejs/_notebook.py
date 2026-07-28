@@ -533,8 +533,11 @@ class Notebook(traitlets.HasTraits):
         Selectors may be keys, keyed authored ``Cell`` objects, or
         ``NotebookCell`` handles from this notebook. Selected outputs render in
         notebook order. In a running marimo notebook, the returned UI element
-        proxies the underlying ``NotebookView``. Set ``capture_state=False`` to
-        render without synchronizing browser evaluation results to Python.
+        proxies the underlying ``NotebookView``.
+
+        Use ``capture_state=False`` when the rendered output is all the caller
+        needs. The view remains interactive while ``NotebookView.state`` stays
+        at its initial value.
         """
 
         return self._create_view(selectors, resolve_notebook_view_options(options))

@@ -37,7 +37,7 @@ export type ReadbackToken = {
 type ReadbackState = NonNullable<WidgetModel["_readback"]>;
 type CellReadbacks = ReadbackState["results"];
 
-/** Publish one NotebookView's complete evaluation state. */
+/** Track one NotebookView's render attempts and publish captured evaluation state. */
 export class ViewReadback {
 	readonly #model: AnyWidgetModel;
 	readonly #captureState: boolean;
