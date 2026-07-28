@@ -20,7 +20,6 @@ from ._serialize import (
 from ._themes import Theme, deserialize_theme_attribute
 from .types import NotebookKitCellMetadata
 
-
 _MODE_BY_SCRIPT_TYPE = {
     script_type.lower(): mode for mode, script_type in SCRIPT_TYPES.items()
 }

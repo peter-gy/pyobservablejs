@@ -129,10 +129,14 @@ def test_observablehq_document_pins_imports_to_its_revision(
     assert [
         script["text"].strip() for script in script_tags(notebook.to_notebook_html())
     ] == [
-        'import {checkbox} from "https://api.observablehq.com/@jashkenas/'
-        'inputs.js?v=4&resolutions=0123456789abcdef@42"',
-        'import {footer} from "https://api.observablehq.com/@tomlarkworthy/'
-        'footer.js?v=4&resolutions=0123456789abcdef@42"',
+        (
+            'import {checkbox} from "https://api.observablehq.com/@jashkenas/'
+            'inputs.js?v=4&resolutions=0123456789abcdef@42"'
+        ),
+        (
+            'import {footer} from "https://api.observablehq.com/@tomlarkworthy/'
+            'footer.js?v=4&resolutions=0123456789abcdef@42"'
+        ),
     ]
 
 

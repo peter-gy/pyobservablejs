@@ -54,7 +54,7 @@ control = obs.ojs(
 )
 
 result = obs.js(
-    'html`<strong>Threshold: ${threshold}</strong>`',
+    "html`<strong>Threshold: ${threshold}</strong>`",
     key="result",
 )
 

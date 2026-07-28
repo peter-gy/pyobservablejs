@@ -8,9 +8,9 @@ from helpers import (
     ScriptTags,
     assert_javascript_import_payloads,
     decode_data_url,
-    notebook_from_html_path,
     normalized_source,
     normalized_source_with_embedded_imports,
+    notebook_from_html_path,
     script_by_id,
 )
 

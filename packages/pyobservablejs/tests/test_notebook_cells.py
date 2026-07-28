@@ -7,7 +7,6 @@ from typing import Any, cast
 import observablejs as obs
 import pytest
 import traitlets
-from IPython.core.formatters import DisplayFormatter
 from helpers import (
     BrowserGraphCellBuilder,
     BrowserGraphSync,
@@ -15,6 +14,7 @@ from helpers import (
     ScriptTags,
     notebook_session,
 )
+from IPython.core.formatters import DisplayFormatter
 
 
 def test_cell_defaults_to_observable_js_and_dedents(script_tags: ScriptTags) -> None:

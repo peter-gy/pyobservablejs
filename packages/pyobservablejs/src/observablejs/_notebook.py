@@ -24,6 +24,13 @@ from ._model import (
 )
 from ._serialize import serialize
 from ._themes import normalize_theme
+from ._variables import (
+    OBSERVABLE_RESERVED_VARIABLE_NAMES,
+    deserialize_value,
+    prepare_variables,
+    same_wire_value,
+    validate_variable_name,
+)
 from ._view_options import (
     ResolvedNotebookViewOptions,
     resolve_notebook_view_options,
@@ -43,13 +50,6 @@ from .types import (
     ThemeSnapshot,
     ViewError,
     ViewState,
-)
-from ._variables import (
-    OBSERVABLE_RESERVED_VARIABLE_NAMES,
-    deserialize_value,
-    prepare_variables,
-    same_wire_value,
-    validate_variable_name,
 )
 
 _WIDGET_TRAIT = anywidget.WidgetTrait()
@@ -97,7 +97,7 @@ class _ObservableWidget(BundledWidget):
 class NotebookCell:
     """Canonical handle for one cell owned by a ``Notebook``."""
 
-    __slots__ = ("_owner", "_index")
+    __slots__ = ("_index", "_owner")
     _owner: Notebook
     _index: int
 

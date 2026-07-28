@@ -89,8 +89,7 @@ def _diagram_from_graph(graph: _Graph) -> _Diagram:
         if source is not None and target is not None:
             edges.append(_DiagramEdge(source, target, edge.variable))
 
-    for edge in _external_edges(graph, cell_ids, external_ids):
-        edges.append(edge)
+    edges.extend(_external_edges(graph, cell_ids, external_ids))
 
     return _Diagram(nodes=tuple(nodes), edges=tuple(edges))
 

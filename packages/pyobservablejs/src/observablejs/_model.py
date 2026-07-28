@@ -7,7 +7,7 @@ import pathlib
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any, cast
 
-from ._cell_ids import _CellIdAllocator, _MAX_SAFE_CELL_ID, _is_safe_cell_id
+from ._cell_ids import _MAX_SAFE_CELL_ID, _CellIdAllocator, _is_safe_cell_id
 from ._cells import (
     Cell,
     NotebookCellInput,
@@ -46,12 +46,12 @@ class NotebookNode:
     attrs: Mapping[str, Any] = dataclasses.field(default_factory=dict)
 
     @classmethod
-    def from_cell(cls, cell: Cell, id: int) -> "NotebookNode":
+    def from_cell(cls, cell: Cell, id: int) -> NotebookNode:
         node = cls.from_spec(cell._to_spec(id))
         return dataclasses.replace(node, key=cell.key)
 
     @classmethod
-    def from_spec(cls, spec: Mapping[str, Any]) -> "NotebookNode":
+    def from_spec(cls, spec: Mapping[str, Any]) -> NotebookNode:
         attrs = dict(spec)
         node_id = _int_cell_id(attrs.pop("id"))
         value = "" if (raw_value := attrs.pop("value", "")) is None else str(raw_value)
@@ -284,8 +284,10 @@ def _duplicates(values: Iterable[int]) -> set[int]:
 
 def _document_nodes(document: ObservableDocument) -> Sequence[ObservableNodeInput]:
     nodes = document.get("nodes")
-    if not isinstance(nodes, Sequence) or isinstance(nodes, (str, bytes, bytearray)):
+    if nodes is None:
         raise ValueError("ObservableHQ data is missing a nodes list")
+    if not isinstance(nodes, Sequence) or isinstance(nodes, (str, bytes, bytearray)):
+        raise TypeError("ObservableHQ nodes must be a list")
     return nodes
 
 
@@ -296,7 +298,7 @@ def _document_files(
     if files is None:
         return None
     if not isinstance(files, Sequence) or isinstance(files, (str, bytes, bytearray)):
-        raise ValueError("ObservableHQ files must be a list")
+        raise TypeError("ObservableHQ files must be a list")
     return files
 
 
@@ -306,15 +308,11 @@ def _document_title(document: ObservableDocument) -> str:
 
 
 def _int_cell_id(value: object) -> int:
-    if isinstance(value, bool):
-        raise ValueError("Notebook cell id must be an integer")
-    if isinstance(value, int):
-        if not _is_safe_cell_id(value):
-            raise ValueError(
-                f"Notebook cell id must be between 1 and {_MAX_SAFE_CELL_ID}"
-            )
-        return value
-    raise ValueError("Notebook cell id must be an integer")
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise TypeError("Notebook cell id must be an integer")
+    if not _is_safe_cell_id(value):
+        raise ValueError(f"Notebook cell id must be between 1 and {_MAX_SAFE_CELL_ID}")
+    return value
 
 
 def _mode(value: object) -> Mode:

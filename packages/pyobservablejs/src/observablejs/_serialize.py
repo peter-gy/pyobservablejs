@@ -7,9 +7,8 @@ import re
 from collections.abc import Mapping
 from typing import Any, Literal
 
-from .types import CellMode
-
 from ._themes import serialize_theme
+from .types import CellMode
 
 Mode = CellMode
 RuntimeProfile = Literal["notebook-kit", "observable"]
@@ -70,7 +69,9 @@ def _serialize_cell(item: Mapping[str, Any]) -> str:
         value = item.get(key)
         if value is not None:
             attrs.append(f'{key}="{_html.escape(str(value), quote=True)}"')
-    value = re.sub(r"</script", "<\\/script", str(item.get("value", "")), flags=re.I)
+    value = re.sub(
+        r"</script", "<\\/script", str(item.get("value", "")), flags=re.IGNORECASE
+    )
     indented = "\n".join(
         f"    {line}" if line.strip() else "" for line in value.splitlines()
     )

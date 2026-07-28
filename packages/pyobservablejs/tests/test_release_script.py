@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 
-
 REPOSITORY_ROOT = Path(__file__).parents[3]
 RELEASE_SCRIPT = REPOSITORY_ROOT / "scripts" / "release.sh"
 

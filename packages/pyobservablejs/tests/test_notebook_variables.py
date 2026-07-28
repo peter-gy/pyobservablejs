@@ -23,7 +23,9 @@ def test_python_variables_serialize_to_frontend_state() -> None:
     )
 
     wire = notebook_session(widget).get_state(["_variables"])["_variables"]
-    assert cast(Any, widget.variables["rows"])[0]["date"] == dt.datetime(2026, 5, 23)
+    assert cast(Any, widget.variables["rows"])[0]["date"] == dt.datetime.fromisoformat(
+        "2026-05-23"
+    )
     assert wire["py_answer"] == 42
     assert wire["rows"][0]["date"] == {
         "__observablejs_type__": "datetime",
@@ -183,7 +185,7 @@ def test_variable_replacement_exposes_browser_normalized_snapshot() -> None:
     }
     assert notebook.variables == {
         "rows": (1, 2),
-        "when": dt.datetime(2026, 7, 11),
+        "when": dt.datetime.fromisoformat("2026-07-11"),
         "raw": b"abc",
     }
     assert (
@@ -227,7 +229,7 @@ def test_variables_update_serializes_merged_frontend_state() -> None:
 
     assert widget.variables == {
         "py_value": 8,
-        "other": dt.datetime(2026, 5, 25),
+        "other": dt.datetime.fromisoformat("2026-05-25"),
     }
     assert notebook_session(widget).get_state(["_variables"])["_variables"] == {
         "py_value": 8,
