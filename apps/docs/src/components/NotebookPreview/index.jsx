@@ -4,6 +4,29 @@ import styles from "./styles.module.css";
 
 const loadTimeout = 20_000;
 
+const plotPoints = [
+	[12, 68],
+	[18, 55],
+	[22, 75],
+	[27, 46],
+	[31, 63],
+	[36, 38],
+	[39, 54],
+	[45, 44],
+	[49, 72],
+	[54, 59],
+	[58, 79],
+	[63, 66],
+	[67, 74],
+	[70, 51],
+	[59, 36],
+	[66, 27],
+	[73, 42],
+	[78, 22],
+	[84, 35],
+	[89, 16],
+];
+
 function hasRenderedNotebook(root) {
 	const notebook = root?.querySelector("marimo-anywidget")?.shadowRoot?.querySelector(".pyobservablejs-notebook");
 	return Boolean(notebook?.querySelector("select") && notebook.querySelector("figure svg"));
@@ -51,11 +74,37 @@ export default function NotebookPreview({ children, className }) {
 			</div>
 			{loading ? (
 				<div className={styles.skeleton} role="status" aria-label="Loading notebook">
-					<span className={styles.title} />
-					<span className={styles.control} />
-					<span className={styles.summary} />
-					<span className={styles.legend} />
-					<span className={styles.chart} />
+					<span className={`${styles.shape} ${styles.title}`} />
+					<div className={styles.controlRow}>
+						<span className={`${styles.shape} ${styles.controlLabel}`} />
+						<span className={`${styles.shape} ${styles.control}`} />
+					</div>
+					<span className={`${styles.shape} ${styles.summary}`} />
+					<div className={styles.legend}>
+						<div className={styles.legendItem}>
+							<span className={`${styles.shape} ${styles.swatch}`} />
+							<span className={`${styles.shape} ${styles.legendLabel}`} />
+						</div>
+						<div className={styles.legendItem}>
+							<span className={`${styles.shape} ${styles.swatch}`} />
+							<span className={`${styles.shape} ${styles.legendLabel}`} />
+						</div>
+						<div className={styles.legendItem}>
+							<span className={`${styles.shape} ${styles.swatch}`} />
+							<span className={`${styles.shape} ${styles.legendLabel}`} />
+						</div>
+					</div>
+					<div className={styles.chart}>
+						<span className={`${styles.shape} ${styles.yAxisLabel}`} />
+						<div className={styles.plot}>
+							<div className={styles.points}>
+								{plotPoints.map(([left, top]) => (
+									<span className={styles.point} key={`${left}-${top}`} style={{ left: `${left}%`, top: `${top}%` }} />
+								))}
+							</div>
+						</div>
+						<span className={`${styles.shape} ${styles.xAxisLabel}`} />
+					</div>
 				</div>
 			) : null}
 			{status === "timeout" ? (
