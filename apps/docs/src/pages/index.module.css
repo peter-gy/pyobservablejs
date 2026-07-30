@@ -40,7 +40,6 @@
 }
 
 .heroLogo {
-	display: block;
 	height: auto;
 	justify-self: end;
 	width: clamp(12rem, 20vw, 17rem);
