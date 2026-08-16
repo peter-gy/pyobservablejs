@@ -26,7 +26,7 @@ Docusaurus workflow.
 Install the Python and JavaScript dependencies:
 
 ```sh
-uv sync --package pyobservablejs --group dev
+uv sync --frozen
 pnpm install
 ```
 
@@ -45,7 +45,7 @@ pnpm dev
 In another shell, point the Python widget at that server:
 
 ```sh
-OBSERVABLEJS_VITE_DEV_SERVER=http://127.0.0.1:5173 uv run --package pyobservablejs jupyter lab
+OBSERVABLEJS_VITE_DEV_SERVER=http://127.0.0.1:5173 uv run --frozen jupyter lab
 ```
 
 Use the local URL printed by Vite if it starts on another port.
@@ -107,7 +107,7 @@ affected workflow in a browser.
 Start JupyterLab in one shell:
 
 ```sh
-uv run --package pyobservablejs jupyter lab --no-browser --port 27273 --ServerApp.token='' --ServerApp.password=''
+uv run --frozen jupyter lab --no-browser --port 27273 --ServerApp.token='' --ServerApp.password=''
 ```
 
 Start the documentation server in another shell:
