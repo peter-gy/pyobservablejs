@@ -1,7 +1,7 @@
-import type { Cell, transpile } from "@observablehq/notebook-kit";
+import { toCell } from "@observablehq/notebook-kit";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { registerAttachments } from "../src/attachments";
-import { createRuntimeDefinition } from "../src/definition";
+import { createRuntimeDefinition, type RuntimeCellDefinition } from "../src/definition";
 import { createRuntime, createRuntimeCleanup, type NotebookOptions } from "../src/environment";
 
 const baseOptions: NotebookOptions = {
@@ -19,9 +19,8 @@ describe("runtime definitions", () => {
 		const runtime = createRuntime(root, document.createElement("div"), observableOptions, registry);
 		const notebookNames = new Set(["view"]);
 		const view = vi.fn((strings: TemplateStringsArray) => {
-			const node = document.createElement("div") as HTMLDivElement & { value: number };
+			const node = Object.assign(document.createElement("div"), { value: 42 });
 			node.textContent = strings[0];
-			node.value = 42;
 			return node;
 		});
 
@@ -34,7 +33,7 @@ describe("runtime definitions", () => {
 					variables: [],
 				},
 				createRuntimeDefinition(
-					{ id: 1, mode: "ojs", value: "" } as Cell,
+					toCell({ id: 1, mode: "ojs", value: "" }),
 					{
 						body: "function viewof$panel(view) { return view`<div>${1}</div>`; }",
 						inputs: ["view"],
@@ -43,7 +42,7 @@ describe("runtime definitions", () => {
 						autodisplay: true,
 						autoview: true,
 						automutable: false,
-					} as ReturnType<typeof transpile>,
+					} satisfies RuntimeCellDefinition,
 					{ notebookNames, runtimeProfile: "observable" },
 				),
 			);
@@ -65,7 +64,7 @@ describe("runtime definitions", () => {
 		try {
 			runtime.main.define("display", [], () => display);
 			const definition = createRuntimeDefinition(
-				{ id: 1, mode: "ojs", value: "" } as Cell,
+				toCell({ id: 1, mode: "ojs", value: "" }),
 				{
 					body: "function panel(display) { return display('ready'); }",
 					inputs: ["display"],
@@ -74,7 +73,7 @@ describe("runtime definitions", () => {
 					autodisplay: true,
 					autoview: false,
 					automutable: false,
-				} as ReturnType<typeof transpile>,
+				} satisfies RuntimeCellDefinition,
 				{ notebookNames, runtimeProfile: "observable" },
 			);
 			expect(definition.display).toBe(false);
@@ -97,7 +96,7 @@ describe("runtime definitions", () => {
 	test("keeps Notebook Kit display helpers for self-defined display and view cells", () => {
 		const notebookNames = new Set(["display", "view"]);
 		const displayDefinition = createRuntimeDefinition(
-			{ id: 1, mode: "ojs", value: "" } as Cell,
+			toCell({ id: 1, mode: "ojs", value: "" }),
 			{
 				body: "function display(display) { return display('ready'); }",
 				inputs: ["display"],
@@ -106,11 +105,11 @@ describe("runtime definitions", () => {
 				autodisplay: true,
 				autoview: false,
 				automutable: false,
-			} as ReturnType<typeof transpile>,
+			} satisfies RuntimeCellDefinition,
 			{ notebookNames, runtimeProfile: "observable" },
 		);
 		const viewDefinition = createRuntimeDefinition(
-			{ id: 2, mode: "ojs", value: "" } as Cell,
+			toCell({ id: 2, mode: "ojs", value: "" }),
 			{
 				body: "function viewof$view(view) { return view`<button>ready</button>`; }",
 				inputs: ["view"],
@@ -119,7 +118,7 @@ describe("runtime definitions", () => {
 				autodisplay: true,
 				autoview: true,
 				automutable: false,
-			} as ReturnType<typeof transpile>,
+			} satisfies RuntimeCellDefinition,
 			{ notebookNames, runtimeProfile: "observable" },
 		);
 
@@ -129,7 +128,7 @@ describe("runtime definitions", () => {
 
 	test("keeps Notebook Kit display helpers in the Notebook Kit profile", () => {
 		const definition = createRuntimeDefinition(
-			{ id: 1, mode: "ojs", value: "" } as Cell,
+			toCell({ id: 1, mode: "ojs", value: "" }),
 			{
 				body: "function panel(display) { return display('ready'); }",
 				inputs: ["display"],
@@ -138,7 +137,7 @@ describe("runtime definitions", () => {
 				autodisplay: true,
 				autoview: false,
 				automutable: false,
-			} as ReturnType<typeof transpile>,
+			} satisfies RuntimeCellDefinition,
 			{ notebookNames: new Set(["display"]) },
 		);
 
@@ -146,17 +145,14 @@ describe("runtime definitions", () => {
 	});
 
 	test("awaits template inputs without replacing the previous value receiver", async () => {
-		const definition = createRuntimeDefinition(
-			{ id: 1, mode: "md", value: "" } as Cell,
-			{
-				body: 'function(md, gain) { return {receiver: this, text: md([`${this ? "updated" : "initial"} ${gain}`])}; }',
-				inputs: ["md", "gain"],
-				outputs: [],
-				autodisplay: true,
-				autoview: false,
-				automutable: false,
-			} as ReturnType<typeof transpile>,
-		);
+		const definition = createRuntimeDefinition(toCell({ id: 1, mode: "md", value: "" }), {
+			body: 'function(md, gain) { return {receiver: this, text: md([`${this ? "updated" : "initial"} ${gain}`])}; }',
+			inputs: ["md", "gain"],
+			outputs: [],
+			autodisplay: true,
+			autoview: false,
+			automutable: false,
+		} satisfies RuntimeCellDefinition);
 		const renderMarkdown = (parts: readonly string[]) => parts[0];
 		const previous = { rendered: true };
 

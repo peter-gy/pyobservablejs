@@ -1,3 +1,5 @@
+import type { CellSpec } from "@observablehq/notebook-kit";
+import type { WireValue } from "@pyobservablejs/runtime";
 import { describe, expect, test } from "vite-plus/test";
 import {
 	alertText,
@@ -29,7 +31,7 @@ const cells = [
   return input;
 }`,
 	},
-];
+] satisfies CellSpec[];
 
 describe("NotebookView composition", () => {
 	test("full and selected views share interactions and keep derived readback isolated", async () => {
@@ -427,7 +429,7 @@ function rangeWithValue(el: HTMLElement, value: number): HTMLInputElement | unde
 	);
 }
 
-function sameArray(value: unknown, expected: number[]): true | undefined {
+function sameArray(value: WireValue | undefined, expected: number[]): true | undefined {
 	return Array.isArray(value) && value.length === expected.length && value.every((item, i) => item === expected[i])
 		? true
 		: undefined;

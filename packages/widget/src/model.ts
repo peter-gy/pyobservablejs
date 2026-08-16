@@ -1,24 +1,36 @@
 import type { RenderProps } from "@anywidget/types";
-import { deserialize, toNotebook, type Notebook } from "@observablehq/notebook-kit";
-import type { AttachmentInfo, NotebookGraph, NotebookOptions } from "@pyobservablejs/runtime";
+import { deserialize, toNotebook, type Notebook, type NotebookSpec } from "@observablehq/notebook-kit";
+import {
+	isBoolean,
+	isCallable,
+	isObjectValue,
+	isString,
+	type AttachmentInfo,
+	type NotebookGraph,
+	type NotebookOptions,
+	type WireRecord,
+	type WireValue,
+	type WireValues,
+} from "@pyobservablejs/runtime";
+import { isNotebookTheme } from "./themes";
 
 export type WidgetModel = {
 	_model_role?: "session";
 	_runtime_profile?: "notebook-kit" | "observable";
 	_session?: string | null;
 	_cell_indexes?: number[] | null;
-	_capture_state?: boolean;
+	_capture_state?: WireValue;
 	_source?: string;
-	_spec?: Record<string, unknown>;
-	theme?: unknown;
+	_spec?: NotebookSpec;
+	theme?: WireValue;
 	_attachments?: Record<string, AttachmentInfo>;
 	_base_url?: string;
-	_variables?: Record<string, unknown>;
-	_view_values?: Record<string, unknown>;
+	_variables?: WireValues;
+	_view_values?: WireValues;
 	_variable_update?: {
 		seq?: number;
 		kind?: "set" | "replace";
-		values?: Record<string, unknown>;
+		values?: WireValues;
 	};
 	_readback?: {
 		revision: number;
@@ -31,7 +43,7 @@ export type WidgetModel = {
 			{
 				revision: number;
 				status: "pending" | "success" | "error";
-				values: Record<string, unknown>;
+				values: WireValues;
 				errors: Array<{
 					name: string;
 					message: string;
@@ -67,20 +79,19 @@ export const SESSION_MODEL_CHANGE_EVENTS = [
 
 export const VIEW_MODEL_CHANGE_EVENTS = ["change:_session", "change:_cell_indexes"] as const;
 
-export function isRecord(value: unknown): value is Record<string, unknown> {
-	return value !== null && typeof value === "object" && !Array.isArray(value);
+export function isRecord<Value>(value: Value): value is Value & WireRecord {
+	return isObjectValue(value) && !isCallable(value) && !Array.isArray(value);
 }
 
 export function readCaptureState(model: AnyWidgetModel): boolean {
 	const value = model.get("_capture_state");
 	if (value === undefined) return true;
-	if (typeof value !== "boolean") throw new Error("NotebookView capture state must be a boolean");
+	if (!isBoolean(value)) throw new Error("NotebookView capture state must be a boolean");
 	return value;
 }
 
-export function readNotebookVariables(model: AnyWidgetModel): Record<string, unknown> {
-	const value = model.get("_variables");
-	return isRecord(value) ? value : {};
+export function readNotebookVariables(model: AnyWidgetModel): WireValues {
+	return readWireValues(model.get("_variables"));
 }
 
 export function readNotebookFromModel(model: AnyWidgetModel): Notebook {
@@ -90,10 +101,7 @@ export function readNotebookFromModel(model: AnyWidgetModel): Notebook {
 	return theme === undefined ? notebook : { ...notebook, theme };
 }
 
-export function readNotebookOptions(
-	model: AnyWidgetModel,
-	variablesOverride?: Record<string, unknown>,
-): NotebookOptions {
+export function readNotebookOptions(model: AnyWidgetModel, variablesOverride?: WireValues): NotebookOptions {
 	const wireOptions = model.get("_options");
 	return {
 		attachments: model.get("_attachments") ?? {},
@@ -106,17 +114,17 @@ export function readNotebookOptions(
 
 function readNotebookTheme(model: AnyWidgetModel): Notebook["theme"] | undefined {
 	const theme = model.get("theme");
-	if (typeof theme === "string") return theme as Notebook["theme"];
+	if (isNotebookTheme(theme)) return theme;
 	if (!isRecord(theme)) return undefined;
 	const light = theme.light;
 	const dark = theme.dark;
-	if (typeof light === "string" && typeof dark === "string") return { light, dark } as Notebook["theme"];
+	if (isNotebookTheme(light) && isNotebookTheme(dark)) return { light, dark };
 	return undefined;
 }
 
 export function readNotebookSessionRef(model: AnyWidgetModel): string {
 	const sessionRef = model.get("_session");
-	if (typeof sessionRef !== "string" || !sessionRef) {
+	if (!isString(sessionRef) || !sessionRef) {
 		throw new Error("NotebookView has no Notebook session reference");
 	}
 	return sessionRef;
@@ -129,12 +137,11 @@ export function readSelectedCellIndexes(model: AnyWidgetModel): Set<number> | nu
 	if (rawIndexes.length === 0) throw new Error("NotebookView cell indexes must not be empty");
 	const indexes = new Set<number>();
 	for (const value of rawIndexes) {
-		if (!Number.isInteger(value) || (value as number) < 0) {
+		if (!Number.isInteger(value) || value < 0) {
 			throw new Error("NotebookView cell indexes must be non-negative integers");
 		}
-		const index = value as number;
-		if (indexes.has(index)) throw new Error("NotebookView cell indexes must be unique");
-		indexes.add(index);
+		if (indexes.has(value)) throw new Error("NotebookView cell indexes must be unique");
+		indexes.add(value);
 	}
 	return indexes;
 }
@@ -142,5 +149,14 @@ export function readSelectedCellIndexes(model: AnyWidgetModel): Set<number> | nu
 export function readCellKeys(model: AnyWidgetModel): string[] {
 	const value = model.get("_cell_keys");
 	if (!Array.isArray(value)) return [];
-	return value.map((item) => (typeof item === "string" ? item : ""));
+	return value.map((item) => (isString(item) ? item : ""));
+}
+
+export function readWireValues(value: WireValues | WireValue | undefined): WireValues {
+	if (!isRecord(value)) return {};
+	const values: WireValues = {};
+	for (const [name, item] of Object.entries(value)) {
+		if (item !== undefined) values[name] = item;
+	}
+	return values;
 }

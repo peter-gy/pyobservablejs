@@ -88,11 +88,11 @@ export function createCellOutput(wrapper: HTMLElement, cell: Cell): HTMLDivEleme
 	return output;
 }
 
-export function createTopLevelError(error: unknown): HTMLElement {
+export function createTopLevelError<Cause>(cause: Cause): HTMLElement {
 	const pre = document.createElement("pre");
 	pre.className = CLASS_NAMES.error;
 	pre.setAttribute("role", "alert");
-	pre.textContent = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+	pre.textContent = cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause);
 	return pre;
 }
 

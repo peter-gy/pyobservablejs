@@ -1,4 +1,5 @@
 import { library, type NotebookRuntime } from "@observablehq/notebook-kit/runtime";
+import { isCallable, isString } from "./value-kind";
 
 export type RuntimeScope = {
 	document: Document;
@@ -68,7 +69,7 @@ function observeDark(root: HTMLElement, generators: RuntimeGenerators): ReturnTy
 function createScopedDocument(root: HTMLElement): Document {
 	const customProperties = new Map<PropertyKey, unknown>();
 	const ownerDocument = root.ownerDocument;
-	const scoped = new Proxy(ownerDocument, {
+	const scoped: Document = new Proxy(ownerDocument, {
 		get(target, property) {
 			if (customProperties.has(property)) return customProperties.get(property);
 			if (property === "querySelector") return (selectors: string) => scopedQuerySelector(root, selectors);
@@ -90,21 +91,21 @@ function createScopedDocument(root: HTMLElement): Document {
 			if (property === "addEventListener") return root.addEventListener.bind(root);
 			if (property === "removeEventListener") return root.removeEventListener.bind(root);
 			if (property === "dispatchEvent") return root.dispatchEvent.bind(root);
-			const value = Reflect.get(target, property, target);
-			return typeof value === "function" ? value.bind(target) : value;
+			if (!isKeyOf(target, property)) return undefined;
+			const value = target[property];
+			return isCallable(value) ? value.bind(target) : value;
 		},
 		set(_target, property, value) {
 			customProperties.set(property, value);
 			return true;
 		},
 	});
-	return scoped as Document;
+	return scoped;
 }
 
 function scopedActiveElement(root: HTMLElement): Element | null {
 	const treeRoot = root.getRootNode();
-	const active =
-		"activeElement" in treeRoot ? (treeRoot as Document | ShadowRoot).activeElement : root.ownerDocument.activeElement;
+	const active = isActiveElementRoot(treeRoot) ? treeRoot.activeElement : root.ownerDocument.activeElement;
 	return active && (active === root || root.contains(active)) ? active : null;
 }
 
@@ -115,7 +116,7 @@ function scopedQuerySelector(root: HTMLElement, selectors: string): Element | nu
 
 function scopedQuerySelectorAll(root: HTMLElement, selectors: string): NodeListOf<Element> {
 	const matches = [...(root.matches(selectors) ? [root] : []), ...root.querySelectorAll(selectors)];
-	return nodeListLike(() => matches);
+	return nodeListLike(root.ownerDocument, () => matches);
 }
 
 function scopedGetElementById(root: HTMLElement, id: string): Element | null {
@@ -127,7 +128,7 @@ function scopedGetElementById(root: HTMLElement, id: string): Element | null {
 }
 
 function scopedGetElementsByClassName(root: HTMLElement, classNames: string): HTMLCollectionOf<Element> {
-	return htmlCollectionLike(() => {
+	return htmlCollectionLike(root.ownerDocument, () => {
 		const rootMatches = matchesClassNames(root, classNames) ? [root] : [];
 		return [...rootMatches, ...root.getElementsByClassName(classNames)];
 	});
@@ -135,7 +136,7 @@ function scopedGetElementsByClassName(root: HTMLElement, classNames: string): HT
 
 function scopedGetElementsByTagName(root: HTMLElement, name: string): HTMLCollectionOf<Element> {
 	const normalized = name.toLowerCase();
-	return htmlCollectionLike(() =>
+	return htmlCollectionLike(root.ownerDocument, () =>
 		scopedElements(root).filter((element) => normalized === "*" || element.localName === normalized),
 	);
 }
@@ -145,7 +146,7 @@ function scopedGetElementsByTagNameNS(
 	namespace: string | null,
 	name: string,
 ): HTMLCollectionOf<Element> {
-	return htmlCollectionLike(() =>
+	return htmlCollectionLike(root.ownerDocument, () =>
 		scopedElements(root).filter(
 			(element) =>
 				(namespace === "*" || element.namespaceURI === namespace) && (name === "*" || element.localName === name),
@@ -154,13 +155,15 @@ function scopedGetElementsByTagNameNS(
 }
 
 function scopedGetElementsByName(root: HTMLElement, name: string): NodeListOf<HTMLElement> {
-	return nodeListLike(() =>
+	return nodeListLike(root.ownerDocument, () =>
 		scopedElements(root).filter((element): element is HTMLElement => element.getAttribute("name") === name),
 	);
 }
 
 function scopedCollection(root: HTMLElement, selectors: string): HTMLCollectionOf<Element> {
-	return htmlCollectionLike(() => scopedElements(root).filter((element) => element.matches(selectors)));
+	return htmlCollectionLike(root.ownerDocument, () =>
+		scopedElements(root).filter((element) => element.matches(selectors)),
+	);
 }
 
 function scopedElements(root: HTMLElement): Element[] {
@@ -172,66 +175,73 @@ function matchesClassNames(element: Element, classNames: string): boolean {
 	return names.length > 0 && names.every((name) => element.classList.contains(name));
 }
 
-function nodeListLike<T extends Element>(resolve: () => T[]): NodeListOf<T> {
-	let collection: NodeListOf<T>;
-	collection = new Proxy(
-		{},
-		{
-			get(_target, property) {
-				if (property === "length") return resolve().length;
-				if (property === "item") return (index: number) => resolve()[index] ?? null;
-				if (property === "entries") return () => resolve().entries();
-				if (property === "keys") return () => resolve().keys();
-				if (property === "values" || property === Symbol.iterator) return () => resolve().values();
-				if (property === "forEach") {
-					return (callback: (value: T, index: number, list: NodeListOf<T>) => void, thisArg?: unknown) =>
-						resolve().forEach((value, index) => callback.call(thisArg, value, index, collection));
-				}
-				if (property === Symbol.toStringTag) return "NodeList";
-				const index = collectionIndex(property);
-				return index === undefined ? undefined : resolve()[index];
-			},
-			has(_target, property) {
-				const index = collectionIndex(property);
-				return index === undefined
-					? property === "length" || property === "item" || property === Symbol.iterator
-					: index < resolve().length;
-			},
+type CollectionCallbackReceiver<T extends Element> = Parameters<NodeListOf<T>["forEach"]>[1];
+
+function nodeListLike<T extends Element>(document: Document, resolve: () => T[]): NodeListOf<T> {
+	const target = document.createDocumentFragment().querySelectorAll<T>("*");
+	const collection: NodeListOf<T> = new Proxy(target, {
+		get(_target, property) {
+			if (property === "length") return resolve().length;
+			if (property === "item") return (index: number) => resolve()[index] ?? null;
+			if (property === "entries") return () => resolve().entries();
+			if (property === "keys") return () => resolve().keys();
+			if (property === "values" || property === Symbol.iterator) return () => resolve().values();
+			if (property === "forEach") {
+				return (
+					callback: (value: T, index: number, list: NodeListOf<T>) => void,
+					thisArg?: CollectionCallbackReceiver<T>,
+				) => resolve().forEach((value, index) => callback.call(thisArg, value, index, collection));
+			}
+			if (property === Symbol.toStringTag) return "NodeList";
+			const index = collectionIndex(property);
+			return index === undefined ? undefined : resolve()[index];
 		},
-	) as NodeListOf<T>;
+		has(_target, property) {
+			const index = collectionIndex(property);
+			return index === undefined
+				? property === "length" || property === "item" || property === Symbol.iterator
+				: index < resolve().length;
+		},
+	});
 	return collection;
 }
 
-function htmlCollectionLike<T extends Element>(resolve: () => T[]): HTMLCollectionOf<T> {
-	return new Proxy(
-		{},
-		{
-			get(_target, property) {
-				if (property === "length") return resolve().length;
-				if (property === "item") return (index: number) => resolve()[index] ?? null;
-				if (property === "namedItem") {
-					return (name: string) =>
-						name === ""
-							? null
-							: (resolve().find((element) => element.id === name || element.getAttribute("name") === name) ?? null);
-				}
-				if (property === Symbol.iterator) return () => resolve().values();
-				if (property === Symbol.toStringTag) return "HTMLCollection";
-				const index = collectionIndex(property);
-				return index === undefined ? undefined : resolve()[index];
-			},
-			has(_target, property) {
-				const index = collectionIndex(property);
-				return index === undefined
-					? property === "length" || property === "item" || property === "namedItem" || property === Symbol.iterator
-					: index < resolve().length;
-			},
+function htmlCollectionLike(document: Document, resolve: () => Element[]): HTMLCollectionOf<Element> {
+	const target: HTMLCollectionOf<Element> = document.createElement("div").getElementsByTagName("*");
+	return new Proxy(target, {
+		get(_target, property) {
+			if (property === "length") return resolve().length;
+			if (property === "item") return (index: number) => resolve()[index] ?? null;
+			if (property === "namedItem") {
+				return (name: string) =>
+					name === ""
+						? null
+						: (resolve().find((element) => element.id === name || element.getAttribute("name") === name) ?? null);
+			}
+			if (property === Symbol.iterator) return () => resolve().values();
+			if (property === Symbol.toStringTag) return "HTMLCollection";
+			const index = collectionIndex(property);
+			return index === undefined ? undefined : resolve()[index];
 		},
-	) as HTMLCollectionOf<T>;
+		has(_target, property) {
+			const index = collectionIndex(property);
+			return index === undefined
+				? property === "length" || property === "item" || property === "namedItem" || property === Symbol.iterator
+				: index < resolve().length;
+		},
+	});
 }
 
 function collectionIndex(property: PropertyKey): number | undefined {
-	if (typeof property !== "string" || !/^(0|[1-9]\d*)$/.test(property)) return undefined;
+	if (!isString(property) || !/^(0|[1-9]\d*)$/.test(property)) return undefined;
 	const index = Number(property);
 	return Number.isSafeInteger(index) ? index : undefined;
+}
+
+function isKeyOf<Target extends object>(target: Target, property: PropertyKey): property is keyof Target {
+	return property in target;
+}
+
+function isActiveElementRoot(root: Node): root is Document | ShadowRoot {
+	return "activeElement" in root;
 }

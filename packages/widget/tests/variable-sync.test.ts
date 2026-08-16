@@ -12,6 +12,10 @@ import {
 	widget,
 } from "./testing";
 
+type PromiseValuedForm = HTMLFormElement & {
+	value: Promise<Element>;
+};
+
 const objectValuedSelectSource = `
 Select = (items, options = {}) => {
   const form = document.createElement("form");
@@ -339,15 +343,15 @@ viewof image = {
 
 		widget.render(renderProps(view, el, controller.signal, host));
 
-		const form = await waitFor(() => el.querySelector("form") ?? undefined);
+		const form = await waitFor(() => el.querySelector<PromiseValuedForm>("form") ?? undefined);
 		expect(await waitFor(() => (variableValue(view, "imageTag") === "IMG" ? "IMG" : undefined))).toBe("IMG");
 		expect(variableValue(view, "image")).toEqual({
 			__observablejs_type__: "element",
 			value: "img",
 		});
-		expect((form as HTMLFormElement & { value: unknown }).value).toBeInstanceOf(Promise);
+		expect(form.value).toBeInstanceOf(Promise);
 		await waitFor(() => (hasRendered(view) ? true : undefined));
-		expect((form as HTMLFormElement & { value: unknown }).value).toBeInstanceOf(Promise);
+		expect(form.value).toBeInstanceOf(Promise);
 		expect(variableValue(view, "imageTag")).toBe("IMG");
 		controller.abort();
 	});

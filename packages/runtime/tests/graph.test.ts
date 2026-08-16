@@ -4,6 +4,7 @@ import {
 	createRuntime,
 	createRuntimeCleanup,
 	createRuntimeDefinition,
+	isString,
 	registerAttachments,
 	runtimeDocument,
 } from "../src";
@@ -173,7 +174,7 @@ export default define;
 					const definition = createRuntimeDefinition(cell.cell, cell.definition, {
 						document: runtimeDocument(runtime),
 					});
-					if (typeof cell.definition.body === "string") {
+					if (isString(cell.definition.body)) {
 						const url = `data:text/javascript;charset=utf-8,export default (${encodeURIComponent(cell.definition.body)})`;
 						definition.body = (await import(/* @vite-ignore */ url)).default;
 					}

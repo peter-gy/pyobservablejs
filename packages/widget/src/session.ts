@@ -5,6 +5,7 @@ import {
 	notebookViewNamesFromAnalysis,
 	type NotebookAnalysis,
 	type NotebookOptions,
+	type WireValues,
 } from "@pyobservablejs/runtime";
 import { createNotebookRoot, prepareWidgetShell } from "./dom";
 import { readNotebookOptions, type AnyWidgetModel } from "./model";
@@ -23,9 +24,9 @@ type NotebookRuntimeSessionOptions = {
 	notebook: Notebook;
 	analysis: NotebookAnalysis;
 	signal: AbortSignal;
-	onInputReset(variables: Record<string, unknown>): void;
+	onInputReset(variables: WireValues): void;
 	onInput(names: ReadonlySet<string>): void;
-	variablesOverride?: Record<string, unknown>;
+	variablesOverride?: WireValues;
 };
 
 export type NotebookRuntimeSession = {

@@ -38,3 +38,24 @@ export {
 	toWireValue,
 } from "./values";
 export { isViewTarget, readViewValue, writeViewValue } from "./views";
+export {
+	isBigInt,
+	isBoolean,
+	isCallable,
+	isNumber,
+	isObjectValue,
+	isString,
+	isSymbol,
+	javaScriptKind,
+} from "./value-kind";
+export type { JavaScriptKind } from "./value-kind";
+export type {
+	RevivedRecord,
+	RevivedValue,
+	VariableBuiltins,
+	VariableValue,
+	WireRecord,
+	WireValue,
+	WireValues,
+} from "./values";
+export type { RuntimeValue } from "@observablehq/runtime";

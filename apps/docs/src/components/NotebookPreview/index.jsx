@@ -74,28 +74,28 @@ export default function NotebookPreview({ children, className }) {
 			</div>
 			{loading ? (
 				<div className={styles.skeleton} role="status" aria-label="Loading notebook">
-					<span className={`${styles.shape} ${styles.title}`} />
+					<span className={`${styles.placeholder} ${styles.title}`} />
 					<div className={styles.controlRow}>
-						<span className={`${styles.shape} ${styles.controlLabel}`} />
-						<span className={`${styles.shape} ${styles.control}`} />
+						<span className={`${styles.placeholder} ${styles.controlLabel}`} />
+						<span className={`${styles.placeholder} ${styles.control}`} />
 					</div>
-					<span className={`${styles.shape} ${styles.summary}`} />
+					<span className={`${styles.placeholder} ${styles.summary}`} />
 					<div className={styles.legend}>
 						<div className={styles.legendItem}>
-							<span className={`${styles.shape} ${styles.swatch}`} />
-							<span className={`${styles.shape} ${styles.legendLabel}`} />
+							<span className={`${styles.placeholder} ${styles.swatch}`} />
+							<span className={`${styles.placeholder} ${styles.legendLabel}`} />
 						</div>
 						<div className={styles.legendItem}>
-							<span className={`${styles.shape} ${styles.swatch}`} />
-							<span className={`${styles.shape} ${styles.legendLabel}`} />
+							<span className={`${styles.placeholder} ${styles.swatch}`} />
+							<span className={`${styles.placeholder} ${styles.legendLabel}`} />
 						</div>
 						<div className={styles.legendItem}>
-							<span className={`${styles.shape} ${styles.swatch}`} />
-							<span className={`${styles.shape} ${styles.legendLabel}`} />
+							<span className={`${styles.placeholder} ${styles.swatch}`} />
+							<span className={`${styles.placeholder} ${styles.legendLabel}`} />
 						</div>
 					</div>
 					<div className={styles.chart}>
-						<span className={`${styles.shape} ${styles.yAxisLabel}`} />
+						<span className={`${styles.placeholder} ${styles.yAxisLabel}`} />
 						<div className={styles.plot}>
 							<div className={styles.points}>
 								{plotPoints.map(([left, top]) => (
@@ -103,7 +103,7 @@ export default function NotebookPreview({ children, className }) {
 								))}
 							</div>
 						</div>
-						<span className={`${styles.shape} ${styles.xAxisLabel}`} />
+						<span className={`${styles.placeholder} ${styles.xAxisLabel}`} />
 					</div>
 				</div>
 			) : null}

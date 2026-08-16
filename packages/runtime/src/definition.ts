@@ -1,14 +1,22 @@
 import { transpile, type Cell } from "@observablehq/notebook-kit";
 import type { NotebookRuntime } from "@observablehq/notebook-kit/runtime";
 import type { RuntimeProfile } from "./environment";
+import { isCallable, isString } from "./value-kind";
 
 type NotebookKitDefinition = ReturnType<typeof transpile>;
-type RuntimeBody = (...values: unknown[]) => unknown;
 type RuntimeDefinition = Parameters<NotebookRuntime["define"]>[1];
+type RuntimeBody = RuntimeDefinition["body"];
+type RuntimeReceiver = ThisParameterType<RuntimeBody>;
+type RuntimeArguments = Parameters<RuntimeBody>;
 
 export type RuntimeCellDefinition = Omit<NotebookKitDefinition, "body"> & {
 	body: NotebookKitDefinition["body"] | RuntimeBody;
+	display?: RuntimeDefinition["display"];
 };
+
+interface DisplayOverride {
+	display?: false;
+}
 
 export type RuntimeDefinitionOptions = {
 	document?: Document;
@@ -34,7 +42,7 @@ export function createRuntimeDefinition(
 		autodisplay: definition.autodisplay,
 		autoview: definition.autoview,
 		automutable: definition.automutable,
-		display: (definition as RuntimeDefinition).display,
+		display: definition.display,
 		...observableDisplayOverride(definition, notebookNames, runtimeProfile),
 	};
 }
@@ -66,24 +74,30 @@ export function unprefix(value: string, prefix: string): string {
 }
 
 function compileRuntimeBody(source: RuntimeCellDefinition["body"], globals: { document?: Document }): RuntimeBody {
-	if (typeof source === "function") return source as RuntimeBody;
-	const entries = Object.entries(globals).filter((entry) => entry[1] !== undefined) as [string, unknown][];
-	const names = entries.map(([name]) => name);
-	const values = entries.map(([, value]) => value);
-	return new Function(...names, `"use strict"; return (${source});`)(...values) as RuntimeBody;
+	if (!isString(source)) return source;
+	const names: string[] = [];
+	const values: Document[] = [];
+	if (globals.document !== undefined) {
+		names.push("document");
+		values.push(globals.document);
+	}
+	const body: unknown = new Function(...names, `"use strict"; return (${source});`)(...values);
+	if (!isCallable(body)) throw new TypeError("Notebook cell body must compile to a function");
+	// SAFETY: Notebook Kit supplies a cell function whose inputs and result are JavaScript runtime values.
+	return body as RuntimeBody;
 }
 
 function awaitTemplateInputs(body: RuntimeBody): RuntimeBody {
-	return async function (this: unknown, ...values: unknown[]) {
-		return body.call(this, ...(await Promise.all(values)));
-	} as RuntimeBody;
+	return async function (this: RuntimeReceiver, ...values: RuntimeArguments) {
+		return body.call(this, ...(await Promise.all(values.map((value) => Promise.resolve(value)))));
+	};
 }
 
 function observableDisplayOverride(
 	definition: RuntimeCellDefinition,
 	notebookNames: ReadonlySet<string> | undefined,
 	profile: RuntimeProfile | undefined,
-): { display?: false } {
+): DisplayOverride {
 	if (profile !== "observable" || !notebookNames) return {};
 	const ownNames = definitionNames(definition);
 	const usesNotebookDisplayName = (definition.inputs ?? []).some(

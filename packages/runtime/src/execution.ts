@@ -39,5 +39,9 @@ export function observeRuntimeVariable(
 	name: string,
 	observer: RuntimeVariableObserver,
 ): RuntimeVariable {
-	return runtime.main.variable(observer).define([name], (value: unknown) => value);
+	return runtime.main.variable(observer).define([name], identity);
+}
+
+function identity<Value>(value: Value): Value {
+	return value;
 }

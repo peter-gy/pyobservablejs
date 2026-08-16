@@ -1,7 +1,7 @@
-import type { Cell, transpile } from "@observablehq/notebook-kit";
+import { toCell } from "@observablehq/notebook-kit";
 import { describe, expect, test } from "vite-plus/test";
 import { type AttachmentRegistry } from "../src/attachments";
-import { createRuntimeDefinition } from "../src/definition";
+import { createRuntimeDefinition, type RuntimeCellDefinition } from "../src/definition";
 import { createRuntime, createRuntimeCleanup, type NotebookOptions } from "../src/environment";
 import { runtimeDocument } from "../src/scope";
 
@@ -44,8 +44,7 @@ describe("runtime document scope", () => {
 		const fixture = createScopedDocumentFixture();
 		const globalTitle = document.title;
 		try {
-			const scopedWithState = fixture.scoped as Document & { current?: number };
-			scopedWithState.current = 4;
+			const scopedWithState = Object.assign(fixture.scoped, { current: 4 });
 			fixture.scoped.title = "Scoped title";
 
 			expect(scopedWithState.current).toBe(4);
@@ -87,7 +86,7 @@ describe("runtime document scope", () => {
 		const fixture = createScopedDocumentFixture();
 		try {
 			const definition = createRuntimeDefinition(
-				{ id: 1, mode: "ojs", value: "" } as Cell,
+				toCell({ id: 1, mode: "ojs", value: "" }),
 				{
 					body: 'function(){ return document.querySelector(".root-marker")?.textContent; }',
 					inputs: [],
@@ -95,7 +94,7 @@ describe("runtime document scope", () => {
 					autodisplay: true,
 					autoview: false,
 					automutable: false,
-				} as ReturnType<typeof transpile>,
+				} satisfies RuntimeCellDefinition,
 				{ document: fixture.scoped },
 			);
 			expect(definition.body()).toBe("Inside");
