@@ -61,12 +61,13 @@ pnpm --filter @pyobservablejs/python build
 The root `pyproject.toml` defines a virtual uv workspace. The project metadata
 and Hatch configuration live in `packages/pyobservablejs/pyproject.toml`.
 The root `dev` group owns repository-wide Python tools: Ruff, ty, pytest,
-Pyrefly, marimo, and Jupyter. The `apps/docs` package owns Docusaurus and
-mdx-marimo. The Python package `dev` group owns Hatchling and watchfiles.
-Scope commands to the distribution:
+Pyrefly, marimo, and Jupyter. Run those tools from the workspace root. The
+`apps/docs` package owns Docusaurus and mdx-marimo. The Python package `dev`
+group owns Hatchling and watchfiles. Use the package selector for distribution
+metadata and builds:
 
 ```sh
-uv run --package pyobservablejs pytest -q packages/pyobservablejs/tests
+uv run --frozen pytest -q packages/pyobservablejs/tests
 make build
 uv version --package pyobservablejs --short
 ```

@@ -15,12 +15,13 @@ docs-serve: docs
 check:
 	$(VP) run check
 	$(VP) run -r test
-	uv run --package pyobservablejs ruff format --check .
-	uv run --package pyobservablejs ruff check
-	uv run --package pyobservablejs ty check packages/pyobservablejs scripts
-	uv run --package pyobservablejs pyrefly check --min-severity warn
+	uv lock --check --no-config
+	uv run --frozen ruff format --check .
+	uv run --frozen ruff check
+	uv run --frozen ty check packages/pyobservablejs scripts
+	uv run --frozen pyrefly check --min-severity warn
 	$(MAKE) build
-	uv run --package pyobservablejs pytest -q packages/pyobservablejs/tests
+	uv run --frozen pytest -q packages/pyobservablejs/tests
 	$(MAKE) docs
 	git diff --check
 

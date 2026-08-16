@@ -46,10 +46,10 @@ jobs:
       - name: Check Python formatting, linting, and types
         run: |
           uv lock --check
-          uv run --package pyobservablejs ruff format --check .
-          uv run --package pyobservablejs ruff check .
-          uv run --package pyobservablejs ty check packages/pyobservablejs scripts
-          uv run --package pyobservablejs pyrefly check --min-severity warn
+          uv run --frozen ruff format --check .
+          uv run --frozen ruff check .
+          uv run --frozen ty check packages/pyobservablejs scripts
+          uv run --frozen pyrefly check --min-severity warn
 
       - name: Check whitespace
         run: git diff --check
@@ -91,7 +91,7 @@ jobs:
       - name: Run Python tests
         env:
           UV_PYTHON: ${{ matrix.python-version }}
-        run: uv run --package pyobservablejs pytest -q packages/pyobservablejs/tests
+        run: uv run --frozen pytest -q packages/pyobservablejs/tests
 
   test-js:
     runs-on: ubuntu-latest
