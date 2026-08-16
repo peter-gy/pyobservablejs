@@ -5,8 +5,20 @@ import {
 	reviveSyncedValue,
 	sameWireValue,
 	toWireValue,
+	type WireValue,
 } from "../src/values";
+import { isObjectValue } from "../src/value-kind";
 import { writeViewValue } from "../src/views";
+
+interface NestedValue {
+	leaf?: boolean;
+	next?: NestedValue;
+}
+
+interface CyclicValue {
+	ready: boolean;
+	self?: CyclicValue;
+}
 
 describe("wire values", () => {
 	test("round trips synced numbers, dates, maps, and sets", () => {
@@ -37,7 +49,7 @@ describe("wire values", () => {
 
 		expect(builtins.when()).toEqual(new Date("2026-05-23"));
 		expect(builtins.raw()).toEqual(new Uint8Array([97, 98, 99]));
-		expect(Number.isNaN(builtins.invalid() as number)).toBe(true);
+		expect(builtins.invalid()).toBeNaN();
 	});
 
 	test("revives Python bigints without losing integer precision", () => {
@@ -80,7 +92,7 @@ describe("wire values", () => {
 	});
 
 	test("summarizes deeply nested values before stack overflow", () => {
-		let value: Record<string, unknown> = { leaf: true };
+		let value: NestedValue = { leaf: true };
 		for (let index = 0; index < 1_000; index++) value = { next: value };
 
 		expect(hasWireSummary(toWireValue(value))).toBe(true);
@@ -88,7 +100,7 @@ describe("wire values", () => {
 
 	test("summarizes deep objects without invoking constructor accessors", () => {
 		let constructorRead = false;
-		let value: Record<string, unknown> = { leaf: true };
+		let value: NestedValue = { leaf: true };
 		Object.defineProperty(value, "constructor", {
 			get() {
 				constructorRead = true;
@@ -192,9 +204,9 @@ describe("wire values", () => {
 	});
 
 	test("compares cyclic wire values without stringifying them", () => {
-		const left: Record<string, unknown> = { ready: true };
+		const left: CyclicValue = { ready: true };
 		left.self = left;
-		const right: Record<string, unknown> = { ready: true };
+		const right: CyclicValue = { ready: true };
 		right.self = right;
 
 		expect(sameWireValue(left, right)).toBe(true);
@@ -203,10 +215,9 @@ describe("wire values", () => {
 	});
 });
 
-function hasWireSummary(value: unknown): boolean {
-	if (!value || typeof value !== "object") return false;
+function hasWireSummary(value: WireValue): boolean {
+	if (!isObjectValue(value)) return false;
 	if (Array.isArray(value)) return value.some(hasWireSummary);
-	const record = value as Record<string, unknown>;
-	if (record.__observablejs_type__ === "summary") return true;
-	return Object.values(record).some(hasWireSummary);
+	if (value.__observablejs_type__ === "summary") return true;
+	return Object.values(value).some((entry) => entry !== undefined && hasWireSummary(entry));
 }

@@ -10,14 +10,18 @@ catalog:
   "@mermaid-js/layout-elk": 0.1.9
   "@observablehq/notebook-kit": ^2.1.9
   "@observablehq/parser": ^6.1.0
+  "@observablehq/runtime": 6.0.0
   "@observablehq/stdlib": ^5.8.8
   "@orama/plugin-docusaurus-v3": 3.1.18
+  "@oxlint/plugins": 1.78.0
   "@shikijs/core": ^4.3.1
   "@shikijs/engine-javascript": ^4.3.1
   "@shikijs/langs": ^4.3.1
   "@shikijs/themes": ^4.3.1
   "@types/node": ^22.20.1
   jsdom: 29.1.1
+  oxlint: 1.78.0
+  oxlint-tsgolint: 7.0.2001
   typescript: ^6.0.3
   vite: npm:@voidzero-dev/vite-plus-core@0.2.4
   vite-plus: 0.2.4
@@ -26,8 +30,24 @@ minimumReleaseAge: 1440
 minimumReleaseAgeStrict: true
 minimumReleaseAgeExclude:
   - anywidget-bundle@0.0.1
+  - serialize-javascript@7.0.5
+  - uuid@11.1.1
+  - brace-expansion@1.1.18 || 2.1.4
+  - undici@7.29.0
+  - fast-uri@3.1.5
+  - mermaid@11.16.1
+  - js-yaml@3.15.1 || 4.3.1
+  - dompurify@3.4.13
+  - nanoid@3.3.18
 
 overrides:
+  dompurify@<=3.4.12: 3.4.13
+  fast-uri@>=3.0.0 <3.1.5: 3.1.5
+  js-yaml@>=4.0.0 <4.3.1: 4.3.1
+  nanoid@<3.3.18: 3.3.18
+  serialize-javascript@<=7.0.4: 7.0.5
+  undici@>=7.0.0 <7.29.0: 7.29.0
+  uuid@<11.1.1: 11.1.1
   vite: "catalog:"
 
 peerDependencyRules:

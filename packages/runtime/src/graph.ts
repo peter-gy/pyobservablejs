@@ -221,7 +221,7 @@ function cellGraphFromError(
 	notebookCell: Notebook["cells"][number],
 	index: number,
 	key: string,
-	error: unknown,
+	cause: unknown,
 ): CellGraph {
 	return {
 		id: notebookCell.id,
@@ -236,7 +236,7 @@ function cellGraphFromError(
 		autodisplay: false,
 		autoview: false,
 		automutable: false,
-		error: error instanceof Error ? `${error.name}: ${error.message}` : String(error),
+		error: cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause),
 	};
 }
 

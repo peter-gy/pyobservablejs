@@ -1,11 +1,15 @@
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
+import type { RuntimeValue } from "@observablehq/runtime";
 import {
 	createDuckDBClient,
 	createFileAttachment,
+	loadSQLiteModule,
 	registerAttachments,
 	SQLiteDatabaseClient,
 } from "../src/attachments";
 import { createRuntime, createRuntimeCleanup, type NotebookOptions } from "../src/environment";
+import { toWireValue } from "../src/values";
+import { isCallable, isObjectValue } from "../src/value-kind";
 
 const baseOptions: NotebookOptions = {
 	attachments: {},
@@ -33,12 +37,10 @@ test("shares concurrent DuckDB blob URL creation", async () => {
 		url: vi.fn(async () => "https://static.example/data.csv"),
 		blob: vi.fn(() => new Promise<Blob>((resolve) => (resolveBlob = resolve))),
 	};
-	const DuckDBClient = {
-		of: vi.fn((sources: Record<string, unknown>) => sources),
-	};
+	const DuckDBClient = createDuckDBIdentityClient();
 
 	try {
-		const sources = createDuckDBClient(DuckDBClient, registry).of({ data: file }) as Record<string, typeof file>;
+		const sources = createDuckDBClient(DuckDBClient, registry).of({ data: file });
 		const first = sources.data.url();
 		const second = sources.data.url();
 		expect(file.blob).toHaveBeenCalledOnce();
@@ -112,8 +114,8 @@ describe("runtime attachments", () => {
 			},
 		});
 		const FileAttachment = createFileAttachment("", registry);
-		const client = { dialect: "sqlite" };
-		const open = vi.spyOn(SQLiteDatabaseClient, "open").mockResolvedValue(client as unknown as SQLiteDatabaseClient);
+		const client = new SQLiteDatabaseClient({ exec: () => [] });
+		const open = vi.spyOn(SQLiteDatabaseClient, "open").mockResolvedValue(client);
 
 		try {
 			const file = FileAttachment("chinook.db");
@@ -125,22 +127,38 @@ describe("runtime attachments", () => {
 		}
 	});
 
+	test("keeps SQLite attachment methods out of wire serialization", () => {
+		const registry = registerAttachments({
+			"chinook.db": {
+				url: "data:application/octet-stream;base64,eA==",
+				mimeType: "application/octet-stream",
+			},
+		});
+
+		try {
+			const wire = toWireValue(createFileAttachment("", registry)("chinook.db"));
+			if (!isObjectValue(wire) || Array.isArray(wire)) throw new TypeError("FileAttachment must serialize as a record");
+			expect(wire.sqlite).toBeUndefined();
+		} finally {
+			registry.cleanup();
+		}
+	});
+
 	test("exposes SQLite loading on imported Observable file attachments", async () => {
 		const registry = registerAttachments({});
 		const root = document.createElement("div");
 		const el = document.createElement("div");
 		root.append(el);
 		const runtime = createRuntime(root, el, baseOptions, registry);
-		const client = { dialect: "sqlite" };
-		const open = vi.spyOn(SQLiteDatabaseClient, "open").mockResolvedValue(client as unknown as SQLiteDatabaseClient);
+		const client = new SQLiteDatabaseClient({ exec: () => [] });
+		const open = vi.spyOn(SQLiteDatabaseClient, "open").mockResolvedValue(client);
 
 		try {
 			const importedFileAttachment = runtime.runtime.fileAttachments((name: string) =>
 				name === "chinook.db" ? { url: "data:application/octet-stream;base64,eA==" } : null,
 			);
-			const file = importedFileAttachment("chinook.db") as {
-				sqlite(): Promise<SQLiteDatabaseClient>;
-			};
+			const file = importedFileAttachment("chinook.db");
+			if (!("sqlite" in file) || !isCallable(file.sqlite)) throw new TypeError("FileAttachment.sqlite is unavailable");
 
 			await expect(file.sqlite()).resolves.toBe(client);
 			expect(open).toHaveBeenCalledWith(expect.objectContaining({ name: "chinook.db" }));
@@ -156,7 +174,11 @@ describe("runtime attachments", () => {
 		const el = document.createElement("div");
 		root.append(el);
 		const missingLoaderRuntime = createRuntime(root, document.createElement("div"), baseOptions, registry);
-		missingLoaderRuntime.main.define("missingSQLiteProbe", ["SQLite"], (SQLite: unknown) => SQLite);
+		missingLoaderRuntime.main.define(
+			"missingSQLiteProbe",
+			["SQLite"],
+			(SQLite: Awaited<ReturnType<typeof loadSQLiteModule>>) => SQLite,
+		);
 		await expect(missingLoaderRuntime.main.value("missingSQLiteProbe")).rejects.toThrow(
 			"SQLite requires a caller-provided sql.js initSqlJs loader",
 		);
@@ -180,15 +202,23 @@ describe("runtime attachments", () => {
 		const retryRuntime = createRuntime(root, document.createElement("div"), baseOptions, registry);
 
 		try {
-			runtime.main.define("failedSQLiteProbe", ["SQLite"], (SQLite: unknown) => SQLite);
+			runtime.main.define(
+				"failedSQLiteProbe",
+				["SQLite"],
+				(SQLite: Awaited<ReturnType<typeof loadSQLiteModule>>) => SQLite,
+			);
 			await expect(runtime.main.value("failedSQLiteProbe")).rejects.toThrow("loader unavailable");
 
 			runtime.main.define(
 				"sqliteDatabaseClientProbe",
 				["SQLiteDatabaseClient"],
-				(SQLiteDatabaseClient: unknown) => SQLiteDatabaseClient,
+				(Client: typeof SQLiteDatabaseClient) => Client,
 			);
-			retryRuntime.main.define("sqliteProbe", ["SQLite"], (SQLite: unknown) => SQLite);
+			retryRuntime.main.define(
+				"sqliteProbe",
+				["SQLite"],
+				(SQLite: Awaited<ReturnType<typeof loadSQLiteModule>>) => SQLite,
+			);
 			await expect(runtime.main.value("sqliteDatabaseClientProbe")).resolves.toBe(SQLiteDatabaseClient);
 			await expect(retryRuntime.main.value("sqliteProbe")).resolves.toMatchObject({ Database: expect.any(Function) });
 			expect(initSqlJs).toHaveBeenCalledTimes(2);
@@ -200,13 +230,13 @@ describe("runtime attachments", () => {
 		}
 	});
 	test("describes SQLite tables and columns through the compatibility API", async () => {
-		const db = {
+		const db: ConstructorParameters<typeof SQLiteDatabaseClient>[0] = {
 			exec: vi.fn((query: string) =>
 				query.includes("pragma_table_list")
 					? [{ columns: ["schema", "name"], values: [[null, "tracks"]] }]
 					: [{ columns: ["name", "type", "notnull"], values: [["TrackId", "INTEGER", 1]] }],
 			),
-		} as ConstructorParameters<typeof SQLiteDatabaseClient>[0];
+		};
 		const client = new SQLiteDatabaseClient(db);
 
 		const tables = await client.describe();
@@ -238,14 +268,12 @@ describe("runtime attachments", () => {
 			},
 		});
 		const FileAttachment = createFileAttachment("", registry);
-		const DuckDBClient = {
-			of: vi.fn((sources: Record<string, unknown>) => sources),
-		};
+		const DuckDBClient = createDuckDBIdentityClient();
 		const wrappedDuckDBClient = createDuckDBClient(DuckDBClient, registry);
 
 		try {
 			const file = FileAttachment("data.csv");
-			const sources = wrappedDuckDBClient.of({ data: file }) as Record<string, typeof file>;
+			const sources = wrappedDuckDBClient.of({ data: file });
 			await expect(sources.data.url()).resolves.toBe("blob:registered-data");
 			await expect(sources.data.url()).resolves.toBe("blob:registered-data");
 			expect(createObjectURL).toHaveBeenCalledOnce();
@@ -271,13 +299,11 @@ describe("runtime attachments", () => {
 			url: vi.fn(async () => "https://static.example/stores.csv"),
 			blob: vi.fn(async () => new Blob(["x"], { type: "text/csv" })),
 		};
-		const DuckDBClient = {
-			of: vi.fn((sources: Record<string, unknown>) => sources),
-		};
+		const DuckDBClient = createDuckDBIdentityClient();
 		const wrappedDuckDBClient = createDuckDBClient(DuckDBClient, registry);
 
 		try {
-			const sources = wrappedDuckDBClient.of({ stores: file }) as Record<string, typeof file>;
+			const sources = wrappedDuckDBClient.of({ stores: file });
 			await expect(sources.stores.url()).resolves.toBe("blob:imported-data");
 			expect(file.blob).toHaveBeenCalledOnce();
 			expect(file.url).not.toHaveBeenCalled();
@@ -304,13 +330,11 @@ describe("runtime attachments", () => {
 			url: vi.fn(async () => "https://static.example/stores.csv"),
 			blob: vi.fn(() => new Promise<Blob>((resolve) => (resolveBlob = resolve))),
 		};
-		const DuckDBClient = {
-			of: vi.fn((sources: Record<string, unknown>) => sources),
-		};
+		const DuckDBClient = createDuckDBIdentityClient();
 		const wrappedDuckDBClient = createDuckDBClient(DuckDBClient, registry);
 
 		try {
-			const sources = wrappedDuckDBClient.of({ stores: file }) as Record<string, typeof file>;
+			const sources = wrappedDuckDBClient.of({ stores: file });
 			const url = sources.stores.url();
 			registry.cleanup();
 			resolveBlob(new Blob(["x"], { type: "text/csv" }));
@@ -343,13 +367,11 @@ describe("runtime attachments", () => {
 			url: vi.fn(async () => "https://static.example/stores.csv"),
 			blob: vi.fn(async () => new Blob(["x"], { type: "text/csv" })),
 		};
-		const DuckDBClient = {
-			of: vi.fn((sources: Record<string, unknown>) => sources),
-		};
+		const DuckDBClient = createDuckDBIdentityClient();
 		const wrappedDuckDBClient = createDuckDBClient(DuckDBClient, registry);
 
 		try {
-			const sources = wrappedDuckDBClient.of({ stores: file }) as Record<string, typeof file>;
+			const sources = wrappedDuckDBClient.of({ stores: file });
 
 			await expect(sources.stores.url()).resolves.toBe("https://static.example/stores.csv");
 			expect(revokeObjectURL).toHaveBeenCalledWith("blob:disposed-data");
@@ -373,22 +395,51 @@ describe("runtime attachments", () => {
 			blob: vi.fn(async () => new Blob(["x"], { type: "text/csv" })),
 		};
 		const DuckDBClient = {
-			of: vi.fn((sources: unknown) => sources),
+			of: vi.fn((sources: RuntimeValue) => {
+				if (!isRuntimeRecord(sources)) throw new TypeError("DuckDB sources must be a named record");
+				return sources;
+			}),
 		};
 		const wrappedDuckDBClient = createDuckDBClient(DuckDBClient, registry);
 
 		try {
-			const sources = wrappedDuckDBClient.of([["named", file], file, { name: "custom", file }]) as Record<
-				string,
-				typeof file | { file: typeof file }
-			>;
+			const sources = wrappedDuckDBClient.of([["named", file], file, { name: "custom", file }]);
+			const named = requireUrlSource(sources.named);
+			const papers = requireUrlSource(sources.papers);
+			const custom = sources.custom;
+			if (!isRuntimeRecord(custom)) throw new TypeError("Custom DuckDB source must be a record");
 
-			await expect((sources.named as typeof file).url()).resolves.toBe("blob:imported-data");
-			await expect((sources.papers as typeof file).url()).resolves.toBe("blob:imported-data");
-			await expect((sources.custom as { file: typeof file }).file.url()).resolves.toBe("blob:imported-data");
+			await expect(named.url()).resolves.toBe("blob:imported-data");
+			await expect(papers.url()).resolves.toBe("blob:imported-data");
+			await expect(requireUrlSource(custom.file).url()).resolves.toBe("blob:imported-data");
 		} finally {
 			registry.cleanup();
 			Object.defineProperty(URL, "createObjectURL", { configurable: true, value: originalCreateObjectURL });
 		}
 	});
 });
+
+function createDuckDBIdentityClient() {
+	return {
+		of<Sources>(sources: Sources): Sources {
+			return sources;
+		},
+	};
+}
+
+interface UrlSource {
+	url(): Promise<string>;
+}
+
+function isRuntimeRecord(value: RuntimeValue): value is Record<string, RuntimeValue> {
+	return isObjectValue(value) && !isCallable(value) && !Array.isArray(value);
+}
+
+function requireUrlSource(value: RuntimeValue | undefined): UrlSource {
+	if (value !== undefined && isUrlSource(value)) return value;
+	throw new TypeError("DuckDB source must provide url()");
+}
+
+function isUrlSource(value: RuntimeValue): value is UrlSource {
+	return isRuntimeRecord(value) && isCallable(value.url);
+}

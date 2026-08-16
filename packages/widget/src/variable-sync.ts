@@ -9,12 +9,16 @@ import {
 	sameWireValue,
 	toWireValue,
 	writeViewValue as writeRawViewValue,
+	isNumber,
 	type NotebookOptions,
+	type RevivedValue,
 	type RuntimeVariablesSync,
 	type ViewTarget,
 	type ViewWriteResult,
+	type WireValue,
+	type WireValues,
 } from "@pyobservablejs/runtime";
-import { isRecord, type AnyWidgetModel, type WidgetModel } from "./model";
+import { isRecord, readWireValues, type AnyWidgetModel, type WidgetModel } from "./model";
 import {
 	structuredCellError,
 	type CellErrorWire,
@@ -29,9 +33,9 @@ type RuntimeVariablesSyncOptions = {
 	options: NotebookOptions;
 	viewNames: Set<string>;
 	signal: AbortSignal;
-	onReset(variables: Record<string, unknown>): void;
+	onReset(variables: WireValues): void;
 	onInput?(names: ReadonlySet<string>): void;
-	writeViewValue?(view: ViewTarget, value: unknown): ViewWriteResult;
+	writeViewValue?(view: ViewTarget, value: RevivedValue): ViewWriteResult;
 };
 
 export type RuntimeVariablesController = RuntimeVariablesSync & {
@@ -39,15 +43,15 @@ export type RuntimeVariablesController = RuntimeVariablesSync & {
 };
 
 export type RuntimeViewSync = {
-	register(name: string, value: unknown): void;
+	register<Value>(name: string, value: Value): void;
 };
 
 export type CellVariableSync = {
 	configure(names: string[], display: boolean): void;
 	pending(channel: string): void;
-	fulfilled(channel: string, name?: string, value?: unknown): void;
-	rejected(channel: string, error: unknown, phase: ErrorPhase, variable?: string): void;
-	fail(error: unknown, phase: ErrorPhase, variable?: string): void;
+	fulfilled(channel: string, name?: string, value?: WireValue): void;
+	rejected<Cause>(channel: string, cause: Cause, phase: ErrorPhase, variable?: string): void;
+	fail<Cause>(cause: Cause, phase: ErrorPhase, variable?: string): void;
 };
 
 const programmaticViewWrites = new WeakSet<ViewTarget>();
@@ -64,7 +68,7 @@ export function createCellStateSync({
 	const statuses = new Map<string, "pending" | "success" | "error">();
 	const generations = new Map<string, number>();
 	const tokens = new Map<string, ReadbackToken>();
-	const values = new Map<string, { name: string; value: unknown }>();
+	const values = new Map<string, { name: string; value: WireValue }>();
 	const errors = new Map<string, CellErrorWire>();
 	let revision = -1;
 
@@ -114,7 +118,10 @@ export function createCellStateSync({
 			const token = tokenFor(channel);
 			if (!token || tokens.get(channel) !== token) return;
 			statuses.set(channel, "success");
-			if (name !== undefined) values.set(channel, { name, value });
+			if (name !== undefined) {
+				if (value === undefined) throw new Error("Captured cell values must be serialized before settlement");
+				values.set(channel, { name, value });
+			}
 			errors.delete(channel);
 			settleIfReady(token);
 		},
@@ -159,7 +166,7 @@ export function createRuntimeViewSync({
 	const cleanups = new Map<string, () => void>();
 	let sharedValues = readViewValues(model);
 
-	const publish = (name: string, value: unknown) => {
+	const publish = (name: string, value: WireValue) => {
 		if (sameWireValue(sharedValues[name], value) && Object.prototype.hasOwnProperty.call(sharedValues, name)) return;
 		onInput(new Set([name]));
 		sharedValues = { ...sharedValues, [name]: value };
@@ -310,22 +317,26 @@ function notifyViewStateClears(
 	for (const listener of listeners) listener(clearedNames);
 }
 
-function hasSharedViewValue(values: Record<string, unknown>, name: string): boolean {
+function hasSharedViewValue(values: WireValues, name: string): boolean {
 	return Object.prototype.hasOwnProperty.call(values, name) && isWritableSyncedViewValue(values[name]);
 }
 
 function readVariableUpdate(model: AnyWidgetModel): NonNullable<WidgetModel["_variable_update"]> {
 	const value = model.get("_variable_update");
-	return isRecord(value) ? (value as NonNullable<WidgetModel["_variable_update"]>) : {};
+	if (!isRecord(value)) return {};
+	return {
+		seq: isNumber(value.seq) && Number.isSafeInteger(value.seq) && value.seq >= 0 ? value.seq : undefined,
+		kind: value.kind === "set" || value.kind === "replace" ? value.kind : undefined,
+		values: value.values === undefined ? undefined : readWireValues(value.values),
+	};
 }
 
-function readViewValues(model: AnyWidgetModel): Record<string, unknown> {
-	const value = model.get("_view_values");
-	return isRecord(value) ? value : {};
+function readViewValues(model: AnyWidgetModel): WireValues {
+	return readWireValues(model.get("_view_values"));
 }
 
 /** Dispatch Observable input events without publishing them as interactions. */
-export function writeProgrammaticViewValue(view: ViewTarget, value: unknown): ViewWriteResult {
+export function writeProgrammaticViewValue(view: ViewTarget, value: RevivedValue): ViewWriteResult {
 	programmaticViewWrites.add(view);
 	try {
 		return writeRawViewValue(view, value);

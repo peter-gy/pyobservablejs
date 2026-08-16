@@ -1,5 +1,5 @@
 import type { RenderProps } from "@anywidget/types";
-import { analyzeNotebook, notebookAffectedIndexes } from "@pyobservablejs/runtime";
+import { analyzeNotebook, notebookAffectedIndexes, type WireValues } from "@pyobservablejs/runtime";
 import { notebookViewIndexes, renderNotebookView } from "./composition";
 import { createTopLevelError } from "./dom";
 import {
@@ -15,7 +15,7 @@ import {
 import { ViewReadback, type ReadbackAttempt } from "./readback";
 import { openNotebookRuntimeSession } from "./session";
 
-type Rerender = (variables?: Record<string, unknown>) => void;
+type Rerender = (variables?: WireValues) => void;
 
 export function renderNotebookViewModel(props: RenderProps<WidgetModel>): void {
 	let readback: ViewReadback;
@@ -34,14 +34,12 @@ export function renderNotebookViewModel(props: RenderProps<WidgetModel>): void {
 		const attemptSignal = AbortSignal.any([props.signal, attemptController.signal]);
 		const attempt = readback.start();
 		const isCurrent = () => !attemptSignal.aborted && readback.isCurrent(attempt);
-		void renderCurrentView(props, attemptSignal, resetAndRerender, readback, attempt, variables).catch(
-			(error: unknown) => {
-				if (!isCurrent()) return;
-				props.el.replaceChildren(createTopLevelError(error));
-				readback.fail(attempt, error, "rendering");
-				attemptController.abort();
-			},
-		);
+		void renderCurrentView(props, attemptSignal, resetAndRerender, readback, attempt, variables).catch((cause) => {
+			if (!isCurrent()) return;
+			props.el.replaceChildren(createTopLevelError(cause));
+			readback.fail(attempt, cause, "rendering");
+			attemptController.abort();
+		});
 	};
 	const invalidateAndRerender = () => {
 		readback.invalidate();
@@ -69,7 +67,7 @@ async function renderCurrentView(
 	onInputReset: Rerender,
 	readback: ViewReadback,
 	attempt: ReadbackAttempt,
-	variablesOverride?: Record<string, unknown>,
+	variablesOverride?: WireValues,
 ): Promise<void> {
 	const requestedIndexes = readSelectedCellIndexes(props.model);
 	const sessionRef = readNotebookSessionRef(props.model);

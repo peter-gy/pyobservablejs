@@ -14,6 +14,7 @@ import {
 	type NotebookAnalysis,
 	type NotebookOptions,
 	type RuntimeCellDefinition,
+	type RuntimeValue,
 } from "@pyobservablejs/runtime";
 import { createCellOutput, createTopLevelError, renderSource } from "./dom";
 import type { CellVariableSync, RuntimeViewSync } from "./variable-sync";
@@ -21,6 +22,8 @@ import type { CellVariableSync, RuntimeViewSync } from "./variable-sync";
 type RuntimeDefinition = Parameters<NotebookRuntime["define"]>[1];
 type RuntimeObserver = Parameters<NotebookRuntime["main"]["variable"]>[0];
 type DisplayObserver = ReturnType<typeof observe>;
+type ObservedValue = Parameters<DisplayObserver["fulfilled"]>[0];
+type ObservedCause = Parameters<DisplayObserver["rejected"]>[0];
 type DefinitionInput = { definition: RuntimeCellDefinition } | { error: unknown };
 
 export type CellRenderTarget = {
@@ -166,7 +169,7 @@ function createRuntimeInputObserver(
 	return (state, runtimeDefinition) => {
 		const runtimeObserver = observer(state, runtimeDefinition);
 		const fulfilled = runtimeObserver.fulfilled.bind(runtimeObserver);
-		runtimeObserver.fulfilled = (value: unknown) => {
+		runtimeObserver.fulfilled = (value: ObservedValue) => {
 			if (isViewTarget(value)) viewSync.register(viewName, value);
 			fulfilled(value);
 		};
@@ -193,7 +196,7 @@ function renderPythonVariableCell(
 ): void {
 	const definition: RuntimeDefinition = {
 		id: cell.id,
-		body: (...values: unknown[]) =>
+		body: (...values: RuntimeValue[]) =>
 			names.length === 1 ? values[0] : Object.fromEntries(names.map((name, index) => [name, values[index]])),
 		inputs: names,
 		outputs: [],
@@ -238,7 +241,7 @@ function createVisibleCellObserver(
 			pending();
 		};
 		const fulfilled = observer.fulfilled.bind(observer);
-		observer.fulfilled = (value: unknown) => {
+		observer.fulfilled = (value: ObservedValue) => {
 			const viewName = viewVariableName(definition);
 			if (viewName) viewSync.register(viewName, value);
 			fulfilled(value);
@@ -254,10 +257,10 @@ function createVisibleCellObserver(
 			}
 		};
 		const rejected = observer.rejected.bind(observer);
-		observer.rejected = (error: unknown) => {
-			rejected(error);
+		observer.rejected = (cause: ObservedCause) => {
+			rejected(cause);
 			if (!renderFailed && sync) {
-				sync.rejected("display", error, "evaluation", displayName ?? undefined);
+				sync.rejected("display", cause, "evaluation", displayName ?? undefined);
 			}
 		};
 		return observer;
@@ -267,19 +270,19 @@ function createVisibleCellObserver(
 function safeObserve(
 	state: DisplayState,
 	definition: RuntimeDefinition,
-	onRenderError?: (error: unknown) => void,
+	onRenderError?: (cause: ObservedCause) => void,
 ): DisplayObserver {
-	const observer = observe(state, definition) as DisplayObserver;
+	const observer = observe(state, definition);
 	const fulfilled = observer.fulfilled.bind(observer);
 	const rejected = observer.rejected.bind(observer);
 	return {
 		...observer,
 		pending: observer.pending.bind(observer),
-		fulfilled(value: unknown) {
+		fulfilled(value: ObservedValue) {
 			renderSafely(state, () => fulfilled(value), onRenderError);
 		},
-		rejected(error: unknown) {
-			renderSafely(state, () => rejected(error), onRenderError);
+		rejected(cause: ObservedCause) {
+			renderSafely(state, () => rejected(cause), onRenderError);
 		},
 	};
 }
@@ -290,7 +293,7 @@ function observeWithoutVisibilityNode(state: DisplayState, definition: RuntimeDe
 	return observer;
 }
 
-function renderSafely(state: DisplayState, render: () => void, onError?: (error: unknown) => void): void {
+function renderSafely(state: DisplayState, render: () => void, onError?: (cause: ObservedCause) => void): void {
 	try {
 		render();
 	} catch (error) {
@@ -299,12 +302,12 @@ function renderSafely(state: DisplayState, render: () => void, onError?: (error:
 	}
 }
 
-function createInspectFallback(document: Document, error: unknown): HTMLDivElement {
+function createInspectFallback(document: Document, cause: ObservedCause): HTMLDivElement {
 	const node = document.createElement("div");
 	node.className = "observablehq";
 	const value = node.appendChild(document.createElement("span"));
 	value.className = "observablehq--inspect";
-	value.textContent = `Unable to inspect value: ${error instanceof Error ? `${error.name}: ${error.message}` : String(error)}`;
+	value.textContent = `Unable to inspect value: ${cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause)}`;
 	return node;
 }
 
@@ -314,15 +317,15 @@ function createSyncObserver(sync: CellVariableSync, name: string): RuntimeObserv
 		pending() {
 			sync.pending(channel);
 		},
-		fulfilled(value: unknown) {
+		fulfilled(value: ObservedValue) {
 			try {
 				sync.fulfilled(channel, name, toWireValue(value));
 			} catch (error) {
 				sync.rejected(channel, error, "serialization", name);
 			}
 		},
-		rejected(error: unknown) {
-			sync.rejected(channel, error, "evaluation", name);
+		rejected(cause: ObservedCause) {
+			sync.rejected(channel, cause, "evaluation", name);
 		},
 	};
 }

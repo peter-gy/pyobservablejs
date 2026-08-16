@@ -1,6 +1,18 @@
 import { defineConfig } from "vite-plus";
 
-const generated = [
+const ignoredPaths = [
+	".agent/**",
+	".agents/**",
+	".claude/**",
+	".codex/**",
+	".continue/**",
+	".cursor/**",
+	".gemini/**",
+	".opencode/**",
+	".pi/**",
+	".roo/**",
+	".windsurf/**",
+	"tools/oxlint/anti-slop/**",
 	"**/*.har",
 	"**/*.html",
 	"dist/**",
@@ -12,7 +24,7 @@ const generated = [
 
 export default defineConfig({
 	fmt: {
-		ignorePatterns: generated,
+		ignorePatterns: ignoredPaths,
 		printWidth: 120,
 		semi: true,
 		useTabs: true,
@@ -22,14 +34,32 @@ export default defineConfig({
 			correctness: "error",
 			perf: "error",
 		},
-		ignorePatterns: generated,
-		jsPlugins: [{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" }],
+		ignorePatterns: ignoredPaths,
+		jsPlugins: [
+			{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" },
+			{ name: "anti-slop", specifier: "./tools/oxlint/anti-slop/index.ts" },
+		],
 		options: {
 			typeAware: true,
 			typeCheck: true,
 		},
 		plugins: ["typescript", "unicorn", "import"],
 		rules: {
+			"anti-slop/no-chained-type-assertions": "error",
+			"anti-slop/no-conditional-empty-object-spread": "error",
+			"anti-slop/no-known-value-widening": "error",
+			"anti-slop/no-module-mocking": "error",
+			"anti-slop/no-object-parameters": "error",
+			"anti-slop/no-reflect-apply": "error",
+			"anti-slop/no-reflect-get": "error",
+			"anti-slop/no-runtime-typeof": "error",
+			"anti-slop/no-shape-in-symbol-names": "error",
+			"anti-slop/no-unknown-parameters": "error",
+			"anti-slop/no-unknown-returns": "error",
+			"anti-slop/no-unknown-type-aliases": "error",
+			"anti-slop/no-unsafe-dictionary-type": "error",
+			"anti-slop/no-widen-then-assert": "error",
+			"anti-slop/require-safety-comment-for-type-assertion": "error",
 			// Callback fields across the runtime and anywidget APIs are context-free.
 			// Treating them as methods creates false positives on every handoff.
 			"typescript/unbound-method": "off",

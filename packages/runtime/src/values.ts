@@ -1,3 +1,5 @@
+import { isBigInt, isBoolean, isCallable, isNumber, isObjectValue, isString, javaScriptKind } from "./value-kind";
+
 const TYPE_KEY = "__observablejs_type__";
 
 // anywidget traits carry JSON. __observablejs_type__ tags preserve values that
@@ -18,26 +20,60 @@ type WireCompareContext = {
 	nodes: number;
 };
 
-export function toWireValue(
-	value: unknown,
+export type WireValue = null | boolean | number | string | WireValue[] | WireRecord;
+
+export interface WireRecord {
+	[name: string]: WireValue | undefined;
+}
+
+export interface WireValues {
+	[name: string]: WireValue;
+}
+
+export type RevivedValue =
+	| undefined
+	| null
+	| boolean
+	| number
+	| string
+	| bigint
+	| Date
+	| Uint8Array
+	| RevivedValue[]
+	| RevivedRecord
+	| Map<RevivedValue, RevivedValue>
+	| Set<RevivedValue>;
+
+export interface RevivedRecord {
+	[name: string]: RevivedValue;
+}
+
+export type VariableValue = RevivedValue | Promise<RevivedValue>;
+
+export interface VariableBuiltins {
+	[name: string]: () => VariableValue;
+}
+
+export function toWireValue<Value>(
+	value: Value,
 	context: WireContext = { seen: new WeakMap(), nextId: 1, nodes: 0 },
-): unknown {
+): WireValue {
 	return toWireValueNode(value, context, 0);
 }
 
-function toWireValueNode(value: unknown, context: WireContext, depth: number): unknown {
+function toWireValueNode<Value>(value: Value, context: WireContext, depth: number): WireValue {
 	// Summarize live browser objects before trait sync attempts JSON cloning.
 	if (value === undefined) return { [TYPE_KEY]: "undefined" };
-	if (value === null || typeof value === "boolean" || typeof value === "string") return value;
-	if (typeof value === "number") {
+	if (value === null || isBoolean(value) || isString(value)) return value;
+	if (isNumber(value)) {
 		if (Number.isFinite(value)) return value;
 		if (Number.isNaN(value)) return { [TYPE_KEY]: "number", value: "NaN" };
 		return { [TYPE_KEY]: "number", value: value > 0 ? "Infinity" : "-Infinity" };
 	}
-	if (typeof value === "bigint") {
+	if (isBigInt(value)) {
 		return { [TYPE_KEY]: "bigint", value: value.toString() };
 	}
-	if (typeof value === "function") {
+	if (isCallable(value)) {
 		return { [TYPE_KEY]: "function", value: value.name || "anonymous" };
 	}
 	if (value instanceof Date) {
@@ -53,10 +89,10 @@ function toWireValueNode(value: unknown, context: WireContext, depth: number): u
 	if (value instanceof RegExp) {
 		return { [TYPE_KEY]: "regexp", value: String(value) };
 	}
-	if (typeof File !== "undefined" && value instanceof File) {
+	if (globalThis.File && value instanceof globalThis.File) {
 		return { [TYPE_KEY]: "file", name: value.name, size: value.size, mimeType: value.type };
 	}
-	if (typeof Blob !== "undefined" && value instanceof Blob) {
+	if (globalThis.Blob && value instanceof globalThis.Blob) {
 		return { [TYPE_KEY]: "blob", size: value.size, mimeType: value.type };
 	}
 	if (value instanceof ArrayBuffer) {
@@ -65,54 +101,52 @@ function toWireValueNode(value: unknown, context: WireContext, depth: number): u
 	if (ArrayBuffer.isView(value)) {
 		return arrayBufferViewWireValue(value);
 	}
+	if (!isObjectValue(value)) return { [TYPE_KEY]: javaScriptKind(value), value: String(value) };
 	if (depth >= MAX_WIRE_DEPTH || context.nodes >= MAX_WIRE_NODES) return summarizeWireValue(value);
 	context.nodes += 1;
 	if (Array.isArray(value)) {
 		const ref = context.seen.get(value);
 		if (ref !== undefined) return { [TYPE_KEY]: "reference", value: ref };
 		context.seen.set(value, context.nextId++);
-		const items: unknown[] = [];
+		const items: WireValue[] = [];
 		for (let index = 0; index < value.length; index++) {
 			items.push(toWireValueNode(value[index], context, depth + 1));
 		}
 		return items;
 	}
-	if (isRecord(value)) {
-		const ref = context.seen.get(value);
-		if (ref !== undefined) return { [TYPE_KEY]: "reference", value: ref };
-		context.seen.set(value, context.nextId++);
-		if (value instanceof Map) {
-			return {
-				[TYPE_KEY]: "map",
-				value: Array.from(value, ([key, item]) => [
-					toWireValueNode(key, context, depth + 1),
-					toWireValueNode(item, context, depth + 1),
-				]),
-			};
-		}
-		if (value instanceof Set) {
-			return { [TYPE_KEY]: "set", value: Array.from(value, (item) => toWireValueNode(item, context, depth + 1)) };
-		}
-		const entries = Object.fromEntries(
-			ownEnumerableDataEntries(value).map(([key, item]) => [key, toWireValueNode(item, context, depth + 1)]),
-		);
-		if (TYPE_KEY in entries) return { [TYPE_KEY]: "object", value: entries };
-		return entries;
+	const ref = context.seen.get(value);
+	if (ref !== undefined) return { [TYPE_KEY]: "reference", value: ref };
+	context.seen.set(value, context.nextId++);
+	if (value instanceof Map) {
+		return {
+			[TYPE_KEY]: "map",
+			value: Array.from(value, ([key, item]) => [
+				toWireValueNode(key, context, depth + 1),
+				toWireValueNode(item, context, depth + 1),
+			]),
+		};
 	}
-	return { [TYPE_KEY]: typeof value, value: String(value) };
+	if (value instanceof Set) {
+		return { [TYPE_KEY]: "set", value: Array.from(value, (item) => toWireValueNode(item, context, depth + 1)) };
+	}
+	const entries = Object.fromEntries(
+		ownEnumerableDataEntries(value).map(([key, item]) => [key, toWireValueNode(item, context, depth + 1)]),
+	);
+	if (TYPE_KEY in entries) return { [TYPE_KEY]: "object", value: entries };
+	return entries;
 }
 
-function summarizeWireValue(value: unknown): Record<string, string> {
+function summarizeWireValue<Value>(value: Value): WireRecord {
 	if (Array.isArray(value)) return { [TYPE_KEY]: "summary", value: `Array(${value.length})` };
 	if (value instanceof Map) return { [TYPE_KEY]: "summary", value: `Map(${value.size})` };
 	if (value instanceof Set) return { [TYPE_KEY]: "summary", value: `Set(${value.size})` };
-	if (value !== null && typeof value === "object") {
+	if (isObjectValue(value)) {
 		return { [TYPE_KEY]: "summary", value: constructorName(value, "Object") };
 	}
-	return { [TYPE_KEY]: "summary", value: typeof value };
+	return { [TYPE_KEY]: "summary", value: javaScriptKind(value) };
 }
 
-function arrayBufferWireValue(value: ArrayBuffer): Record<string, unknown> {
+function arrayBufferWireValue(value: ArrayBuffer): WireRecord {
 	try {
 		return { [TYPE_KEY]: "arraybuffer", value: bytesToBase64(new Uint8Array(value)) };
 	} catch {
@@ -120,7 +154,7 @@ function arrayBufferWireValue(value: ArrayBuffer): Record<string, unknown> {
 	}
 }
 
-function arrayBufferViewWireValue(value: ArrayBufferView): Record<string, unknown> {
+function arrayBufferViewWireValue(value: ArrayBufferView): WireRecord {
 	try {
 		const bytes = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
 		return {
@@ -133,17 +167,17 @@ function arrayBufferViewWireValue(value: ArrayBufferView): Record<string, unknow
 	}
 }
 
-function constructorName(value: object, fallback: string): string {
+function constructorName<Value extends object>(value: Value, fallback: string): string {
 	const prototype = Object.getPrototypeOf(value);
 	const descriptor = prototype && Object.getOwnPropertyDescriptor(prototype, "constructor");
 	const constructor = descriptor && "value" in descriptor ? descriptor.value : undefined;
-	return typeof constructor === "function" && constructor.name ? constructor.name : fallback;
+	return isCallable(constructor) && constructor.name ? constructor.name : fallback;
 }
 
-export function reviveSyncedValue(value: unknown): unknown {
+export function reviveSyncedValue(value: WireValue | undefined): RevivedValue {
 	// Cell traits store values used for `viewof` writes and isolated dependencies.
 	if (Array.isArray(value)) return value.map(reviveSyncedValue);
-	if (!isRecord(value)) return value;
+	if (!isWireRecord(value)) return value;
 	const type = value[TYPE_KEY];
 	if (type === "undefined") return undefined;
 	if (type === "number") return reviveNumber(String(value.value));
@@ -151,15 +185,20 @@ export function reviveSyncedValue(value: unknown): unknown {
 	if (type === "datetime") return new Date(String(value.value));
 	if (type === "object") return revivePlainObject(value.value);
 	if (type === "map" && Array.isArray(value.value)) {
-		return new Map(value.value.map((entry) => (Array.isArray(entry) ? entry.map(reviveSyncedValue) : entry)));
+		const entries: Array<[RevivedValue, RevivedValue]> = [];
+		for (const entry of value.value) {
+			if (!Array.isArray(entry) || entry.length < 2) continue;
+			entries.push([reviveSyncedValue(entry[0]), reviveSyncedValue(entry[1])]);
+		}
+		return new Map(entries);
 	}
 	if (type === "set" && Array.isArray(value.value)) return new Set(value.value.map(reviveSyncedValue));
 	return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, reviveSyncedValue(item)]));
 }
 
-export function isWritableSyncedViewValue(value: unknown): boolean {
+export function isWritableSyncedViewValue(value: WireValue | undefined): boolean {
 	if (Array.isArray(value)) return value.every(isWritableSyncedViewValue);
-	if (!isRecord(value)) return true;
+	if (!isWireRecord(value)) return true;
 	const type = value[TYPE_KEY];
 	if (type === undefined) return Object.values(value).every(isWritableSyncedViewValue);
 	if (type === "number" || type === "bigint" || type === "datetime") return true;
@@ -170,16 +209,16 @@ export function isWritableSyncedViewValue(value: unknown): boolean {
 	return false;
 }
 
-export function sameWireValue(left: unknown, right: unknown): boolean {
+export function sameWireValue<Left, Right>(left: Left, right: Right): boolean {
 	return sameWireValueNode(left, right, { seen: new WeakMap(), nodes: 0 });
 }
 
-function sameWireValueNode(left: unknown, right: unknown, context: WireCompareContext): boolean {
+function sameWireValueNode<Left, Right>(left: Left, right: Right, context: WireCompareContext): boolean {
 	if (Object.is(left, right)) return true;
 	if (context.nodes++ > MAX_WIRE_COMPARE_NODES) return false;
 	if (left === null || right === null) return false;
-	if (typeof left !== typeof right) return false;
-	if (typeof left !== "object" || typeof right !== "object") return false;
+	if (javaScriptKind(left) !== javaScriptKind(right)) return false;
+	if (!isObjectValue(left) || !isObjectValue(right)) return false;
 	if (left instanceof Date || right instanceof Date) {
 		return left instanceof Date && right instanceof Date && left.getTime() === right.getTime();
 	}
@@ -195,7 +234,6 @@ function sameWireValueNode(left: unknown, right: unknown, context: WireCompareCo
 		}
 		return true;
 	}
-	if (!isRecord(left) || !isRecord(right)) return false;
 	if (seenWirePair(left, right, context)) return true;
 	const leftEntries = ownEnumerableDataEntries(left);
 	const rightEntries = new Map(ownEnumerableDataEntries(right));
@@ -209,13 +247,19 @@ function sameWireValueNode(left: unknown, right: unknown, context: WireCompareCo
 	return true;
 }
 
-function ownEnumerableDataEntries(value: object): Array<[string, unknown]> {
-	return Object.entries(Object.getOwnPropertyDescriptors(value)).flatMap(([key, descriptor]) =>
-		descriptor.enumerable && "value" in descriptor ? [[key, descriptor.value]] : [],
-	);
+function ownEnumerableDataEntries<Value extends object>(value: Value): Array<[string, Value[keyof Value]]> {
+	const entries: Array<[string, Value[keyof Value]]> = [];
+	for (const [key, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(value))) {
+		if (descriptor.enumerable && "value" in descriptor) entries.push([key, descriptor.value]);
+	}
+	return entries;
 }
 
-function seenWirePair(left: object, right: object, context: WireCompareContext): boolean {
+function seenWirePair<Left extends object, Right extends object>(
+	left: Left,
+	right: Right,
+	context: WireCompareContext,
+): boolean {
 	const seenRight = context.seen.get(left);
 	if (seenRight?.has(right)) return true;
 	if (seenRight) seenRight.add(right);
@@ -223,10 +267,10 @@ function seenWirePair(left: object, right: object, context: WireCompareContext):
 	return false;
 }
 
-export function createVariableBuiltins(variables: Record<string, unknown>): Record<string, () => unknown> {
+export function createVariableBuiltins(variables: WireValues): VariableBuiltins {
 	// Observable builtins are thunks. Cache revived Python values per variable.
-	const builtins: Record<string, () => unknown> = {};
-	const cache = new Map<string, unknown>();
+	const builtins: VariableBuiltins = {};
+	const cache = new Map<string, VariableValue>();
 	for (const [name, value] of Object.entries(variables)) {
 		builtins[name] = () => {
 			if (!cache.has(name)) cache.set(name, revivePythonValue(value));
@@ -236,11 +280,11 @@ export function createVariableBuiltins(variables: Record<string, unknown>): Reco
 	return builtins;
 }
 
-export function revivePythonValue(value: unknown): unknown {
+export function revivePythonValue(value: WireValue | undefined): VariableValue {
 	if (Array.isArray(value)) {
 		return resolveMaybePromises(value.map(revivePythonValue), (items) => items);
 	}
-	if (!isRecord(value)) return value;
+	if (!isWireRecord(value)) return value;
 
 	const type = value[TYPE_KEY];
 	if (type === "datetime") return new Date(String(value.value));
@@ -252,35 +296,42 @@ export function revivePythonValue(value: unknown): unknown {
 	const entries = Object.entries(value).map(([key, entry]) => [key, revivePythonValue(entry)] as const);
 	return resolveMaybePromises(
 		entries.map(([, entry]) => entry),
-		(items) => Object.fromEntries(entries.map(([key], index) => [key, items[index]])),
+		(items) => Object.fromEntries(entries.map(([key], index) => [key, items[index]])) satisfies RevivedRecord,
 	);
 }
 
-function resolveMaybePromises<T>(values: unknown[], finish: (values: unknown[]) => T): T | Promise<T> {
-	if (values.some(isPromiseLike)) return Promise.all(values).then(finish);
+function resolveMaybePromises<Result extends RevivedValue>(
+	values: VariableValue[],
+	finish: (values: RevivedValue[]) => Result,
+): Result | Promise<Result> {
+	if (!areRevivedValues(values)) return Promise.all(values.map((value) => Promise.resolve(value))).then(finish);
 	return finish(values);
 }
 
-function revivePlainObject(value: unknown): unknown {
-	if (!isRecord(value)) return reviveSyncedValue(value);
+function revivePlainObject(value: WireValue | undefined): RevivedValue {
+	if (!isWireRecord(value)) return reviveSyncedValue(value);
 	return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, reviveSyncedValue(item)]));
 }
 
-function revivePlainPythonObject(value: unknown): unknown {
-	if (!isRecord(value)) return revivePythonValue(value);
+function revivePlainPythonObject(value: WireValue | undefined): VariableValue {
+	if (!isWireRecord(value)) return revivePythonValue(value);
 	const entries = Object.entries(value).map(([key, entry]) => [key, revivePythonValue(entry)] as const);
 	return resolveMaybePromises(
 		entries.map(([, entry]) => entry),
-		(items) => Object.fromEntries(entries.map(([key], index) => [key, items[index]])),
+		(items) => Object.fromEntries(entries.map(([key], index) => [key, items[index]])) satisfies RevivedRecord,
 	);
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return value !== null && typeof value === "object" && !Array.isArray(value);
+function isWireRecord<Value>(value: Value): value is Value & WireRecord {
+	return isObjectValue(value) && !isCallable(value) && !Array.isArray(value);
 }
 
-function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
-	return isRecord(value) && typeof value.then === "function";
+function isPromiseLike<Value>(value: Value): value is Value & PromiseLike<RevivedValue> {
+	return isObjectValue(value) && "then" in value && isCallable(value.then);
+}
+
+function areRevivedValues(values: VariableValue[]): values is RevivedValue[] {
+	return values.every((value) => !isPromiseLike(value));
 }
 
 function reviveNumber(value: string): number {
@@ -305,6 +356,6 @@ function bytesToBase64(value: Uint8Array): string {
 	return btoa(binary);
 }
 
-function isValidDate(value: unknown): value is Date {
+function isValidDate<Value>(value: Value): value is Value & Date {
 	return value instanceof Date && Number.isFinite(value.getTime());
 }

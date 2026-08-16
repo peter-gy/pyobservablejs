@@ -12,6 +12,10 @@ import {
 	widget,
 } from "./testing";
 
+declare global {
+	var __pyobservablejsSerializationAttempts: number;
+}
+
 describe("widget graph and notebook readback", () => {
 	test("shows source only for cells explicitly pinned by Python", async () => {
 		const { view, host } = createNotebookFixture({
@@ -140,7 +144,7 @@ describe("widget graph and notebook readback", () => {
 		try {
 			widget.render(renderProps(view, el, controller.signal, host));
 			expect(await waitFor(() => (el.textContent?.includes("42") ? true : undefined))).toBe(true);
-			expect(Reflect.get(globalThis, "__pyobservablejsSerializationAttempts")).toBe(0);
+			expect(globalThis.__pyobservablejsSerializationAttempts).toBe(0);
 			expect(view.saveCount()).toBe(0);
 			expect(view.savedReadbacks()).toEqual([]);
 		} finally {
@@ -153,8 +157,7 @@ describe("widget graph and notebook readback", () => {
 		const { view, host } = createNotebookFixture({
 			_spec: { cells: [] },
 		});
-		// Static hosts can supply model state without passing TypeScript checks.
-		view.set("_capture_state", "no" as never);
+		view.set("_capture_state", "no");
 		const controller = new AbortController();
 		const el = document.createElement("div");
 
@@ -419,7 +422,7 @@ describe("widget graph and notebook readback", () => {
 		expect(broken.values).toEqual({});
 		expect(broken.errors).toHaveLength(1);
 		expect(broken.errors[0]).toMatchObject({ phase: "evaluation" });
-		expect(String((broken.errors[0] as { message?: unknown }).message)).toContain("missing is not defined");
+		expect(broken.errors[0]?.message).toContain("missing is not defined");
 		controller.abort();
 	});
 
@@ -468,9 +471,13 @@ describe("widget graph and notebook readback", () => {
 
 		expect(await waitFor(() => (variableValue(view, "count") === 2 ? 2 : undefined))).toBe(2);
 		expect(variableValue(view, "rows")).toEqual([{ x: 10 }, { x: 20 }]);
-		expect(await waitFor(() => variableValue(view, "attachmentUrl") as string | undefined)).toBe(
-			"https://static.example/points.csv",
-		);
+		expect(
+			await waitFor(() =>
+				variableValue(view, "attachmentUrl") === "https://static.example/points.csv"
+					? "https://static.example/points.csv"
+					: undefined,
+			),
+		).toBe("https://static.example/points.csv");
 		controller.abort();
 	});
 

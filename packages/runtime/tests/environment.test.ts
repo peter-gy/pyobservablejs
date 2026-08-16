@@ -1,7 +1,16 @@
+import type { RuntimeValue } from "@observablehq/runtime";
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import { registerAttachments, type AttachmentRegistry } from "../src/attachments";
 import { createRuntime, createRuntimeCleanup, type NotebookOptions } from "../src/environment";
+import { isNumber, isString } from "../src/value-kind";
 import { waitFor } from "./testing";
+
+interface ObservableRequire {
+	resolve(specifier: string): Promise<string>;
+	alias<Aliases extends Record<string, RuntimeValue>>(
+		aliases: Aliases,
+	): <Name extends Extract<keyof Aliases, string>>(specifier: Name) => Promise<Aliases[Name]>;
+}
 
 const baseOptions: NotebookOptions = {
 	attachments: {},
@@ -62,27 +71,25 @@ describe("runtime environment", () => {
 		);
 
 		try {
-			const imported = runtime.runtime.module(
-				(observableRuntime: typeof runtime.runtime, observer: (name: string) => unknown) => {
-					const main = observableRuntime.module();
-					main
-						.variable(observer("checkbox"))
-						.define(
-							"checkbox",
-							["html"],
-							(html: (strings: TemplateStringsArray, ...values: unknown[]) => HTMLElement) => () =>
-								html` <form><input name="input" type="checkbox" /></form> `,
-						);
-					return main;
-				},
-			);
+			const imported = runtime.runtime.module((observableRuntime, observer) => {
+				const main = observableRuntime.module();
+				main
+					.variable(observer("checkbox"))
+					.define(
+						"checkbox",
+						["html"],
+						(html: (strings: TemplateStringsArray, ...values: RuntimeValue[]) => HTMLElement) => () =>
+							html` <form><input name="input" type="checkbox" /></form> `,
+					);
+				return main;
+			});
 			runtime.main.import("checkbox", imported);
 			runtime.main.define("checkboxFormProbe", ["checkbox"], (checkbox: () => HTMLFormElement) => checkbox());
 
-			const rendered = (await runtime.main.value("checkboxFormProbe")) as HTMLFormElement;
-			expect(rendered).toBeInstanceOf(HTMLFormElement);
-			const input = rendered.elements.namedItem("input") as HTMLInputElement;
-			expect(input).toBeInstanceOf(HTMLInputElement);
+			const rendered = await runtime.main.value("checkboxFormProbe");
+			if (!(rendered instanceof HTMLFormElement)) throw new TypeError("Checkbox probe must render a form");
+			const input = rendered.elements.namedItem("input");
+			if (!(input instanceof HTMLInputElement)) throw new TypeError("Checkbox probe must render an input");
 			const value = () => input.checked;
 			expect(value()).toBe(false);
 			input.checked = true;
@@ -105,7 +112,7 @@ describe("runtime environment", () => {
 			runtime.main.define(
 				"htmlProbe",
 				["html"],
-				(html: (strings: TemplateStringsArray, ...values: unknown[]) => HTMLElement) =>
+				(html: (strings: TemplateStringsArray, ...values: RuntimeValue[]) => HTMLElement) =>
 					html`<table>
 						<tbody>
 							${row}
@@ -113,8 +120,8 @@ describe("runtime environment", () => {
 					</table>`,
 			);
 
-			const table = (await runtime.main.value("htmlProbe")) as HTMLTableElement;
-			expect(table).toBeInstanceOf(HTMLTableElement);
+			const table = await runtime.main.value("htmlProbe");
+			if (!(table instanceof HTMLTableElement)) throw new TypeError("HTML probe must render a table");
 			expect(table.querySelectorAll("tbody > tr")).toHaveLength(1);
 			expect(table.querySelector("a")?.getAttribute("href")).toBe("/story");
 		} finally {
@@ -142,17 +149,10 @@ describe("runtime environment", () => {
 		const fixture = { ready: true };
 
 		try {
-			runtime.main.define(
-				"requireProbe",
-				["require"],
-				async (require: {
-					resolve(specifier: string): Promise<string>;
-					alias(aliases: Record<string, unknown>): (specifier: string) => Promise<unknown>;
-				}) => ({
-					resolved: await require.resolve("d3-format@1"),
-					fixture: await require.alias({ fixture })("fixture"),
-				}),
-			);
+			runtime.main.define("requireProbe", ["require"], async (require: ObservableRequire) => ({
+				resolved: await require.resolve("d3-format@1"),
+				fixture: await require.alias({ fixture })("fixture"),
+			}));
 
 			await expect(runtime.main.value("requireProbe")).resolves.toEqual({
 				resolved: "https://cdn.jsdelivr.net/npm/d3-format@1.4.5/dist/d3-format.min.js",
@@ -178,11 +178,12 @@ describe("runtime environment", () => {
 			runtime.main
 				.variable({
 					pending() {},
-					fulfilled(value: unknown) {
-						values.push(value as string);
+					fulfilled(value: RuntimeValue) {
+						if (!isString(value)) throw new TypeError("Generator probe must publish a string");
+						values.push(value);
 					},
-					rejected(error: unknown) {
-						throw error;
+					rejected(cause: RuntimeValue) {
+						throw cause;
 					},
 				})
 				.define(
@@ -217,20 +218,15 @@ describe("runtime environment", () => {
 
 			emit(width: number): void {
 				if (!this.observing) return;
-				this.callback(
-					[
-						{
-							contentRect: { width } as DOMRectReadOnly,
-						} as ResizeObserverEntry,
-					],
-					this as unknown as ResizeObserver,
-				);
+				this.callback([resizeEntry(width)], this);
 			}
+
+			unobserve = vi.fn();
 		}
 		vi.stubGlobal("ResizeObserver", TestResizeObserver);
 		const root = document.createElement("div");
 		const el = document.createElement("div");
-		root.getBoundingClientRect = () => ({ width: 400 }) as DOMRect;
+		root.getBoundingClientRect = () => new DOMRect(0, 0, 400, 0);
 		const registry: AttachmentRegistry = {
 			baseUrl: "",
 			names: new Set(),
@@ -244,11 +240,12 @@ describe("runtime environment", () => {
 		runtime.main
 			.variable({
 				pending() {},
-				fulfilled(value: unknown) {
-					values.push(value as number);
+				fulfilled(value: RuntimeValue) {
+					if (!isNumber(value)) throw new TypeError("Width probe must publish a number");
+					values.push(value);
 				},
-				rejected(error: unknown) {
-					throw error;
+				rejected(cause: RuntimeValue) {
+					throw cause;
 				},
 			})
 			.define("observedWidth", ["width"], (width: number) => width);
@@ -307,4 +304,15 @@ describe("runtime environment", () => {
 
 function last<T>(values: T[]): T | undefined {
 	return values[values.length - 1];
+}
+
+function resizeEntry(width: number): ResizeObserverEntry {
+	const size: ResizeObserverSize = { blockSize: 0, inlineSize: width };
+	return {
+		target: document.createElement("div"),
+		contentRect: new DOMRectReadOnly(0, 0, width, 0),
+		borderBoxSize: [size],
+		contentBoxSize: [size],
+		devicePixelContentBoxSize: [size],
+	};
 }

@@ -30,7 +30,7 @@
 	position: absolute;
 }
 
-.shape {
+.placeholder {
 	background: var(--ifm-color-emphasis-100);
 	border: 1px solid var(--ifm-color-emphasis-200);
 	border-radius: 4px;
@@ -163,7 +163,7 @@
 }
 
 @media (prefers-reduced-motion: no-preference) {
-	.shape,
+	.placeholder,
 	.points {
 		animation: notebook-skeleton-pulse 1.8s ease-in-out infinite;
 	}

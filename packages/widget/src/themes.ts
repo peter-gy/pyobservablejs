@@ -13,6 +13,7 @@ import themeParchmentCss from "@observablehq/notebook-kit/theme-parchment.css?in
 import themeSlateCss from "@observablehq/notebook-kit/theme-slate.css?inline";
 import themeStarkCss from "@observablehq/notebook-kit/theme-stark.css?inline";
 import themeSunFadedCss from "@observablehq/notebook-kit/theme-sun-faded.css?inline";
+import { isString } from "@pyobservablejs/runtime";
 import plotThemeCss from "./styles/plot.css?inline";
 
 const THEME_STYLE_ID = "pyobservablejs-notebook-kit-themes";
@@ -32,6 +33,8 @@ export const NOTEBOOK_THEMES = [
 	"stark",
 	"sun-faded",
 ] as const satisfies readonly NotebookTheme[];
+
+const NOTEBOOK_THEME_NAMES = new Set<string>(NOTEBOOK_THEMES);
 
 const THEME_CSS = {
 	air: themeAirCss,
@@ -60,7 +63,7 @@ export function installNotebookThemeStyles(root: Document | ShadowRoot = window.
 }
 
 export function applyNotebookTheme(root: HTMLElement, theme: Notebook["theme"]): void {
-	if (typeof theme === "string") {
+	if (isString(theme)) {
 		root.dataset.theme = theme;
 		delete root.dataset.themeLight;
 		delete root.dataset.themeDark;
@@ -69,6 +72,10 @@ export function applyNotebookTheme(root: HTMLElement, theme: Notebook["theme"]):
 	root.dataset.theme = "light-dark";
 	root.dataset.themeLight = theme.light;
 	root.dataset.themeDark = theme.dark;
+}
+
+export function isNotebookTheme<Value>(value: Value): value is Value & NotebookTheme {
+	return isString(value) && NOTEBOOK_THEME_NAMES.has(value);
 }
 
 export function scopedNotebookThemeCss(): string {

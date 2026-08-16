@@ -1,5 +1,5 @@
 import type { Experimental, Host, InitializeProps, RenderProps } from "@anywidget/types";
-import type { NotebookGraph } from "@pyobservablejs/runtime";
+import type { NotebookGraph, WireValue, WireValues } from "@pyobservablejs/runtime";
 import createWidget from "../src";
 import type { WidgetModel } from "../src/model";
 
@@ -9,10 +9,13 @@ export type TestModel = Model & {
 	savedReadbacks(): NonNullable<WidgetModel["_readback"]>[];
 };
 type WidgetDefinition = ReturnType<typeof createWidget>;
+type Readback = NonNullable<WidgetModel["_readback"]>;
+type ReadbackResult = Readback["results"][string];
+type Listener = (...arguments_: never[]) => void;
 
 const experimental: Experimental = {
 	async invoke<T>(): Promise<[T, DataView[]]> {
-		return [undefined as T, []];
+		throw new Error("Unexpected experimental invocation");
 	},
 };
 
@@ -34,48 +37,72 @@ export const widget = {
 };
 
 export function createModel(initial: Partial<WidgetModel>): TestModel {
-	const state = new Map<string, unknown>(Object.entries(initial));
-	const listeners = new Map<string, Set<() => void>>();
-	let saves = 0;
-	const savedReadbacks: NonNullable<WidgetModel["_readback"]>[] = [];
-	return {
-		get(name: string) {
-			return state.get(name);
+	return new TestWidgetModel(initial);
+}
+
+class TestWidgetModel implements TestModel {
+	readonly widget_manager: Model["widget_manager"] = {
+		async get_model() {
+			throw new Error("Unexpected widget-manager model lookup");
 		},
-		set(name: string, value: unknown) {
-			state.set(name, value);
-			for (const listener of listeners.get(`change:${name}`) ?? []) listener();
-		},
-		saveCount() {
-			return saves;
-		},
-		savedReadbacks() {
-			return savedReadbacks;
-		},
-		save_changes() {
-			saves += 1;
-			const readback = state.get("_readback");
-			if (readback !== null && typeof readback === "object" && !Array.isArray(readback)) {
-				savedReadbacks.push(structuredClone(readback) as NonNullable<WidgetModel["_readback"]>);
-			}
-		},
-		on(name: string, callback: () => void) {
-			const callbacks = listeners.get(name) ?? new Set();
-			callbacks.add(callback);
-			listeners.set(name, callbacks);
-		},
-		off(name?: string | null, callback?: (() => void) | null) {
-			if (name == null) {
-				listeners.clear();
-				return;
-			}
-			if (callback == null) {
-				listeners.delete(name);
-				return;
-			}
-			listeners.get(name)?.delete(callback);
-		},
-	} as unknown as TestModel;
+	};
+
+	readonly #state: WidgetModel;
+	readonly #listeners = new Map<string, Set<Listener>>();
+	readonly #savedReadbacks: Readback[] = [];
+	#saves = 0;
+
+	constructor(initial: Partial<WidgetModel>) {
+		this.#state = { ...initial };
+	}
+
+	get<Key extends keyof WidgetModel>(name: Key): WidgetModel[Key] {
+		return this.#state[name];
+	}
+
+	set<Key extends keyof WidgetModel>(name: Key, value: WidgetModel[Key]): void {
+		this.#state[name] = value;
+		for (const listener of this.#listeners.get(`change:${name}`) ?? []) listener();
+	}
+
+	saveCount(): number {
+		return this.#saves;
+	}
+
+	savedReadbacks(): Readback[] {
+		return this.#savedReadbacks;
+	}
+
+	save_changes(): void {
+		this.#saves += 1;
+		const readback = this.#state._readback;
+		if (readback) this.#savedReadbacks.push(structuredClone(readback));
+	}
+
+	on(eventName: "msg:custom", callback: (message: WireValue, buffers: DataView[]) => void): void;
+	on(eventName: `change:${string}`, callback: () => void): void;
+	on(eventName: string, callback: Listener): void;
+	on(eventName: string, callback: Listener): void {
+		const callbacks = this.#listeners.get(eventName) ?? new Set();
+		callbacks.add(callback);
+		this.#listeners.set(eventName, callbacks);
+	}
+
+	off(eventName?: string | null, callback?: Listener | null): void {
+		if (eventName == null) {
+			this.#listeners.clear();
+			return;
+		}
+		if (callback == null) {
+			this.#listeners.delete(eventName);
+			return;
+		}
+		this.#listeners.get(eventName)?.delete(callback);
+	}
+
+	send(): void {
+		throw new Error("Unexpected custom model message");
+	}
 }
 
 export type TestHost = Host & {
@@ -93,6 +120,7 @@ export function createHost(models: ReadonlyMap<string, Model | Promise<Model>>):
 		modelLookups,
 		getModel: async (ref: string) => {
 			modelLookups.push(ref);
+			// SAFETY: The test registry contains WidgetModel instances, and the widget requests that exact model shape.
 			return (await resolve(ref)) as never;
 		},
 		getWidget: async (ref: string) => {
@@ -129,29 +157,23 @@ export function createView(ref = "anywidget:session", cellIndexes: number[] | nu
 	});
 }
 
-export function createNotebookFixture(initial: Partial<WidgetModel>): {
+export interface NotebookFixture {
 	session: TestModel;
 	view: TestModel;
 	host: TestHost;
-} {
+}
+
+export function createNotebookFixture(initial: Partial<WidgetModel>): NotebookFixture {
 	const session = createSession(initial);
 	const view = createView();
 	const host = createHost(new Map([["anywidget:session", session]]));
 	return { session, view, host };
 }
 
-export function setVariables(
-	model: TestModel,
-	seq: number,
-	kind: "set" | "replace",
-	values: Record<string, unknown>,
-): void {
+export function setVariables(model: TestModel, seq: number, kind: "set" | "replace", values: WireValues): void {
 	const previous = model.get("_variables");
 	model.set("_variable_update", { seq, kind, values });
-	model.set(
-		"_variables",
-		kind === "set" && previous && typeof previous === "object" ? { ...previous, ...values } : values,
-	);
+	model.set("_variables", kind === "set" ? { ...previous, ...values } : values);
 }
 
 export function setRange(input: HTMLInputElement, value: number): void {
@@ -160,7 +182,7 @@ export function setRange(input: HTMLInputElement, value: number): void {
 	input.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
-export function renderProps<State extends Record<string, unknown>>(
+export function renderProps<State extends WidgetModel>(
 	model: RenderProps<State>["model"],
 	el: HTMLElement,
 	signal: AbortSignal,
@@ -169,14 +191,14 @@ export function renderProps<State extends Record<string, unknown>>(
 	return { model, el, signal, host, experimental };
 }
 
-export function initializeProps<State extends Record<string, unknown>>(
+export function initializeProps<State extends WidgetModel>(
 	model: InitializeProps<State>["model"],
 	signal: AbortSignal,
 ): InitializeProps<State> {
 	return { model, signal, experimental };
 }
 
-export function variableValue(model: Model, name: string): unknown {
+export function variableValue(model: Model, name: string): WireValue | undefined {
 	const owners = cellRecords(model).filter(
 		(record) => record.rendered && Object.prototype.hasOwnProperty.call(record.values, name),
 	);
@@ -186,10 +208,10 @@ export function variableValue(model: Model, name: string): unknown {
 export type CellRecord = {
 	rendered: boolean;
 	names: string[];
-	values: Record<string, unknown>;
+	values: WireValues;
 	revision: number;
 	status: "pending" | "success" | "error";
-	errors: unknown[];
+	errors: ReadbackResult["errors"];
 };
 
 export function cellRecord(model: Model, index: number): CellRecord | undefined {
@@ -205,9 +227,9 @@ export function cellRecords(model: Model): CellRecord[] {
 
 export function graphValue(model: Model): NotebookGraph | undefined {
 	const graph = readbackValue(model).graph;
-	if (graph === null || typeof graph !== "object" || Array.isArray(graph)) return undefined;
-	const value = graph as Partial<NotebookGraph>;
-	return Array.isArray(value.cells) && Array.isArray(value.edges) ? (graph as NotebookGraph) : undefined;
+	return Array.isArray(graph.cells) && Array.isArray(graph.edges)
+		? { cells: graph.cells, edges: graph.edges }
+		: undefined;
 }
 
 export function hasRendered(model: Model): boolean {
@@ -245,7 +267,7 @@ export function composedText(el: HTMLElement, value: string): HTMLElement | unde
 	});
 	if (matches.length === 0) return undefined;
 	if (matches.length > 1) throw new Error(`Expected one visible output with ${value}, found ${matches.length}`);
-	return matches[0]!;
+	return matches[0];
 }
 
 export function alertText(el: HTMLElement): string | undefined {
@@ -259,32 +281,30 @@ function isHidden(item: HTMLElement): boolean {
 	return item.closest("[hidden], [aria-hidden='true']") !== null;
 }
 
-function readCellValues(model: Model): Record<string, unknown> {
-	const value = readbackValue(model).results;
-	return value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+function readCellValues(model: Model): Readback["results"] {
+	return readbackValue(model).results;
 }
 
-function readbackValue(model: Model): Partial<NonNullable<WidgetModel["_readback"]>> {
-	const value = model.get("_readback");
-	return value !== null && typeof value === "object" && !Array.isArray(value) ? value : {};
+function readbackValue(model: Model): Readback {
+	return (
+		model.get("_readback") ?? {
+			revision: 0,
+			input_revision: null,
+			settled_revision: null,
+			pending: false,
+			graph: {},
+			results: {},
+			errors: [],
+		}
+	);
 }
 
-function readCellRecord(value: unknown): CellRecord | undefined {
-	if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined;
-	const record = value as Partial<CellRecord>;
-	if (
-		(record.status !== "pending" && record.status !== "success" && record.status !== "error") ||
-		typeof record.revision !== "number" ||
-		record.values === null ||
-		typeof record.values !== "object" ||
-		!Array.isArray(record.errors)
-	)
-		return undefined;
-	const values = record.values as Record<string, unknown>;
+function readCellRecord(record: ReadbackResult | undefined): CellRecord | undefined {
+	if (!record) return undefined;
 	return {
 		rendered: record.status !== "pending",
-		names: Object.keys(values),
-		values,
+		names: Object.keys(record.values),
+		values: record.values,
 		revision: record.revision,
 		status: record.status,
 		errors: record.errors,

@@ -1,7 +1,8 @@
-import { sameWireValue, toWireValue } from "./values";
+import type { RuntimeValue } from "@observablehq/runtime";
+import { sameWireValue, toWireValue, type RevivedValue, type WireValue } from "./values";
 
 export type ViewTarget = EventTarget & {
-	value?: unknown;
+	value?: RuntimeValue;
 	checked?: boolean;
 };
 
@@ -13,11 +14,11 @@ export type RuntimeVariablesSync = {
 
 export type ViewWriteResult = "applied" | "unsupported";
 
-export function isViewTarget(value: unknown): value is ViewTarget {
+export function isViewTarget<Value>(value: Value): value is Value & ViewTarget {
 	return value instanceof EventTarget && "value" in value;
 }
 
-export function readViewValue(view: ViewTarget): unknown {
+export function readViewValue(view: ViewTarget): RuntimeValue {
 	if (view instanceof HTMLInputElement) {
 		if (view.type === "checkbox") return view.checked;
 		if (view.type === "number" || view.type === "range") return view.valueAsNumber;
@@ -29,7 +30,7 @@ export function readViewValue(view: ViewTarget): unknown {
 	return view.value;
 }
 
-export function writeViewValue(view: ViewTarget, value: unknown): ViewWriteResult {
+export function writeViewValue(view: ViewTarget, value: RevivedValue): ViewWriteResult {
 	const expected = expectedWireValue(view, value);
 	if (view instanceof HTMLInputElement) {
 		if (view.type === "checkbox") {
@@ -56,7 +57,7 @@ export function writeViewValue(view: ViewTarget, value: unknown): ViewWriteResul
 	return "applied";
 }
 
-function restoreNestedSelectValue(view: ViewTarget, value: unknown): void {
+function restoreNestedSelectValue(view: ViewTarget, value: RevivedValue): void {
 	if (!(view instanceof Element)) return;
 	const expected = toWireValue(value);
 	if (sameWireValue(toWireValue(readViewValue(view)), expected)) return;
@@ -89,7 +90,7 @@ function dispatchSelectEvents(select: HTMLSelectElement): void {
 	select.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
-function expectedWireValue(view: ViewTarget, value: unknown): unknown {
+function expectedWireValue(view: ViewTarget, value: RevivedValue): WireValue {
 	if (view instanceof HTMLInputElement) {
 		if (view.type === "checkbox") return toWireValue(Boolean(value));
 		if (view.type === "date" && isValidDate(value)) return toWireValue(value.toISOString().slice(0, 10));
@@ -98,6 +99,6 @@ function expectedWireValue(view: ViewTarget, value: unknown): unknown {
 	return toWireValue(value);
 }
 
-function isValidDate(value: unknown): value is Date {
+function isValidDate<Value>(value: Value): value is Value & Date {
 	return value instanceof Date && Number.isFinite(value.getTime());
 }

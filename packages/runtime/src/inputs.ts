@@ -1,6 +1,13 @@
 import type { NotebookRuntime } from "@observablehq/notebook-kit/runtime";
 import { setRuntimeVariables } from "./environment";
-import { revivePythonValue, sameWireValue, toWireValue } from "./values";
+import {
+	revivePythonValue,
+	sameWireValue,
+	toWireValue,
+	type RevivedValue,
+	type WireValue,
+	type WireValues,
+} from "./values";
 import {
 	readViewValue,
 	writeViewValue as writeRawViewValue,
@@ -10,18 +17,18 @@ import {
 } from "./views";
 
 export type RuntimeInputs = RuntimeVariablesSync & {
-	set(values: Record<string, unknown>): void;
-	replace(values: Record<string, unknown>): void;
+	set(values: WireValues): void;
+	replace(values: WireValues): void;
 };
 
 type RuntimeInputsOptions = {
 	runtime: NotebookRuntime;
-	variables: Record<string, unknown>;
+	variables: WireValues;
 	viewNames: ReadonlySet<string>;
 	signal: AbortSignal;
-	onVariablesChange?(variables: Record<string, unknown>): void;
-	onReplace(variables: Record<string, unknown>): void;
-	writeViewValue?(view: ViewTarget, value: unknown): ViewWriteResult;
+	onVariablesChange?(variables: WireValues): void;
+	onReplace(variables: WireValues): void;
+	writeViewValue?(view: ViewTarget, value: RevivedValue): ViewWriteResult;
 };
 
 export function createRuntimeInputs({
@@ -78,14 +85,14 @@ export function createRuntimeInputs({
 
 function applyRuntimeVariables(
 	runtime: NotebookRuntime,
-	variables: Record<string, unknown>,
+	variables: WireValues,
 	views: Map<string, ViewTarget>,
 	viewNames: ReadonlySet<string>,
 	signal: AbortSignal,
 	readVersion: () => number,
-	writeViewValue: (view: ViewTarget, value: unknown) => ViewWriteResult,
+	writeViewValue: (view: ViewTarget, value: RevivedValue) => ViewWriteResult,
 ): void {
-	const definitions: Record<string, unknown> = {};
+	const definitions: WireValues = {};
 	for (const [name, value] of Object.entries(variables)) {
 		const view = views.get(name);
 		if (view) {
@@ -101,11 +108,11 @@ async function writeVariableToView(
 	runtime: NotebookRuntime,
 	name: string,
 	view: ViewTarget,
-	wireValue: unknown,
+	wireValue: WireValue,
 	views: Map<string, ViewTarget>,
 	signal: AbortSignal,
 	readVersion: () => number,
-	writeViewValue: (view: ViewTarget, value: unknown) => ViewWriteResult,
+	writeViewValue: (view: ViewTarget, value: RevivedValue) => ViewWriteResult,
 ): Promise<void> {
 	const version = readVersion();
 	const value = await revivePythonValue(wireValue);

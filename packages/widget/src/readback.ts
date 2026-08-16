@@ -1,5 +1,18 @@
-import { createNotebookGraphFromAnalysis, sameWireValue, type NotebookAnalysis } from "@pyobservablejs/runtime";
-import { isRecord, readCaptureState, type AnyWidgetModel, type WidgetModel } from "./model";
+import type { Cell } from "@observablehq/notebook-kit";
+import {
+	createNotebookGraphFromAnalysis,
+	isBoolean,
+	isNumber,
+	isString,
+	sameWireValue,
+	type CellGraph,
+	type GraphEdge,
+	type NotebookAnalysis,
+	type NotebookGraph,
+	type WireRecord,
+	type WireValues,
+} from "@pyobservablejs/runtime";
+import { isRecord, readCaptureState, readWireValues, type AnyWidgetModel, type WidgetModel } from "./model";
 
 export type ErrorPhase = "analysis" | "evaluation" | "rendering" | "serialization";
 export type CellStatus = "pending" | "success" | "error";
@@ -20,7 +33,7 @@ export type ViewErrorWire = {
 export type CellReadback = {
 	revision: number;
 	status: CellStatus;
-	values: Record<string, unknown>;
+	values: WireValues;
 	errors: CellErrorWire[];
 };
 
@@ -184,7 +197,7 @@ export class ViewReadback {
 		this.#scheduleSettlement(revision);
 	}
 
-	fail(attempt: ReadbackAttempt, error: unknown, phase: ErrorPhase): void {
+	fail<Cause>(attempt: ReadbackAttempt, cause: Cause, phase: ErrorPhase): void {
 		if (!this.#isCapturing(attempt)) return;
 		if (this.#inputRevision === null) {
 			this.#inputRevision = 0;
@@ -194,7 +207,7 @@ export class ViewReadback {
 		this.#settledRevision = this.#inputRevision;
 		this.#pending.clear();
 		this.#results = {};
-		this.#errors = [structuredError(error, phase)];
+		this.#errors = [structuredError(cause, phase)];
 		this.#save();
 	}
 
@@ -277,20 +290,22 @@ export class ViewReadback {
 	}
 }
 
-export function structuredCellError(error: unknown, phase: ErrorPhase, variable?: string): CellErrorWire {
-	return { ...structuredError(error, phase), ...(variable === undefined ? {} : { variable }) };
+export function structuredCellError<Cause>(cause: Cause, phase: ErrorPhase, variable?: string): CellErrorWire {
+	const error: CellErrorWire = structuredError(cause, phase);
+	if (variable !== undefined) error.variable = variable;
+	return error;
 }
 
-export function structuredError(error: unknown, phase: ErrorPhase): ViewErrorWire {
-	if (error instanceof Error) return { name: error.name || "Error", message: error.message, phase };
-	return { name: "Error", message: String(error), phase };
+export function structuredError<Cause>(cause: Cause, phase: ErrorPhase): ViewErrorWire {
+	if (cause instanceof Error) return { name: cause.name || "Error", message: cause.message, phase };
+	return { name: "Error", message: String(cause), phase };
 }
 
 function pendingResult(revision: number): CellReadback {
 	return { revision, status: "pending", values: {}, errors: [] };
 }
 
-function readState(value: unknown): ReadbackState {
+function readState<Value>(value: Value): ReadbackState {
 	if (!isRecord(value)) return emptyState();
 	const revision = safeRevision(value.revision) ?? 0;
 	const inputRevision = optionalRevision(value.input_revision);
@@ -302,7 +317,7 @@ function readState(value: unknown): ReadbackState {
 		input_revision: inputRevision,
 		settled_revision: settledRevision,
 		pending: value.pending === true,
-		graph: isRecord(value.graph) ? (value.graph as ReadbackState["graph"]) : {},
+		graph: readNotebookGraph(value.graph),
 		results,
 		errors,
 	};
@@ -320,7 +335,7 @@ function emptyState(): ReadbackState {
 	};
 }
 
-function normalizeResults(value: Record<string, unknown>): CellReadbacks {
+function normalizeResults(value: WireRecord): CellReadbacks {
 	return Object.fromEntries(
 		Object.entries(value).flatMap(([index, item]) => {
 			const result = normalizeResult(item);
@@ -329,7 +344,7 @@ function normalizeResults(value: Record<string, unknown>): CellReadbacks {
 	);
 }
 
-function normalizeResult(value: unknown): CellReadback | null {
+function normalizeResult<Value>(value: Value): CellReadback | null {
 	if (!isRecord(value)) return null;
 	const revision = safeRevision(value.revision);
 	const status = value.status;
@@ -337,26 +352,25 @@ function normalizeResult(value: unknown): CellReadback | null {
 	return {
 		revision,
 		status,
-		values: isRecord(value.values) ? value.values : {},
+		values: readWireValues(value.values),
 		errors: Array.isArray(value.errors) ? value.errors.filter(isCellErrorWire) : [],
 	};
 }
 
-function isCellErrorWire(value: unknown): value is CellErrorWire {
+function isCellErrorWire<Value>(value: Value): value is Value & CellErrorWire {
 	if (!isRecord(value) || !isStructuredError(value)) return false;
-	const variable = (value as Record<string, unknown>).variable;
-	return variable === undefined || typeof variable === "string";
+	return value.variable === undefined || isString(value.variable);
 }
 
-function isViewErrorWire(value: unknown): value is ViewErrorWire {
+function isViewErrorWire<Value>(value: Value): value is Value & ViewErrorWire {
 	return isStructuredError(value);
 }
 
-function isStructuredError(value: unknown): value is ViewErrorWire {
+function isStructuredError<Value>(value: Value): value is Value & ViewErrorWire {
 	return (
 		isRecord(value) &&
-		typeof value.name === "string" &&
-		typeof value.message === "string" &&
+		isString(value.name) &&
+		isString(value.message) &&
 		(value.phase === "analysis" ||
 			value.phase === "evaluation" ||
 			value.phase === "rendering" ||
@@ -364,12 +378,55 @@ function isStructuredError(value: unknown): value is ViewErrorWire {
 	);
 }
 
-function optionalRevision(value: unknown): number | null {
+function optionalRevision<Value>(value: Value): number | null {
 	return value === null ? null : safeRevision(value);
 }
 
-function safeRevision(value: unknown): number | null {
-	return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
+function safeRevision<Value>(value: Value): number | null {
+	return isNumber(value) && Number.isSafeInteger(value) && value >= 0 ? value : null;
+}
+
+function readNotebookGraph<Value>(value: Value): NotebookGraph | Record<string, never> {
+	if (!isRecord(value) || !Array.isArray(value.cells) || !Array.isArray(value.edges)) return {};
+	if (!value.cells.every(isCellGraph) || !value.edges.every(isGraphEdge)) return {};
+	return { cells: value.cells, edges: value.edges };
+}
+
+function isCellGraph<Value>(value: Value): value is Value & CellGraph {
+	if (!isRecord(value)) return false;
+	return (
+		isSafeIndex(value.id) &&
+		isSafeIndex(value.index) &&
+		isString(value.key) &&
+		isCellMode(value.mode) &&
+		isStringArray(value.defines) &&
+		isStringArray(value.references) &&
+		(value.output === null || isString(value.output)) &&
+		isStringArray(value.outputs) &&
+		isStringArray(value.runtime_outputs) &&
+		isBoolean(value.autodisplay) &&
+		isBoolean(value.autoview) &&
+		isBoolean(value.automutable) &&
+		(value.error === undefined || isString(value.error))
+	);
+}
+
+function isGraphEdge<Value>(value: Value): value is Value & GraphEdge {
+	return isRecord(value) && isSafeIndex(value.from) && isSafeIndex(value.to) && isString(value.variable);
+}
+
+function isSafeIndex<Value>(value: Value): value is Value & number {
+	return isNumber(value) && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isStringArray<Value>(value: Value): value is Value & string[] {
+	return Array.isArray(value) && value.every(isString);
+}
+
+const CELL_MODES = new Set<string>(["dot", "html", "js", "md", "node", "ojs", "python", "r", "sql", "tex", "ts"]);
+
+function isCellMode<Value>(value: Value): value is Value & Cell["mode"] {
+	return isString(value) && CELL_MODES.has(value);
 }
 
 function sameReadbackState(left: ReadbackState, right: ReadbackState): boolean {

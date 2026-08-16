@@ -1,4 +1,5 @@
 import { NotebookRuntime, library } from "@observablehq/notebook-kit/runtime";
+import type { RuntimeLibrary } from "@observablehq/runtime";
 import { Library } from "@observablehq/stdlib";
 import {
 	createDuckDBClient,
@@ -10,14 +11,15 @@ import {
 	type AttachmentRegistry,
 } from "./attachments";
 import { bindRuntimeScope, cleanupRuntimeScope, createRuntimeScope, createScopedGenerators } from "./scope";
-import { createVariableBuiltins } from "./values";
+import { createVariableBuiltins, type WireValues } from "./values";
+import { isCallable } from "./value-kind";
 
 export type RuntimeProfile = "notebook-kit" | "observable";
 
 export type RuntimeOptions = {
 	attachments: Record<string, AttachmentInfo>;
 	baseUrl: string;
-	variables: Record<string, unknown>;
+	variables: WireValues;
 	runtimeProfile?: RuntimeProfile;
 };
 
@@ -25,7 +27,7 @@ export type NotebookOptions = RuntimeOptions & {
 	showSource: boolean;
 };
 
-type RuntimeBuiltins = NonNullable<ConstructorParameters<typeof NotebookRuntime>[0]>;
+type NotebookRuntimeBuiltins = NonNullable<ConstructorParameters<typeof NotebookRuntime>[0]>;
 const RUNTIME_CORE_NAMES = ["@variable", "invalidation", "visibility"] as const;
 const builtinNamesByRuntime = new WeakMap<NotebookRuntime, ReadonlySet<string>>();
 
@@ -41,42 +43,47 @@ export function createRuntime(
 	const builtins = {
 		...selectRuntimeLibrary(options.runtimeProfile),
 		DuckDBClient: () =>
-			Promise.resolve((library.DuckDBClient as () => unknown)()).then((DuckDBClient) =>
-				createDuckDBClient(DuckDBClient as object, attachmentRegistry),
+			Promise.resolve(library.DuckDBClient()).then((DuckDBClient) =>
+				createDuckDBClient(DuckDBClient, attachmentRegistry),
 			),
 		FileAttachment: () => createFileAttachment(options.baseUrl, attachmentRegistry),
 		SQLite: () => loadSQLiteModule(),
 		SQLiteDatabaseClient: () => SQLiteDatabaseClient,
 		document: () => scope.document,
-		width: width as RuntimeBuiltins["width"],
+		width,
 		dark: () => scopedGenerators.dark(),
-		...(options.runtimeProfile === "observable" ? {} : { Generators: () => scopedGenerators }),
-	};
+	} satisfies RuntimeLibrary;
+	if (options.runtimeProfile !== "observable") Object.assign(builtins, { Generators: () => scopedGenerators });
 	const builtinNames = new Set([...RUNTIME_CORE_NAMES, ...Object.keys(builtins)]);
 	assertNoBuiltinCollisions(options.variables, builtinNames);
-	// Observable Runtime accepts namespace objects as constants, while Notebook
-	// Kit narrows its constructor type to builtin factories.
-	const runtime = new NotebookRuntime({
-		...builtins,
-		...createVariableBuiltins(options.variables),
-	} as RuntimeBuiltins);
+	const runtime = new NotebookRuntime(
+		toNotebookRuntimeBuiltins({
+			...builtins,
+			...createVariableBuiltins(options.variables),
+		}),
+	);
 	builtinNamesByRuntime.set(runtime, builtinNames);
 	extendRuntimeFileAttachments(runtime);
 	bindRuntimeScope(runtime, scope);
 	return runtime;
 }
 
-export function assertNoRuntimeBuiltinCollisions(runtime: NotebookRuntime, variables: Record<string, unknown>): void {
+export function assertNoRuntimeBuiltinCollisions(runtime: NotebookRuntime, variables: WireValues): void {
 	const builtinNames = builtinNamesByRuntime.get(runtime);
 	if (!builtinNames) throw new Error("Runtime builtin metadata is unavailable");
 	assertNoBuiltinCollisions(variables, builtinNames);
 }
 
-function selectRuntimeLibrary(profile: RuntimeProfile = "notebook-kit"): Record<string, unknown> {
+function selectRuntimeLibrary(profile: RuntimeProfile = "notebook-kit"): RuntimeLibrary {
 	return profile === "observable" ? Object.assign({}, library, new Library()) : library;
 }
 
-function assertNoBuiltinCollisions(variables: Record<string, unknown>, builtinNames: ReadonlySet<string>): void {
+function toNotebookRuntimeBuiltins(builtins: RuntimeLibrary): NotebookRuntimeBuiltins {
+	// SAFETY: NotebookRuntime forwards builtins to Observable Runtime, which accepts definitions and constant values.
+	return builtins as NotebookRuntimeBuiltins;
+}
+
+function assertNoBuiltinCollisions(variables: WireValues, builtinNames: ReadonlySet<string>): void {
 	const collisions = Object.keys(variables)
 		.filter((name) => builtinNames.has(name))
 		.sort();
@@ -85,7 +92,7 @@ function assertNoBuiltinCollisions(variables: Record<string, unknown>, builtinNa
 	}
 }
 
-function observeWidth(root: HTMLElement, fallback: HTMLElement): AsyncGenerator<number, void, unknown> {
+function observeWidth(root: HTMLElement, fallback: HTMLElement) {
 	return library.Generators().observe((notify) => {
 		let width: number | undefined;
 		const update = (value = currentWidth(root, fallback)) => {
@@ -93,7 +100,7 @@ function observeWidth(root: HTMLElement, fallback: HTMLElement): AsyncGenerator<
 			if (next !== width) notify((width = next));
 		};
 		update();
-		if (typeof ResizeObserver === "undefined") return undefined;
+		if (!isCallable(globalThis.ResizeObserver)) return undefined;
 		const observer = new ResizeObserver(([entry]) => update(entry?.contentRect.width));
 		observer.observe(root);
 		return () => observer.disconnect();
@@ -104,25 +111,20 @@ function currentWidth(root: HTMLElement, fallback: HTMLElement): number {
 	return root.getBoundingClientRect().width || fallback.clientWidth || 928;
 }
 
-type RedefinableModule = {
-	define(name: string, inputs: string[], definition: () => unknown): unknown;
-	redefine(name: string, inputs: string[], definition: () => unknown): unknown;
-};
-
-export function setRuntimeVariables(runtime: NotebookRuntime, variables: Record<string, unknown>): void {
+export function setRuntimeVariables(runtime: NotebookRuntime, variables: WireValues): void {
 	const definitions = createVariableBuiltins(variables);
 	for (const [name, define] of Object.entries(definitions)) {
 		try {
-			(runtime.main as RedefinableModule).redefine(name, [], define);
-		} catch (error) {
-			if (!isUnknownRuntimeVariable(error, name)) throw error;
-			(runtime.main as RedefinableModule).define(name, [], define);
+			runtime.main.redefine(name, [], define);
+		} catch (cause) {
+			if (!isUnknownRuntimeVariable(cause, name)) throw cause;
+			runtime.main.define(name, [], define);
 		}
 	}
 }
 
-function isUnknownRuntimeVariable(error: unknown, name: string): boolean {
-	return error instanceof Error && error.message === `${name} is not defined`;
+function isUnknownRuntimeVariable(cause: unknown, name: string): boolean {
+	return cause instanceof Error && cause.message === `${name} is not defined`;
 }
 
 export function createRuntimeCleanup(runtime: NotebookRuntime, attachmentRegistry: AttachmentRegistry): () => void {
