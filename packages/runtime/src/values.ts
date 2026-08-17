@@ -26,6 +26,22 @@ export interface WireRecord {
 	[name: string]: WireValue | undefined;
 }
 
+interface WireSummary extends WireRecord {
+	[TYPE_KEY]: "summary";
+	value: string;
+}
+
+interface WireArrayBuffer extends WireRecord {
+	[TYPE_KEY]: "arraybuffer";
+	value: string;
+}
+
+interface WireTypedArray extends WireRecord {
+	[TYPE_KEY]: "typedarray";
+	name: string;
+	value: string;
+}
+
 export interface WireValues {
 	[name: string]: WireValue;
 }
@@ -136,7 +152,7 @@ function toWireValueNode<Value>(value: Value, context: WireContext, depth: numbe
 	return entries;
 }
 
-function summarizeWireValue<Value>(value: Value): WireRecord {
+function summarizeWireValue<Value>(value: Value): WireSummary {
 	if (Array.isArray(value)) return { [TYPE_KEY]: "summary", value: `Array(${value.length})` };
 	if (value instanceof Map) return { [TYPE_KEY]: "summary", value: `Map(${value.size})` };
 	if (value instanceof Set) return { [TYPE_KEY]: "summary", value: `Set(${value.size})` };
@@ -146,7 +162,7 @@ function summarizeWireValue<Value>(value: Value): WireRecord {
 	return { [TYPE_KEY]: "summary", value: javaScriptKind(value) };
 }
 
-function arrayBufferWireValue(value: ArrayBuffer): WireRecord {
+function arrayBufferWireValue(value: ArrayBuffer): WireArrayBuffer | WireSummary {
 	try {
 		return { [TYPE_KEY]: "arraybuffer", value: bytesToBase64(new Uint8Array(value)) };
 	} catch {
@@ -154,7 +170,7 @@ function arrayBufferWireValue(value: ArrayBuffer): WireRecord {
 	}
 }
 
-function arrayBufferViewWireValue(value: ArrayBufferView): WireRecord {
+function arrayBufferViewWireValue(value: ArrayBufferView): WireTypedArray | WireSummary {
 	try {
 		const bytes = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
 		return {
@@ -269,15 +285,16 @@ function seenWirePair<Left extends object, Right extends object>(
 
 export function createVariableBuiltins(variables: WireValues): VariableBuiltins {
 	// Observable builtins are thunks. Cache revived Python values per variable.
-	const builtins: VariableBuiltins = {};
 	const cache = new Map<string, VariableValue>();
-	for (const [name, value] of Object.entries(variables)) {
-		builtins[name] = () => {
-			if (!cache.has(name)) cache.set(name, revivePythonValue(value));
-			return cache.get(name);
-		};
-	}
-	return builtins;
+	return Object.fromEntries(
+		Object.entries(variables).map(([name, value]) => [
+			name,
+			() => {
+				if (!cache.has(name)) cache.set(name, revivePythonValue(value));
+				return cache.get(name);
+			},
+		]),
+	);
 }
 
 export function revivePythonValue(value: WireValue | undefined): VariableValue {
