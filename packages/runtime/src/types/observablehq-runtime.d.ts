@@ -1,8 +1,24 @@
 declare module "@observablehq/runtime" {
-	export type RuntimeValue = null | undefined | boolean | number | bigint | string | symbol | object;
+	export interface RuntimeObject {
+		toString(): string;
+	}
+
+	export interface RuntimeRecord {
+		[name: string]: RuntimeValue;
+	}
+
+	export type RuntimeValue =
+		| null
+		| undefined
+		| boolean
+		| number
+		| bigint
+		| string
+		| symbol
+		| RuntimeRecord
+		| RuntimeObject;
 	export type RuntimeLibrary = Record<string, RuntimeValue>;
-	// Observable definitions receive the values of their declared inputs, whose types are determined by the notebook graph.
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	// Observable resolves definition inputs from the notebook graph at runtime.
 	export type VariableDefinition = (...inputs: any[]) => RuntimeValue;
 
 	type VariableOptions = {

@@ -13,20 +13,20 @@ catalog:
   "@observablehq/runtime": 6.0.0
   "@observablehq/stdlib": ^5.8.8
   "@orama/plugin-docusaurus-v3": 3.1.18
-  "@oxlint/plugins": 1.78.0
+  "@oxlint/plugins": 1.76.0
   "@shikijs/core": ^4.3.1
   "@shikijs/engine-javascript": ^4.3.1
   "@shikijs/langs": ^4.3.1
   "@shikijs/themes": ^4.3.1
   "@types/node": ^22.20.1
   jsdom: 29.1.1
-  oxlint: 1.78.0
+  oxlint: 1.76.0
   oxlint-tsgolint: 7.0.2001
   typescript: ^6.0.3
   vite: npm:@voidzero-dev/vite-plus-core@0.2.4
   vite-plus: 0.2.4
 
-minimumReleaseAge: 1440
+minimumReleaseAge: 20160
 minimumReleaseAgeStrict: true
 minimumReleaseAgeExclude:
   - anywidget-bundle@0.0.1

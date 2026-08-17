@@ -46,6 +46,12 @@ type SQLiteGlobalConfig = {
 	initSqlJs?: SqlJsInit;
 	locateFile?(name: string): string;
 };
+type SQLiteSchemaOptions = {
+	schema?: string;
+};
+type SQLiteColumnOptions = SQLiteSchemaOptions & {
+	table?: string;
+};
 
 type RuntimeRecord = Record<string, RuntimeValue>;
 type DuckDBMethod<Receiver extends object> = (this: Receiver, ...args: RuntimeValue[]) => RuntimeValue;
@@ -121,7 +127,7 @@ export class SQLiteDatabaseClient {
 		return (await this.query(query, params))[0] ?? null;
 	}
 
-	async describeTables({ schema }: { schema?: string } = {}): Promise<SQLiteRows> {
+	async describeTables({ schema }: SQLiteSchemaOptions = {}): Promise<SQLiteRows> {
 		return this.query(
 			`SELECT NULLIF(schema, 'main') AS schema, name FROM pragma_table_list() WHERE type = 'table'${
 				schema == null ? "" : " AND schema = ?"
@@ -130,7 +136,7 @@ export class SQLiteDatabaseClient {
 		);
 	}
 
-	async describeColumns({ schema, table }: { schema?: string; table?: string } = {}): Promise<SQLiteRows> {
+	async describeColumns({ schema, table }: SQLiteColumnOptions = {}): Promise<SQLiteRows> {
 		if (table == null) throw new Error("missing table");
 		const rows = await this.query(
 			`SELECT name, type, "notnull" FROM pragma_table_info(?${schema == null ? "" : ", ?"}) ORDER BY cid`,
