@@ -2,7 +2,7 @@
 members = ["packages/pyobservablejs"]
 
 [dependency-groups]
-dev = ["jupyter", "marimo[recommended]>=0.23.8", "pyrefly>=1", "pytest>=9.0.3", "ruff>=0.15.14", "ty>=0.0.39"]
+dev = ["jupyter", "marimo[recommended]>=0.24.0", "pyrefly>=1", "pytest>=9.0.3", "ruff>=0.15.14", "ty>=0.0.39"]
 
 [tool.pyrefly]
 project-includes = ["packages/pyobservablejs", "scripts"]

@@ -1,0 +1,118 @@
+---
+title: Use pyobservablejs with agents
+description: Read the packaged Agent Skill and discover it from an optional marimo code-mode session.
+---
+
+# Use pyobservablejs with agents
+
+`pyobservablejs` is independent of any notebook host. It renders through
+anywidget in JupyterLab, marimo, VS Code notebooks, Google Colab, and other
+compatible environments.
+
+Each installation carries an Agent Plugin with a version-matched Agent Skill.
+The skill teaches agents to construct `Notebook` controllers, render keyed
+views, synchronize values, read browser state, attach files, and load notebook
+sources through the public `observablejs` API.
+
+## Read the packaged skill
+
+Any Python process with `pyobservablejs` installed can locate the skill:
+
+```python
+import observablejs.agent as observablejs_agent
+
+plugin = observablejs_agent.agent_plugin()
+skill = observablejs_agent.agent_skill()
+
+print(plugin.tree())
+print(skill.body)
+print(skill / "references" / "workflows.md")
+```
+
+These paths come from the installed distribution. The instructions and Python
+API therefore share one package version.
+
+## Add marimo as an optional agent host
+
+The marimo integration adds discovery inside a live notebook. Four pieces take
+part, and each has one job:
+
+| Piece            | Job                                                          |
+| ---------------- | ------------------------------------------------------------ |
+| `pyobservablejs` | Builds Observable notebooks and supplies its Agent Skill.    |
+| marimo           | Hosts the Python notebook and its live kernel.               |
+| code mode        | Gives an agent a Python API for the live notebook.           |
+| marimo pair      | Connects a coding agent to marimo and teaches code-mode use. |
+
+### 1. What is marimo?
+
+[marimo](https://docs.marimo.io/) is an open-source reactive Python notebook.
+It stores each notebook as a Python file. When a cell changes, marimo runs the
+dependent cells or marks them stale. This keeps code, outputs, and in-memory
+values consistent.
+
+For `pyobservablejs`, marimo is one anywidget host. A `Notebook` and its views
+keep the same public API in every supported host.
+
+### 2. What is a code-mode agent?
+
+A coding agent usually reads files, edits source, and runs commands. A
+code-mode agent can also execute Python in a live marimo kernel. It can inspect
+current cells and variables, apply validated cell edits, run cells, and read
+their results.
+
+Marimo exposes those notebook operations through `marimo._code_mode`. The API
+is agent-facing and evolves with marimo. Agents call `help(cm)` to read its
+current contract at runtime. The marimo engineering guide explains the
+[code-mode transaction and validation model](https://marimo.io/blog/notebooks-as-a-tool-for-agents).
+
+### 3. What is marimo pair?
+
+[marimo pair](https://marimo.io/pair) connects a coding agent to a running
+marimo notebook. It combines an Agent Skill with a bridge into the live kernel.
+The agent can inspect notebook memory, use a temporary scratchpad, and commit
+finished work as notebook cells.
+
+`marimo pair` owns the connection and notebook-editing workflow. The packaged
+`pyobservablejs` skill teaches the connected agent how to build and operate
+Observable views.
+
+## Discover pyobservablejs from marimo
+
+Marimo code mode reads the `marimo.agent.capability` entry point without
+importing provider modules. Capability discovery requires marimo 0.24.0 or
+newer. Install or update the optional notebook host in the current environment:
+
+```sh
+uv add "marimo>=0.24.0"
+```
+
+Inspect its capability map and built-in guidance:
+
+```python
+import marimo._code_mode as cm
+
+print(cm.capabilities()["pyobservablejs"])
+help(cm)
+```
+
+The `pyobservablejs` entry resolves to `observablejs.agent`. Import that module
+and read its generated help:
+
+```python
+import observablejs.agent as observablejs_agent
+
+help(observablejs_agent)
+```
+
+## Read the documentation as Markdown
+
+The documentation build publishes two entry points for language models:
+
+- [`llms.txt`](https://peter-gy.github.io/pyobservablejs/llms.txt) maps the
+  guide, examples, and API reference to their documentation pages.
+- [`llms-full.txt`](https://peter-gy.github.io/pyobservablejs/llms-full.txt)
+  combines the published documentation in one Markdown document.
+
+Start with `llms.txt` when the agent can fetch pages on demand. Use
+`llms-full.txt` when one complete context document fits the task.

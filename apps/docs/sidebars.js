@@ -13,7 +13,7 @@ const sidebars = {
 				slug: "/guide",
 				description: "Build, display, connect, and customize Observable notebooks from Python.",
 			},
-			items: ["guide/quickstart", "guide/how-it-works", "guide/choose-a-library"],
+			items: ["guide/quickstart", "guide/how-it-works", "guide/agents", "guide/choose-a-library"],
 		},
 		{
 			type: "category",
