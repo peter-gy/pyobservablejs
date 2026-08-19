@@ -5,16 +5,18 @@
 		"build": "docusaurus build",
 		"clear": "docusaurus clear",
 		"dev": "docusaurus start --host 127.0.0.1 --port 27331",
-		"serve": "docusaurus serve --host 127.0.0.1 --port 27331"
+		"serve": "docusaurus serve --host 127.0.0.1 --port 27331",
+		"test": "node --test llms.test.mjs"
 	},
 	"dependencies": {
 		"@docusaurus/core": "3.10.2",
 		"@docusaurus/preset-classic": "3.10.2",
 		"@docusaurus/theme-mermaid": "catalog:",
-		"@marimo-team/mdx-marimo": "0.0.1",
+		"@marimo-team/mdx-marimo": "catalog:",
 		"@mdx-js/react": "^3.1.1",
 		"@mermaid-js/layout-elk": "catalog:",
 		"@orama/plugin-docusaurus-v3": "catalog:",
+		"docusaurus-plugin-llms": "catalog:",
 		"react": "^19.2.8",
 		"react-dom": "^19.2.8"
 	},

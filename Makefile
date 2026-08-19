@@ -8,6 +8,11 @@ build:
 
 docs:
 	UV_NO_DEFAULT_GROUPS=1 $(VP) run -w docs-build
+	test -s apps/docs/build/llms.txt
+	test -s apps/docs/build/llms-full.txt
+	! grep -q '^```marimo-config$$' apps/docs/build/llms-full.txt
+	! grep -q '^```python marimo echo=false server-output=false$$' apps/docs/build/llms-full.txt
+	! grep -Eq '\]\([^)]*\.mdx(#[^)]*)?\)' apps/docs/build/llms-full.txt
 
 docs-serve: docs
 	$(VP) run -F @pyobservablejs/docs serve
