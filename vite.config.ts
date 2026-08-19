@@ -84,7 +84,7 @@ export default defineConfig({
 			"docs-build": {
 				command: "node_modules/.bin/docusaurus build",
 				cwd: "apps/docs",
-				env: ["BASE_PATH", "UV_NO_DEFAULT_GROUPS"],
+				env: ["BASE_PATH", "GITHUB_ACTIONS", "GITHUB_PAGES_BASE_PATH", "UV_CONFIG_FILE", "UV_NO_DEFAULT_GROUPS"],
 			},
 		},
 	},

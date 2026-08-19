@@ -2,6 +2,8 @@
 
 import { remarkMarimo } from "@marimo-team/mdx-marimo/remark";
 
+import pyobservablejsLlms from "./llms.mjs";
+
 const umamiWebsiteId = "a16d4cab-d28f-4a52-9fdd-46399feffea4";
 
 /** @param {string} value */
@@ -63,7 +65,19 @@ const config = {
 			onBrokenMarkdownLinks: "throw",
 		},
 	},
-	plugins: ["@orama/plugin-docusaurus-v3"],
+	plugins: [
+		"@orama/plugin-docusaurus-v3",
+		[
+			pyobservablejsLlms,
+			{
+				docsDir: "docs",
+				excludeImports: true,
+				generateLLMsFullTxt: true,
+				generateLLMsTxt: true,
+				useRelativeUrls: true,
+			},
+		],
+	],
 	themes: ["@docusaurus/theme-mermaid"],
 	i18n: {
 		defaultLocale: "en",
