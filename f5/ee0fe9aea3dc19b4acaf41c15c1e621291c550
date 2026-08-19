@@ -1,0 +1,102 @@
+apps/docs/docs/guide/quickstart.mdx
+  s_d3db7fe2a88ae9::t_e83cab3fddd150 8,26
+apps/docs/docs/guide/connect/python-values.mdx
+  s_d3db7fe2a88ae9::t_e83cab3fddd150 12
+packages/pyobservablejs/src/observablejs/agent.py
+  s_d3db7fe2a88ae9::t_c0b6678961b4c1 47
+  s_d3db7fe2a88ae9::t_e767f4760006ff 1-30,32-46,48-89
+  s_d3db7fe2a88ae9::t_41b85d84908e3b 31
+apps/docs/docs/guide/display/cells.mdx
+  s_d3db7fe2a88ae9::t_e83cab3fddd150 20
+apps/docs/docs/guide/agents.mdx
+  s_d3db7fe2a88ae9::t_4887f2509f300d 32-33,84-90
+  s_d3db7fe2a88ae9::t_af14e3e23c25bf 45,69,71
+  s_d3db7fe2a88ae9::t_1936c2a3da26eb 83
+  s_d3db7fe2a88ae9::t_9a61f24e0b7d50 113
+  s_d3db7fe2a88ae9::t_41b85d84908e3b 76
+  s_d3db7fe2a88ae9::t_287db16fa5c7b1 1-31,34-44,46-68,70,72-75,77-82,91-112,114-118
+apps/docs/docs/examples/notebook-with-files.mdx
+  s_d3db7fe2a88ae9::t_e83cab3fddd150 17
+apps/docs/docs/guide/create/cells.mdx
+  s_d3db7fe2a88ae9::t_e83cab3fddd150 23
+apps/docs/docs/guide/connect/dependencies.mdx
+  s_d3db7fe2a88ae9::t_e83cab3fddd150 12
+packages/pyobservablejs/tests/test_agent.py
+  s_d3db7fe2a88ae9::t_e767f4760006ff 1-48
+example.ipynb
+  s_d3db7fe2a88ae9::t_e83cab3fddd150 14
+examples/from-code.py
+  s_d3db7fe2a88ae9::t_e83cab3fddd150 6
+apps/docs/sidebars.js
+  s_d3db7fe2a88ae9::t_54b5329d1080de 16
+uv.lock
+  ai_agent 3,17,24-32,42,1298,1315,1318,1322,1324,2065,2079,2087
+pyproject.toml
+  s_d3db7fe2a88ae9::t_ee05e11fbda487 5
+packages/pyobservablejs/pyproject.toml
+  s_d3db7fe2a88ae9::t_e767f4760006ff 3,33-35,51-53
+  s_d3db7fe2a88ae9::t_ee05e11fbda487 16
+  s_d3db7fe2a88ae9::t_fa66b833068976 2,37
+  s_d3db7fe2a88ae9::t_e83cab3fddd150 14
+.github/workflows/ci.yml
+  s_d3db7fe2a88ae9::t_fa66b833068976 155,158-161
+apps/docs/docs/guide/connect/browser-results.mdx
+  s_d3db7fe2a88ae9::t_e83cab3fddd150 11
+.github/workflows/publish.yml
+  s_d3db7fe2a88ae9::t_fa66b833068976 59,62-65
+apps/docs/src/pages/index.mdx
+  s_d3db7fe2a88ae9::t_e83cab3fddd150 22
+apps/docs/docs/examples/python-data-and-chart.mdx
+  s_d3db7fe2a88ae9::t_e83cab3fddd150 15
+scripts/verify_release.py
+  s_d3db7fe2a88ae9::t_fa66b833068976 55-76,89,96-108
+  s_d3db7fe2a88ae9::t_55ddb0a37b9908 4
+  s_d3db7fe2a88ae9::t_4887f2509f300d 83-86,91-95
+  s_d3db7fe2a88ae9::t_c0b6678961b4c1 8,77-82,87-88,90
+apps/docs/docs/examples/python-and-browser-inputs.mdx
+  s_d3db7fe2a88ae9::t_e83cab3fddd150 18
+README.md
+  s_d3db7fe2a88ae9::t_287db16fa5c7b1 104-105,114
+  s_d3db7fe2a88ae9::t_54b5329d1080de 101-103,106-113,116
+  s_d3db7fe2a88ae9::t_e83cab3fddd150 35
+  s_d3db7fe2a88ae9::t_af14e3e23c25bf 115
+packages/pyobservablejs/README.md
+  s_d3db7fe2a88ae9::t_54b5329d1080de 92-94,97-104,107
+  s_d3db7fe2a88ae9::t_287db16fa5c7b1 95-96,105
+  s_d3db7fe2a88ae9::t_e83cab3fddd150 26
+  s_d3db7fe2a88ae9::t_af14e3e23c25bf 106
+apps/docs/docs/guide/display/notebooks.mdx
+  s_d3db7fe2a88ae9::t_e83cab3fddd150 12
+examples/sync-variables.py
+  s_d3db7fe2a88ae9::t_e83cab3fddd150 6
+apps/docs/docs/guide/customize/themes-and-source.mdx
+  s_d3db7fe2a88ae9::t_e83cab3fddd150 13
+apps/docs/docs/guide/create/files-and-modules.mdx
+  s_d3db7fe2a88ae9::t_e83cab3fddd150 13
+examples/analyze-graph.py
+  s_d3db7fe2a88ae9::t_e83cab3fddd150 6
+apps/docs/docs/guide/create/notebook-kit-html.mdx
+  s_d3db7fe2a88ae9::t_e83cab3fddd150 17
+apps/docs/docs/examples/split-notebook-views.mdx
+  s_d3db7fe2a88ae9::t_e83cab3fddd150 16
+apps/docs/docs/guide/connect/shared-inputs.mdx
+  s_d3db7fe2a88ae9::t_e83cab3fddd150 13
+examples/from-observablehq.py
+  s_d3db7fe2a88ae9::t_e83cab3fddd150 6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "f5ee0fe9aea3dc19b4acaf41c15c1e621291c550",
+  "prompts": {},
+  "sessions": {
+    "s_d3db7fe2a88ae9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a01976-7476-7b43-aae2-74dbdf88efe7",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Péter Ferenc Gyarmati <dev.petergy@gmail.com>"
+    }
+  }
+}
