@@ -3,7 +3,7 @@
 	"private": true,
 	"scripts": {
 		"build": "vp run -F './packages/*' build",
-		"check": "vp check --no-error-on-unmatched-pattern .github apps development_docs packages scripts AGENTS.md README.md example.ipynb package.json pnpm-lock.yaml pnpm-workspace.yaml pyproject.toml tsconfig.json vite.config.ts && pnpm check:anti-slop",
+		"check": "vp check --no-error-on-unmatched-pattern .github apps development_docs packages scripts skills AGENTS.md README.md example.ipynb package.json plugin.json pnpm-lock.yaml pnpm-workspace.yaml pyproject.toml tsconfig.json vite.config.ts && pnpm check:anti-slop",
 		"check:anti-slop": "node --test --test-concurrency=1 tools/oxlint/anti-slop/test/*.test.ts tools/oxlint/anti-slop/test/compatibility/*.test.ts && tsc -p tools/oxlint/anti-slop/tsconfig.json --noEmit",
 		"dev": "vp run @pyobservablejs/python#dev",
 		"test": "vp run -r test"
