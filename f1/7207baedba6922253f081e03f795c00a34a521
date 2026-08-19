@@ -1,0 +1,31 @@
+skills/pyobservablejs/SKILL.md
+  s_d3db7fe2a88ae9::t_287db16fa5c7b1 6-9
+  s_d3db7fe2a88ae9::t_59b5aaae561776 1-5,10-33,35-135
+  s_d3db7fe2a88ae9::t_569015dd380bf2 34
+package.json
+  s_d3db7fe2a88ae9::t_0af846713cb62a 6
+plugin.json
+  s_d3db7fe2a88ae9::t_ee05e11fbda487 2-10
+  s_d3db7fe2a88ae9::t_e767f4760006ff 1,11
+skills/pyobservablejs/references/workflows.md
+  s_d3db7fe2a88ae9::t_4887f2509f300d 127-129
+  s_d3db7fe2a88ae9::t_59b5aaae561776 1-126
+skills/pyobservablejs/agents/openai.yaml
+  s_d3db7fe2a88ae9::t_4601307a1ace91 1-4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "f17207baedba6922253f081e03f795c00a34a521",
+  "prompts": {},
+  "sessions": {
+    "s_d3db7fe2a88ae9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a01976-7476-7b43-aae2-74dbdf88efe7",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Péter Ferenc Gyarmati <dev.petergy@gmail.com>"
+    }
+  }
+}
