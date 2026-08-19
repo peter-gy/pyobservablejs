@@ -5,7 +5,7 @@ description: Render a keyed notebook, update a variable, and read structured res
 
 # Quickstart
 
-`pyobservablejs` requires Python 3.11 or newer. Add it to an existing
+`pyobservablejs` supports Python 3.11 through 3.14. Add it to an existing
 environment:
 
 ```sh
@@ -23,7 +23,7 @@ uvx --with pyobservablejs marimo edit notebook.py
 Paste this into a marimo cell or another anywidget notebook host:
 
 ```marimo-config
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.15"
 dependencies = ["pyobservablejs"]
 ```
 

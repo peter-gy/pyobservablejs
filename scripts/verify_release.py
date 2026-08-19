@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import sys
+from importlib.metadata import distribution
 from importlib.metadata import version as distribution_version
 
 import observablejs
+import observablejs.agent as observablejs_agent
 from observablejs import (
     NotebookView,
     view_from_code,
@@ -49,6 +51,61 @@ def verify_release(expected_version: str) -> None:
             )
     finally:
         view.close()
+
+    agent_plugins_version = distribution_version("agent-plugins")
+    if agent_plugins_version != "0.1.0":
+        raise SystemExit(
+            f"Installed agent-plugins version is {agent_plugins_version}, expected 0.1.0"
+        )
+
+    capabilities = [
+        entry_point
+        for entry_point in distribution("pyobservablejs").entry_points
+        if entry_point.group == "marimo.agent.capability"
+    ]
+    capability_records = [(entry.name, entry.value) for entry in capabilities]
+    if capability_records != [("pyobservablejs", "observablejs.agent")]:
+        raise SystemExit(
+            "Installed marimo capability is "
+            f"{capability_records!r}, expected [('pyobservablejs', 'observablejs.agent')]"
+        )
+    if capabilities[0].load() is not observablejs_agent:
+        raise SystemExit(
+            "Installed pyobservablejs capability does not load observablejs.agent"
+        )
+
+    plugin = observablejs_agent.agent_plugin()
+    if plugin.manifest.name != "pyobservablejs":
+        raise SystemExit(
+            "Installed Agent Plugin is "
+            f"{plugin.manifest.name!r}, expected 'pyobservablejs'"
+        )
+    if plugin.manifest.issues:
+        raise SystemExit(
+            f"Installed Agent Plugin manifest issues: {plugin.manifest.issues!r}"
+        )
+
+    skill = observablejs_agent.agent_skill()
+    if skill.path.name != "pyobservablejs":
+        raise SystemExit("Installed pyobservablejs Agent Skill is unavailable")
+    if (
+        skill.frontmatter.splitlines()[0] != "name: pyobservablejs"
+        or not skill.body.strip()
+    ):
+        raise SystemExit("Installed pyobservablejs Agent Skill is invalid")
+
+    expected_plugin_files = {
+        "plugin.json",
+        "skills/pyobservablejs/SKILL.md",
+        "skills/pyobservablejs/agents/openai.yaml",
+        "skills/pyobservablejs/references/workflows.md",
+    }
+    plugin_files = {path.relative_to(plugin.path).as_posix() for path in plugin.files}
+    if plugin_files != expected_plugin_files:
+        raise SystemExit(
+            "Installed Agent Plugin files are "
+            f"{sorted(plugin_files)!r}, expected {sorted(expected_plugin_files)!r}"
+        )
 
 
 def main() -> None:

@@ -32,7 +32,7 @@ can return to Python.
 
 ## Install and render a notebook
 
-Add `pyobservablejs` to a Python 3.11 or newer environment:
+Add `pyobservablejs` to a Python 3.11 through 3.14 environment:
 
 ```sh
 uv pip install pyobservablejs
@@ -97,6 +97,22 @@ browser input values. Each view keeps its own browser runtime, rendered output,
 results, errors, dependency graph, and lifecycle.
 
 ![Python and browser values updating one notebook](https://files.peter.gy/projects/pyobservablejs/assets/sync-variables.gif)
+
+## Use with notebook agents
+
+The `pyobservablejs` wheel carries an Agent Skill that matches its Python API.
+Any Python process can use `observablejs.agent` to locate the packaged
+instructions:
+
+```python
+import observablejs.agent as observablejs_agent
+
+print(observablejs_agent.agent_skill() / "SKILL.md")
+```
+
+See [Use pyobservablejs with agents](https://peter-gy.github.io/pyobservablejs/guide/agents/)
+for installed resources, LLM-readable documentation, and the optional marimo
+code-mode path through marimo pair.
 
 ## Import a notebook
 
