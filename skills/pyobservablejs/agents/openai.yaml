@@ -1,0 +1,4 @@
+interface:
+  display_name: "pyobservablejs"
+  short_description: "Build reactive Observable notebooks"
+  default_prompt: "Use $pyobservablejs to build a reactive Observable notebook from Python."

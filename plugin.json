@@ -1,0 +1,11 @@
+{
+	"$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+	"name": "pyobservablejs",
+	"description": "Build and operate reactive Observable notebooks from Python.",
+	"author": {
+		"name": "Peter Ferenc Gyarmati",
+		"email": "dev.petergy@gmail.com"
+	},
+	"repository": "https://github.com/peter-gy/pyobservablejs",
+	"keywords": ["observable", "notebooks", "visualization", "agent-skills"]
+}
