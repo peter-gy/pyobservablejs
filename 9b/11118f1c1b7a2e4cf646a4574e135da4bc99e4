@@ -1,0 +1,21 @@
+apps/e2e/playwright.config.ts
+  s_a2a846b2d0e68d::t_b83aee144f321b 23
+apps/e2e/serve_jupyter.py
+  s_a2a846b2d0e68d::t_b83aee144f321b 131,182
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "9b11118f1c1b7a2e4cf646a4574e135da4bc99e4",
+  "prompts": {},
+  "sessions": {
+    "s_a2a846b2d0e68d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a07d4e-2a8c-7531-9f5b-b3bfd28635cb",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Péter Ferenc Gyarmati <dev.petergy@gmail.com>"
+    }
+  }
+}
