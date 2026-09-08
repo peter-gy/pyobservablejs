@@ -20,6 +20,7 @@ export default defineConfig({
 		{
 			command:
 				"uv run --no-sync --package pyobservablejs marimo edit apps/e2e/fixtures/errors.py --headless --host 127.0.0.1 --port 27347 --no-token --session-ttl 0",
+			env: { _MARIMO_CONFIG_OVERLOAD_RUNTIME_AUTO_INSTANTIATE: "true" },
 			cwd: "../..",
 			url: "http://127.0.0.1:27347",
 			reuseExistingServer: false,

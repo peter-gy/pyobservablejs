@@ -128,7 +128,7 @@ def main() -> None:
     with TemporaryDirectory(prefix="pyobservablejs-jupyter-") as directory:
         root = Path(directory)
         data = root / "data"
-        kernel = data / "kernels" / "python3"
+        kernel = data / "kernels" / "pyobservablejs-e2e"
         kernel.mkdir(parents=True)
         (kernel / "kernel.json").write_text(
             json.dumps(
@@ -179,7 +179,7 @@ def main() -> None:
                     "kernelspec": {
                         "display_name": "Python 3 (pyobservablejs)",
                         "language": "python",
-                        "name": "python3",
+                        "name": "pyobservablejs-e2e",
                     }
                 },
             )
