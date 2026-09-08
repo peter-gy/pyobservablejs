@@ -1,0 +1,25 @@
+.github/workflows/ci.yml
+  s_a2a846b2d0e68d::t_d080887c6d271f 190
+Makefile
+  s_a2a846b2d0e68d::t_d080887c6d271f 21,24,37
+apps/e2e/playwright.config.ts
+  s_a2a846b2d0e68d::t_d080887c6d271f 30
+development_docs/development.md
+  s_a2a846b2d0e68d::t_d080887c6d271f 166,172,185
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "33fef7b8d114d256b405f9c2e89d2646e8059f2d",
+  "prompts": {},
+  "sessions": {
+    "s_a2a846b2d0e68d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a07d4e-2a8c-7531-9f5b-b3bfd28635cb",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Péter Ferenc Gyarmati <dev.petergy@gmail.com>"
+    }
+  }
+}
