@@ -9,16 +9,19 @@ Create several `NotebookView` objects from one `Notebook` when outputs belong
 in different host locations. Values stay synchronized, while each view keeps
 its own browser results.
 
+The example uses [marimo](https://docs.marimo.io/), a reactive Python notebook
+editor, to place two views side by side.
+
 ```python
 import marimo as mo
 import observablejs as obs
 
-control = obs.js(
+control = obs.ojs(
     """
-    const threshold = view(Inputs.range(
+    viewof threshold = Inputs.range(
       [0, 1],
       {label: "Threshold", step: 0.05, value: 0.5}
-    ));
+    )
     """,
     key="threshold_control",
 )
@@ -76,6 +79,6 @@ separately.
 A view can appear in one live location. Create another view for a second
 location. Closing one view leaves the others active.
 
-Contributor-facing model references, private traits, revision transport, and
-teardown ordering live in the repository's [view composition development
-guide](https://github.com/peter-gy/pyobservablejs/blob/main/development_docs/view-composition.md).
+See [Share inputs across Python and Observable](../connect/shared-inputs.mdx)
+for input value shapes and [Display a notebook](notebooks.mdx#close-views) for
+closing views.

@@ -62,3 +62,14 @@ The immutable records are:
 
 See [Notebook](notebook.mdx#controller-state) for controller snapshots and
 [View state and graph](values-and-graph.mdx) for browser revisions and results.
+
+## Inspection and data contracts
+
+`NotebookInspection`, `CellInspection`, `ImportInfo`, `ImportBinding`, and
+`AttachmentInspection` describe prepared source and static references.
+`DatasetInfo`, `DatasetDescription`, and `ColumnInfo` describe evaluated data.
+`NotebookRead` carries an explicit result. These records are available under
+`obs.types`. Custom exceptions and diagnostic records live under
+[`obs.errors`](errors.mdx).
+
+See [Data access](data-access.mdx) for selectors, formats, and lifecycle.

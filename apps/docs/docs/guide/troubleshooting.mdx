@@ -5,6 +5,11 @@ description: Symptoms, causes, and fixes for common pyobservablejs failures.
 
 # Troubleshooting
 
+Use `await view.ready()` in Jupyter to raise current browser failures as Python
+exceptions. In a reactive marimo cell, read `view.value` and call
+`view.raise_for_errors()`. The exception includes structured diagnostics, cell
+source, and browser stacks. See [Errors and diagnostics](../reference/errors.mdx).
+
 ## State has no results yet
 
 `NotebookView.state` starts empty before a browser mounts the widget. Inspect
@@ -65,7 +70,7 @@ NotebookView](display/notebooks.mdx#one-view-per-placement).
 
 Variable names must match `^[A-Za-z_$][0-9A-Za-z_$]*$`, and runtime-owned
 builtin names such as `penguins`, `Plot`, or `width` are reserved. Rename
-the Python variable. The reserved list is in [Variables and
+the Python variable. See the naming rules in [Variables and
 serialization](../reference/variables-and-serialization.mdx#variable-names).
 
 ## `TypeError: Value of type ... is not serializable`
@@ -85,6 +90,11 @@ separate even when several cells define the same JavaScript variable name.
 value = full_view.state.result("summary").values["total"]
 ```
 
+The cell must define a named output, such as `const total = rows.length;`.
+Anonymous HTML and chart expressions render output but have an empty `values`
+mapping. The defining cell must also be selected by the view. Hidden
+dependencies evaluate, but their values are excluded from that view's results.
+
 ## The chart did not react to `update_variables`
 
 - An unchanged value is a no-op unless the browser has changed a shared input
@@ -99,16 +109,20 @@ value = full_view.state.result("summary").values["total"]
 ## A marimo cell shows stale readback
 
 marimo reruns a cell when a UI element it references changes. Reference the
-view's `value` in the reading cell:
+view's `value` in a separate reading cell. This subscription is specific to
+marimo:
 
 ```python
 full_view
 ```
 
 ```python
-full_view.value  # subscribe
+full_view.value  # marimo subscription
 full_view.state
 ```
+
+In Jupyter, rerun the reading cell or attach a `state` observer as described in
+[Read browser results](connect/browser-results.mdx#react-to-state-changes).
 
 ## `TraitError` when assigning `notebook.theme`
 

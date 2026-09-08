@@ -1,4 +1,4 @@
-.PHONY: build check clean docs docs-serve
+.PHONY: build check clean docs docs-serve e2e e2e-install
 
 VP := node_modules/.bin/vp
 
@@ -17,16 +17,24 @@ docs:
 docs-serve: docs
 	$(VP) run -F @pyobservablejs/docs serve
 
+e2e-install:
+	pnpm --filter @pyobservablejs/e2e install-browser
+
+e2e: build
+	pnpm --filter @pyobservablejs/e2e test:e2e
+
 check:
 	$(VP) run check
 	$(VP) run -r test
 	uv lock --check --no-config
 	uv run --frozen ruff format --check .
 	uv run --frozen ruff check
-	uv run --frozen ty check packages/pyobservablejs scripts
+	uv run --frozen ty check packages/pyobservablejs scripts apps/e2e
 	uv run --frozen pyrefly check --min-severity warn
 	$(MAKE) build
+	node --test packages/runtime/tests/inspect-node.test.mjs
 	uv run --frozen pytest -q packages/pyobservablejs/tests
+	pnpm --filter @pyobservablejs/e2e test:e2e
 	$(MAKE) docs
 	git diff --check
 
@@ -48,7 +56,9 @@ clean:
 		packages/*/node_modules/.vite-temp \
 		packages/pyobservablejs/src/observablejs/static \
 		apps/docs/.docusaurus \
-		apps/docs/build
+		apps/docs/build \
+		apps/e2e/test-results \
+		apps/e2e/playwright-report
 	find .github apps packages/pyobservablejs scripts development_docs \
 		-type d -name node_modules -prune -o \
 		-type d \( \

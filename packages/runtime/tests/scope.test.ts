@@ -105,7 +105,6 @@ describe("runtime document scope", () => {
 
 	test("keeps scoped document collections live", () => {
 		const root = document.createElement("div");
-		const el = document.createElement("div");
 		const registry: AttachmentRegistry = {
 			baseUrl: "",
 			names: new Set(),
@@ -113,7 +112,7 @@ describe("runtime document scope", () => {
 			disposed: false,
 			cleanup() {},
 		};
-		const runtime = createRuntime(root, el, baseOptions, registry);
+		const runtime = createRuntime(root, baseOptions, registry);
 		const scoped = runtimeDocument(runtime)!;
 		const byClass = scoped.getElementsByClassName("late-entry");
 		const byTag = scoped.getElementsByTagName("article");
@@ -168,7 +167,7 @@ describe("runtime document scope", () => {
 			disposed: false,
 			cleanup() {},
 		};
-		const runtime = createRuntime(root, root, baseOptions, registry);
+		const runtime = createRuntime(root, baseOptions, registry);
 
 		try {
 			input.focus();
@@ -200,8 +199,8 @@ describe("runtime document scope", () => {
 			disposed: false,
 			cleanup() {},
 		};
-		const firstRuntime = createRuntime(firstRoot, document.createElement("div"), baseOptions, registry);
-		const secondRuntime = createRuntime(secondRoot, document.createElement("div"), baseOptions, registry);
+		const firstRuntime = createRuntime(firstRoot, baseOptions, registry);
+		const secondRuntime = createRuntime(secondRoot, baseOptions, registry);
 
 		try {
 			const firstDocument = runtimeDocument(firstRuntime)!;
@@ -227,7 +226,7 @@ describe("runtime document scope", () => {
 			disposed: false,
 			cleanup() {},
 		};
-		const runtime = createRuntime(document.createElement("div"), document.createElement("div"), baseOptions, registry);
+		const runtime = createRuntime(document.createElement("div"), baseOptions, registry);
 
 		expect(runtimeDocument(runtime)).toBeDefined();
 		createRuntimeCleanup(runtime, registry)();
@@ -270,7 +269,7 @@ function createScopedDocumentFixture() {
 		disposed: false,
 		cleanup() {},
 	};
-	const runtime = createRuntime(root, document.createElement("div"), baseOptions, registry);
+	const runtime = createRuntime(root, baseOptions, registry);
 	const scoped = runtimeDocument(runtime)!;
 	return {
 		root,

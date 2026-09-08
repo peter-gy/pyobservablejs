@@ -15,11 +15,10 @@ from ._cells import (
     coerce_cell,
 )
 from ._files import FileAttachment, normalize_files, prepare_source
-from ._html import parse_html_cells, parse_html_runtime_profile, parse_html_theme
+from ._html import parse_html
 from ._observable import (
     ObservableFileInput,
     ObservableNodeInput,
-    fetch_observablehq_document,
     observable_document_import_resolution,
     observable_files_to_attachments,
     observable_nodes_to_cells,
@@ -159,26 +158,14 @@ def notebook_model_from_html(
         rewrite_imports=rewrite_imports,
     )
     normalized = normalize_files(files, base_path=base_path)
-    nodes = _nodes_from_cells(parse_html_cells(source))
+    cells, theme, runtime_profile = parse_html(source)
+    nodes = _nodes_from_cells(cells)
     return NotebookModel(
-        theme=parse_html_theme(source),
+        theme=theme,
         nodes=_validate_nodes(nodes),
         source=source,
         attachments={**discovered, **normalized},
-        runtime_profile=parse_html_runtime_profile(source),
-    )
-
-
-def notebook_model_from_observablehq(
-    specifier: str,
-    *,
-    files: Mapping[str, FileInput] | None,
-    timeout: float | None,
-) -> NotebookModel:
-    document = fetch_observablehq_document(specifier, timeout=timeout)
-    return notebook_model_from_observablehq_document(
-        document,
-        files=files,
+        runtime_profile=runtime_profile,
     )
 
 

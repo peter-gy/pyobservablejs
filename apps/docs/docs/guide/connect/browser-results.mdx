@@ -50,14 +50,17 @@ view = notebook.view()
 view
 ```
 
-Read a result after the latest input revision settles. In marimo, reference
-`view.value` first so the reading cell reruns when the view synchronizes:
+Read a result after the latest input revision settles. In marimo, run this in
+a separate cell. `view.value` subscribes that cell to widget updates. In
+Jupyter, omit that line and run the reading cell after the view renders:
 
 ```python
-view.value  # rerun this cell when synchronized widget state changes
+view.value  # marimo subscription
 state = view.state
 
-if (
+if state.errors:
+    print(state.errors)
+elif (
     not state.pending
     and state.input_revision is not None
     and state.settled_revision == state.input_revision
@@ -69,13 +72,20 @@ if (
         print(doubled.errors)
 ```
 
+The initial result is `10`. Values use the names defined in JavaScript source.
+The `"doubled"` cell is included in `notebook.view()` even though
+`display=False` hides its output. A keyed expression cell captures its value
+under the cell key. Rendered elements become summaries in Python. Define a named
+variable for data that Python needs to consume.
+
 Each `CellResult` has a `status`, `revision`, read-only `values`, and structured
 `errors`. A failed output reports its error phase and optional variable name.
 A multi-output cell may contain successful values beside errors.
 
 ## React to state changes
 
-Traitlets-aware environments can observe the public state trait:
+[Traitlets](https://traitlets.readthedocs.io/), the Python library for
+observable attributes, lets callbacks observe the public `state` trait:
 
 ```python
 def on_state(change):
@@ -86,8 +96,11 @@ def on_state(change):
 view.observe(on_state, names="state")
 ```
 
-In marimo, reference `view.value` in the reading cell so that the cell reruns
-when synchronized widget state changes, then read `view.state`.
+Release a callback when its consumer closes:
+
+```python
+view.unobserve(on_state, names="state")
+```
 
 State belongs to the view whose runtime produced it. A focused view reports
 its selected result while hidden dependencies still evaluate:
@@ -95,6 +108,11 @@ its selected result while hidden dependencies still evaluate:
 ```python
 gain_view = notebook.view("gain_control")
 ```
+
+`gain_view.state.result("doubled")` raises `KeyError` because that cell is
+outside the selection. Select every cell whose values the consumer needs.
+View setup failures appear in `state.errors`, while evaluation failures appear
+in each selected result's `errors`.
 
 See [View state and graph](../../reference/values-and-graph.mdx) for revision,
 status, error, and value conversion contracts.

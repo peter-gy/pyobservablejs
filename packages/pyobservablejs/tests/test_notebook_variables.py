@@ -94,6 +94,48 @@ def test_notebook_state_is_detached_and_recursively_read_only() -> None:
         notebook.state = obs.types.NotebookState({}, {}, "air")
 
 
+def test_variable_patches_and_theme_changes_preserve_detached_snapshots() -> None:
+    rows = [{"value": 1}]
+    notebook = obs.Notebook(variables={"rows": rows, "gain": 0})
+    initial = notebook.state
+    notebook.update_variables({"gain": 2})
+    patched = notebook.state
+    rows[0]["value"] = 9
+    notebook.theme = "ink"
+    themed = notebook.state
+    assert initial.variables == {"rows": ({"value": 1},), "gain": 0}
+    assert patched.variables == {"rows": ({"value": 1},), "gain": 2}
+    assert themed.variables == {"rows": ({"value": 1},), "gain": 2}
+    assert (initial.theme, patched.theme, themed.theme) == ("air", "air", "ink")
+    notebook.update_variables({"rows": rows})
+    rows.append({"value": 10})
+    assert notebook.variables["rows"] == ({"value": 9},)
+    notebook.reset_variables("gain")
+    assert notebook.variables == {"rows": ({"value": 9},)}
+    notebook.replace_variables({"rows": rows})
+    assert notebook.variables == {"rows": ({"value": 9}, {"value": 10})}
+    assert themed.variables["rows"] == ({"value": 1},)
+    notebook.close()
+
+
+def test_theme_and_definition_share_one_wire_update(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    notebook = obs.Notebook(obs.ojs("answer = 42"))
+    messages: list[dict[str, Any]] = []
+    session = notebook_session(notebook)
+    monkeypatch.setattr(session.comm, "send", lambda data, **_: messages.append(data))
+    theme: obs.types.ThemePair = {"light": "air", "dark": "ink"}
+    notebook.theme = theme
+    assert notebook.theme == {"light": "air", "dark": "ink"}
+    assert len(messages) == 1
+    assert messages[0]["method"] == "update"
+    state = messages[0]["state"]
+    assert state["theme"] == {"light": "air", "dark": "ink"}
+    assert state["_spec"]["theme"] == {"light": "air", "dark": "ink"}
+    notebook.close()
+
+
 def test_notebook_state_emits_once_per_effective_mutation() -> None:
     notebook = obs.Notebook(variables={"gain": 5})
     changes: list[Any] = []
@@ -240,22 +282,6 @@ def test_variables_update_serializes_merged_frontend_state() -> None:
     }
 
 
-def test_variable_mutators_update_public_variables() -> None:
-    widget = obs.Notebook(variables={"gain": 5, "rows": [{"x": 1}]})
-
-    widget.replace_variables({"rows": [{"x": 2}]})
-
-    assert widget.variables == {"rows": ({"x": 2},)}
-
-    widget.update_variables({"gain": 7})
-
-    assert widget.variables == {"rows": ({"x": 2},), "gain": 7}
-
-    widget.reset_variables("rows")
-
-    assert widget.variables == {"gain": 7}
-
-
 def test_variable_update_emits_frontend_protocol_packet() -> None:
     widget = obs.Notebook(variables={"gain": 5})
 
@@ -264,6 +290,7 @@ def test_variable_update_emits_frontend_protocol_packet() -> None:
     set_update = notebook_session(widget).get_state(["_variable_update"])[
         "_variable_update"
     ]
+    assert widget.variables == {"gain": 7}
     assert set_update["kind"] == "set"
     assert set_update["values"] == {"gain": 7}
 
@@ -272,6 +299,7 @@ def test_variable_update_emits_frontend_protocol_packet() -> None:
     replace_update = notebook_session(widget).get_state(["_variable_update"])[
         "_variable_update"
     ]
+    assert widget.variables == {"rows": ({"x": 2},)}
     assert replace_update["kind"] == "replace"
     assert replace_update["values"] == {"rows": [{"x": 2}]}
     assert replace_update["seq"] > set_update["seq"]
@@ -281,6 +309,7 @@ def test_variable_update_emits_frontend_protocol_packet() -> None:
     reset_update = notebook_session(widget).get_state(["_variable_update"])[
         "_variable_update"
     ]
+    assert widget.variables == {}
     assert reset_update["kind"] == "replace"
     assert reset_update["values"] == {}
     assert reset_update["seq"] > replace_update["seq"]
@@ -427,19 +456,6 @@ def test_same_wire_replace_reasserts_python_ownership() -> None:
     )
 
 
-def test_replace_variables_clears_old_and_new_shared_python_names() -> None:
-    notebook = obs.Notebook(variables={"old": 1, "keep": 2})
-    notebook_session(notebook).set_state(
-        {"_view_values": {"old": 10, "new": 30, "unrelated": 3}}
-    )
-
-    notebook.replace_variables({"keep": 2, "new": 3})
-
-    assert notebook_session(notebook).get_state(["_view_values"])["_view_values"] == {
-        "unrelated": 3
-    }
-
-
 def test_reset_variables_clears_shared_values_for_replaced_python_names() -> None:
     notebook = obs.Notebook(variables={"x": 7, "z": 100})
     notebook_session(notebook).set_state(
@@ -539,17 +555,7 @@ def test_variable_patch_sends_changed_names() -> None:
     }
 
 
-def test_notebook_view_exposes_its_owning_notebook() -> None:
-    notebook = obs.Notebook(variables={"gain": 5})
-    view = notebook.view()
-
-    notebook.update_variables({"gain": 7})
-
-    assert view.notebook is notebook
-    assert view.notebook.variables == {"gain": 7}
-
-
-@pytest.mark.parametrize("name", ["invalidation", "visibility"])
+@pytest.mark.parametrize("name", ["invalidation", "visibility", "sql"])
 def test_python_variables_reserve_runtime_core_names(name: str) -> None:
     message = f"Reserved Observable runtime name: {name!r}"
 

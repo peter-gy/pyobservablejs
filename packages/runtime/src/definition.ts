@@ -1,10 +1,9 @@
 import { transpile, type Cell } from "@observablehq/notebook-kit";
-import type { NotebookRuntime } from "@observablehq/notebook-kit/runtime";
+import type { Definition as RuntimeDefinition } from "@observablehq/notebook-kit/runtime";
 import type { RuntimeProfile } from "./environment";
 import { isCallable, isString } from "./value-kind";
 
 type NotebookKitDefinition = ReturnType<typeof transpile>;
-type RuntimeDefinition = Parameters<NotebookRuntime["define"]>[1];
 type RuntimeBody = RuntimeDefinition["body"];
 type RuntimeReceiver = ThisParameterType<RuntimeBody>;
 type RuntimeArguments = Parameters<RuntimeBody>;
@@ -12,6 +11,7 @@ type RuntimeArguments = Parameters<RuntimeBody>;
 export type RuntimeCellDefinition = Omit<NotebookKitDefinition, "body"> & {
 	body: NotebookKitDefinition["body"] | RuntimeBody;
 	display?: RuntimeDefinition["display"];
+	rootInput?: number;
 };
 
 interface DisplayOverride {
@@ -22,20 +22,23 @@ export type RuntimeDefinitionOptions = {
 	document?: Document;
 	notebookNames?: ReadonlySet<string>;
 	runtimeProfile?: RuntimeProfile;
+	root?: HTMLDivElement;
 };
-
-const TEMPLATE_MODES = new Set<Cell["mode"]>(["dot", "html", "md", "sql", "tex"]);
 
 export function createRuntimeDefinition(
 	cell: Cell,
 	definition: RuntimeCellDefinition,
 	options: RuntimeDefinitionOptions = {},
 ): RuntimeDefinition {
-	const { notebookNames, runtimeProfile, ...globals } = options;
-	const body = compileRuntimeBody(definition.body, globals);
+	const { notebookNames, runtimeProfile, root, ...globals } = options;
+	let body = compileRuntimeBody(definition.body, globals);
+	if (definition.rootInput !== undefined) {
+		if (!root) throw new Error("A compiled cell renderer requires its output root");
+		body = bindOutputRoot(body, definition.rootInput, root);
+	}
 	return {
 		id: cell.id,
-		body: TEMPLATE_MODES.has(cell.mode) ? awaitTemplateInputs(body) : body,
+		body,
 		inputs: definition.inputs,
 		outputs: definition.outputs,
 		output: definition.output,
@@ -44,6 +47,14 @@ export function createRuntimeDefinition(
 		automutable: definition.automutable,
 		display: definition.display,
 		...observableDisplayOverride(definition, notebookNames, runtimeProfile),
+	};
+}
+
+function bindOutputRoot(body: RuntimeBody, index: number, root: HTMLDivElement): RuntimeBody {
+	// Compiler-owned rendering must not shadow authored display or view inputs.
+	return function (this: RuntimeReceiver, ...values: RuntimeArguments) {
+		values.splice(index, 0, root);
+		return body.call(this, ...values);
 	};
 }
 
@@ -85,12 +96,6 @@ function compileRuntimeBody(source: RuntimeCellDefinition["body"], globals: { do
 	if (!isCallable(body)) throw new TypeError("Notebook cell body must compile to a function");
 	// SAFETY: Notebook Kit supplies a cell function whose inputs and result are JavaScript runtime values.
 	return body as RuntimeBody;
-}
-
-function awaitTemplateInputs(body: RuntimeBody): RuntimeBody {
-	return async function (this: RuntimeReceiver, ...values: RuntimeArguments) {
-		return body.call(this, ...(await Promise.all(values.map((value) => Promise.resolve(value)))));
-	};
 }
 
 function observableDisplayOverride(

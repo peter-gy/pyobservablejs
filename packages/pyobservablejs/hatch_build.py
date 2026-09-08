@@ -30,7 +30,6 @@ class CustomBuildHook(BuildHookInterface):
             static / "index.js",
             static / "anywidget.json",
             static / "chunks" / "app.js",
-            static / "widget.css",
         )
         missing = [
             path.relative_to(self.root) for path in required if not path.is_file()

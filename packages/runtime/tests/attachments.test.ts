@@ -8,7 +8,6 @@ import {
 	SQLiteDatabaseClient,
 } from "../src/attachments";
 import { createRuntime, createRuntimeCleanup, type NotebookOptions } from "../src/environment";
-import { toWireValue } from "../src/values";
 import { isCallable, isObjectValue } from "../src/value-kind";
 
 const baseOptions: NotebookOptions = {
@@ -127,29 +126,12 @@ describe("runtime attachments", () => {
 		}
 	});
 
-	test("keeps SQLite attachment methods out of wire serialization", () => {
-		const registry = registerAttachments({
-			"chinook.db": {
-				url: "data:application/octet-stream;base64,eA==",
-				mimeType: "application/octet-stream",
-			},
-		});
-
-		try {
-			const wire = toWireValue(createFileAttachment("", registry)("chinook.db"));
-			if (!isObjectValue(wire) || Array.isArray(wire)) throw new TypeError("FileAttachment must serialize as a record");
-			expect(wire.sqlite).toBeUndefined();
-		} finally {
-			registry.cleanup();
-		}
-	});
-
 	test("exposes SQLite loading on imported Observable file attachments", async () => {
 		const registry = registerAttachments({});
 		const root = document.createElement("div");
 		const el = document.createElement("div");
 		root.append(el);
-		const runtime = createRuntime(root, el, baseOptions, registry);
+		const runtime = createRuntime(root, baseOptions, registry);
 		const client = new SQLiteDatabaseClient({ exec: () => [] });
 		const open = vi.spyOn(SQLiteDatabaseClient, "open").mockResolvedValue(client);
 
@@ -173,7 +155,7 @@ describe("runtime attachments", () => {
 		const root = document.createElement("div");
 		const el = document.createElement("div");
 		root.append(el);
-		const missingLoaderRuntime = createRuntime(root, document.createElement("div"), baseOptions, registry);
+		const missingLoaderRuntime = createRuntime(root, baseOptions, registry);
 		missingLoaderRuntime.main.define(
 			"missingSQLiteProbe",
 			["SQLite"],
@@ -198,8 +180,8 @@ describe("runtime attachments", () => {
 			initSqlJs,
 			locateFile: (name: string) => `/sql/${name}`,
 		});
-		const runtime = createRuntime(root, el, baseOptions, registry);
-		const retryRuntime = createRuntime(root, document.createElement("div"), baseOptions, registry);
+		const runtime = createRuntime(root, baseOptions, registry);
+		const retryRuntime = createRuntime(root, baseOptions, registry);
 
 		try {
 			runtime.main.define(
@@ -229,20 +211,19 @@ describe("runtime attachments", () => {
 			createRuntimeCleanup(retryRuntime, registry)();
 		}
 	});
-	test("describes SQLite tables and columns through the compatibility API", async () => {
+	test("exposes native SQLite schema records and renderable descriptions", async () => {
 		const db: ConstructorParameters<typeof SQLiteDatabaseClient>[0] = {
-			exec: vi.fn((query: string) =>
-				query.includes("pragma_table_list")
-					? [{ columns: ["schema", "name"], values: [[null, "tracks"]] }]
-					: [{ columns: ["name", "type", "notnull"], values: [["TrackId", "INTEGER", 1]] }],
-			),
+			exec: vi.fn((query: string) => {
+				if (query.includes("pragma_table_list")) return [{ columns: ["schema", "name"], values: [[null, "tracks"]] }];
+				if (query.includes("sqlite_master")) return [{ columns: ["name"], values: [["tracks"]] }];
+				return [{ columns: ["name", "type", "notnull"], values: [["TrackId", "INTEGER", 1]] }];
+			}),
 		};
 		const client = new SQLiteDatabaseClient(db);
 
-		const tables = await client.describe();
-		const columns = await client.describe("tracks");
+		const tables = await client.describeTables();
+		const columns = await client.describeColumns({ table: "tracks" });
 		expect(Array.from(tables)).toEqual([{ schema: null, name: "tracks" }]);
-		expect(tables.value).toBe(tables);
 		expect(Array.from(columns)).toEqual([
 			{
 				name: "TrackId",
@@ -251,7 +232,45 @@ describe("runtime attachments", () => {
 				nullable: false,
 			},
 		]);
-		expect(columns.value).toBe(columns);
+		const overview = await client.describe();
+		expect(overview).toBeInstanceOf(HTMLTableElement);
+		expect(overview.value).toEqual(Object.assign([{ name: "tracks" }], { columns: ["name"] }));
+		expect(overview.textContent).toContain("tracks");
+		const detail = await client.describe("tracks");
+		expect(detail).toBeInstanceOf(HTMLTableElement);
+		expect(detail.value[0]).toEqual({ name: "TrackId", type: "INTEGER", notnull: 1 });
+		expect(detail.textContent).toContain("TrackId");
+	});
+
+	test("queries SQLite through native parameter binding", async () => {
+		const exec = vi.fn(() => [{ columns: ["label"], values: [["O'Reilly"]] }]);
+		const client = new SQLiteDatabaseClient({ exec });
+		const rows = await client.sql`SELECT ${"O'Reilly"} AS label`;
+		expect(exec).toHaveBeenCalledExactlyOnceWith("SELECT ? AS label", ["O'Reilly"]);
+		expect(Array.from(rows)).toEqual([{ label: "O'Reilly" }]);
+		expect(rows.columns).toEqual(["label"]);
+	});
+
+	test("opens SQLite byte views through the caller's loader", async () => {
+		vi.resetModules();
+		const { SQLiteDatabaseClient: Client } = await import("../src/attachments");
+		const opened = vi.fn();
+		const initSqlJs = vi.fn(async () => ({
+			Database: class {
+				constructor(bytes?: Uint8Array) {
+					opened(bytes);
+				}
+				exec() {
+					return [{ columns: ["amount"], values: [[7]] }];
+				}
+			},
+		}));
+		vi.stubGlobal("observablejsSqlite", { initSqlJs, locateFile: (name: string) => `/sqlite/${name}` });
+		const source = new Uint8Array([255, 1, 2, 255]).subarray(1, 3);
+		const client = await Client.open(source);
+		expect(opened).toHaveBeenCalledExactlyOnceWith(source);
+		expect(initSqlJs).toHaveBeenCalledOnce();
+		await expect(client.queryRow("SELECT 7 AS amount")).resolves.toEqual({ amount: 7 });
 	});
 
 	test("serves registered DuckDB attachments through revocable blob URLs", async () => {

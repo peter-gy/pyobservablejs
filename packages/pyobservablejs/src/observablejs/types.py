@@ -19,6 +19,21 @@ from typing import (
     overload,
 )
 
+from ._inspection import (
+    AttachmentInspection,
+    CellInspection,
+    ColumnInfo,
+    DatasetDescription,
+    DatasetInfo,
+    DatasetKind,
+    ImportBinding,
+    ImportInfo,
+    NotebookInspection,
+    NotebookRead,
+    ReadFormat,
+)
+from .errors import DiagnosticCell, ErrorDetail, Origin
+
 if TYPE_CHECKING:
     from ._cells import Cell
     from ._graph import NotebookGraph
@@ -33,6 +48,7 @@ CellMode: TypeAlias = Literal[
     "tex",
     "dot",
     "sql",
+    "sql.view",
     "node",
     "python",
     "r",
@@ -234,6 +250,7 @@ ErrorPhase: TypeAlias = Literal[
     "evaluation",
     "rendering",
     "serialization",
+    "transport",
 ]
 
 
@@ -253,6 +270,12 @@ class CellError:
     message: str
     phase: ErrorPhase
     variable: str | None = None
+    origin: Origin | None = None
+    component: str | None = None
+    operation: str | None = None
+    stack: str | None = None
+    cause: ErrorDetail | None = None
+    cell: DiagnosticCell | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -262,6 +285,12 @@ class ViewError:
     name: str
     message: str
     phase: ErrorPhase
+    origin: Origin | None = None
+    component: str | None = None
+    operation: str | None = None
+    stack: str | None = None
+    cause: ErrorDetail | None = None
+    cell: DiagnosticCell | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -324,18 +353,28 @@ class ViewState:
 
 
 __all__ = [
+    "AttachmentInspection",
     "BrowserErrorValue",
     "CellError",
     "CellFormat",
+    "CellInspection",
     "CellMode",
     "CellResult",
     "CellSelector",
     "CellStatus",
+    "ColumnInfo",
+    "DatasetDescription",
+    "DatasetInfo",
+    "DatasetKind",
     "ErrorPhase",
     "FileInput",
     "FileSnapshot",
     "FileSpec",
+    "ImportBinding",
+    "ImportInfo",
+    "NotebookInspection",
     "NotebookKitCellMetadata",
+    "NotebookRead",
     "NotebookState",
     "NotebookTheme",
     "NotebookViewOptions",
@@ -345,6 +384,7 @@ __all__ = [
     "ObservableFile",
     "ObservableNode",
     "ObservableSource",
+    "ReadFormat",
     "Theme",
     "ThemePair",
     "ThemeSnapshot",

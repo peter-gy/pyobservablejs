@@ -48,13 +48,14 @@ jobs:
           uv lock --check
           uv run --frozen ruff format --check .
           uv run --frozen ruff check .
-          uv run --frozen ty check packages/pyobservablejs scripts
+          uv run --frozen ty check packages/pyobservablejs scripts apps/e2e
           uv run --frozen pyrefly check --min-severity warn
 
       - name: Check whitespace
         run: git diff --check
 
   test-python:
+    needs: test-js
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -85,8 +86,11 @@ jobs:
           run-install: |
             - args: ['--frozen-lockfile']
 
-      - name: Build widget assets
-        run: vp run -F @pyobservablejs/python build
+      - name: Download widget assets
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: widget-assets
+          path: packages/pyobservablejs/src/observablejs/static/
 
       - name: Run Python tests
         env:
@@ -118,7 +122,27 @@ jobs:
       - name: Build JavaScript packages
         run: vp run -F './packages/*' build
 
-  package:
+      - name: Test the built Node inspection entry point
+        run: node --test packages/runtime/tests/inspect-node.test.mjs
+
+      - name: Upload widget assets
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: widget-assets
+          path: packages/pyobservablejs/src/observablejs/static/
+          include-hidden-files: true
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Upload runtime package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: runtime-package
+          path: packages/runtime/dist/
+          retention-days: 1
+          if-no-files-found: error
+  e2e:
+    needs: test-js
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -145,10 +169,59 @@ jobs:
           run-install: |
             - args: ['--frozen-lockfile']
 
+      - name: Download widget assets
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: widget-assets
+          path: packages/pyobservablejs/src/observablejs/static/
+
+      - name: Download runtime package
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: runtime-package
+          path: packages/runtime/dist/
+      - name: Install Python dependencies
+        run: uv sync --frozen
+
+      - name: Install Chromium
+        run: vp exec -F @pyobservablejs/e2e playwright install --with-deps chromium
+
+      - name: Run browser tests
+        run: pnpm --filter @pyobservablejs/e2e test:e2e
+
+      - name: Upload browser failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-results
+          path: |
+            apps/e2e/playwright-report/
+            apps/e2e/test-results/
+          retention-days: 7
+
+  package:
+    needs: test-js
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install Python
+        run: uv python install "$(cat .python-version)"
+
+      - name: Download widget assets
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: widget-assets
+          path: packages/pyobservablejs/src/observablejs/static/
+
       - name: Build package artifacts
-        run: |
-          rm -rf dist
-          make build
+        run: uv build --package pyobservablejs
 
       - name: Check package artifacts
         run: |
@@ -162,7 +235,7 @@ jobs:
 
   required:
     if: always()
-    needs: [quality, test-python, test-js, package]
+    needs: [quality, test-python, test-js, e2e, package]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -171,13 +244,15 @@ jobs:
           QUALITY: ${{ needs.quality.result }}
           TEST_PYTHON: ${{ needs.test-python.result }}
           TEST_JS: ${{ needs.test-js.result }}
+          E2E: ${{ needs.e2e.result }}
           PACKAGE: ${{ needs.package.result }}
         run: |
           if [ "$QUALITY" != success ] || \
              [ "$TEST_PYTHON" != success ] || \
              [ "$TEST_JS" != success ] || \
+             [ "$E2E" != success ] || \
              [ "$PACKAGE" != success ]; then
-            printf 'Required jobs: quality=%s test-python=%s test-js=%s package=%s\n' \
-              "$QUALITY" "$TEST_PYTHON" "$TEST_JS" "$PACKAGE" >&2
+            printf 'Required jobs: quality=%s test-python=%s test-js=%s e2e=%s package=%s\n' \
+              "$QUALITY" "$TEST_PYTHON" "$TEST_JS" "$E2E" "$PACKAGE" >&2
             exit 1
           fi

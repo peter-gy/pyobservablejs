@@ -1,4 +1,6 @@
 import type { Notebook, NotebookTheme } from "@observablehq/notebook-kit";
+import inspectorCss from "@observablehq/notebook-kit/inspector.css?inline";
+import highlightCss from "@observablehq/notebook-kit/highlight.css?inline";
 import notebookPlotCss from "@observablehq/notebook-kit/plot.css?inline";
 import themeAirCss from "@observablehq/notebook-kit/theme-air.css?inline";
 import themeCoffeeCss from "@observablehq/notebook-kit/theme-coffee.css?inline";
@@ -13,7 +15,8 @@ import themeParchmentCss from "@observablehq/notebook-kit/theme-parchment.css?in
 import themeSlateCss from "@observablehq/notebook-kit/theme-slate.css?inline";
 import themeStarkCss from "@observablehq/notebook-kit/theme-stark.css?inline";
 import themeSunFadedCss from "@observablehq/notebook-kit/theme-sun-faded.css?inline";
-import { isString } from "@pyobservablejs/runtime";
+import { isString } from "./value-kind";
+import notebookCss from "./styles/notebook.css?inline";
 import plotThemeCss from "./styles/plot.css?inline";
 
 const THEME_STYLE_ID = "pyobservablejs-notebook-kit-themes";
@@ -58,7 +61,7 @@ export function installNotebookThemeStyles(root: Document | ShadowRoot = window.
 	const target = root instanceof Document ? root.head : root;
 	const style = document.createElement("style");
 	style.id = THEME_STYLE_ID;
-	style.textContent = `${scopedNotebookThemeCss()}\n${notebookPlotCss.trim()}\n${plotThemeCss.trim()}`;
+	style.textContent = `${notebookCss}\n.pyobservablejs-notebook { ${inspectorCss}\n${highlightCss} }\n${scopedNotebookThemeCss()}\n${notebookPlotCss.trim()}\n${plotThemeCss.trim()}`;
 	target.appendChild(style);
 }
 

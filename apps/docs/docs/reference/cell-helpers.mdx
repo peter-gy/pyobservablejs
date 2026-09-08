@@ -37,7 +37,7 @@ Cell(
 | Argument            | Contract                                                                                          |
 | ------------------- | ------------------------------------------------------------------------------------------------- |
 | `source`            | Cell source string.                                                                               |
-| `mode`              | `js`, `ts`, `ojs`, `md`, `html`, `tex`, `dot`, `sql`, `node`, `python`, or `r`.                   |
+| `mode`              | `js`, `ts`, `ojs`, `md`, `html`, `tex`, `dot`, `sql`, `sql.view`, `node`, `python`, or `r`.       |
 | `key`               | Nonempty portable public identity. Serialized as `data-pyobservablejs-key`.                       |
 | `display`           | `False` emits the Notebook Kit `hidden` attribute.                                                |
 | `raw`               | `True` preserves indentation and surrounding newlines.                                            |
@@ -50,6 +50,18 @@ With `raw=False`, construction dedents the source and strips surrounding
 newlines. Invalid source or id types raise `TypeError`. Unsupported modes,
 empty keys, unsafe ids, and collisions between first-class fields and
 `notebookkit_attrs` raise `ValueError`.
+
+`node`, `python`, and `r` preserve Notebook Kit interpreter cells. Their browser
+evaluation reads precomputed files from Notebook Kit's `.observable/cache`
+directory. Serve those files with the host page when importing such a document.
+To calculate with the host Python kernel, pass results through
+[`variables`](../guide/connect/python-values.mdx).
+
+For SQL cells, `notebookkit_attrs={"database": "var:db"}` selects a database
+defined as the JavaScript variable `db`. `mode="sql"` evaluates the query and
+publishes its full result under `output`. `mode="sql.view"` publishes a reusable
+query under `output`. Call that query's `.query()` method from another cell to
+execute it against the bound database.
 
 ## Helper functions
 

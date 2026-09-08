@@ -5,5 +5,5 @@ members = ["packages/pyobservablejs"]
 dev = ["jupyter", "marimo[recommended]>=0.24.0", "pyrefly>=1", "pytest>=9.0.3", "ruff>=0.15.14", "ty>=0.0.39"]
 
 [tool.pyrefly]
-project-includes = ["packages/pyobservablejs", "scripts"]
+project-includes = ["packages/pyobservablejs", "scripts", "apps/e2e"]
 search-path = ["packages/pyobservablejs/src", "packages/pyobservablejs/tests"]

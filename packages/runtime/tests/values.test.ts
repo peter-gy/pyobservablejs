@@ -1,136 +1,102 @@
 import { describe, expect, test } from "vite-plus/test";
-import {
-	createVariableBuiltins,
-	isWritableSyncedViewValue,
-	reviveSyncedValue,
-	sameWireValue,
-	toWireValue,
-	type WireValue,
-} from "../src/values";
-import { isObjectValue } from "../src/value-kind";
+import { createVariableBuiltins, sameValue } from "../src/values";
 import { writeViewValue } from "../src/views";
 
+interface CyclicValue {
+	self?: CyclicValue;
+	value: number;
+}
+
 interface NestedValue {
-	leaf?: boolean;
 	next?: NestedValue;
 }
 
-interface CyclicValue {
-	ready: boolean;
-	self?: CyclicValue;
-}
-
-describe("wire values", () => {
-	test("round trips synced numbers, dates, maps, and sets", () => {
-		const date = new Date("2026-05-23T00:00:00.000Z");
-		const value = {
-			invalid: Number.NaN,
-			when: date,
-			items: new Set(["a", "b"]),
-			lookup: new Map([["k", 7]]),
+describe("native values", () => {
+	test("preserves native variable identities through Observable builtin definitions", () => {
+		const values = {
+			format: (value: number) => String(value),
+			when: new Date("2026-05-23"),
+			lookup: new Map([["a", 1]]),
+			items: new Set([1, 2]),
+			bytes: new Uint8Array([1, 2]),
+			element: document.createElement("div"),
+			pending: Promise.resolve(1),
 		};
+		const builtins = createVariableBuiltins(values);
 
-		const revived = reviveSyncedValue(toWireValue(value));
-
-		expect(revived).toEqual({
-			invalid: Number.NaN,
-			when: date,
-			items: new Set(["a", "b"]),
-			lookup: new Map([["k", 7]]),
-		});
+		for (const [name, value] of Object.entries(values)) {
+			expect(builtins[name]!()).toBe(value);
+		}
 	});
 
-	test("revives Python variables as Observable builtins", () => {
-		const builtins = createVariableBuiltins({
-			when: { __observablejs_type__: "datetime", value: "2026-05-23" },
-			raw: { __observablejs_type__: "bytes", value: "YWJj" },
-			invalid: { __observablejs_type__: "number", value: "NaN" },
+	test("compares native data structures by contents", () => {
+		const data = () => ({
+			when: new Date("2026-05-23"),
+			lookup: new Map([[{ id: 1 }, new Set([2, 3])]]),
+			bytes: new Uint8Array([1, 2]),
+			buffer: new Uint8Array([3, 4]).buffer,
+			values: [null, undefined, Number.NaN, 1n],
 		});
 
-		expect(builtins.when()).toEqual(new Date("2026-05-23"));
-		expect(builtins.raw()).toEqual(new Uint8Array([97, 98, 99]));
-		expect(builtins.invalid()).toBeNaN();
+		expect(sameValue(data(), data())).toBe(true);
+		expect(sameValue(new Map([["a", 1]]), new Map([["a", 2]]))).toBe(false);
+		expect(sameValue(new Set([1]), new Set([2]))).toBe(false);
+		expect(sameValue(new Uint8Array([1]), new Uint8Array([2]))).toBe(false);
+		expect(sameValue(new Uint8Array([1]), new Int8Array([1]))).toBe(false);
+		expect(sameValue({ value: 0 }, { value: -0 })).toBe(false);
 	});
 
-	test("revives Python bigints without losing integer precision", () => {
-		const builtins = createVariableBuiltins({
-			huge: { __observablejs_type__: "bigint", value: "9007199254740993" },
-		});
-
-		expect(builtins.huge()).toBe(9007199254740993n);
+	test("uses identity for callable, DOM, symbol, and class values", () => {
+		class Value {}
+		for (const [left, right] of [
+			[() => 1, () => 1],
+			[document.createElement("div"), document.createElement("div")],
+			[Symbol("value"), Symbol("value")],
+			[new Value(), new Value()],
+			[Promise.resolve(1), Promise.resolve(1)],
+		]) {
+			expect(sameValue(left, left)).toBe(true);
+			expect(sameValue(left, right)).toBe(false);
+		}
 	});
 
-	test("escapes user objects that contain the reserved wire tag key", () => {
-		const value = {
-			__observablejs_type__: "datetime",
-			value: "not a date",
-			other: 1,
+	test("compares cyclic data and preserves reference topology", () => {
+		const left: CyclicValue = { value: 1 };
+		left.self = left;
+		const right: CyclicValue = { value: 1 };
+		right.self = right;
+
+		expect(sameValue(left, right)).toBe(true);
+		right.value = 2;
+		expect(sameValue(left, right)).toBe(false);
+		const shared = {};
+		expect(sameValue([shared, shared], [{}, {}])).toBe(false);
+		expect(sameValue([shared, shared], [shared, {}])).toBe(false);
+	});
+
+	test("bounds deep comparison and avoids invoking accessors", () => {
+		let reads = 0;
+		const left = {
+			get value() {
+				reads++;
+				return 1;
+			},
 		};
-		const builtins = createVariableBuiltins({
-			row: { __observablejs_type__: "object", value },
-		});
-
-		expect(reviveSyncedValue(toWireValue(value))).toEqual(value);
-		expect(builtins.row()).toEqual(value);
-	});
-
-	test("classifies browser object summaries as non-writable view values", () => {
-		expect(isWritableSyncedViewValue(toWireValue(document.createElement("img")))).toBe(false);
-		expect(isWritableSyncedViewValue({ pointDensity: 21 })).toBe(true);
-	});
-
-	test("compares wire values without serializing large payloads", () => {
-		const payload = { rows: Array.from({ length: 100 }, (_, index) => ({ index })) };
-		Object.defineProperty(payload, "toJSON", {
-			value() {
-				throw new RangeError("Invalid string length");
+		const right = {
+			get value() {
+				reads++;
+				return 1;
 			},
-		});
-
-		expect(sameWireValue({}, { payload })).toBe(false);
-		expect(sameWireValue({ payload }, { payload })).toBe(true);
-	});
-
-	test("summarizes deeply nested values before stack overflow", () => {
-		let value: NestedValue = { leaf: true };
-		for (let index = 0; index < 1_000; index++) value = { next: value };
-
-		expect(hasWireSummary(toWireValue(value))).toBe(true);
-	});
-
-	test("summarizes deep objects without invoking constructor accessors", () => {
-		let constructorRead = false;
-		let value: NestedValue = { leaf: true };
-		Object.defineProperty(value, "constructor", {
-			get() {
-				constructorRead = true;
-				throw new Error("constructor accessor should not run during wire summarization");
-			},
-		});
-		for (let index = 0; index < 100; index++) value = { next: value };
-
-		expect(hasWireSummary(toWireValue(value))).toBe(true);
-		expect(constructorRead).toBe(false);
-	});
-
-	test("summarizes detached binary buffers", () => {
-		const buffer = new ArrayBuffer(8);
-		const typed = new Uint8Array([1, 2, 3]);
-		structuredClone(buffer, { transfer: [buffer] });
-		structuredClone(typed.buffer, { transfer: [typed.buffer] });
-
-		expect(toWireValue(buffer)).toEqual({ __observablejs_type__: "summary", value: "ArrayBuffer(detached)" });
-		expect(toWireValue(typed)).toEqual({ __observablejs_type__: "summary", value: "Uint8Array(detached)" });
-	});
-
-	test("serializes invalid dates as non-writable summaries", () => {
-		const value = toWireValue(new Date(Number.NaN));
-
-		expect(value).toEqual({
-			__observablejs_type__: "summary",
-			value: "Invalid Date",
-		});
-		expect(isWritableSyncedViewValue(value)).toBe(false);
+		};
+		expect(sameValue(left, right)).toBe(false);
+		expect(reads).toBe(0);
+		let a: NestedValue = {};
+		let b: NestedValue = {};
+		for (let index = 0; index < 1_000; index++) {
+			a = { next: a };
+			b = { next: b };
+		}
+		expect(sameValue(a, b)).toBe(false);
 	});
 
 	test("returns unsupported when invalid dates target date inputs", () => {
@@ -141,83 +107,11 @@ describe("wire values", () => {
 		expect(input.value).toBe("");
 	});
 
-	test("serializes valid dates as datetimes", () => {
-		expect(toWireValue(new Date("2026-05-23T00:00:00.000Z"))).toEqual({
-			__observablejs_type__: "datetime",
-			value: "2026-05-23T00:00:00.000Z",
-		});
-	});
+	test("writes native object values to custom view controls", () => {
+		const input = Object.assign(new EventTarget(), { value: new Map([["a", 1]]) });
+		const value = new Map([["a", 2]]);
 
-	test("serializes arrays without calling shadowed array methods", () => {
-		const value = [1, 2];
-		Object.defineProperty(value, "map", {
-			value: undefined,
-		});
-
-		expect(toWireValue(value)).toEqual([1, 2]);
-	});
-
-	test("serializes array subclasses without calling species constructors", () => {
-		class RuntimeArray extends Array<number> {}
-		Object.defineProperty(RuntimeArray, Symbol.species, {
-			get: () =>
-				class {
-					constructor() {
-						throw new Error("species constructor should not run during wire serialization");
-					}
-				},
-		});
-		const value = new RuntimeArray();
-		value.push(1, 2);
-
-		expect(toWireValue(value)).toEqual([1, 2]);
-	});
-
-	test("serializes object data properties without invoking accessors", () => {
-		let getterRead = false;
-		const value = { ready: true };
-		Object.defineProperty(value, "lazy", {
-			enumerable: true,
-			get() {
-				getterRead = true;
-				throw new Error("accessor should not run during wire serialization");
-			},
-		});
-
-		expect(toWireValue(value)).toEqual({ ready: true });
-		expect(getterRead).toBe(false);
-	});
-
-	test("compares object data properties without invoking accessors", () => {
-		let getterRead = false;
-		const left = { ready: true };
-		Object.defineProperty(left, "lazy", {
-			enumerable: true,
-			get() {
-				getterRead = true;
-				throw new Error("accessor should not run during wire comparison");
-			},
-		});
-
-		expect(sameWireValue(left, { ready: true })).toBe(true);
-		expect(getterRead).toBe(false);
-	});
-
-	test("compares cyclic wire values without stringifying them", () => {
-		const left: CyclicValue = { ready: true };
-		left.self = left;
-		const right: CyclicValue = { ready: true };
-		right.self = right;
-
-		expect(sameWireValue(left, right)).toBe(true);
-		right.ready = false;
-		expect(sameWireValue(left, right)).toBe(false);
+		expect(writeViewValue(input, value)).toBe("applied");
+		expect(input.value).toBe(value);
 	});
 });
-
-function hasWireSummary(value: WireValue): boolean {
-	if (!isObjectValue(value)) return false;
-	if (Array.isArray(value)) return value.some(hasWireSummary);
-	if (value.__observablejs_type__ === "summary") return true;
-	return Object.values(value).some((entry) => entry !== undefined && hasWireSummary(entry));
-}

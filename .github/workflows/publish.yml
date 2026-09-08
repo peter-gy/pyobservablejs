@@ -12,8 +12,45 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+
+      - name: Check release commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          commit="$(git rev-parse HEAD)"
+          if ! git merge-base --is-ancestor "$commit" origin/main; then
+            echo "Release commit $commit must belong to main" >&2
+            exit 1
+          fi
+          ci_run="$(gh run list \
+            --workflow ci.yml \
+            --branch main \
+            --commit "$commit" \
+            --event push \
+            --limit 1 \
+            --json status,conclusion,url \
+            --jq 'if length == 0 then "" else (.[0] | [.status, .conclusion, .url] | .[]) end')"
+          if [ -z "$ci_run" ]; then
+            echo "No main CI run found for $commit" >&2
+            exit 1
+          fi
+          {
+            IFS= read -r ci_status
+            IFS= read -r ci_conclusion
+            IFS= read -r ci_url
+          } <<< "$ci_run"
+          if [ "$ci_status" != completed ] || [ "$ci_conclusion" != success ]; then
+            printf 'Main CI must pass before releasing: %s/%s\n%s\n' \
+              "$ci_status" "${ci_conclusion:-pending}" "$ci_url" >&2
+            exit 1
+          fi
 
       - name: Read Node.js version
         id: node-version
@@ -123,7 +160,7 @@ jobs:
           exit 1
 
   release-notes:
-    needs: publish
+    needs: verify-pypi
     runs-on: ubuntu-latest
     permissions:
       contents: write

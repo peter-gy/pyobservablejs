@@ -13,10 +13,24 @@ import datetime as _dt
 import math
 import re
 import sys
+import types
 from collections.abc import Collection, Iterable, Iterator, Mapping
 from typing import Any
 
 from .types import BrowserErrorValue
+
+
+def freeze_value(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return types.MappingProxyType(
+            {str(key): freeze_value(item) for key, item in value.items()}
+        )
+    if isinstance(value, list | tuple):
+        return tuple(freeze_value(item) for item in value)
+    if isinstance(value, set | frozenset):
+        return frozenset(freeze_value(item) for item in value)
+    return value
+
 
 TYPE_KEY = "__observablejs_type__"
 _MAX_SAFE_JS_INTEGER = 9_007_199_254_740_991
@@ -68,6 +82,7 @@ RESERVED_VARIABLE_NAMES = frozenset(
         "olympians",
         "penguins",
         "pizza",
+        "sql",
         "svg",
         "tex",
         "topojson",

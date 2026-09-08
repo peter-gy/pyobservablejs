@@ -1,10 +1,27 @@
 from __future__ import annotations
 
-import textwrap
 from typing import Any
 
 import observablejs as obs
+import pytest
 from helpers import DocumentTitle, ObservableHQResponseInstaller, ScriptTags
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "content = String.raw`</ScRiPt></SCRIPT>`",
+        r"content = String.raw`<\/script>`",
+        r"content = String.raw`<\\/SCRIPT >`",
+        "content = String.raw`first\u2028second`",
+    ],
+)
+def test_html_roundtrip_preserves_literal_script_text(source: str) -> None:
+    notebook = obs.Notebook(obs.ojs(source, key="content", raw=True))
+    restored = obs.Notebook.from_html(notebook.to_notebook_html())
+    assert restored.cell("content").source == source
+    restored.close()
+    notebook.close()
 
 
 def _notebook_from_observable_document(
@@ -44,7 +61,7 @@ def test_observable_document_serializes_to_notebook_kit_html(
                     "download_url": "https://static.example/data.csv",
                     "mime_type": "text/csv",
                     "size": 12,
-                    "create_time": "2026-05-24T10:00:00.000Z",
+                    "create_time": "2026-05-24T10:00:00.252Z",
                 }
             ],
         },
@@ -66,45 +83,9 @@ def test_observable_document_serializes_to_notebook_kit_html(
             "url": "https://static.example/data.csv",
             "mimeType": "text/csv",
             "size": 12,
-            "lastModified": 1779616800000,
+            "lastModified": 1779616800252,
         }
     }
-
-
-def test_observable_document_js_nodes_become_ojs_cells(
-    observablehq_response: ObservableHQResponseInstaller,
-    script_tags: ScriptTags,
-) -> None:
-    markdown_source = "md`Imported notebook source`"
-    notebook = _notebook_from_observable_document(
-        observablehq_response,
-        {
-            "title": "Three.js basics",
-            "nodes": [
-                {
-                    "id": 12,
-                    "mode": "js",
-                    "value": markdown_source,
-                    "pinned": False,
-                },
-                {
-                    "id": 5,
-                    "mode": "js",
-                    "value": 'THREE = require("three@0.119.1")',
-                    "pinned": True,
-                },
-            ],
-        },
-    )
-
-    scripts = script_tags(notebook.to_notebook_html())
-    assert [item["attrs"]["type"] for item in scripts] == [
-        "application/vnd.observable.javascript",
-        "application/vnd.observable.javascript",
-    ]
-    assert ["pinned" in item["attrs"] for item in scripts] == [False, True]
-    assert textwrap.dedent(scripts[0]["text"]).strip() == markdown_source
-    assert scripts[1]["text"].strip() == 'THREE = require("three@0.119.1")'
 
 
 def test_observable_document_preserves_notebook_kit_cell_modes(
@@ -171,18 +152,24 @@ def test_notebook_serializes_source_cells(
     assert scripts[2]["text"].strip() == "<p>Done</p>"
 
 
-def test_source_backed_notebooks_preserve_ojs_source(
+def test_sql_view_cells_round_trip_through_notebook_html(
     script_tags: ScriptTags,
 ) -> None:
-    source = """<notebook>
-  <script id="1" type="application/vnd.observable.javascript">md`Source text`</script>
-</notebook>
-"""
+    notebook = obs.Notebook(
+        obs.Cell(
+            "SELECT * FROM rows",
+            mode="sql.view",
+            key="query",
+            output="query",
+            notebookkit_attrs={"database": "var:db"},
+        )
+    )
+    source = notebook.to_notebook_html()
+    restored = obs.Notebook.from_html(source)
+    script = script_tags(restored.to_notebook_html())[0]
 
-    from_html = obs.Notebook.from_html(source)
-    authored = obs.Notebook(obs.ojs("md`Source text`"))
-
-    for notebook in (from_html, authored):
-        [script] = script_tags(notebook.to_notebook_html())
-        assert script["attrs"]["type"] == "application/vnd.observable.javascript"
-        assert script["text"].strip() == "md`Source text`"
+    assert script["attrs"]["type"] == "application/sql+view"
+    assert script["attrs"]["database"] == "var:db"
+    assert script["attrs"]["output"] == "query"
+    assert script["text"].strip() == "SELECT * FROM rows"
+    assert restored.cell("query").key == "query"

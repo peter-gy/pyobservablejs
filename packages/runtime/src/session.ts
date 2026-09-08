@@ -8,10 +8,10 @@ export type RuntimeSession = {
 	dispose(): void;
 };
 
-export function createRuntimeSession(root: HTMLElement, host: HTMLElement, options: RuntimeOptions): RuntimeSession {
+export function createRuntimeSession(root: HTMLElement, options: RuntimeOptions): RuntimeSession {
 	const attachments = registerAttachments(options.attachments);
 	try {
-		const runtime = createRuntime(root, host, options, attachments);
+		const runtime = createRuntime(root, options, attachments);
 		return {
 			runtime,
 			attachments,

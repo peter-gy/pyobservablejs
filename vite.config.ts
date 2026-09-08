@@ -11,6 +11,8 @@ const ignoredPaths = [
 	"packages/pyobservablejs/src/observablejs/static/**",
 	"apps/docs/.docusaurus/**",
 	"apps/docs/build/**",
+	"apps/e2e/test-results/**",
+	"apps/e2e/playwright-report/**",
 ];
 
 export default defineConfig({
@@ -53,11 +55,17 @@ export default defineConfig({
 				},
 			},
 			{
-				files: ["packages/runtime/src/values.ts", "packages/runtime/src/views.ts"],
+				files: ["packages/widget/src/values.ts", "packages/runtime/src/views.ts"],
 				rules: {
 					// These boundaries deliberately apply JavaScript's string coercion to
 					// primitive wire values and form-control values.
 					"typescript/no-base-to-string": "off",
+				},
+			},
+			{
+				files: ["packages/widget/**"],
+				rules: {
+					"no-restricted-imports": ["error", { patterns: ["@observablehq/*"] }],
 				},
 			},
 			{
@@ -71,6 +79,8 @@ export default defineConfig({
 								"anywidget-bundle/*",
 								"@pyobservablejs/widget",
 								"@pyobservablejs/widget/*",
+								"@anywidget/types",
+								"@pyobservablejs/python",
 							],
 						},
 					],

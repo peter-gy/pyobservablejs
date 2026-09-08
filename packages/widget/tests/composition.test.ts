@@ -1,5 +1,6 @@
-import type { CellSpec } from "@observablehq/notebook-kit";
-import type { WireValue } from "@pyobservablejs/runtime";
+import type { CellSpec } from "@pyobservablejs/runtime";
+import type { WireValue } from "../src/values";
+import { isRecord } from "../src/model";
 import { describe, expect, test } from "vite-plus/test";
 import {
 	alertText,
@@ -34,6 +35,106 @@ const cells = [
 ] satisfies CellSpec[];
 
 describe("NotebookView composition", () => {
+	test("delivers an object-valued interaction once and accepts reentrant shared updates", async () => {
+		const session = createSession({
+			_spec: {
+				cells: [
+					{
+						id: 1,
+						mode: "ojs",
+						value: `viewof x = {
+ const form = document.createElement("form");
+ const input = form.appendChild(document.createElement("input"));
+ input.type = "range";
+ input.min = "0";
+ input.max = "10";
+ input.value = "5";
+ let value = {amount: 5};
+ Object.defineProperty(form, "value", {get: () => value, set: (next) => {value = next; input.value = String(next.amount);}});
+ input.addEventListener("input", () => {value = {amount: input.valueAsNumber};});
+ return form;
+}`,
+					},
+				],
+			},
+		});
+		const host = createHost(new Map([["anywidget:session", session]]));
+		const controller = new AbortController();
+		const source = createView();
+		const sibling = createView();
+		const sourceEl = document.createElement("div");
+		const siblingEl = document.createElement("div");
+		try {
+			widget.render(renderProps(source, sourceEl, controller.signal, host));
+			widget.render(renderProps(sibling, siblingEl, controller.signal, host));
+			const sourceInput = await waitFor(() => rangeWithValue(sourceEl, 5));
+			const siblingInput = await waitFor(() => rangeWithValue(siblingEl, 5));
+			let sourceEvents = 0;
+			let siblingEvents = 0;
+			sourceInput.parentElement!.addEventListener("input", () => {
+				sourceEvents += 1;
+			});
+			siblingInput.parentElement!.addEventListener("input", () => {
+				siblingEvents += 1;
+			});
+			sourceInput.value = "8";
+			sourceInput.dispatchEvent(new Event("input", { bubbles: true }));
+			await expect.poll(() => variableValue(source, "x")).toEqual({ amount: 8 });
+			await expect.poll(() => variableValue(sibling, "x")).toEqual({ amount: 8 });
+			expect(sourceEvents).toBe(1);
+			expect(siblingEvents).toBe(1);
+			expect(siblingInput.value).toBe("8");
+			const reentrant = () => {
+				const value = session.get("_view_values")?.x;
+				if (isRecord(value) && value.amount === 7) {
+					session.set("_view_values", { x: { amount: 3 } });
+				}
+			};
+			session.on("change:_view_values", reentrant);
+			sourceInput.value = "7";
+			sourceInput.dispatchEvent(new Event("input", { bubbles: true }));
+			await expect.poll(() => variableValue(source, "x")).toEqual({ amount: 3 });
+			await expect.poll(() => variableValue(sibling, "x")).toEqual({ amount: 3 });
+			expect(sourceInput.value).toBe("3");
+			session.off("change:_view_values", reentrant);
+		} finally {
+			controller.abort();
+		}
+	});
+
+	test("skips session lookup when the view closes before mounting starts", async () => {
+		const session = createSession({ _spec: { cells: [{ id: 1, mode: "ojs", value: "answer = 1" }] } });
+		const view = createView();
+		const host = createHost(new Map([["anywidget:session", session]]));
+		const controller = new AbortController();
+		widget.render(renderProps(view, document.createElement("div"), controller.signal, host));
+		controller.abort();
+		await Promise.resolve();
+		expect(host.modelLookups).toEqual([]);
+	});
+
+	test("looks up the final session once after synchronous source and selection changes", async () => {
+		const session = createSession({ _spec: { cells: [{ id: 1, mode: "ojs", value: "answer = 1" }] } });
+		const view = createView();
+		const host = createHost(new Map([["anywidget:session", session]]));
+		const controller = new AbortController();
+		const el = document.createElement("div");
+		try {
+			widget.render(renderProps(view, el, controller.signal, host));
+			await expect.poll(() => variableValue(view, "answer")).toBe(1);
+			session.set("_spec", { cells: [{ id: 1, mode: "ojs", value: "answer = 2" }] });
+			session.set("theme", "slate");
+			view.set("_cell_indexes", [0]);
+			view.set("_cell_indexes", null);
+			session.set("_spec", { cells: [{ id: 1, mode: "ojs", value: "answer = 3" }] });
+			await expect.poll(() => variableValue(view, "answer")).toBe(3);
+			expect(host.modelLookups).toHaveLength(2);
+			expect(el.textContent).toContain("3");
+		} finally {
+			controller.abort();
+		}
+	});
+
 	test("full and selected views share interactions and keep derived readback isolated", async () => {
 		const session = createSession({
 			_spec: { cells },
@@ -145,7 +246,6 @@ describe("NotebookView composition", () => {
 
 			expect(await waitFor(() => composedText(capturedEl, "12"))).toBeInstanceOf(HTMLElement);
 			expect(await waitFor(() => composedText(uncapturedEl, "12"))).toBeInstanceOf(HTMLElement);
-			expect(uncaptured.saveCount()).toBe(0);
 			expect(uncaptured.savedReadbacks()).toEqual([]);
 		} finally {
 			capturedController.abort();
@@ -172,7 +272,6 @@ describe("NotebookView composition", () => {
 		try {
 			widget.render(renderProps(view, el, controller.signal, host));
 			expect(await waitFor(() => composedText(el, "42"))).toBeInstanceOf(HTMLElement);
-			expect(view.saveCount()).toBe(0);
 			expect(view.savedReadbacks()).toEqual([]);
 		} finally {
 			controller.abort();
@@ -249,46 +348,16 @@ describe("NotebookView composition", () => {
 		expect(await waitFor(() => rangeWithValue(freshEl, 8))).toBeInstanceOf(HTMLInputElement);
 		expect(await waitFor(() => (variableValue(fresh, "x") === 8 ? 8 : undefined))).toBe(8);
 
-		session.set("_variable_update", { seq: 1, kind: "set", values: { x: 4 } });
-		session.set("_variables", { x: 4, z: 100, y: 10 });
-		expect(await waitFor(() => rangeWithValue(firstEl, 4))).toBe(firstInput);
-		expect(await waitFor(() => rangeWithValue(secondEl, 4))).toBe(secondInput);
-		expect(await waitFor(() => rangeWithValue(freshEl, 4))).toBeInstanceOf(HTMLInputElement);
+		session.set("_variable_update", { seq: 1, kind: "set", values: { x: 7 } });
+		session.set("_variables", { x: 7, z: 100, y: 10 });
+		expect(await waitFor(() => rangeWithValue(firstEl, 7))).toBe(firstInput);
+		expect(await waitFor(() => rangeWithValue(secondEl, 7))).toBe(secondInput);
+		expect(await waitFor(() => rangeWithValue(freshEl, 7))).toBeInstanceOf(HTMLInputElement);
 		expect(session.get("_view_values")).toEqual({});
 
 		firstController.abort();
 		secondController.abort();
 		freshController.abort();
-	});
-
-	test("reasserts the configured Python view value after a shared interaction", async () => {
-		const session = createSession({
-			_spec: { cells },
-			_variables: { x: 7, z: 100, y: 10 },
-		});
-		const first = createView("anywidget:session", [1]);
-		const second = createView("anywidget:session", [1]);
-		const host = createHost(new Map([["anywidget:session", session]]));
-		const firstController = new AbortController();
-		const secondController = new AbortController();
-		const firstEl = document.createElement("div");
-		const secondEl = document.createElement("div");
-		widget.render(renderProps(first, firstEl, firstController.signal, host));
-		widget.render(renderProps(second, secondEl, secondController.signal, host));
-		const firstInput = await waitFor(() => rangeWithValue(firstEl, 7));
-		const secondInput = await waitFor(() => rangeWithValue(secondEl, 7));
-
-		setRange(firstInput, 8);
-		expect(await waitFor(() => rangeWithValue(secondEl, 8))).toBe(secondInput);
-		expect(await waitFor(() => (session.get("_view_values")?.x === 8 ? 8 : undefined))).toBe(8);
-
-		session.set("_variable_update", { seq: 1, kind: "set", values: { x: 7 } });
-		expect(await waitFor(() => rangeWithValue(firstEl, 7))).toBe(firstInput);
-		expect(await waitFor(() => rangeWithValue(secondEl, 7))).toBe(secondInput);
-		expect(session.get("_view_values")).toEqual({});
-
-		firstController.abort();
-		secondController.abort();
 	});
 
 	test("canonicalizes selected cells to notebook order", async () => {
@@ -363,12 +432,18 @@ describe("NotebookView composition", () => {
 
 		widget.render(renderProps(view, secondEl, secondController.signal, host));
 		expect(await waitFor(() => alertText(secondEl))).toBe("Error: NotebookView already has a live writable render");
+		expect(view.get("_diagnostics")?.errors?.[0]).toMatchObject({
+			origin: "widget",
+			component: "packages/widget/src/index.ts",
+			operation: "render view",
+		});
 
 		firstController.abort();
 		const thirdController = new AbortController();
 		const thirdEl = document.createElement("div");
 		widget.render(renderProps(view, thirdEl, thirdController.signal, host));
 		expect(await waitFor(() => composedText(thirdEl, "42"))).toBeInstanceOf(HTMLElement);
+		expect(view.get("_diagnostics")?.errors).toEqual([]);
 		const snapshots = view.savedReadbacks();
 		expect(snapshots.at(-1)!.revision).toBeGreaterThan(firstRevision);
 		expect(
@@ -412,6 +487,7 @@ describe("NotebookView composition", () => {
 			),
 		);
 
+		await waitFor(() => (!hasRendered(view) ? true : undefined));
 		expect(hasRendered(view)).toBe(false);
 		expect(cellRecord(view, 0)).toMatchObject({ status: "pending", values: {}, errors: [] });
 		expect(graphValue(view)).toBeUndefined();

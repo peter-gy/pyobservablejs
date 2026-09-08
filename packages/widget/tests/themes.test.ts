@@ -19,7 +19,6 @@ describe("widget themes", () => {
 
 		widget.render(renderProps(firstFixture.view, first, firstController.signal, firstFixture.host));
 		const themeStyle = await waitFor(() => shadow.querySelector("style") ?? undefined);
-		expect(themeStyle).toBeInstanceOf(HTMLStyleElement);
 
 		widget.render(renderProps(secondFixture.view, second, secondController.signal, secondFixture.host));
 

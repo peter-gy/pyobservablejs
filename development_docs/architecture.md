@@ -1,139 +1,176 @@
 # Architecture
 
-`pyobservablejs` is browser-first. Python owns notebook definitions,
-serialization, attachments, and session state. The browser evaluates
-Observable JavaScript through Notebook Kit. A `NotebookView` owns each browser
-runtime and its synchronized readback.
+`@pyobservablejs/runtime` mounts notebook source into a browser element.
+`@pyobservablejs/widget` connects that mount to Python through
+[anywidget](https://anywidget.dev/), the browser component protocol used by
+marimo and Jupyter. Python owns authoring, imports, controller lifecycle, and
+validation of the synchronized state.
 
-The installed wheel includes the browser runtime used by anywidget hosts such
-as marimo and Jupyter.
-
-See [View composition](view-composition.md) for the selection, model-resolution,
-synchronization, readback, and teardown paths behind `NotebookView`.
+The same runtime powers the widget and the
+[standalone TypeScript API](../packages/runtime/README.md). Dependency arrows
+point from each consumer to the package it imports:
 
 ```mermaid
-flowchart TB
-  notebook["Public Notebook controller"] --> session["Private session model"]
-  notebook -->|"view(selectors...)"| view["NotebookView"]
-  session -->|"definition and shared inputs"| view
-  view --> runtime["Notebook Kit runtime"]
-  runtime --> state["ViewState snapshot"]
+flowchart LR
+  app["TypeScript application"] --> runtime["@pyobservablejs/runtime"]
+  python["@pyobservablejs/python<br/>browser bundle"] --> widget["@pyobservablejs/widget"]
+  widget --> runtime
+  runtime --> kit["Observable Notebook Kit"]
+  runtime --> observable["Observable Runtime"]
+  kit --> observable
 ```
 
-## Ownership boundaries
+[Notebook Kit](https://github.com/observablehq/notebook-kit) supplies the
+notebook format, cell transpilation, display observers, and standard library.
+[Observable Runtime](https://github.com/observablehq/runtime) evaluates the
+reactive dependency graph. The runtime package composes these into an isolated
+mount with selection, native values, DOM, styles, and disposal.
 
-`Notebook` is a traitlets controller. It owns the definition, canonical cell
-handles, immutable controller state, and lifecycle. Its private anywidget
-session model carries the definition and shareable named browser input values
-to each view.
+## Browser runtime
 
-`NotebookCell` is the stable handle for one cell. Its public key selects the
-cell. Its id and index are serialization and notebook-order metadata.
+`mountNotebook(element, source, options)` accepts Notebook Kit HTML or a
+`NotebookSpec`. Each call owns one Observable runtime and one DOM lifecycle.
+It normalizes and analyzes the notebook, includes the selected cells and their
+dependencies, installs styles in the owning document or shadow root, and starts
+evaluation.
 
-`NotebookView` is the public renderable anywidget. It owns one Notebook Kit
-runtime and immutable `ViewState`. `Notebook.view()` selects every cell.
-`Notebook.view(*selectors)` creates a focused or composite selection that
-evaluates in one runtime. Selectors are key strings, keyed authored cells, or
-same-owner cell handles.
+Injected variables are native JavaScript values. Functions, dates, collections,
+promises, and DOM objects retain their identities. Variable patches update the
+live runtime. Replacement rebuilds evaluation so released names return to their
+authored definitions. Source analysis and selection remain fixed for the mount.
 
-Standalone `view_from_*` factories return a view that owns its temporary
-notebook. Closing that view closes the private session and its live views.
+`MountedNotebook.state` and `onState` expose evaluation revisions, pending state,
+cell results, errors, and the dependency graph. Snapshot records and graph
+collections are read-only. Values inside results retain caller-owned native
+identities. Each mount tracks attempts and observer generations to reject stale
+callbacks. These guarantees also apply to a standalone TypeScript consumer.
 
-Separate views from one notebook share named Python variables. A browser input
-event on a named `viewof` value becomes session state for current and future
-views when the serialized value is writable across runtimes. Untouched source
-defaults and unsupported interaction values remain local to each runtime. Use a
-composite view when multiple cells require the same runtime and graph snapshot.
+Named `viewof` inputs publish native values through `onInput`. `setInputs`
+applies values to controls and recomputes their dependents. The runtime marks
+programmatic events so they do not become another interaction callback.
 
-## Render lifecycle
+The root entry point exposes the mount and its contract types.
+`@pyobservablejs/runtime/values` provides native value classification and
+comparison for adapters. Python value tags and serialization belong to the
+widget package.
 
-1. Python creates a `Notebook` from authored cells, Notebook Kit HTML, or an
-   ObservableHQ document.
-2. Python creates a `NotebookView` with a full, single-cell, or composite
-   selection and its state-capture policy.
-3. `Notebook.view()` adapts the view to a marimo UI element when it runs in a
-   marimo notebook. Other anywidget hosts receive the `NotebookView` directly.
-4. The frontend resolves the private session model referenced by the view and
-   reads its definition, runtime profile, attachments, variables, renderer
-   options, and shared input values.
-5. Notebook Kit parses or transpiles the definition. The runtime profile
-   selects the standard library before creating one Observable runtime for that
-   view.
-6. When state capture is enabled, the browser writes input and settled
-   revisions, pending state, structured results, errors, and graph metadata to
-   the view model.
-7. Teardown disposes the runtime, model listeners, and DOM owned by that view.
+## Inspection and data access
 
-Creating another view repeats steps 2 through 7 with a distinct model and
-runtime. Closing one view leaves the notebook session and sibling views alive.
+`@pyobservablejs/runtime/inspect` is the built Node entry point for static
+inspection. It reuses the same Notebook Kit analysis as mounting and returns
+source, imports, attachment references, and graph metadata. Notebook
+specifications can be inspected in Node. HTML parsing requires a host-provided
+DOM parser.
 
-## Session synchronization
+Each mount retains a native value inventory for its evaluated cells. Named,
+anonymous, and hidden dependency values have independent revisions. This
+inventory powers dataset discovery and explicit reads, independently of preview
+capture. Reading a value preserves native identity by default. Dataset
+projection and Arrow encoding belong to `datasets.ts` and `arrow.ts`.
 
-Python variable methods mutate the notebook session. `update_variables` sends
-changed values and cleared interacted-input names to each active view.
-`replace_variables` publishes when the environment changes or interacted input
-state clears, then rebuilds each active runtime so released names return to
-Notebook Kit ownership.
+The widget's `requests.ts` binds these operations to core anywidget custom
+messages for full reads. Static inspection and current dataset descriptors use
+separate synchronized traits, so source is sent once per render and catalog
+updates carry metadata. Python exposes readonly `inspection` and `datasets`
+traits independently of preview capture. The read channel routes generations
+and cancellations and sends Arrow IPC as binary buffers. Python `_requests.py`
+owns pending reads and timeouts and observes the synchronized generation.
+`_inspection.py` owns immutable inspection and data result types. Python
+validates and decodes these contracts and retains canonical cell handles.
 
-Browser input events on named `viewof` values publish writable serialized
-values to the session. A sibling writes the value to its matching input, then
-dispatches Observable `input` and `change` events when the value round-trips
-unchanged. A target can coerce the property write before a failed round trip
-suppresses those events. Equality checks at the session boundary prevent an
-unchanged browser value from becoming another input update.
+An explicit read either returns the requested representation or fails.
+Reactive preview serialization retains its separate size budget. Original
+Observable records remain available through `Notebook.source_document`, while
+prepared source and compiled metadata describe the executed notebook.
 
-View readback stays on the originating `NotebookView` model. This keeps marimo
-reactivity scoped to the wrapped view and prevents a readback update from
-recreating the shared session.
+## Widget adapter
 
-## Readback ownership
+The widget resolves the session referenced by its view model, validates traits,
+decodes Python values, and calls `mountNotebook`. Model changes either invoke a
+mount method or replace the mount when its source, selection, theme, attachments,
+or runtime options change.
 
-Each view owns one immutable `ViewState` snapshot. Python reads revisions,
-pending state, structured cell results, view errors, and graph metadata through
-`NotebookView.state`.
+`widget/src/values.ts` owns the Python wire codec. `ReadbackPublisher` serializes
+native runtime results, converts graph field names to the wire shape, and
+publishes one revisioned `_readback` mapping. It owns transport revisions and
+generation guards across remounts. Serialization failures become cell errors at
+this boundary.
 
-`capture_state=False` keeps `NotebookView.state` at its initial snapshot. The
-browser still renders cells, applies Python variable updates, and shares
-supported named browser inputs with sibling views.
+Shared named inputs travel through the session's `_view_values` trait. The
+adapter publishes values that can round-trip through the codec and applies
+received values with `setInputs`. Other interaction values remain local to
+their mount. Readback stays on the originating view model, keeping marimo
+reactivity scoped to that view.
 
-Each render attempt carries one monotonic token. Each evaluation wave carries
-an input revision, and each observer channel carries a generation. Writes from
-an aborted or superseded attempt, revision, or generation are dropped. The
-settled revision advances when every selected result reaches a terminal state.
-The view publishes its graph, results, errors, and revision fields as one wire
-snapshot. Python rejects delayed transport revisions and validates the complete
-shape before replacing `NotebookView.state` once.
+See [View composition](view-composition.md) for the model, selection,
+synchronization, and teardown paths.
 
-## Source-backed notebooks
+## Python controller and views
 
-`from_html` keeps Notebook Kit HTML as source. When requested,
-`embed_file_attachments` registers local attachments as data URL records and
-`rewrite_imports` embeds local JavaScript modules in the source before it
-reaches the browser.
+`Notebook` is the public [traitlets](https://traitlets.readthedocs.io/)
+controller. Traitlets provides validated attributes and change notifications.
+The controller owns the prepared definition, canonical cell handles, variables,
+attachment records, theme, and detached `NotebookState`.
 
-`from_observablehq` fetches public notebooks and converts document API cells
-into Notebook Kit HTML. The document `id` and `version` form an import
-resolution token. Observable import cells are rewritten to public v4 module
-URLs carrying that token, which preserves the dependency revisions selected by
-the source notebook. Document mappings without an id and version keep their
-supplied import specifiers.
+`_NotebookSession` is its private anywidget transport model. It carries the
+definition and controller values to each view. `NotebookView` is the renderable
+model and owns a detached Python `ViewState` populated from its browser mount.
 
-## Runtime profiles
+`Notebook.view(*selectors)` resolves key strings, keyed authored cells, or
+same-owner `NotebookCell` handles. Each call creates an independent view model
+and mount. A composite selection evaluates its cells together. Closing one
+view leaves sibling views and the controller alive. Closing the controller
+closes every tracked view and its private session. The standalone Python
+`view_from_*` factories make their returned view own the temporary controller.
 
-`NotebookModel.runtime_profile` records the standard library required by the
-source:
+Python accepts a strictly newer transport revision, validates the complete wire
+shape, and replaces `NotebookView.state` once. `capture_state=False` keeps the
+initial Python state while rendering and input synchronization continue.
 
-- `notebook-kit` uses the builtins exported by
-  `@observablehq/notebook-kit/runtime`. Python-authored notebooks and Notebook
-  Kit HTML without profile metadata select this profile.
-- `observable` creates a `Library` from `@observablehq/stdlib`. Every
-  ObservableHQ constructor selects this profile.
+## Source imports and runtime profiles
 
-The notebook session sends the profile through the dedicated
-`_runtime_profile` trait. The widget carries it into `RuntimeOptions`, and the
-runtime package constructs the selected builtin set before adding the shared
-attachment registry, scoped document helpers, `width` and `dark` generators,
-and Python variables. The profile is fixed for the notebook session and
-inherited by each view. Serialized ObservableHQ source records the profile in
-the root `data-pyobservablejs-runtime-profile` attribute. The HTML parser
-restores that profile when `from_html` reconstructs the model.
+Python `from_html` retains Notebook Kit HTML. Optional attachment embedding
+registers local files as data URL records. Optional import rewriting embeds
+local JavaScript modules before the source reaches the browser.
+
+`from_observablehq` converts public notebook documents to Notebook Kit HTML.
+The document id and version form an import resolution token, preserving the
+dependency revisions chosen by that notebook. A document mapping with neither
+field retains its supplied import specifiers. Python lowers table operations
+to classic `__query` calls. SQL source remains in SQL cells, which the runtime
+compiles with Notebook Kit's template parser and classic `__query.sql` for
+row arrays and query invalidation.
+
+`NotebookModel.runtime_profile` selects evaluation behavior and the standard library:
+
+- `notebook-kit` uses `@observablehq/notebook-kit/runtime` builtins and is the
+  default for authored notebooks and HTML with no profile metadata.
+- `observable` includes the classic `@observablehq/stdlib` library and is
+  selected by ObservableHQ constructors.
+
+Notebook Kit's public `transpile`, `NotebookRuntime.define`, and `observe`
+APIs own compilation, variable definitions, and output inspection. Observable
+Runtime resolves asynchronous dependencies, supplies `invalidation`, advances
+generators, and disposes their resources. The mount tracks selection, native
+values, and host input ownership around those APIs.
+
+The private `_runtime_profile` trait becomes the mount's `runtimeProfile`
+option. The runtime adds scoped document helpers, `width`, `dark`, attachments,
+and injected variables to the selected library. Python HTML serialization
+stores the profile in `data-pyobservablejs-runtime-profile` and restores it on
+import. Direct TypeScript callers choose the profile through mount options.
+
+## Error propagation
+
+The runtime's `diagnostics.ts` owns safe exception detail extraction and current
+cell/runtime diagnostics. The widget publishes `_diagnostics` independently of
+preview capture, with monotonic revision and the applied Python update sequence.
+The Python `errors` namespace owns immutable diagnostic records and exception
+formatting. `NotebookView.raise_for_errors()` raises the current report.
+
+`NotebookView.ready()` uses the correlated request channel. The widget waits for
+the requested Python sequence, awaits native `MountedNotebook.ready()`, and
+replies with complete readback and diagnostics. Python accepts both through
+the normal inbound state path before returning or raising. This checkpoint is
+independent of ipywidgets trait throttling. Fatal diagnostics reject
+pending operations. An accepted empty report clears previous failures.

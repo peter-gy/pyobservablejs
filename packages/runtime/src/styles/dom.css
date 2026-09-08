@@ -28,6 +28,8 @@
 }
 
 .pyobservablejs-notebook {
+	--monospace: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	--monospace-font: 14px/1.5 var(--monospace);
 	box-sizing: border-box;
 	container-type: inline-size;
 	max-width: 100%;

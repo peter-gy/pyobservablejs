@@ -317,10 +317,17 @@ def test_view_graph_waits_for_a_complete_snapshot() -> None:
     assert view.state.graph == obs.NotebookGraph(cells=(), edges=())
 
 
-def test_view_readback_rejects_an_out_of_order_browser_snapshot() -> None:
+@pytest.mark.parametrize("transport", ["trait", "frontend"])
+def test_view_readback_rejects_an_out_of_order_browser_snapshot(transport: str) -> None:
     view = obs.Notebook(obs.ojs("answer = 42", key="answer")).view()
-    view.set_trait(
-        "_readback",
+
+    def receive(wire: dict[str, Any]) -> None:
+        if transport == "frontend":
+            view.set_state({"_readback": wire})
+        else:
+            view.set_trait("_readback", wire)
+
+    receive(
         {
             "revision": 2,
             "input_revision": 0,
@@ -339,8 +346,7 @@ def test_view_readback_rejects_an_out_of_order_browser_snapshot() -> None:
         },
     )
 
-    view.set_trait(
-        "_readback",
+    receive(
         {
             "revision": 1,
             "input_revision": None,
@@ -939,15 +945,77 @@ def _display_model_id(
     return model_id
 
 
-def test_script_end_tag_literal_stays_inside_script_cell(
-    script_tags: ScriptTags,
+@pytest.mark.parametrize("index", ["00", "٠", "1"])
+def test_view_readback_requires_canonical_selected_indexes(index: str) -> None:
+    view = obs.Notebook(obs.ojs("answer = 42", key="answer")).view()
+    previous = view.state
+    with pytest.raises(traitlets.TraitError):
+        view.set_trait(
+            "_readback",
+            {
+                "revision": 1,
+                "input_revision": 0,
+                "settled_revision": 0,
+                "pending": False,
+                "graph": {},
+                "results": {
+                    index: {
+                        "revision": 0,
+                        "status": "success",
+                        "values": {"answer": 42},
+                        "errors": [],
+                    }
+                },
+                "errors": [],
+            },
+        )
+    assert view.state is previous
+
+
+@pytest.mark.parametrize("tag_name_value", ["summary", "bigint"])
+def test_view_readback_rejects_invalid_values_before_consuming_revision(
+    tag_name_value: str,
 ) -> None:
-    source = "html`</script></SCRIPT>`"
-    widget = obs.Notebook(obs.ojs(source))
+    view = obs.Notebook(obs.ojs("answer = 42", key="answer")).view()
+    previous = view.state
+    wire: dict[str, Any] = {
+        "revision": 1,
+        "input_revision": 0,
+        "settled_revision": 0,
+        "pending": False,
+        "graph": {},
+        "results": {
+            "0": {
+                "revision": 0,
+                "status": "success",
+                "values": {
+                    "__observablejs_type__": tag_name_value,
+                    "answer": {"__observablejs_type__": "bigint", "value": "invalid"},
+                },
+                "errors": [],
+            }
+        },
+        "errors": [],
+    }
+    with pytest.raises(traitlets.TraitError, match="serialized value"):
+        view.set_state({"_readback": wire})
+    assert view.state is previous
 
-    scripts = script_tags(widget.to_notebook_html())
+    wire["results"]["0"]["values"]["answer"]["value"] = "9007199254740993"
+    view.set_state({"_readback": wire})
+    assert view.state.result("answer").values["answer"] == 9007199254740993
 
-    assert len(scripts) == 1
-    assert scripts[0]["attrs"].get("type") == "application/vnd.observable.javascript"
-    text = scripts[0]["text"].strip()
-    assert text == "html`<\\/script><\\/script>`"
+    assert view.state.result("answer").values["__observablejs_type__"] == tag_name_value
+
+
+def test_closed_view_preserves_its_last_state(
+    browser_value_sync: BrowserValueSync,
+) -> None:
+    view = obs.Notebook(obs.ojs("answer = 42", key="answer")).view()
+    browser_value_sync(view, {"answer": 42})
+    previous = view.state
+    view.close()
+
+    browser_value_sync(view, {"answer": 43})
+
+    assert view.state is previous

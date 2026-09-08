@@ -1,128 +1,312 @@
+import { isNumber } from "@pyobservablejs/runtime/values";
 import type { RenderProps } from "@anywidget/types";
-import { analyzeNotebook, notebookAffectedIndexes, type WireValues } from "@pyobservablejs/runtime";
-import { notebookViewIndexes, renderNotebookView } from "./composition";
-import { createTopLevelError } from "./dom";
+import { mountNotebook, type MountedNotebook, type RuntimeValue, type Variables } from "@pyobservablejs/runtime";
 import {
-	readNotebookFromModel,
+	decodeVariables,
+	isRecord,
+	readNotebookOptions,
+	readNotebookSource,
 	readNotebookSessionRef,
 	readSelectedCellIndexes,
-	readCellKeys,
+	readWireValues,
 	SESSION_MODEL_CHANGE_EVENTS,
 	VIEW_MODEL_CHANGE_EVENTS,
 	type AnyWidgetModel,
 	type WidgetModel,
 } from "./model";
-import { ViewReadback, type ReadbackAttempt } from "./readback";
-import { openNotebookRuntimeSession } from "./session";
+import { ReadbackPublisher } from "./readback";
+import { connectRequests, type ReadySnapshot } from "./requests";
+import { isWritableSyncedViewValue, reviveSyncedValue, sameWireValue, toWireValue, type WireValues } from "./values";
+import { DiagnosticPublisher, showError, type DiagnosticContext, type DiagnosticScope } from "./errors";
 
-type Rerender = (variables?: WireValues) => void;
-
-export function renderNotebookViewModel(props: RenderProps<WidgetModel>): void {
-	let readback: ViewReadback;
+export function renderNotebookViewModel(props: RenderProps<WidgetModel>, diagnostics: DiagnosticPublisher): void {
+	let current = new AbortController();
+	const previousSequence = props.model.get("_diagnostics")?.sequence;
+	let appliedSequence =
+		isNumber(previousSequence) && Number.isSafeInteger(previousSequence) && previousSequence >= 0
+			? previousSequence
+			: 0;
+	let scope = diagnostics.start(() => appliedSequence);
+	let publisher: ReadbackPublisher | undefined;
+	let failed = false;
+	const fail = (cause: unknown, context: DiagnosticContext) => {
+		if (props.signal.aborted || failed) return;
+		failed = true;
+		scope.report(cause, context);
+		diagnostics.flush();
+		publisher?.fail(cause);
+		current.abort();
+		showError(props.el, cause);
+	};
 	try {
-		readback = new ViewReadback(props.model, props.signal);
-	} catch (error) {
-		props.el.replaceChildren(createTopLevelError(error));
+		publisher = new ReadbackPublisher(props.model, props.signal, {
+			update: (errors) => scope.replace("serialization", errors),
+			fail: (cause) =>
+				fail(cause, {
+					phase: "transport",
+					component: "packages/widget/src/readback.ts",
+					operation: "publish readback",
+				}),
+		});
+	} catch (cause) {
+		fail(cause, { phase: "transport", component: "packages/widget/src/model.ts", operation: "read view options" });
 		return;
 	}
-	let current = new AbortController();
-
-	const rerender: Rerender = (variables) => {
-		current.abort();
-		current = new AbortController();
-		const attemptController = current;
-		const attemptSignal = AbortSignal.any([props.signal, attemptController.signal]);
-		const attempt = readback.start();
-		const isCurrent = () => !attemptSignal.aborted && readback.isCurrent(attempt);
-		void renderCurrentView(props, attemptSignal, resetAndRerender, readback, attempt, variables).catch((cause) => {
-			if (!isCurrent()) return;
-			props.el.replaceChildren(createTopLevelError(cause));
-			readback.fail(attempt, cause, "rendering");
-			attemptController.abort();
-		});
+	const readback = publisher;
+	const rerender = () => {
+		try {
+			current.abort();
+			current = new AbortController();
+			failed = false;
+			scope = diagnostics.start(() => appliedSequence);
+			const attempt = scope;
+			const signal = AbortSignal.any([props.signal, current.signal]);
+			const publish = readback.start();
+			const onFailure = (cause: unknown, context: DiagnosticContext) => {
+				if (!signal.aborted) fail(cause, context);
+			};
+			void mountView(
+				props,
+				signal,
+				readback.captureState,
+				(state) => {
+					try {
+						publish(state);
+					} catch (cause) {
+						onFailure(cause, {
+							phase: "serialization",
+							component: "packages/widget/src/readback.ts",
+							operation: "capture readback",
+						});
+					}
+				},
+				rerender,
+				attempt,
+				onFailure,
+				(sequence) => {
+					appliedSequence = sequence;
+				},
+				() => ({ readback: readback.snapshot(), diagnostics: diagnostics.snapshot() }),
+			).catch((cause) => {
+				onFailure(cause, { phase: "rendering", component: "packages/widget/src/view.ts", operation: "mount view" });
+			});
+		} catch (cause) {
+			fail(cause, { phase: "rendering", component: "packages/widget/src/view.ts", operation: "restart view" });
+		}
 	};
-	const invalidateAndRerender = () => {
-		readback.invalidate();
-		rerender();
-	};
-	const resetAndRerender: Rerender = (variables) => {
-		readback.invalidate(true);
-		rerender(variables);
-	};
-	for (const event of VIEW_MODEL_CHANGE_EVENTS) props.model.on(event, invalidateAndRerender);
+	for (const event of VIEW_MODEL_CHANGE_EVENTS) props.model.on(event, rerender);
 	props.signal.addEventListener(
 		"abort",
 		() => {
-			for (const event of VIEW_MODEL_CHANGE_EVENTS) props.model.off(event, invalidateAndRerender);
 			current.abort();
+			for (const event of VIEW_MODEL_CHANGE_EVENTS) props.model.off(event, rerender);
 		},
 		{ once: true },
 	);
 	rerender();
 }
 
-async function renderCurrentView(
+async function mountView(
 	props: RenderProps<WidgetModel>,
 	signal: AbortSignal,
-	onInputReset: Rerender,
-	readback: ViewReadback,
-	attempt: ReadbackAttempt,
-	variablesOverride?: WireValues,
+	captureState: boolean,
+	onState: ReturnType<ReadbackPublisher["start"]>,
+	onDefinitionChange: () => void,
+	diagnostics: DiagnosticScope,
+	onFailure: (cause: unknown, context: DiagnosticContext) => void,
+	onSequence: (sequence: number) => void,
+	snapshot: () => ReadySnapshot,
 ): Promise<void> {
-	const requestedIndexes = readSelectedCellIndexes(props.model);
-	const sessionRef = readNotebookSessionRef(props.model);
-	const sessionModel = await resolveSessionModel(props, sessionRef, signal);
-	if (signal.aborted) return;
-	if (sessionModel.get("_model_role") !== "session") {
-		throw new Error("NotebookView reference does not resolve to a Notebook session");
+	let selection: ReturnType<typeof readSelectedCellIndexes>;
+	let model: AnyWidgetModel;
+	try {
+		selection = readSelectedCellIndexes(props.model);
+		const ref = readNotebookSessionRef(props.model);
+		model = await resolveSessionModel(props, ref, signal);
+		if (signal.aborted) return;
+		if (model.get("_model_role") !== "session")
+			throw new Error("NotebookView reference does not resolve to a Notebook session");
+	} catch (cause) {
+		onFailure(cause, { phase: "transport", component: "packages/widget/src/view.ts", operation: "resolve session" });
+		return;
 	}
-
-	const invalidate = () => onInputReset();
-	for (const event of SESSION_MODEL_CHANGE_EVENTS) sessionModel.on(event, invalidate);
+	let mounted: MountedNotebook | undefined;
+	let publishDatasets: (() => void) | undefined;
+	let sharedValues = readWireValues(model.get("_view_values"));
+	let publishingInputs: WireValues | undefined;
+	let lastSequence = variableUpdate(model).seq;
+	onSequence(lastSequence);
+	const guard =
+		<Arguments extends unknown[]>(
+			callback: (...args: Arguments) => void,
+			operation: string,
+			phase: DiagnosticContext["phase"] = "transport",
+		) =>
+		(...args: Arguments) => {
+			if (signal.aborted) return;
+			try {
+				callback(...args);
+			} catch (cause) {
+				onFailure(cause, { phase, component: "packages/widget/src/view.ts", operation });
+			}
+		};
+	const onInput = guard((name: string, value: RuntimeValue) => {
+		const context: DiagnosticContext = {
+			phase: "serialization",
+			component: "packages/widget/src/values.ts",
+			operation: "serialize browser input",
+			variable: name,
+		};
+		let wireValue;
+		try {
+			wireValue = toWireValue(value);
+			diagnostics.clear(context);
+		} catch (cause) {
+			diagnostics.report(cause, context);
+			return;
+		}
+		if (!isWritableSyncedViewValue(wireValue)) return;
+		if (Object.prototype.hasOwnProperty.call(sharedValues, name) && sameWireValue(sharedValues[name], wireValue))
+			return;
+		sharedValues = { ...sharedValues, [name]: wireValue };
+		const previous = publishingInputs;
+		publishingInputs = sharedValues;
+		try {
+			model.set("_view_values", sharedValues);
+		} finally {
+			publishingInputs = previous;
+		}
+		model.save_changes();
+	}, "publish browser input");
+	const onSharedInputs = guard(() => {
+		const incoming = model.get("_view_values");
+		// Skip our exact publication while accepting reentrant writes from other views.
+		if (publishingInputs !== undefined && incoming === publishingInputs) return;
+		sharedValues = readWireValues(incoming);
+		mounted?.setInputs(decodeInputs(sharedValues));
+	}, "apply shared inputs");
+	const clearInputs = (names: readonly string[]) => {
+		const next = { ...sharedValues };
+		for (const name of names) delete next[name];
+		if (sameWireValue(sharedValues, next)) return;
+		sharedValues = next;
+		model.set("_view_values", next);
+		model.save_changes();
+	};
+	const onVariables = guard(() => {
+		const patch = variableUpdate(model);
+		if (!mounted || patch.seq <= lastSequence) return;
+		lastSequence = patch.seq;
+		onSequence(lastSequence);
+		if (patch.kind === "set") {
+			const variables = decodeVariables(patch.values);
+			clearInputs(Object.keys(variables));
+			mounted.updateVariables(variables);
+		} else if (patch.kind === "replace") {
+			clearInputs([...Object.keys(readWireValues(model.get("_variables"))), ...Object.keys(patch.values)]);
+			mounted.replaceVariables(decodeVariables(patch.values));
+		}
+	}, "apply Python variables");
+	for (const event of SESSION_MODEL_CHANGE_EVENTS) model.on(event, onDefinitionChange);
+	model.on("change:_view_values", onSharedInputs);
+	model.on("change:_variable_update", onVariables);
 	signal.addEventListener(
 		"abort",
 		() => {
-			for (const event of SESSION_MODEL_CHANGE_EVENTS) sessionModel.off(event, invalidate);
+			try {
+				for (const event of SESSION_MODEL_CHANGE_EVENTS) model.off(event, onDefinitionChange);
+				model.off("change:_view_values", onSharedInputs);
+				model.off("change:_variable_update", onVariables);
+			} catch (cause) {
+				diagnostics.report(cause, {
+					phase: "transport",
+					component: "packages/widget/src/view.ts",
+					operation: "unsubscribe session",
+				});
+			}
+			try {
+				mounted?.dispose();
+			} catch (cause) {
+				diagnostics.report(cause, {
+					phase: "rendering",
+					component: "packages/widget/src/view.ts",
+					operation: "dispose view",
+				});
+			}
 		},
 		{ once: true },
 	);
-
-	const notebook = readNotebookFromModel(sessionModel);
-	const analysis = analyzeNotebook(notebook);
-	const selectedIndexes = resolveSelectedIndexes(requestedIndexes, notebook.cells.length);
-	const renderIndexes = notebookViewIndexes(analysis, selectedIndexes);
-	const cellKeys = readCellKeys(sessionModel);
-	readback.syncGraph(attempt, analysis, renderIndexes, cellKeys);
-	const beginInput = (names: ReadonlySet<string>) => {
-		if (!readback.captureState) return;
-		readback.beginInput(attempt, notebookAffectedIndexes(analysis, names));
-	};
-	const session = openNotebookRuntimeSession({
-		model: sessionModel,
-		el: props.el,
-		notebook,
-		analysis,
+	mounted = mountNotebook(props.el, readNotebookSource(model), {
+		...readNotebookOptions(model),
+		inputs: decodeInputs(sharedValues),
+		selection: selection === null ? undefined : [...selection],
+		captureState,
 		signal,
-		onInputReset,
-		onInput: beginInput,
-		variablesOverride,
+		onState,
+		onInput,
+		onDatasets: guard(() => publishDatasets?.(), "publish dataset metadata"),
+		onDiagnostics: (errors) => diagnostics.replace("runtime", errors),
 	});
-	if (!session) return;
-	try {
-		renderNotebookView({
-			notebook,
-			selectedIndexes,
-			renderIndexes,
-			analysis,
-			session,
-			readback,
-			attempt,
-			cellKeys,
-		});
-	} catch (error) {
-		session.cleanup();
-		throw error;
-	}
+	const notebook = mounted;
+	publishDatasets = connectRequests(props.model, notebook, signal, {
+		checkpoint: () => {
+			onState(notebook.state);
+			diagnostics.replace("runtime", notebook.diagnostics);
+			return snapshot();
+		},
+		onError: (cause, operation) =>
+			onFailure(cause, { phase: "transport", component: "packages/widget/src/requests.ts", operation }),
+		ready: async (sequence, requestSignal) => {
+			if (!captureState) throw new Error("Readiness requires capture_state=True");
+			if (lastSequence < sequence) {
+				await new Promise<void>((resolve, reject) => {
+					const cleanup = () => {
+						model.off("change:_variable_update", check);
+						requestSignal.removeEventListener("abort", abort);
+					};
+					const check = () => {
+						if (lastSequence >= sequence) {
+							cleanup();
+							resolve();
+						}
+					};
+					const abort = () => {
+						cleanup();
+						reject(requestSignal.reason);
+					};
+					model.on("change:_variable_update", check);
+					requestSignal.addEventListener("abort", abort, { once: true });
+					if (requestSignal.aborted) abort();
+					else check();
+				});
+			}
+			await notebook.ready({ signal: requestSignal });
+		},
+	});
+}
+
+type VariableUpdate = {
+	seq: number;
+	kind: "set" | "replace" | undefined;
+	values: WireValues;
+};
+
+function variableUpdate(model: AnyWidgetModel): VariableUpdate {
+	const value = model.get("_variable_update");
+	if (!isRecord(value)) return { seq: 0, kind: undefined, values: {} };
+	return {
+		seq: isNumber(value.seq) && Number.isSafeInteger(value.seq) && value.seq >= 0 ? value.seq : 0,
+		kind: value.kind === "set" || value.kind === "replace" ? value.kind : undefined,
+		values: readWireValues(value.values),
+	};
+}
+
+function decodeInputs(values: WireValues): Variables {
+	return Object.fromEntries(
+		Object.entries(values)
+			.filter(([, value]) => isWritableSyncedViewValue(value))
+			.map(([name, value]) => [name, reviveSyncedValue(value)]),
+	);
 }
 
 function resolveSessionModel(
@@ -131,18 +315,13 @@ function resolveSessionModel(
 	signal: AbortSignal,
 ): Promise<AnyWidgetModel> {
 	signal.throwIfAborted();
-	const lookup = Promise.resolve().then(() => props.host.getModel<WidgetModel>(ref));
+	const lookup = Promise.resolve().then(() => {
+		signal.throwIfAborted();
+		return props.host.getModel<WidgetModel>(ref);
+	});
 	return new Promise((resolve, reject) => {
 		const onAbort = () => reject(signal.reason);
 		signal.addEventListener("abort", onAbort, { once: true });
 		lookup.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
 	});
-}
-
-function resolveSelectedIndexes(indexes: Set<number> | null, cellCount: number): Set<number> {
-	if (indexes === null) return new Set(Array.from({ length: cellCount }, (_, index) => index));
-	for (const index of indexes) {
-		if (index >= cellCount) throw new Error(`NotebookView cell index ${index} is outside the Notebook session`);
-	}
-	return indexes;
 }

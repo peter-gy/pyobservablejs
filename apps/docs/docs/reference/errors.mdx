@@ -1,0 +1,139 @@
+---
+title: Errors and diagnostics
+description: Raise browser failures as Python exceptions and identify the failing cell or widget component.
+---
+
+# Errors and diagnostics
+
+Use a checkpoint after displaying a view in [Jupyter](https://jupyter.org/),
+a notebook host that can process widget messages while Python awaits:
+
+```python
+import observablejs as obs
+from IPython.display import display
+
+notebook = obs.Notebook(
+    obs.ojs("answer = calculate(value)", key="answer"),
+    variables={"value": 7},
+)
+view = notebook.view()
+display(view)
+```
+
+Run the checkpoint in a later cell:
+
+```python
+await view.ready()
+```
+
+This example raises `obs.errors.NotebookError` because `calculate` is undefined.
+The exception includes the producing cell, source, operation, component, and
+browser stack when available. Browser evaluation happens after display, so a
+checkpoint raises in the Python code that awaits or checks the result.
+
+## `await view.ready(*, timeout=30)`
+
+Waits for the browser to apply the current Python variable update and finish
+evaluating the selected cells. The reply carries state and diagnostics, so the
+checkpoint also works when the host batches trait updates. Returns `ViewState`
+on success. Raises a custom
+exception for current failures. Call it immediately after `update_variables()`
+to check the new evaluation:
+
+```python
+notebook.update_variables({"value": 9})
+state = await view.ready(timeout=10)
+```
+
+The view must be displayed and have `capture_state=True`, the default.
+`timeout` is a positive finite number of seconds. `timeout=None` waits until
+completion, cancellation, or closure. Cancelling the awaiting task preserves
+`asyncio.CancelledError` and cancels the browser request.
+
+In [marimo](https://marimo.io/), a reactive notebook host, an executing cell
+blocks browser response processing. Use the synchronous reactive check described
+next, or run `ready()` in a background task as shown in the
+[data access guide](../guide/connect/inspect-notebooks.mdx#run-full-reads-in-marimo).
+
+## `view.raise_for_errors()`
+
+Raises for the latest received diagnostics and returns `None` when they are
+empty. It checks the current snapshot immediately. Use `ready()` when an update
+must reach the browser first.
+
+In a marimo cell, establish the widget dependency before checking:
+
+```python
+view.value
+view.raise_for_errors()
+```
+
+A browser failure reruns this cell and raises the corresponding Python exception.
+Diagnostics and this check are available with `capture_state=False`.
+
+## Exception types
+
+Import exceptions through `observablejs.errors`. Each derives from
+`ObservableError` and exposes an immutable `diagnostics` tuple.
+
+| Exception              | Meaning                                                                                                                 |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `NotebookError`        | Authored source failed analysis or evaluation. Inspect the cell source and its dependencies.                            |
+| `WidgetError`          | Runtime or widget infrastructure failed. Inspect the component, operation, and browser stack.                           |
+| `SerializationError`   | A browser result could not be represented in the Python preview.                                                        |
+| `ReadError`            | An explicit data read failed, such as a missing value or attachment fetch.                                              |
+| `ProtocolError`        | A browser message violated the widget contract. It also derives from traitlets' `TraitError` and Python's `ValueError`. |
+| `ViewClosedError`      | The view closed during the operation.                                                                                   |
+| `StaleViewError`       | A newer update or replacement superseded the pending operation.                                                         |
+| `NotebookTimeoutError` | The deadline expired. It also derives from Python's `TimeoutError`.                                                     |
+
+Local argument validation uses `TypeError` and `ValueError`.
+A read of a failed notebook cell raises `NotebookError`. Infrastructure failures
+also reject outstanding browser operations. Errors from another view remain
+with that view.
+
+```python
+try:
+    state = await view.ready()
+except obs.errors.NotebookError as error:
+    print(error)
+except obs.errors.WidgetError as error:
+    print(error)
+```
+
+Let the exception propagate when a coding agent should receive a failed Python
+execution with the full diagnostic text.
+
+## Structured diagnostics
+
+Read `view.diagnostics` or catch an exception and inspect `error.diagnostics`.
+Both expose `Diagnostic` records:
+
+| Field             | Meaning                                                                 |
+| ----------------- | ----------------------------------------------------------------------- |
+| `name`, `message` | Original error name and message.                                        |
+| `origin`          | `notebook`, `runtime`, or `widget`.                                     |
+| `phase`           | `analysis`, `evaluation`, `rendering`, `serialization`, or `transport`. |
+| `component`       | Repository-relative pyobservablejs source file handling the operation.  |
+| `operation`       | The operation that failed.                                              |
+| `stack`           | Captured browser stack, when available.                                 |
+| `cause`           | Nested `ErrorDetail` with its own name, message, stack, and cause.      |
+| `variable`        | Affected variable, when available.                                      |
+| `cell`            | `DiagnosticCell` with key, index, id, mode, and source excerpt.         |
+
+`component` identifies the handling boundary. The underlying defect can be in
+notebook code, pyobservablejs, or an upstream library. Use the stack and cause
+chain to locate it. Browser stack locations can reference generated JavaScript.
+Source excerpts and cause chains are bounded for transport.
+
+Successful reevaluation clears the corresponding cell diagnostics. Replacing a
+view clears errors from its previous runtime. If browser module loading or the
+comm channel fails before diagnostics can be sent, the awaited operation raises
+`NotebookTimeoutError` with guidance for checking mounting and transport.
+
+Return or await asynchronous work in notebook cells so Observable Runtime can
+observe its rejection. Errors in detached timers, unreturned promises, or
+upstream asynchronous generator cleanup can remain in the browser console.
+
+`view.close()` closes the Python model synchronously. It does not await browser
+teardown, so failures after the comm closes cannot be raised from that call.

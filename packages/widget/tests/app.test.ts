@@ -17,6 +17,28 @@ declare global {
 }
 
 describe("widget graph and notebook readback", () => {
+	test("evaluates bound SQL views through their database client", async () => {
+		const { view, host } = createNotebookFixture({
+			_spec: {
+				cells: [
+					{ id: 1, mode: "ojs", value: "db = ({sql: async () => [{answer: 42}]})", hidden: true },
+					{ id: 2, mode: "sql.view", value: "select 42 as answer", output: "query" },
+					{ id: 3, mode: "ojs", value: "rows = await query.query()" },
+				],
+			},
+		});
+		const controller = new AbortController();
+
+		try {
+			widget.render(renderProps(view, document.createElement("div"), controller.signal, host));
+			await waitFor(() => (hasRendered(view) ? true : undefined));
+			expect(variableValue(view, "rows")).toEqual([{ answer: 42 }]);
+			expect(graphValue(view)?.cells[1]).toMatchObject({ mode: "sql.view", defines: ["query"] });
+		} finally {
+			controller.abort();
+		}
+	});
+
 	test("shows source only for cells explicitly pinned by Python", async () => {
 		const { view, host } = createNotebookFixture({
 			_spec: {
@@ -33,9 +55,11 @@ describe("widget graph and notebook readback", () => {
 
 		try {
 			widget.render(renderProps(view, el, controller.signal, host));
-			const panel = await waitFor(() => el.querySelector<HTMLElement>(".pyobservablejs-source-panel") ?? undefined);
-			expect(el.querySelectorAll(".pyobservablejs-source-panel")).toHaveLength(1);
-			expect(panel.textContent).toContain("const featured = 2;");
+			const source = await waitFor(
+				() => el.querySelector<HTMLElement>('[aria-label="JavaScript source"]') ?? undefined,
+			);
+			expect(el.querySelectorAll('[aria-label="JavaScript source"]')).toHaveLength(1);
+			expect(source.textContent).toBe("const featured = 2;");
 		} finally {
 			controller.abort();
 		}
@@ -56,52 +80,6 @@ describe("widget graph and notebook readback", () => {
 				results: {},
 				errors: [],
 			});
-		} finally {
-			controller.abort();
-		}
-	});
-
-	test("renders one NotebookView runtime and publishes graph and cell readback on its view model", async () => {
-		const { view, host } = createNotebookFixture({
-			_spec: {
-				cells: [
-					{ id: 1, mode: "ojs", value: "answer = 42" },
-					{ id: 2, mode: "ojs", value: "answer + 1" },
-				],
-			},
-			_cell_keys: ["answer", "readout"],
-		});
-		const controller = new AbortController();
-		const el = document.createElement("div");
-
-		widget.render(renderProps(view, el, controller.signal, host));
-
-		const graph = await waitFor(() => graphValue(view));
-		expect(graph.cells.map((cell) => cell.key)).toEqual(["answer", "readout"]);
-		expect(graph.cells[1]?.references).toEqual(["answer"]);
-		expect(graph.edges).toContainEqual({ from: 1, to: 2, variable: "answer" });
-		expect(await waitFor(() => (variableValue(view, "answer") === 42 ? 42 : undefined))).toBe(42);
-		expect(await waitFor(() => (variableValue(view, "readout") === 43 ? 43 : undefined))).toBe(43);
-		expect(await waitFor(() => (hasRendered(view) ? true : undefined))).toBe(true);
-		controller.abort();
-	});
-
-	test("renders without publishing browser state when capture is disabled", async () => {
-		const { view, host } = createNotebookFixture({
-			_spec: {
-				cells: [{ id: 1, mode: "ojs", value: "answer = 42" }],
-			},
-			_cell_keys: ["answer"],
-		});
-		view.set("_capture_state", false);
-		const controller = new AbortController();
-		const el = document.createElement("div");
-
-		try {
-			widget.render(renderProps(view, el, controller.signal, host));
-			expect(await waitFor(() => (el.textContent?.includes("42") ? true : undefined))).toBe(true);
-			expect(view.saveCount()).toBe(0);
-			expect(view.savedReadbacks()).toEqual([]);
 		} finally {
 			controller.abort();
 		}
@@ -145,51 +123,10 @@ describe("widget graph and notebook readback", () => {
 			widget.render(renderProps(view, el, controller.signal, host));
 			expect(await waitFor(() => (el.textContent?.includes("42") ? true : undefined))).toBe(true);
 			expect(globalThis.__pyobservablejsSerializationAttempts).toBe(0);
-			expect(view.saveCount()).toBe(0);
 			expect(view.savedReadbacks()).toEqual([]);
 		} finally {
 			controller.abort();
 			Reflect.deleteProperty(globalThis, "__pyobservablejsSerializationAttempts");
-		}
-	});
-
-	test("rejects an invalid capture-state wire value", () => {
-		const { view, host } = createNotebookFixture({
-			_spec: { cells: [] },
-		});
-		view.set("_capture_state", "no");
-		const controller = new AbortController();
-		const el = document.createElement("div");
-
-		try {
-			widget.render(renderProps(view, el, controller.signal, host));
-			expect(alertText(el)).toBe("Error: NotebookView capture state must be a boolean");
-		} finally {
-			controller.abort();
-		}
-	});
-
-	test("publishes only internally consistent readback snapshots", async () => {
-		const { view, host } = createNotebookFixture({
-			_spec: { cells: [{ id: 1, mode: "ojs", value: "answer = 42" }] },
-			_cell_keys: ["answer"],
-		});
-		const controller = new AbortController();
-
-		try {
-			widget.render(renderProps(view, document.createElement("div"), controller.signal, host));
-			await waitFor(() => (hasRendered(view) ? true : undefined));
-
-			expect(
-				view.savedReadbacks().every((snapshot) => {
-					if (snapshot.input_revision === null) {
-						return snapshot.settled_revision === null && !snapshot.pending;
-					}
-					return snapshot.pending || snapshot.settled_revision === snapshot.input_revision;
-				}),
-			).toBe(true);
-		} finally {
-			controller.abort();
 		}
 	});
 
@@ -271,6 +208,9 @@ describe("widget graph and notebook readback", () => {
 			expect(variableValue(view, "answer")).toBe(42);
 			expect(hasRendered(view)).toBe(true);
 			const snapshots = view.savedReadbacks();
+			for (const snapshot of snapshots) {
+				if (!snapshot.pending) expect(snapshot.settled_revision).toBe(snapshot.input_revision);
+			}
 			expect(
 				snapshots.every((snapshot, index) => index === 0 || snapshot.revision > snapshots[index - 1]!.revision),
 			).toBe(true);
@@ -415,6 +355,10 @@ describe("widget graph and notebook readback", () => {
 		widget.render(renderProps(view, document.createElement("div"), controller.signal, host));
 
 		expect(await waitFor(() => (variableValue(view, "readout") === 43 ? 43 : undefined))).toBe(43);
+		const graph = graphValue(view)!;
+		expect(graph.cells.map((cell) => cell.key)).toEqual(["answer", "readout", "broken"]);
+		expect(graph.cells[1]?.references).toEqual(["answer"]);
+		expect(graph.edges).toContainEqual({ from: 1, to: 2, variable: "answer" });
 		const broken = await waitFor(() => {
 			const result = cellRecord(view, 2);
 			return result?.status === "error" ? result : undefined;
@@ -481,7 +425,7 @@ describe("widget graph and notebook readback", () => {
 		controller.abort();
 	});
 
-	test("clears derived state before a delayed variable replacement settles", async () => {
+	test("clears values while retaining the definition graph during variable replacement", async () => {
 		let gate: Promise<number> = Promise.resolve(0);
 		let resolveGate!: (value: number) => void;
 		Object.defineProperty(globalThis, "__pyobservablejsReplacementGate", {
@@ -506,15 +450,17 @@ describe("widget graph and notebook readback", () => {
 			widget.render(renderProps(view, document.createElement("div"), controller.signal, host));
 			expect(await waitFor(() => (variableValue(view, "answer") === 1 ? 1 : undefined))).toBe(1);
 
+			const graph = graphValue(view);
 			gate = new Promise<number>((resolve) => {
 				resolveGate = resolve;
 			});
 			session.set("_variable_update", { seq: 1, kind: "replace", values: { base: 2 } });
 			session.set("_variables", { base: 2 });
 
+			await waitFor(() => (!hasRendered(view) ? true : undefined));
 			expect(hasRendered(view)).toBe(false);
 			expect(cellRecord(view, 0)).toMatchObject({ status: "pending", values: {}, errors: [] });
-			expect(graphValue(view)).toBeUndefined();
+			expect(graphValue(view)).toEqual(graph);
 
 			resolveGate(0);
 			expect(await waitFor(() => (variableValue(view, "answer") === 2 ? 2 : undefined))).toBe(2);
@@ -681,11 +627,14 @@ describe("widget graph and notebook readback", () => {
 			return current?.status === "error" ? current : undefined;
 		});
 		expect(result.values).toEqual({ value: {} });
-		expect(result.errors).toContainEqual({
-			name: "TypeError",
-			message: "cannot inspect",
-			phase: "rendering",
-		});
+		expect(result.errors).toContainEqual(
+			expect.objectContaining({
+				name: "TypeError",
+				message: "cannot inspect",
+				phase: "rendering",
+				stack: expect.stringContaining("cannot inspect"),
+			}),
+		);
 		controller.abort();
 	});
 

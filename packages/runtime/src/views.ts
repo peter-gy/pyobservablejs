@@ -1,5 +1,4 @@
-import type { RuntimeValue } from "@observablehq/runtime";
-import { sameWireValue, toWireValue, type RevivedValue, type WireValue } from "./values";
+import { sameValue, type RuntimeValue } from "./values";
 
 export type ViewTarget = EventTarget & {
 	value?: RuntimeValue;
@@ -22,6 +21,8 @@ export function readViewValue(view: ViewTarget): RuntimeValue {
 	if (view instanceof HTMLInputElement) {
 		if (view.type === "checkbox") return view.checked;
 		if (view.type === "number" || view.type === "range") return view.valueAsNumber;
+		if (view.type === "date") return view.valueAsDate;
+		if (view.type === "file") return view.multiple ? view.files : view.files?.[0];
 		return view.value;
 	}
 	if (view instanceof HTMLSelectElement && view.multiple) {
@@ -30,13 +31,13 @@ export function readViewValue(view: ViewTarget): RuntimeValue {
 	return view.value;
 }
 
-export function writeViewValue(view: ViewTarget, value: RevivedValue): ViewWriteResult {
-	const expected = expectedWireValue(view, value);
+export function writeViewValue(view: ViewTarget, value: RuntimeValue): ViewWriteResult {
+	if (view instanceof HTMLInputElement && view.type === "file") return "unsupported";
+	const expected = expectedValue(view, value);
 	if (view instanceof HTMLInputElement) {
 		if (view.type === "checkbox") {
 			view.checked = Boolean(value);
 			view.value = String(value);
-			view.dispatchEvent(new Event("click", { bubbles: true }));
 		} else if (view.type === "date" && isValidDate(value)) {
 			view.value = value.toISOString().slice(0, 10);
 		} else if (view.type === "datetime-local" && isValidDate(value)) {
@@ -51,16 +52,24 @@ export function writeViewValue(view: ViewTarget, value: RevivedValue): ViewWrite
 		view.value = value;
 		restoreNestedSelectValue(view, value);
 	}
-	if (!sameWireValue(toWireValue(readViewValue(view)), expected)) return "unsupported";
+	const read = () => (view instanceof HTMLInputElement && view.type === "date" ? view.value : readViewValue(view));
+	if (!sameValue(read(), expected)) return "unsupported";
+	if (isClickInput(view)) view.dispatchEvent(new Event("click", { bubbles: true }));
 	view.dispatchEvent(new Event("input", { bubbles: true }));
 	view.dispatchEvent(new Event("change", { bubbles: true }));
-	return "applied";
+	return sameValue(read(), expected) ? "applied" : "unsupported";
 }
 
-function restoreNestedSelectValue(view: ViewTarget, value: RevivedValue): void {
+export function isClickInput(view: ViewTarget): boolean {
+	return (
+		(view instanceof HTMLInputElement || view instanceof HTMLButtonElement) &&
+		(view.type === "button" || view.type === "submit" || view.type === "checkbox")
+	);
+}
+
+function restoreNestedSelectValue(view: ViewTarget, value: RuntimeValue): void {
 	if (!(view instanceof Element)) return;
-	const expected = toWireValue(value);
-	if (sameWireValue(toWireValue(readViewValue(view)), expected)) return;
+	if (sameValue(readViewValue(view), value)) return;
 	const selects = nestedSelects(view);
 	const fallback = selects.map((select) => [select, select.selectedIndex] as const);
 	for (const select of selects) {
@@ -69,7 +78,7 @@ function restoreNestedSelectValue(view: ViewTarget, value: RevivedValue): void {
 			// restore its option object before the outer view event runs.
 			select.selectedIndex = index;
 			dispatchSelectEvents(select);
-			if (sameWireValue(toWireValue(readViewValue(view)), expected)) return;
+			if (sameValue(readViewValue(view), value)) return;
 		}
 	}
 	for (const [select, selectedIndex] of fallback) {
@@ -90,13 +99,16 @@ function dispatchSelectEvents(select: HTMLSelectElement): void {
 	select.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
-function expectedWireValue(view: ViewTarget, value: RevivedValue): WireValue {
+function expectedValue(view: ViewTarget, value: RuntimeValue): RuntimeValue {
 	if (view instanceof HTMLInputElement) {
-		if (view.type === "checkbox") return toWireValue(Boolean(value));
-		if (view.type === "date" && isValidDate(value)) return toWireValue(value.toISOString().slice(0, 10));
-		if (view.type === "datetime-local" && isValidDate(value)) return toWireValue(value.toISOString().slice(0, 16));
+		if (view.type === "checkbox") return Boolean(value);
+		if (view.type === "date") {
+			if (isValidDate(value)) return value.toISOString().slice(0, 10);
+			if (value == null) return "";
+		}
+		if (view.type === "datetime-local" && isValidDate(value)) return value.toISOString().slice(0, 16);
 	}
-	return toWireValue(value);
+	return value;
 }
 
 function isValidDate<Value>(value: Value): value is Value & Date {

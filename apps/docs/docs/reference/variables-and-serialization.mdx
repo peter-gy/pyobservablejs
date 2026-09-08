@@ -83,11 +83,15 @@ that should load through `FileAttachment`.
 When a Python variable and named `viewof` input use the same name, the initial
 Python value sets the control. Browser changes then update sibling views. A
 later Python update sets the value again in every view. Use the same input shape
-for a shared name across views.
+for a shared name across views. Values that exceed the
+[serialization limits](#browser-result-conversion) remain local to their view.
+File selections and DOM objects also remain local. Python readback captures
+file metadata.
 
 ## Browser result conversion
 
 Cell values in `NotebookView.state` decode into detached read-only mappings.
+Readback refreshes a cell's values when that cell reevaluates.
 
 | Browser value                             | Python result value        |
 | ----------------------------------------- | -------------------------- |
@@ -101,6 +105,13 @@ Cell values in `NotebookView.state` decode into detached read-only mappings.
 | `Error` returned as data                  | `BrowserErrorValue`        |
 | DOM element, function, regular expression | stable summary string      |
 | `File`, `Blob`                            | read-only metadata mapping |
+
+Readback values share a budget of 50,000 visited values and fields and 1 MB of
+conservatively estimated JSON content per view snapshot. Values deeper than
+100 levels or larger than the remaining budget become one summary such as
+`Array(31000)` or `String(1000000)`. Browser evaluation and rendering retain the
+complete native value. Select the cells whose values Python needs, or use
+`capture_state=False` for a view whose output stays in the browser.
 
 Evaluation, rendering, and serialization failures appear in structured
 `CellError` records. See [View state and graph](values-and-graph.mdx).

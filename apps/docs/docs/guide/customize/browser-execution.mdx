@@ -13,13 +13,18 @@ trusted code because they can use the page's browser privileges.
 
 :::
 
-All JavaScript evaluates in the browser page that hosts the view. Python
-never executes JavaScript, and cells never execute Python. This page
-describes what the browser runtime provides and when it reaches the network.
+JavaScript evaluates in the browser page that hosts the view.
+[Notebook Kit](https://observablehq.com/notebook-kit/) supplies the cell
+languages and standard library. Python constructs the definition and sends
+values to its browser runtime.
+
+Notebook Kit's `node`, `python`, and `r` cells read precomputed interpreter
+results from `.observable/cache` paths served by the host page. Calculate with
+the host Python kernel through [Python variables](../connect/python-values.mdx).
 
 ## Runtime profiles
 
-The notebook source selects the standard-library profile before a view
+The notebook source selects the runtime profile before a view
 starts. The profile is fixed for the notebook session and inherited by each
 view.
 
@@ -31,28 +36,36 @@ view.
 | ObservableHQ-derived HTML serialized by `to_notebook_html()` | Observable   |
 
 The Notebook Kit profile uses the builtins exported by Notebook Kit. The
-Observable profile uses the classic Observable standard library, which adds
+Observable profile uses the [classic Observable standard
+library](https://github.com/observablehq/stdlib), which adds
 classic names such as `require` and `DOM`. Both profiles receive view-scoped
 `FileAttachment`, `document`, `width`, and `dark` values from
 `pyobservablejs`.
+
+Notebook Kit SQL cells retain native database results, including columnar
+[Apache Arrow](https://arrow.apache.org/) tables.
+Classic Observable imports expose row arrays, so dependent cells can call
+methods such as `.map()`. Their queries follow the cell lifecycle and can stream
+results.
 
 ## Builtins
 
 The selected profile resolves builtins when cells reference them.
 
-| Builtin      | Contract                                                                                                                                            |
-| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Inputs`     | Creates controls, tables, and other input elements. Pass an input to `view(...)` to expose its changing value.                                      |
-| `Plot`       | Creates Observable Plot marks. `Plot.plot()` and a mark's `.plot()` return DOM nodes.                                                               |
-| `html`, `md` | Creates reactive HTML and Markdown DOM values from tagged templates.                                                                                |
-| `Generators` | Provides `input`, `observe`, and `queue` in both profiles. Other methods come from the selected standard library.                                   |
-| `Mutable`    | Creates a reactive source with a `.value` getter and setter. Consumers rerun after the value changes.                                               |
-| `width`      | Yields the floored notebook root width with a 320-pixel minimum. It falls back to 928 when layout has no measurable width and updates after resize. |
-| `dark`       | Yields whether the notebook root uses a dark color scheme. Theme changes rerun dependent cells.                                                     |
+| Builtin                                                   | Contract                                                                                                                                                         |
+| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`Inputs`](https://observablehq.com/@observablehq/inputs) | Creates controls, tables, and other input elements. Pass an input to `view(...)` to expose its changing value.                                                   |
+| [`Plot`](https://observablehq.com/plot/)                  | Creates charts from data and mark specifications. `Plot.plot()` and a mark's `.plot()` return browser elements.                                                  |
+| `sql`                                                     | Builds composable SQL query fragments. A query's `.query(db)` executes it against a database client.                                                             |
+| `html`, `md`                                              | Creates reactive HTML and Markdown DOM values from tagged templates.                                                                                             |
+| `Generators`                                              | Provides `input`, `observe`, and `queue` in both profiles. Other methods come from the selected standard library.                                                |
+| `Mutable`                                                 | Creates a reactive source with a `.value` getter and setter. Consumers rerun after the value changes.                                                            |
+| `width`                                                   | Yields the notebook root content width through Notebook Kit’s `Generators.width(root)`. The first value arrives after browser layout, then updates after resize. |
+| `dark`                                                    | Yields whether the notebook root uses a dark color scheme. Theme changes rerun dependent cells.                                                                  |
 
 The Notebook Kit profile also exposes sample datasets such as `aapl`,
 `cars`, and `penguins`. Runtime-owned builtin names cannot be Python
-variables. The full reserved list is in [Variables and
+variables. See the naming rules in [Variables and
 serialization](../../reference/variables-and-serialization.mdx#variable-names).
 
 ## Module imports and the network
@@ -72,10 +85,13 @@ obs.js(
 
 External libraries, sample datasets, module imports, and source notebooks
 can require browser network access. Notebook Kit resolves `npm:` specifiers
-from jsDelivr at render time. The page content security policy must permit
-every package, data, and module origin used by its cells. To keep a widget
-self-contained, embed local modules with `rewrite_imports=True` and local
-data with `embed_file_attachments=True`. See [Add files and local
+from [jsDelivr](https://www.jsdelivr.com/), a package delivery network, at render
+time. The page's [content security policy](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CSP),
+which limits browser scripts and network requests, must permit
+every package, data, and module origin used by its cells. To carry local source
+and data with a widget, embed modules with `rewrite_imports=True` and
+data with `embed_file_attachments=True`. Library and dataset builtins can still
+fetch remote resources. See [Add files and local
 modules](../create/files-and-modules.mdx).
 
 Network access happens at two distinct times:

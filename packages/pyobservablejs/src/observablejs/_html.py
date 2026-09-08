@@ -89,10 +89,11 @@ class _NotebookHTMLParser(HTMLParser):
             return
         attrs = self._script_attrs
         self._script_attrs = None
-        value = (
-            textwrap.dedent("".join(self._script_parts))
-            .strip("\n")
-            .replace("<\\/script", "</script")
+        value = re.sub(
+            r"<\\(?=\\*/script(?:\s|>))",
+            "<",
+            textwrap.dedent("".join(self._script_parts)).strip("\n"),
+            flags=re.IGNORECASE,
         )
         cell_attrs: dict[str, Any] = {}
         cell_id = self._cell_id(attrs.get("id"))
@@ -105,7 +106,7 @@ class _NotebookHTMLParser(HTMLParser):
                 mode=cast(
                     Mode,
                     _MODE_BY_SCRIPT_TYPE.get(
-                        (attrs.get("type") or "module").lower(), "ojs"
+                        (attrs.get("type") or "module").lower(), "js"
                     ),
                 ),
                 key=attrs.get(CELL_KEY_ATTRIBUTE),
@@ -131,22 +132,10 @@ class _NotebookHTMLParser(HTMLParser):
         return cell_id
 
 
-def parse_html_cells(source: str) -> list[Cell]:
+def parse_html(source: str) -> tuple[list[Cell], Theme, RuntimeProfile]:
     parser = _NotebookHTMLParser()
     parser.feed(source)
-    return parser.cells
-
-
-def parse_html_theme(source: str) -> Theme:
-    parser = _NotebookHTMLParser()
-    parser.feed(source)
-    return parser.theme or "air"
-
-
-def parse_html_runtime_profile(source: str) -> RuntimeProfile:
-    parser = _NotebookHTMLParser()
-    parser.feed(source)
-    return parser.runtime_profile or "notebook-kit"
+    return parser.cells, parser.theme or "air", parser.runtime_profile or "notebook-kit"
 
 
 def _runtime_profile(value: str | None) -> RuntimeProfile:

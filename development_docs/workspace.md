@@ -1,29 +1,37 @@
 # Workspace
 
-The repository is both a pnpm workspace and a uv workspace. pnpm owns the
-browser packages and final widget bundle. uv owns the publishable Python
-distribution and contributor environment.
+The repository uses [pnpm workspaces](https://pnpm.io/workspaces) for browser
+packages and [uv workspaces](https://docs.astral.sh/uv/concepts/projects/workspaces/)
+for the Python distribution and contributor environment.
 
 ## Package graph
 
 ```mermaid
 flowchart TB
-  runtime["@pyobservablejs/runtime"] --> widget["@pyobservablejs/widget"]
-  widget --> python["@pyobservablejs/python"]
-  bundle["anywidget-bundle<br/>npm plugin and Python runtime"] --> python
-  python --> pypi["PyPI pyobservablejs"]
+  python["@pyobservablejs/python"] --> widget["@pyobservablejs/widget"]
+  python --> bundle["anywidget-bundle"]
+  widget --> runtime["@pyobservablejs/runtime"]
+  app["Standalone TypeScript consumer"] --> runtime
+  runtime --> kit["Notebook Kit and Observable Runtime"]
 ```
 
-| Package                   | Contract                                                                                 |
-| ------------------------- | ---------------------------------------------------------------------------------------- |
-| `packages/runtime`        | Notebook Kit analysis, execution, attachments, variables, and browser runtime values     |
-| `packages/widget`         | anywidget session resolution, view rendering, shared input synchronization, and teardown |
-| `anywidget-bundle`        | Vite plugin, manifest, module transport, lifecycle protocol, and Python response runtime |
-| `packages/pyobservablejs` | Python API, traitlets, final widget assets, wheel, and sdist                             |
-| `apps/docs`               | Docusaurus configuration, mdx-marimo integration, and published site build               |
+| Package                   | Contract                                                                                                 |
+| ------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `packages/runtime`        | Source-to-DOM mounting, analysis, execution, native values, input controls, styles, and evaluation state |
+| `packages/widget`         | anywidget model resolution, Python wire codecs, shared-input transport, and readback publication         |
+| `anywidget-bundle`        | Vite plugin, manifest, module transport, lifecycle protocol, and Python response runtime                 |
+| `packages/pyobservablejs` | Python API, traitlets, final widget assets, wheel, and sdist                                             |
+| `apps/e2e`                | Standalone TypeScript, marimo, and JupyterLab browser tests                                              |
+| `apps/docs`               | Docusaurus configuration, mdx-marimo integration, and published site build                               |
 
-Cross-package TypeScript imports use package names. Internal dependencies use
-`workspace:*`. The frontend pins the npm `anywidget-bundle` release, and the
+Arrows indicate imports from consumer to dependency. Cross-package TypeScript
+imports use package names and internal dependencies use `workspace:*`.
+`runtime` exposes `mountNotebook` and contract types at its root, plus native
+value utilities at `/values`. The widget owns Python serialization and consumes
+these entry points. Read the [TypeScript API](../packages/runtime/README.md) for
+the mount contract.
+
+The frontend pins the npm `anywidget-bundle` release, and the
 Python distribution pins the matching PyPI release. Shared external versions
 use the catalog in `pnpm-workspace.yaml`.
 
@@ -81,10 +89,19 @@ wheel to the root `dist/` directory.
 The Python workspace package runs `vp build` and writes the deployable widget to
 `packages/pyobservablejs/src/observablejs/static/`.
 
-Hatch verifies the manifest, entry module, app module, and stylesheet before it
-packages Python. The sdist contains the Python source, package metadata, and the
+Hatch checks that the manifest, entry module, and app module exist before it
+packages Python.
+The runtime owns scoped styles and installs them in the mount's document or
+shadow root. `anywidget-bundle` generates the final manifest and browser assets,
+including a stylesheet when the dependency bundle emits one. The sdist contains
+the Python source, package metadata, and the
 built browser assets. Building a wheel from that sdist uses the same assets and
 works outside the pnpm workspace.
+
+CI shares the complete `static/` tree as the `widget-assets`
+[workflow artifact](https://docs.github.com/en/actions/tutorials/store-and-share-data).
+Python tests, browser tests, and distribution builds consume the assets produced by `test-js`
+in that run. The release workflow builds its assets from the tagged source.
 
 Run the cross-language gate:
 

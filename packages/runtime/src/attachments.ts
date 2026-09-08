@@ -1,13 +1,9 @@
 import { FileAttachment, type NotebookRuntime, registerFile } from "@observablehq/notebook-kit/runtime";
 import type { RuntimeValue } from "@observablehq/runtime";
+import { Library } from "@observablehq/stdlib";
 import { isCallable, isObjectValue, isString } from "./value-kind";
 
-export type AttachmentInfo = {
-	url: string;
-	mimeType?: string;
-	lastModified?: number;
-	size?: number;
-};
+import type { AttachmentInfo } from "./attachment-info";
 
 export type AttachmentRegistry = {
 	baseUrl: string;
@@ -26,33 +22,22 @@ type RuntimeFileAttachmentFactory = {
 	(name: string, base?: string): RuntimeFileAttachment;
 	prototype: typeof FileAttachment.prototype;
 };
-type RuntimeFileResolver = (name: string) => { url: string; mimeType?: string } | string | null;
-export type SQLiteValue = null | boolean | number | string | Uint8Array;
-export type SQLiteRow = Record<string, SQLiteValue>;
-export type SQLiteRows = SQLiteRow[] & { columns?: string[]; value?: SQLiteRows };
-export type SQLiteSource = string | ArrayBuffer | Uint8Array | { arrayBuffer(): Promise<ArrayBuffer> };
-type SqlJsDatabase = {
-	exec(query: string, params?: SQLiteValue[]): SqlJsResult[];
-};
-type SqlJsResult = {
-	columns: string[];
-	values: SQLiteValue[][];
-};
+type RuntimeFileResolver = Parameters<NotebookRuntime["runtime"]["fileAttachments"]>[0];
+const NativeSQLiteDatabaseClient = new Library().SQLiteDatabaseClient();
+type NativeSQLiteClient = InstanceType<typeof NativeSQLiteDatabaseClient>;
+export type SQLiteRows = Awaited<ReturnType<NativeSQLiteClient["query"]>>;
+export type SQLiteRow = SQLiteRows[number];
+export type SQLiteValue = SQLiteRow[string];
+export type SQLiteSource = Parameters<typeof NativeSQLiteDatabaseClient.open>[0];
+type SqlJsDatabase = ConstructorParameters<typeof NativeSQLiteDatabaseClient>[0];
 type SqlJsModule = {
 	Database: new (data?: Uint8Array) => SqlJsDatabase;
 };
-type SqlJsInit = (options: { locateFile(name: string): string }) => Promise<SqlJsModule>;
-type SQLiteGlobalConfig = {
+export type SqlJsInit = (options: { locateFile(name: string): string }) => Promise<SqlJsModule>;
+export type SQLiteGlobalConfig = {
 	initSqlJs?: SqlJsInit;
 	locateFile?(name: string): string;
 };
-type SQLiteSchemaOptions = {
-	schema?: string;
-};
-type SQLiteColumnOptions = SQLiteSchemaOptions & {
-	table?: string;
-};
-
 type RuntimeRecord = Record<string, RuntimeValue>;
 type DuckDBMethod<Receiver extends object> = (this: Receiver, ...args: RuntimeValue[]) => RuntimeValue;
 type DuckDBFileAttachment = {
@@ -61,11 +46,6 @@ type DuckDBFileAttachment = {
 	url(): Promise<string>;
 	blob(): Promise<Blob>;
 };
-
-declare global {
-	var initSqlJs: SqlJsInit | undefined;
-	var observablejsSqlite: SQLiteGlobalConfig | undefined;
-}
 
 let sqliteModule: Promise<SqlJsModule> | undefined;
 
@@ -79,7 +59,7 @@ export function extendRuntimeFileAttachments(runtime: NotebookRuntime): void {
 }
 
 export function createFileAttachment(baseUrl: string, registry: AttachmentRegistry): RuntimeFileAttachmentFactory {
-	// A synthetic base URL scopes registered attachments to this widget instance.
+	// A synthetic base URL scopes registered attachments to this runtime instance.
 	const attachment = (name: string, base?: string) => {
 		const key = String(name);
 		if (base !== undefined) return withSQLiteFileAttachment(FileAttachment(key, base));
@@ -111,61 +91,12 @@ function hasSQLiteFileAttachment(file: ReturnType<typeof FileAttachment>): file 
 	return "sqlite" in file && isCallable(file.sqlite);
 }
 
-export class SQLiteDatabaseClient {
-	constructor(private readonly db: SqlJsDatabase) {}
-
+export class SQLiteDatabaseClient extends NativeSQLiteDatabaseClient {
 	static async open(source: SQLiteSource): Promise<SQLiteDatabaseClient> {
 		const [sqlite, data] = await Promise.all([loadSQLiteModule(), loadSQLiteSource(source)]);
 		return new SQLiteDatabaseClient(new sqlite.Database(data));
 	}
-
-	async query(query: string, params?: SQLiteValue[]): Promise<SQLiteRows> {
-		return execSQLite(this.db, query, params);
-	}
-
-	async queryRow(query: string, params?: SQLiteValue[]): Promise<SQLiteRow | null> {
-		return (await this.query(query, params))[0] ?? null;
-	}
-
-	async describeTables({ schema }: SQLiteSchemaOptions = {}): Promise<SQLiteRows> {
-		return this.query(
-			`SELECT NULLIF(schema, 'main') AS schema, name FROM pragma_table_list() WHERE type = 'table'${
-				schema == null ? "" : " AND schema = ?"
-			} AND name NOT LIKE 'sqlite_%' ORDER BY schema, name`,
-			schema == null ? [] : [schema],
-		);
-	}
-
-	async describeColumns({ schema, table }: SQLiteColumnOptions = {}): Promise<SQLiteRows> {
-		if (table == null) throw new Error("missing table");
-		const rows = await this.query(
-			`SELECT name, type, "notnull" FROM pragma_table_info(?${schema == null ? "" : ", ?"}) ORDER BY cid`,
-			schema == null ? [table] : [table, schema],
-		);
-		if (!rows.length) throw new Error(`table not found: ${table}`);
-		const columns: SQLiteRows = rows.map(({ name, type, notnull }) => ({
-			name,
-			type: sqliteType(String(type)),
-			databaseType: type,
-			nullable: !notnull,
-		}));
-		return withSQLiteRowsValue(columns);
-	}
-
-	async describe(table?: string): Promise<SQLiteRows> {
-		return table == null ? this.describeTables() : this.describeColumns({ table });
-	}
-
-	async sql(strings: TemplateStringsArray, ...params: SQLiteValue[]): Promise<SQLiteRows> {
-		return this.query(...this.queryTag(strings, ...params));
-	}
-
-	queryTag(strings: TemplateStringsArray, ...params: SQLiteValue[]): [string, SQLiteValue[]] {
-		return [strings.join("?"), params];
-	}
 }
-
-Object.defineProperty(SQLiteDatabaseClient.prototype, "dialect", { value: "sqlite" });
 
 export async function loadSQLiteModule(): Promise<SqlJsModule> {
 	if (sqliteModule !== undefined) return sqliteModule;
@@ -190,62 +121,6 @@ async function loadSQLiteSource(source: SQLiteSource): Promise<Uint8Array> {
 	if (source instanceof ArrayBuffer) return new Uint8Array(source);
 	if (source instanceof Uint8Array) return source;
 	return source.arrayBuffer().then(loadSQLiteSource);
-}
-
-function execSQLite(db: SqlJsDatabase, query: string, params?: SQLiteValue[]): SQLiteRows {
-	const [result] = db.exec(query, params);
-	const rows: SQLiteRows = [];
-	if (!result) return withSQLiteRowsValue(rows);
-	for (const values of result.values) {
-		const row: SQLiteRow = {};
-		for (const [index, value] of values.entries()) {
-			const column = result.columns[index];
-			if (column !== undefined) row[column] = value;
-		}
-		rows.push(row);
-	}
-	rows.columns = result.columns;
-	return withSQLiteRowsValue(rows);
-}
-
-function withSQLiteRowsValue(rows: SQLiteRows): SQLiteRows {
-	Object.defineProperty(rows, "value", { configurable: true, value: rows });
-	return rows;
-}
-
-function sqliteType(type: string): string {
-	switch (type) {
-		case "NULL":
-			return "null";
-		case "INT":
-		case "INTEGER":
-		case "TINYINT":
-		case "SMALLINT":
-		case "MEDIUMINT":
-		case "BIGINT":
-		case "UNSIGNED BIG INT":
-		case "INT2":
-		case "INT8":
-			return "integer";
-		case "TEXT":
-		case "CLOB":
-			return "string";
-		case "REAL":
-		case "DOUBLE":
-		case "DOUBLE PRECISION":
-		case "FLOAT":
-		case "NUMERIC":
-			return "number";
-		case "BLOB":
-			return "buffer";
-		case "DATE":
-		case "DATETIME":
-			return "string";
-		default:
-			if (/^(?:(?:(?:VARYING|NATIVE) )?CHARACTER|(?:N|VAR|NVAR)CHAR)\(/.test(type)) return "string";
-			if (/^(?:DECIMAL|NUMERIC)\(/.test(type)) return "number";
-			return "other";
-	}
 }
 
 export function createDuckDBClient<T extends object>(DuckDBClient: T, registry: AttachmentRegistry): T {

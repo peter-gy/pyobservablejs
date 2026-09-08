@@ -1,5 +1,5 @@
 [build-system]
-requires = ["agent-plugins==0.1.0", "hatchling==1.31.0"]
+requires = ["agent-plugins>=0.2", "hatchling==1.31.0"]
 build-backend = "agent_plugins.build.hatchling"
 
 [project]
@@ -13,7 +13,7 @@ authors = [{ name = "Peter Ferenc Gyarmati", email = "dev.petergy@gmail.com" }]
 maintainers = [{ name = "Peter Ferenc Gyarmati", email = "dev.petergy@gmail.com" }]
 requires-python = ">=3.11,<3.15"
 keywords = ["anywidget", "jupyter", "marimo", "notebooks", "observable", "visualization"]
-dependencies = ["agent-plugins==0.1.0", "anywidget>=0.11.0", "anywidget-bundle==0.0.1", "traitlets>=5"]
+dependencies = ["agent-plugins>=0.2", "anywidget==0.11.0", "anywidget-bundle==0.0.1", "traitlets==5.16.1"]
 classifiers = [
 	"Programming Language :: Python :: 3",
 	"Programming Language :: Python :: 3 :: Only",

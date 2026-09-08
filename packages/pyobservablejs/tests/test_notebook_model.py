@@ -168,54 +168,6 @@ def test_html_model_rejects_ids_above_the_javascript_safe_range() -> None:
         )
 
 
-def test_observablehq_document_model_accepts_nodes_and_files(
-    script_tags: ScriptTags,
-) -> None:
-    document = {
-        "title": "Hosted",
-        "nodes": [
-            {
-                "id": 1,
-                "mode": "md",
-                "value": "# Hosted",
-                "name": "",
-            },
-            {
-                "id": 2,
-                "mode": "js",
-                "value": 'data = FileAttachment("flare-2.json").json()',
-                "pinned": True,
-            },
-        ],
-        "files": [
-            {
-                "name": "flare-2.json",
-                "download_url": "https://static.example/flare-2.json",
-                "mime_type": "application/json",
-                "size": 123,
-                "create_time": "2019-10-29T22:33:05.252Z",
-            }
-        ],
-    }
-
-    model = notebook_model_from_observablehq_document(
-        cast(obs.types.ObservableDocument, document)
-    )
-
-    assert model.title == "Hosted"
-    assert model.attachments["flare-2.json"] == {
-        "url": "https://static.example/flare-2.json",
-        "mimeType": "application/json",
-        "size": 123,
-        "lastModified": 1572388385252,
-    }
-    assert [node.mode for node in model.nodes] == ["md", "ojs"]
-    assert model.nodes[1].pinned is True
-    assert script_tags(model.source)[1]["attrs"].get("type") == (
-        "application/vnd.observable.javascript"
-    )
-
-
 def test_observablehq_document_assigns_unused_ids_to_invalid_inputs() -> None:
     document = {
         "nodes": [

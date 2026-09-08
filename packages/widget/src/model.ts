@@ -1,20 +1,31 @@
+import { isBoolean, isCallable, isObjectValue, isString } from "@pyobservablejs/runtime/values";
 import type { RenderProps } from "@anywidget/types";
-import { deserialize, toNotebook, type Notebook, type NotebookSpec } from "@observablehq/notebook-kit";
 import {
-	isBoolean,
-	isCallable,
-	isObjectValue,
-	isString,
+	NOTEBOOK_THEMES,
 	type AttachmentInfo,
-	type NotebookGraph,
-	type NotebookOptions,
-	type WireRecord,
-	type WireValue,
-	type WireValues,
+	type CellGraph,
+	type GraphEdge,
+	type NotebookInspection,
+	type Diagnostic,
+	type ErrorDetail,
+	type DatasetInfo,
+	type MountOptions,
+	type NotebookSpec,
+	type Variables,
 } from "@pyobservablejs/runtime";
-import { isNotebookTheme } from "./themes";
+import { revivePythonValue, type WireRecord, type WireValue, type WireValues } from "./values";
+
+export type WireNotebookGraph = {
+	cells: Array<Omit<CellGraph, "runtimeOutputs"> & { runtime_outputs: readonly string[] }>;
+	edges: readonly GraphEdge[];
+};
+
+export type WireDiagnostics = { revision: number; sequence: number; errors: readonly Diagnostic[] };
 
 export type WidgetModel = {
+	_diagnostics?: WireDiagnostics | Record<string, never>;
+	_inspection?: { generation: string; value: NotebookInspection | null } | Record<string, never>;
+	_datasets?: { generation: string; values: readonly DatasetInfo[] } | Record<string, never>;
 	_model_role?: "session";
 	_runtime_profile?: "notebook-kit" | "observable";
 	_session?: string | null;
@@ -37,7 +48,7 @@ export type WidgetModel = {
 		input_revision: number | null;
 		settled_revision: number | null;
 		pending: boolean;
-		graph: NotebookGraph | Record<string, never>;
+		graph: WireNotebookGraph | Record<string, never>;
 		results: Record<
 			string,
 			{
@@ -47,6 +58,8 @@ export type WidgetModel = {
 				errors: Array<{
 					name: string;
 					message: string;
+					stack?: string;
+					cause?: ErrorDetail;
 					phase: "analysis" | "evaluation" | "rendering" | "serialization";
 					variable?: string;
 				}>;
@@ -55,6 +68,8 @@ export type WidgetModel = {
 		errors: Array<{
 			name: string;
 			message: string;
+			stack?: string;
+			cause?: ErrorDetail;
 			phase: "analysis" | "evaluation" | "rendering" | "serialization";
 		}>;
 	};
@@ -94,25 +109,32 @@ export function readNotebookVariables(model: AnyWidgetModel): WireValues {
 	return readWireValues(model.get("_variables"));
 }
 
-export function readNotebookFromModel(model: AnyWidgetModel): Notebook {
+export function readNotebookSource(model: AnyWidgetModel): string | NotebookSpec {
 	const source = model.get("_source");
-	const notebook = source?.trim() ? deserialize(source) : toNotebook(model.get("_spec") ?? {});
-	const theme = readNotebookTheme(model);
-	return theme === undefined ? notebook : { ...notebook, theme };
+	return source?.trim() ? source : (model.get("_spec") ?? {});
 }
 
-export function readNotebookOptions(model: AnyWidgetModel, variablesOverride?: WireValues): NotebookOptions {
-	const wireOptions = model.get("_options");
+export function decodeVariables(values: WireValues): Variables {
+	return Object.fromEntries(Object.entries(values).map(([name, value]) => [name, revivePythonValue(value)]));
+}
+
+export function readNotebookOptions(model: AnyWidgetModel): MountOptions {
 	return {
 		attachments: model.get("_attachments") ?? {},
-		baseUrl: model.get("_base_url") || document.baseURI,
-		variables: variablesOverride ?? readNotebookVariables(model),
-		showSource: wireOptions?.show_source === true,
+		baseUrl: model.get("_base_url") || undefined,
+		variables: decodeVariables(readNotebookVariables(model)),
+		showSource: model.get("_options")?.show_source === true,
 		runtimeProfile: model.get("_runtime_profile") === "observable" ? "observable" : "notebook-kit",
+		theme: readNotebookTheme(model),
+		keys: readCellKeys(model),
 	};
 }
 
-function readNotebookTheme(model: AnyWidgetModel): Notebook["theme"] | undefined {
+function isNotebookTheme<Value>(value: Value): value is Value & (typeof NOTEBOOK_THEMES)[number] {
+	return isString(value) && NOTEBOOK_THEMES.some((theme) => theme === value);
+}
+
+function readNotebookTheme(model: AnyWidgetModel): MountOptions["theme"] {
 	const theme = model.get("theme");
 	if (isNotebookTheme(theme)) return theme;
 	if (!isRecord(theme)) return undefined;
@@ -154,9 +176,7 @@ export function readCellKeys(model: AnyWidgetModel): string[] {
 
 export function readWireValues(value: WireValues | WireValue | undefined): WireValues {
 	if (!isRecord(value)) return {};
-	const values: WireValues = {};
-	for (const [name, item] of Object.entries(value)) {
-		if (item !== undefined) values[name] = item;
-	}
-	return values;
+	return Object.fromEntries(
+		Object.entries(value).filter((entry): entry is [string, WireValue] => entry[1] !== undefined),
+	);
 }
