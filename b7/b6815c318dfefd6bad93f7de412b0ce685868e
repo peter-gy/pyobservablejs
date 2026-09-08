@@ -1,0 +1,482 @@
+packages/runtime/package.json
+  ai_agent 11-16,27-34,38-39
+packages/widget/tests/testing.ts
+  ai_agent 2-3,11-12,56,58,70,85-86,110-123
+skills/pyobservablejs/references/hosts.md
+  s_a2a846b2d0e68d::t_c9901a6dcd004e 1-117,119-135,138-142,144-145,147,151-152,154-158,164-165,170,175,179,200-201,204-208,210-216,221-232
+  s_a2a846b2d0e68d::t_ec620d24b29179 136-137,143,146,148,150,153,159-163,166-169,171-174,176-178,183,185-199,202-203,209,217-220
+packages/pyobservablejs/src/observablejs/_requests.py
+  s_a2a846b2d0e68d::t_2f2fd27ece11d4 1-9,11,13-28,30-31,33-45,49-50,55,70,83-103,107-114,142-152,165-175,180-212,214,240-253,256-259,263-265,267-284
+  s_a2a846b2d0e68d::t_ff980f1f72ad63 156-161
+  s_a2a846b2d0e68d::t_79667cf1ca7493 12,29,46-48,51-54,56-69,71-82,105-106,115-141,176-179,213,215-217,229-231,233-237,239,254,260,262,266
+  s_a2a846b2d0e68d::t_825a1c0923a599 10,218-219,221-228,238
+  s_a2a846b2d0e68d::t_b42dee66620885 153-155,162-164,232,255,261
+  s_a2a846b2d0e68d::t_ae6dc8446757cb 32,104
+  s_a2a846b2d0e68d::t_7180984468f29b 220
+apps/docs/docs/reference/types.mdx
+  s_a2a846b2d0e68d::t_74cf19f1a7df9f 65-75
+uv.lock
+  ai_agent 26,28,30,1703,1708,1710,1720,1722,1724-1731,2079-2080,2082,2798,2800,2802
+packages/runtime/src/mount.ts
+  s_a2a846b2d0e68d::t_3b724aadfac7c0 23-28,179-189,197-225
+  s_a2a846b2d0e68d::t_44fc4d86454cd6 240,248
+  s_a2a846b2d0e68d::t_209f259f0498cb 1-5,7-8,11-14,16-21,30-44,46-51,54-58,61-66,69,71-81,105-108,116-124,126-128,131-134,136-138,140-143,145-178,190-191,193-196,226-235,237-239,241-247,249-250,256-266,268-279,288-311,353-399,401
+  s_a2a846b2d0e68d::t_246610f51922ed 83
+  s_a2a846b2d0e68d::t_d84484ede0bda3 45,52-53,82,109,115,135,192,236,267,312,316-322,332-334,343-344,347-352
+  s_a2a846b2d0e68d::t_a5f1529176fc2b 84-104,110-114,251-255,280-287,313-315,323-331,335-342,345-346
+  s_a2a846b2d0e68d::t_466ff0138def70 144
+apps/docs/docs/guide/connect/inspect-notebooks.mdx
+  s_a2a846b2d0e68d::t_0d59bcb3201416 1-252
+packages/runtime/src/types/observablehq-parser.d.ts
+  ai_agent 8
+packages/runtime/src/attachments.ts
+  s_a2a846b2d0e68d::t_fb2d93dc1bfcf5 3,6,25-32,36-37,62,94
+.github/workflows/publish.yml
+  ai_agent 15-17,20-53,163
+packages/widget/tests/readback.test.ts
+  s_a2a846b2d0e68d::t_401669007e6a6e 1-73,75-130
+packages/runtime/tests/graph.test.ts
+  s_a2a846b2d0e68d::t_8c6a6d58ddfff0 3-7,33,67,84,106,112-115,167,247
+packages/runtime/tests/attachments.test.ts
+  s_a2a846b2d0e68d::t_8c6a6d58ddfff0 134,158,183-184
+  s_a2a846b2d0e68d::t_7d7f005362ac31 260-265
+  s_a2a846b2d0e68d::t_d13d3998bd0817 254-259,266-273
+  s_a2a846b2d0e68d::t_22689293f55d2c 214,216-220,224-225,235-251
+packages/widget/src/index.ts
+  s_a2a846b2d0e68d::t_84a3e9a64e101f 8,15,21-22,33-36,42-44
+  s_a2a846b2d0e68d::t_1a18ff6c2bb5ee 16-20,37-41
+  s_a2a846b2d0e68d::t_d49bdb350670a2 2
+apps/e2e/standalone/tsconfig.build.json
+  ai_agent 1-10
+apps/docs/docs/reference/index.mdx
+  s_a2a846b2d0e68d::t_ffa86ca2d7eced 32-34
+scripts/verify_release.py
+  s_a2a846b2d0e68d::t_1f5885a5b57c23 83,91,98-101,107-109
+  ai_agent 92-97
+packages/runtime/tests/mount.test.ts
+  s_a2a846b2d0e68d::t_728b7f214e2739 98,103,105,108,110
+  s_a2a846b2d0e68d::t_976653bdd0e15a 1-44,46-48,50-53,60-79,81-97,99-102,104,106-107,109,111-343
+  s_a2a846b2d0e68d::t_6c7d6c53753395 45,49
+  s_a2a846b2d0e68d::t_88563853afd542 54-59,80
+packages/runtime/src/session.ts
+  s_a2a846b2d0e68d::t_209f259f0498cb 11
+  s_a2a846b2d0e68d::t_8c6a6d58ddfff0 14
+packages/widget/src/readback.ts
+  s_a2a846b2d0e68d::t_ef472d36329309 207-223
+  s_a2a846b2d0e68d::t_d49bdb350670a2 2,15,99,196,206,224-225,240,259
+  s_a2a846b2d0e68d::t_1a18ff6c2bb5ee 31-38
+  s_a2a846b2d0e68d::t_ac4cbb00146b25 1,3-4,6-9,11-14,18-19,23,25-29,40-53,56-85,87-98,100-109,112-113,115-125,147-158,160,163-168,170,175-195,197-205,226-239,241,244-248,254,258
+  s_a2a846b2d0e68d::t_fcda35a833269b 128-132,135-138,171
+  s_a2a846b2d0e68d::t_55a75d3263c825 139-143
+skills/pyobservablejs/references/diagnose.md
+  s_a2a846b2d0e68d::t_5fb35ba066890a 1-2,5-23,25-36,38-67,69-85,87-175
+  s_a2a846b2d0e68d::t_a5ade03844e67d 3-4
+development_docs/workspace.md
+  ai_agent 3-5,11-15,18-34,92-97,101-104
+packages/pyobservablejs/src/observablejs/errors.py
+  s_a2a846b2d0e68d::t_e9b27980790352 163
+  s_a2a846b2d0e68d::t_f2f9d5bc50b95e 1-48,52,86-120,130-132,140,153-156,162,164-176,179-189,197-199,205-206,214-215,222-229,242-246
+  s_a2a846b2d0e68d::t_5ca40fe56f8b61 53-67,71-72,77-85
+  s_a2a846b2d0e68d::t_75502006f66189 141-152
+  s_a2a846b2d0e68d::t_aaa4a98f244530 68-70,73-76,234-235,237-238,240-241
+  s_a2a846b2d0e68d::t_79667cf1ca7493 49-51,121-129,133-139,157-161,177-178,190-196,200-204,207-213,216-221,230-233,236,239
+packages/runtime/src/value-api.ts
+  ai_agent 1-12
+development_docs/development.md
+  ai_agent 7-10,16,24-25,83-90,107-113,139-190
+apps/e2e/fixtures/errors.py
+  s_a2a846b2d0e68d::t_8ee81625df4275 1-2,4-7
+  s_a2a846b2d0e68d::t_0e3637ad5b619c 3,8-56
+packages/runtime/src/environment.ts
+  s_a2a846b2d0e68d::t_209f259f0498cb 12,14,21,32,51,69,76-82,90,95,99
+packages/runtime/src/composition.ts
+  s_a2a846b2d0e68d::t_d84484ede0bda3 13-25,32-34,50,56,61-62
+  s_a2a846b2d0e68d::t_667586b688d72f 83
+apps/e2e/package.json
+  ai_agent 1-19
+packages/widget/src/values.ts
+  ai_agent 1-427
+packages/pyobservablejs/src/observablejs/_serialize.py
+  s_a2a846b2d0e68d::t_7a8f9b6fd9a344 28,80
+  s_a2a846b2d0e68d::t_3727a275376003 74-77
+apps/docs/docs/guide/troubleshooting.mdx
+  s_a2a846b2d0e68d::t_ffa86ca2d7eced 8-12,73,93-97,112-113,120,124-125
+vite.config.ts
+  ai_agent 14-15,58,65-70,82-83
+packages/widget/tests/requests.test.ts
+  s_a2a846b2d0e68d::t_ef472d36329309 313-340
+  s_a2a846b2d0e68d::t_bf861c2022eb24 22,170
+  s_a2a846b2d0e68d::t_32918992374db1 290-291,341
+  s_a2a846b2d0e68d::t_0b60bda15102ae 1,310-312
+  s_a2a846b2d0e68d::t_0bfe7f934dca4d 2-21,23-122,145-169,171-289
+  s_a2a846b2d0e68d::t_55a75d3263c825 295-299
+  s_a2a846b2d0e68d::t_f680ada9dbe0f8 292-294,300-309
+  s_a2a846b2d0e68d::t_f9e766f0cb8e26 123-144
+packages/runtime/src/inputs.ts
+  s_a2a846b2d0e68d::t_69cac0dff003da 1,3,12-13,18,21-24,34,40-61,63-66,68-70,72-83,91,96,101,109
+  s_a2a846b2d0e68d::t_73d620fecf02bb 62,67,71
+development_docs/architecture.md
+  s_a2a846b2d0e68d::t_9a138b78440186 3-7,9-11,14-20,23-161
+  s_a2a846b2d0e68d::t_5a82eb34d912ca 173-175
+packages/pyobservablejs/tests/test_notebook_html_attachments.py
+  s_a2a846b2d0e68d::t_e2d1a2a684b8c4 557
+packages/widget/package.json
+  ai_agent 20
+apps/docs/docs/reference/errors.mdx
+  s_a2a846b2d0e68d::t_5a82eb34d912ca 37-39
+  s_a2a846b2d0e68d::t_ffa86ca2d7eced 1-36,40-55,57-78,89-111,123-132
+  s_a2a846b2d0e68d::t_74cf19f1a7df9f 56,79-86,88,112-122,133-136
+packages/runtime/tests/observable-sql.test.ts
+  ai_agent 1-126
+apps/docs/docs/reference/cell-helpers.mdx
+  ai_agent 40,54-64
+packages/runtime/src/observable-sql.ts
+  ai_agent 1-42
+apps/e2e/tests/notebook.spec.ts
+  ai_agent 1-125
+packages/runtime/src/types/observablehq-stdlib.d.ts
+  s_a2a846b2d0e68d::t_89be7e536907ae 2-22,24,26
+apps/e2e/tests/data.spec.ts
+  s_a2a846b2d0e68d::t_0bfe7f934dca4d 1-15
+packages/runtime/src/attachment-info.ts
+  ai_agent 1-6
+packages/pyobservablejs/src/observablejs/__init__.py
+  s_a2a846b2d0e68d::t_79667cf1ca7493 5,28
+packages/widget/src/model.ts
+  s_a2a846b2d0e68d::t_f9a45f9f187b84 71-72
+  s_a2a846b2d0e68d::t_84a3e9a64e101f 1,4,6-14,16-22,27-28,51,61-62,112,114-118,121,124-126,128-129,133-137,179-181
+  s_a2a846b2d0e68d::t_fcda35a833269b 23,26
+packages/runtime/src/index.ts
+  s_a2a846b2d0e68d::t_a5f1529176fc2b 4-10
+  s_a2a846b2d0e68d::t_18d6aa61138035 1-2,11-31
+skills/pyobservablejs/SKILL.md
+  s_a2a846b2d0e68d::t_74cf19f1a7df9f 107
+  s_a2a846b2d0e68d::t_9a138b78440186 18,25,28-29,65,68
+  s_a2a846b2d0e68d::t_c9901a6dcd004e 4-7,10,12-15,17,19-20,23,27,32-35,37,42,46-50,52,54,57,59-62,66-67,69-78,80-83,85-89,91,93,96-97,100-101,103,106,110-127,139-153
+  ai_agent 39-41,43-44,128-138
+apps/docs/docs/guide/how-it-works.mdx
+  ai_agent 42-46,58-59
+packages/widget/tests/values.test.ts
+  s_a2a846b2d0e68d::t_dac7db61406590 1-8,10-12,15-17,20-28,31,33-39,41-45,47,49-53,55-63,65-67,69-72,74-77,79-85,88-122,124-193
+  s_a2a846b2d0e68d::t_bf861c2022eb24 30,46,87,123
+  s_a2a846b2d0e68d::t_ec33960694246d 78
+Makefile
+  ai_agent 1,20-25,32,35,37,59-61
+packages/pyobservablejs/src/observablejs/_notebook.py
+  s_a2a846b2d0e68d::t_abed8a9d3541a3 927,930
+  s_a2a846b2d0e68d::t_cf2804ff1f2f5c 817,822-825,827-828
+  s_a2a846b2d0e68d::t_c808e800dd6739 947-953
+  s_a2a846b2d0e68d::t_18195743111234 1039
+  s_a2a846b2d0e68d::t_75502006f66189 854
+  s_a2a846b2d0e68d::t_825a1c0923a599 933-934,940,957-962
+  s_a2a846b2d0e68d::t_e9b27980790352 946,954-956
+  s_a2a846b2d0e68d::t_2f2fd27ece11d4 19-27,34-41,46,133-158,439-440,452,455,457,478-493,699-701,724,729-730,744,751,775-782,811-812,918,984-985,992,1010-1012,1036-1038,1048-1062,1073-1074,1130-1131,1161,1194-1248,1252-1276,1281-1290,1297-1298,1305-1309,1323,1325,1328,1330-1332,1334-1338
+  s_a2a846b2d0e68d::t_aaa4a98f244530 753-755,829-831,833-838,840-842,850-853,855-879,889-890,907,931,939,941,943-945,964,966-967,977-979,986-991,993-1009,1013-1035,1111-1126,1249-1251,1339-1384
+  s_a2a846b2d0e68d::t_85dece25d1f1fd 15,752,783-786,832,839,843-849,880-888,891-896,908-917,919-926,928-929,932,935-938,942,968,976,980-983,1277-1280,1291-1296
+  s_a2a846b2d0e68d::t_2bda5b2686ce03 8,461-477,531-532,534-541,551,561,567,1040-1042,1063-1064
+  s_a2a846b2d0e68d::t_71226d4d4a23f0 745-750,1043-1047,1065-1072
+  s_a2a846b2d0e68d::t_cdefd42ba9d56f 818-821,826
+  s_a2a846b2d0e68d::t_cc8acb51ac50eb 897-906
+  s_a2a846b2d0e68d::t_bf7d6d367edb5c 963,965
+  s_a2a846b2d0e68d::t_69cac0dff003da 969-975
+packages/pyobservablejs/tests/test_notebook_cells.py
+  s_a2a846b2d0e68d::t_b426e2e64733df 320-321,323-330,349,948-977,979-1002,1004-1006,1008-1021
+packages/runtime/tests/diagnostics.test.ts
+  s_a2a846b2d0e68d::t_0ab2c3a49f3096 195-200
+  s_a2a846b2d0e68d::t_313ad6a1d2ce2b 1-3,5-58,60-64,66-70,72-104
+  s_a2a846b2d0e68d::t_e2d1a2a684b8c4 59,65,71
+  s_a2a846b2d0e68d::t_cf12e365105348 4,136-142,144-178
+  s_a2a846b2d0e68d::t_337304296bad8b 143
+  s_a2a846b2d0e68d::t_466ff0138def70 181-194,201-209
+apps/docs/src/pages/index.mdx
+  ai_agent 30-31,34-37,40,115-117
+AGENTS.md
+  s_a2a846b2d0e68d::t_e203813f54cca0 22-28,67-77,88-91,115-118
+  s_a2a846b2d0e68d::t_5a82eb34d912ca 102-103
+apps/e2e/tests/fixture.ts
+  ai_agent 1-18
+apps/docs/sidebars.js
+  s_a2a846b2d0e68d::t_ffa86ca2d7eced 57,104-110
+packages/pyobservablejs/src/observablejs/_model.py
+  s_a2a846b2d0e68d::t_7a8f9b6fd9a344 18,161-162,164,168
+packages/pyobservablejs/src/observablejs/types.py
+  s_a2a846b2d0e68d::t_5ca40fe56f8b61 35-36,51,253,273-278,288-293
+README.md
+  ai_agent 17-20,22,24-27,29,31,34,37,43-45,48-49,56-86
+packages/pyobservablejs/pyproject.toml
+  ai_agent 2,16
+apps/e2e/standalone/main.ts
+  s_a2a846b2d0e68d::t_563a58df6ea8fe 1-263,265-287
+apps/docs/docs/reference/file-attachments.mdx
+  s_a2a846b2d0e68d::t_6906f4e638589c 88-94
+packages/runtime/src/inspect-api.ts
+  ai_agent 1-11
+packages/runtime/src/diagnostics.ts
+  s_a2a846b2d0e68d::t_8d5a607522c904 1,3-6,8,18-22,26-36,44-48,51-53,61-65,67-74,77-80,85-88,100-108,110-128,133-140,144-147,149-152,156-158,167-175,179,188-191
+  s_a2a846b2d0e68d::t_d090fa57c5988a 2,7,23-24,40,66
+  s_a2a846b2d0e68d::t_a5f1529176fc2b 9-17,75-76,81-84,91-97,109,129-132,141-143,148,153-155,159-166,176-178,180-187
+  s_a2a846b2d0e68d::t_d84484ede0bda3 25,41-43,89-90,98-99
+  s_a2a846b2d0e68d::t_466ff0138def70 37-39,49-50,54-60
+packages/pyobservablejs/src/observablejs/_variables.py
+  ai_agent 16,22-34,85
+packages/runtime/vite.config.ts
+  ai_agent 6-8
+packages/runtime/tests/inspect-node.test.mjs
+  s_a2a846b2d0e68d::t_ba66d06f67efaf 1-18
+apps/docs/docs/reference/notebook-view-and-cell.mdx
+  s_a2a846b2d0e68d::t_74cf19f1a7df9f 128-131
+apps/docs/docs/guide/display/compose-views.mdx
+  ai_agent 12-14,19,21,24,82-84
+apps/docs/docs/reference/variables-and-serialization.mdx
+  ai_agent 86-89,94,109-114
+packages/runtime/src/read.ts
+  s_a2a846b2d0e68d::t_674f97e6827ad0 1-120
+apps/e2e/tests/errors.spec.ts
+  ai_agent 47-62
+  s_a2a846b2d0e68d::t_ffa86ca2d7eced 12-18
+packages/pyobservablejs/README.md
+  ai_agent 3-6,8,10-13,15,17,20,23,29-31,34-35,42-72
+apps/docs/docs/guide/create/cells.mdx
+  ai_agent 9-11,107-110,113-114,128-129,133-135
+packages/widget/tests/composition.test.ts
+  s_a2a846b2d0e68d::t_7bffad61444570 105-137
+  s_a2a846b2d0e68d::t_540713cb8e1758 352,355,360
+  s_a2a846b2d0e68d::t_426610567da639 39-55,74-79
+  s_a2a846b2d0e68d::t_eb554c0f45143b 61-73,80-81,84-86,100-104
+  s_a2a846b2d0e68d::t_7b9b92e2bcf78b 435-437,439,446
+packages/runtime/src/view-inputs.ts
+  s_a2a846b2d0e68d::t_44fc4d86454cd6 1-72,77-101,123-124,135-137
+  s_a2a846b2d0e68d::t_88dd092a0e6534 73-76,102-122,125-134
+apps/docs/docs/guide/connect/browser-results.mdx
+  ai_agent 53-55,58,61-63,75-80,87-88,99-103,112-115
+packages/pyobservablejs/src/observablejs/_observable.py
+  ai_agent 73,277-284,286,295-299,312,375-376,489,542-543,545-548,550-625,796-801
+packages/runtime/src/arrow.ts
+  ai_agent 1-159
+packages/runtime/src/values.ts
+  ai_agent 1,3-4,7-8,11,13,17-20,22,24-32,36-40,42,44,46,50-55,57-58,60-74,76-80,84-102,104-112,117-120,122-138
+packages/runtime/src/definition.ts
+  s_a2a846b2d0e68d::t_ccac9272f5d392 2,14,25,33-38,41,53-57
+packages/pyobservablejs/tests/test_public_api.py
+  s_a2a846b2d0e68d::t_43f0beb7c06486 45,70-71,82-83,87-90,138-148,187-188
+  s_a2a846b2d0e68d::t_e757e456dd085c 189
+packages/widget/src/view.ts
+  s_a2a846b2d0e68d::t_1adfa19a73cb72 120-131,221-225,227-234
+  s_a2a846b2d0e68d::t_84291eaa61d520 216-220,226,235
+  s_a2a846b2d0e68d::t_55a75d3263c825 89
+  s_a2a846b2d0e68d::t_1a18ff6c2bb5ee 44-49,52,68-88,90-91,94,102,139-152,257-258,263-276,278-280,283
+  s_a2a846b2d0e68d::t_94fed15abe471b 24-28
+  s_a2a846b2d0e68d::t_d6adb76a6cd93e 29,61,117,138,200
+  s_a2a846b2d0e68d::t_394f450c68d5d0 20,22,30,32,35-37,42-43,50,55-59,62-67,92-93,95,115-116,153,164,180-196,209,247-251,259-262,277,281-282,284
+  s_a2a846b2d0e68d::t_95fbd62b36a19e 31,33-34,39,60
+  s_a2a846b2d0e68d::t_4e6fe590b19f74 154-163,165
+  s_a2a846b2d0e68d::t_fcda35a833269b 18,118,252-256
+packages/runtime/tests/environment.test.ts
+  s_a2a846b2d0e68d::t_209f259f0498cb 244-246,254
+  s_a2a846b2d0e68d::t_8c6a6d58ddfff0 27,41,46,56,228,280
+apps/e2e/tests/classic.spec.ts
+  ai_agent 1-27
+packages/runtime/src/datasets.ts
+  s_a2a846b2d0e68d::t_493cb1816509d8 278-279
+  s_a2a846b2d0e68d::t_aa2f850c8e5242 48,312-313
+packages/runtime/src/notebook-values.ts
+  s_a2a846b2d0e68d::t_5435a8e45f7f44 64-68,74-75
+  s_a2a846b2d0e68d::t_674f97e6827ad0 1-3,5-62,69-72,76-126,128-141,143-145,150-179
+  s_a2a846b2d0e68d::t_b07d1c75ab9e3c 127,142
+  s_a2a846b2d0e68d::t_4c6d2f92921e80 146-149
+  s_a2a846b2d0e68d::t_51b9d3189858bc 4,63,73
+apps/docs/docs/guide/quickstart.mdx
+  ai_agent 8-10,13,16-18,26-32,54-57,86-89,103-106,116-118,122-124,127,130-132,139,144-146
+packages/pyobservablejs/tests/test_notebook_access.py
+  s_a2a846b2d0e68d::t_71226d4d4a23f0 233-235
+  s_a2a846b2d0e68d::t_961fddcb9c2d1c 12
+  s_a2a846b2d0e68d::t_43f0beb7c06486 297,396,468,485,487,499,504,516
+  s_a2a846b2d0e68d::t_11a3a9a8019f23 388-391,444-446,448,450-454,527
+  s_a2a846b2d0e68d::t_9177b828627073 1-11,13-232,236-296,298-387,392-395,397-443,447,449,455-467,469-484,486,488-498,500-503,505-515,517-526,528-541,543-581
+apps/docs/docs/reference/data-access.mdx
+  s_a2a846b2d0e68d::t_0d59bcb3201416 1-174,178-226,228-232,234-236,239-243
+  s_a2a846b2d0e68d::t_ffa86ca2d7eced 177,227,233,237-238
+packages/runtime/tests/scope.test.ts
+  s_a2a846b2d0e68d::t_8c6a6d58ddfff0 115,170,202-203,229,272
+skills/pyobservablejs/references/workflows.md
+  s_a2a846b2d0e68d::t_1f5885a5b57c23 1,3-5,7,12,14-15,19,22-23,28-30,32-38,41-42,44-47,49-56,58,61-67,69,72-78,80-100,103-107,109,114-121,124-127,129,132,135-137,139,142,145-149,151,159-166
+  s_a2a846b2d0e68d::t_a5ade03844e67d 26-27,112-113
+packages/pyobservablejs/src/observablejs/_html.py
+  s_a2a846b2d0e68d::t_7a8f9b6fd9a344 92,95-96,109,135,138
+  s_a2a846b2d0e68d::t_3727a275376003 93-94
+packages/pyobservablejs/tests/test_observablehq_import.py
+  s_a2a846b2d0e68d::t_e2d1a2a684b8c4 180-183,214-218,244-246,816
+apps/e2e/tsconfig.json
+  ai_agent 1-4
+packages/widget/tests/errors.test.ts
+  s_a2a846b2d0e68d::t_1a18ff6c2bb5ee 4,7-9,11-20,22-28,32-34,36,38-45,47-49,53-77,81-102,106-128,132-142
+  s_a2a846b2d0e68d::t_ef472d36329309 144-175,181-187
+  s_a2a846b2d0e68d::t_55a75d3263c825 176-180,227-283
+  s_a2a846b2d0e68d::t_4e6fe590b19f74 190-226,284-286
+  s_a2a846b2d0e68d::t_1adfa19a73cb72 21
+  s_a2a846b2d0e68d::t_636a6634bd1aca 188-189,287
+  s_a2a846b2d0e68d::t_f680ada9dbe0f8 10
+  s_a2a846b2d0e68d::t_540713cb8e1758 35,37,46
+  s_a2a846b2d0e68d::t_5d71cb53485f68 1-3,5-6,29-31,50-52,78-80,103-105,129-131,143
+packages/runtime/tests/datasets.test.ts
+  ai_agent 1-241
+packages/pyobservablejs/tests/helpers.py
+  s_a2a846b2d0e68d::t_961fddcb9c2d1c 3,15,243-282
+packages/pyobservablejs/src/observablejs/_readback.py
+  s_a2a846b2d0e68d::t_e120a5d1ce5647 1-334
+packages/pyobservablejs/src/observablejs/_inspection.py
+  s_a2a846b2d0e68d::t_71226d4d4a23f0 328-331
+  s_a2a846b2d0e68d::t_2f2fd27ece11d4 1-327,332-397
+packages/widget/tests/app.test.ts
+  s_a2a846b2d0e68d::t_1adfa19a73cb72 630-637
+  s_a2a846b2d0e68d::t_bf861c2022eb24 58-62,361
+  s_a2a846b2d0e68d::t_540713cb8e1758 211-213,358-360
+packages/widget/src/requests.ts
+  s_a2a846b2d0e68d::t_0f66b5edcb6b9e 75-77,103
+  s_a2a846b2d0e68d::t_95fbd62b36a19e 1,53,63,69-70,78-79,130
+  s_a2a846b2d0e68d::t_32918992374db1 81,83
+  s_a2a846b2d0e68d::t_64beb851b03c8e 44,46,136,156-163
+  s_a2a846b2d0e68d::t_1a18ff6c2bb5ee 30-35,38-39,49-51,54-62,72-74
+  s_a2a846b2d0e68d::t_f680ada9dbe0f8 137-151
+  s_a2a846b2d0e68d::t_3d08330e55e9d8 2,4-15,20-29,40-43,52,64,67-68,80,82,84-87,90-93,104-129,131-135,152-155,164-297
+  s_a2a846b2d0e68d::t_55a75d3263c825 17-19,95-100
+  s_a2a846b2d0e68d::t_fcda35a833269b 3,16,36-37,71,94,101-102
+  s_a2a846b2d0e68d::t_5d71cb53485f68 45,47-48,65-66,88-89
+packages/runtime/tests/inputs.test.ts
+  s_a2a846b2d0e68d::t_8c6a6d58ddfff0 2-6,8-9,13-15,19-25,29-61,63-71,73-83,85-102,104
+  s_a2a846b2d0e68d::t_461fc99a724d33 26-28
+  s_a2a846b2d0e68d::t_aaf763f7d47eb6 10-12,16-18
+packages/pyobservablejs/tests/test_notebook_serialization.py
+  s_a2a846b2d0e68d::t_3727a275376003 6,14-16
+  s_a2a846b2d0e68d::t_5d91203a4b46e6 64,86
+  s_a2a846b2d0e68d::t_753c7fc36dde8a 10-12,17-26
+  s_a2a846b2d0e68d::t_e2d1a2a684b8c4 13
+  s_a2a846b2d0e68d::t_c9faa413f93ddc 155,158-175
+packages/runtime/tests/definition.test.ts
+  s_a2a846b2d0e68d::t_efeeb303b4a58b 35
+  s_a2a846b2d0e68d::t_7a69c71cf5f022 20-23,26-27,43-45
+packages/runtime/tests/access.test.ts
+  s_a2a846b2d0e68d::t_753c7fc36dde8a 9-11,18-21,23-31,38-42,47,58-59
+  s_a2a846b2d0e68d::t_5b651f0f859ca7 253-299
+  s_a2a846b2d0e68d::t_3727a275376003 12-17,22,32-37,43-46,48-57
+packages/pyobservablejs/tests/test_notebook_variables.py
+  s_a2a846b2d0e68d::t_71226d4d4a23f0 121-123
+  s_a2a846b2d0e68d::t_e2d1a2a684b8c4 130,293,302,312
+  s_a2a846b2d0e68d::t_9177b828627073 97-120,124-127,131-138,558
+packages/runtime/src/state.ts
+  s_a2a846b2d0e68d::t_a5f1529176fc2b 8-12,14-17
+  s_a2a846b2d0e68d::t_d84484ede0bda3 3,70,82-86,93,296,306
+  s_a2a846b2d0e68d::t_1c8c1413111bb2 1-2,4-7,13,18-69,71-81,87-92,94-295,297-305,307-319
+packages/pyobservablejs/src/observablejs/agent.py
+  s_a2a846b2d0e68d::t_1f5885a5b57c23 5-7,9,15,17,20-21,23-26,30-35,55,65,76-80,91
+packages/runtime/tests/values.test.ts
+  s_a2a846b2d0e68d::t_e2d1a2a684b8c4 2,7,10-12,14-23,25,27-29,32-38,41-67,69-74,77-82,84-99,110-112,114-115
+apps/e2e/standalone/index.html
+  ai_agent 1-19
+skills/pyobservablejs/agents/openai.yaml
+  s_a2a846b2d0e68d::t_1f5885a5b57c23 2-6
+packages/widget/tests/variable-sync.test.ts
+  s_a2a846b2d0e68d::t_ec33960694246d 3
+  s_a2a846b2d0e68d::t_0d1b7432872761 198
+  s_a2a846b2d0e68d::t_dac7db61406590 158,172-173,177
+  s_a2a846b2d0e68d::t_1adfa19a73cb72 199-205
+apps/e2e/standalone/vite.config.ts
+  ai_agent 1-19
+pyproject.toml
+  ai_agent 8
+apps/e2e/tests/sql.spec.ts
+  ai_agent 1-14
+packages/runtime/README.md
+  s_a2a846b2d0e68d::t_9a138b78440186 1-207,209-241
+packages/runtime/src/cell-renderer.ts
+  s_a2a846b2d0e68d::t_7f86788815c4dc 19-27,71-80,90-100,109-118,131-135,142-151,153-162,333-336,338-347,353-365,391-396,418-428,430-441,447-451,459-472,476-488,495-519
+  s_a2a846b2d0e68d::t_51b9d3189858bc 70,81-85,101-106,108,124,163,235,240,243,255-257,264,315-322,326-328,331,337,348,352,366,379-386,411
+  s_a2a846b2d0e68d::t_7e29b22853a9df 523-524
+  s_a2a846b2d0e68d::t_3b724aadfac7c0 58,60-61,165,187-189,191,193-202
+  s_a2a846b2d0e68d::t_b6283f83525ac2 367
+  s_a2a846b2d0e68d::t_d84484ede0bda3 36,48,53-54
+  s_a2a846b2d0e68d::t_e59498bab3a063 429,442-446,452-458,473-475,489-494,520-522
+skills/pyobservablejs/references/data.md
+  s_a2a846b2d0e68d::t_ec620d24b29179 11-19,60-65,70-72
+  s_a2a846b2d0e68d::t_5fb35ba066890a 1-4,8-10,20-53,57-59,66-69,73-140
+  s_a2a846b2d0e68d::t_5d105ca91022eb 54-56
+packages/pyobservablejs/src/observablejs/_files.py
+  ai_agent 41
+apps/docs/docs/guide/customize/browser-execution.mdx
+  s_a2a846b2d0e68d::t_209f259f0498cb 16-23,27,39-40,45-50,55,57,60-64,68,88-94
+apps/docs/docs/guide/agents.mdx
+  s_a2a846b2d0e68d::t_74cf19f1a7df9f 3,8-11,14,16,18,21,23-24,26-29,31-33,35,37-39,41-44,46-47,49-54,56-58,60,62-65,67-68,76-78,80-84,86-91,93-94,96,98-101,103-108
+apps/e2e/fixtures/notebook.py
+  s_a2a846b2d0e68d::t_5a82eb34d912ca 733
+packages/runtime/src/views.ts
+  ai_agent 1,24-25,34-36,55-57,60,63-70,72,81,102,104-109,111
+.gitignore
+  ai_agent 13-15
+pnpm-lock.yaml
+  ai_agent 22-23,39-41,57-71,100-102,116,125,128,167-187,199,202,205,211,221-241,246-251,260,263,285,288,1870-1871,2434-2438,2601-2605,2684-2686,2716-2721,2902-2904,2908-2910,2983-2985,3045,3198-3202,3295-3302,3315-3322,3512-3515,3609-3616,4413-4414,4457-4460,4469-4474,5129-5132,5145-5147,5299-5301,6089-6098,6562-6563,7213-7216,7398-7405,7417-7419,7762-7765,7822-7823,10455,10471,10477,10496,10948-10951,11126-11129,11223-11226,11269-11272,11484-11487,11492-11495,11533,11581-11583,11587-11588,11595,11598,11604,11621,11627,11653,11665,11784-11785,11820,11871,11875-11894,11908-11911,12017,12139-12142,12235-12248,12817,13061,13092,13141-13144,13152-13155,13992-13993,14002-14003,14128-14129,15083,15106,15126,15148,15150,15172,15309-15314,15824,16768-16772,16897-16900,16907-16908,17101,17105-17106,17108,17114-17116,17118,17159,17162,17179,17183,17384-17385,17421
+packages/runtime/src/cell-state.ts
+  ai_agent 1-2,7,17-18,23-24,26,37,60-63,72-73
+packages/runtime/src/inspection.ts
+  s_a2a846b2d0e68d::t_30695edfcddd89 167-172
+  s_a2a846b2d0e68d::t_3727a275376003 152-160
+  s_a2a846b2d0e68d::t_7a8f9b6fd9a344 1-151,161-166,173-241
+apps/docs/docs/reference/values-and-graph.mdx
+  ai_agent 58-63,71-74,98-100
+.github/workflows/ci.yml
+  ai_agent 51,58,89-93,125-145,172-222,224,238,247,253,255-256
+packages/widget/src/errors.ts
+  s_a2a846b2d0e68d::t_d6adb76a6cd93e 27,42,86,94
+  s_a2a846b2d0e68d::t_94fed15abe471b 28,34-37,41
+  s_a2a846b2d0e68d::t_84a3e9a64e101f 1-2,5-9,11-14,16-26,29-33,38-40,43-46,51-52,54-58,60-61,77-83,87-93,95-110,115
+  s_a2a846b2d0e68d::t_88ac1fcf19b244 4,84-85
+  s_a2a846b2d0e68d::t_4e6fe590b19f74 15,47-50,66,111-114
+  s_a2a846b2d0e68d::t_d49bdb350670a2 59,62-65,67
+  s_a2a846b2d0e68d::t_7aac62110bbba6 53
+  s_a2a846b2d0e68d::t_f471338a8818bc 73-76
+  s_a2a846b2d0e68d::t_fcda35a833269b 3,68-72
+  s_a2a846b2d0e68d::t_39352dd3529c86 10
+packages/runtime/tests/native-inputs.test.ts
+  ai_agent 1-148
+apps/e2e/tests/readback.spec.ts
+  ai_agent 1-11
+apps/e2e/tests/jupyter.spec.ts
+  s_a2a846b2d0e68d::t_646abf13293e1e 6-46
+packages/runtime/src/types/sqlite.d.ts
+  ai_agent 1-6
+apps/e2e/tests/runtime.spec.ts
+  s_a2a846b2d0e68d::t_563a58df6ea8fe 1-108
+packages/pyobservablejs/tests/test_notebook_errors.py
+  s_a2a846b2d0e68d::t_e757e456dd085c 277-280,314-315,321-324,328-331,333-335
+  s_a2a846b2d0e68d::t_974fe194564b2d 520-521
+  s_a2a846b2d0e68d::t_b42dee66620885 24-37,42-53,83-90,92-97,101-103,108-109,122-137,160-189,192-194,201-205,212-214,217-227,232,242-245,247,336-338,340-342,346-348,351,356-357,359,362-366,388,392-394,399-403,409,435,467-469,490,522,544,546,555-557,559,567-570,572
+  s_a2a846b2d0e68d::t_69cac0dff003da 281-313,316-320,325-327,332,439-441,463
+  s_a2a846b2d0e68d::t_c808e800dd6739 387,413-434
+  s_a2a846b2d0e68d::t_808e5c1e8b7ca2 1-23,38-41,98-100,104-107,110-121,138-150,153-159,190-191,195-200,206-211,215-216,228-231,233-241,246,248-250,339,343-345,349-350,352-354,360-361,368-371,384-386,389-391,395-398,410-412,436-438,470-477,489,491-493,523-525,547-551,553-554,558,560-566,571,573-574
+  s_a2a846b2d0e68d::t_cdefd42ba9d56f 529,534,545
+  s_a2a846b2d0e68d::t_cf2804ff1f2f5c 526-528,530-533,535-543,552
+  s_a2a846b2d0e68d::t_b7e5bf01e93d21 372-383,404-408,449-460,478-485,504-515
+  s_a2a846b2d0e68d::t_cc8acb51ac50eb 251-276
+  s_a2a846b2d0e68d::t_abed8a9d3541a3 442-448,461-462,464-466
+  s_a2a846b2d0e68d::t_11a3a9a8019f23 151-152,355,358,367
+  s_a2a846b2d0e68d::t_f894d0a6fb72b7 71-75,486-488
+  s_a2a846b2d0e68d::t_4fa5c0c0a46aa2 494-503,516-519
+  s_a2a846b2d0e68d::t_43491c73cdc0d9 54-70,76-82,91
+packages/pyobservablejs/tests/test_agent.py
+  s_a2a846b2d0e68d::t_1f5885a5b57c23 6,9,34,36-39,49-50,53-65
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "b7b6815c318dfefd6bad93f7de412b0ce685868e",
+  "prompts": {},
+  "sessions": {
+    "s_a2a846b2d0e68d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a07d4e-2a8c-7531-9f5b-b3bfd28635cb",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Péter Ferenc Gyarmati <dev.petergy@gmail.com>"
+    }
+  }
+}
