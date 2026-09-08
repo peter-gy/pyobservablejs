@@ -1,0 +1,21 @@
+uv.lock
+  ai_agent 2062
+packages/pyobservablejs/pyproject.toml
+  s_a2a846b2d0e68d::t_270760329f8cd1 7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "8cd754db15bfb166aa605741de9a5b4c658ac68d",
+  "prompts": {},
+  "sessions": {
+    "s_a2a846b2d0e68d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a07d4e-2a8c-7531-9f5b-b3bfd28635cb",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Péter Ferenc Gyarmati <dev.petergy@gmail.com>"
+    }
+  }
+}
