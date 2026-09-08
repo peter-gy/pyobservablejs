@@ -27,7 +27,7 @@ export default defineConfig({
 			gracefulShutdown: { signal: "SIGTERM", timeout: 5_000 },
 		},
 		{
-			command: "pnpm --filter @pyobservablejs/e2e exec vp dev --config standalone/vite.config.ts",
+			command: "vp exec -F @pyobservablejs/e2e vp dev --config standalone/vite.config.ts",
 			cwd: "../..",
 			url: "http://127.0.0.1:27346",
 			reuseExistingServer: false,

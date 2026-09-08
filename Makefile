@@ -18,10 +18,10 @@ docs-serve: docs
 	$(VP) run -F @pyobservablejs/docs serve
 
 e2e-install:
-	pnpm --filter @pyobservablejs/e2e install-browser
+	$(VP) run @pyobservablejs/e2e#install-browser
 
 e2e: build
-	pnpm --filter @pyobservablejs/e2e test:e2e
+	$(VP) run @pyobservablejs/e2e#test:e2e
 
 check:
 	$(VP) run check
@@ -34,7 +34,7 @@ check:
 	$(MAKE) build
 	node --test packages/runtime/tests/inspect-node.test.mjs
 	uv run --frozen pytest -q packages/pyobservablejs/tests
-	pnpm --filter @pyobservablejs/e2e test:e2e
+	$(VP) run @pyobservablejs/e2e#test:e2e
 	$(MAKE) docs
 	git diff --check
 

@@ -187,7 +187,7 @@ jobs:
         run: vp exec -F @pyobservablejs/e2e playwright install --with-deps chromium
 
       - name: Run browser tests
-        run: pnpm --filter @pyobservablejs/e2e test:e2e
+        run: vp run @pyobservablejs/e2e#test:e2e
 
       - name: Upload browser failure artifacts
         if: failure()

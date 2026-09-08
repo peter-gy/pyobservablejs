@@ -163,13 +163,13 @@ Playwright stops the servers when the run finishes.
 Run a focused scenario with the assets already built:
 
 ```sh
-pnpm --filter @pyobservablejs/e2e test:e2e --grep "Python"
+node_modules/.bin/vp run @pyobservablejs/e2e#test:e2e --grep "Python"
 ```
 
 Exercise the runtime API directly during frontend work:
 
 ```sh
-pnpm --filter @pyobservablejs/e2e exec vp dev --config standalone/vite.config.ts
+node_modules/.bin/vp exec -F @pyobservablejs/e2e vp dev --config standalone/vite.config.ts
 ```
 
 The consumer runs at `http://127.0.0.1:27346/`. Its `scenario` query parameter
@@ -182,7 +182,7 @@ Failed runs retain screenshots and traces in `apps/e2e/test-results` and an
 HTML report in `apps/e2e/playwright-report`. Open the report with:
 
 ```sh
-pnpm --filter @pyobservablejs/e2e exec playwright show-report
+node_modules/.bin/vp exec -F @pyobservablejs/e2e playwright show-report
 ```
 
 The CI `e2e` job consumes the same widget asset artifact as Python tests and
