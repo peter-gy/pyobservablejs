@@ -554,7 +554,7 @@ def test_from_html_treats_unknown_script_type_as_javascript(
 
     widget = notebook_from_html_path(notebook)
 
-    assert len(widget.cells) == 1
+    assert [cell.mode for cell in widget.cells] == ["js"]
     module_text = script_by_id(script_tags(widget.to_notebook_html()), "1")["text"]
     assert_javascript_import_payloads(
         module_text,

@@ -70,7 +70,7 @@ class SqlPlan:
 
 
 @dataclass
-class SqlContext:
+class LoweringContext:
     ids: _CellIdAllocator
     used_names: set[str]
     clients: dict[str, str] = field(default_factory=dict)
@@ -274,8 +274,16 @@ def _lower_nodes(
             used_names.add(node.name)
         if output_name := _cell_output_name(node):
             used_names.add(output_name)
+        data = node.raw.get("data")
+        source = data.get("source") if isinstance(data, Mapping) else None
+        if (
+            isinstance(source, Mapping)
+            and source.get("type") == "cell"
+            and (source_name := _valid_cell_name(source.get("name")))
+        ):
+            used_names.add(source_name)
     node_ids = {node.id for node in nodes}
-    sql_context = SqlContext(
+    context = LoweringContext(
         ids=_CellIdAllocator(
             node_ids,
             next_id=max(node_ids, default=0) + 1,
@@ -284,7 +292,11 @@ def _lower_nodes(
     )
 
     for node in nodes:
-        sql_plan = _sql_plan(node, sql_context)
+        if node.mode == "table":
+            query = _table_query_cell(node, context)
+            cells.extend((query, _table_node_to_cell(node, rows=query["output"])))
+            continue
+        sql_plan = _sql_plan(node, context)
         cells.extend(sql_plan.cells)
         cells.append(
             _lower_node(
@@ -297,7 +309,7 @@ def _lower_nodes(
     return cells
 
 
-def _sql_plan(node: ObservableNode, context: SqlContext) -> SqlPlan:
+def _sql_plan(node: ObservableNode, context: LoweringContext) -> SqlPlan:
     database = _sql_database(node)
     if database is not None:
         return SqlPlan(database=database)
@@ -323,8 +335,6 @@ def _lower_node(
     use_builtin_duckdb: bool = False,
     import_resolution: str | None = None,
 ) -> NotebookCellSpec:
-    if node.mode == "table":
-        return _table_node_to_cell(node, sql_database=sql_database)
     if node.mode == "chart":
         return _chart_node_to_cell(node)
     return _code_node_to_cell(
@@ -362,6 +372,8 @@ def _code_node_to_cell(
     if node.name is not None:
         cell["key"] = node.name
     _copy_visibility_attrs(cell, node)
+    if node.mode == "sql" and _data_display_mode(node.raw.get("data")) == "none":
+        cell["hidden"] = True
     if uses_builtin_duckdb:
         cell["hidden"] = True
     if node.mode in {"dot", "html", "md", "sql", "tex"} and node.name is not None:
@@ -474,7 +486,7 @@ def _sql_database(node: ObservableNode) -> str | None:
 
 
 def _sql_source(node: ObservableNode) -> SqlSource | None:
-    if node.mode not in {"sql", "table"}:
+    if node.mode != "sql":
         return None
     data = node.raw.get("data")
     if not isinstance(data, Mapping):
@@ -487,8 +499,6 @@ def _sql_source(node: ObservableNode) -> SqlSource | None:
     source_type = source_map.get("type")
     name = source_map.get("name")
     if not isinstance(name, str) or not name:
-        return None
-    if node.mode == "table" and not isinstance(data_map.get("operations"), Mapping):
         return None
     if source_type == "cell" and not _JS_IDENTIFIER_RE.fullmatch(name):
         return None
@@ -529,18 +539,90 @@ def _file_attachment_object_expression(name: str) -> str:
     return f"FileAttachment({_json_literal(name)})"
 
 
-def _table_node_to_cell(
-    node: ObservableNode,
-    *,
-    sql_database: str | None = None,
+def _table_query_cell(
+    node: ObservableNode, context: LoweringContext
 ) -> NotebookCellSpec:
+    name = f"_table{node.id}"
+    while name in context.used_names:
+        name += "_"
+    context.used_names.add(name)
     data = node.raw.get("data")
-    sql_query = _table_sql_query(data)
-    if sql_database is not None and sql_query is not None:
-        value = f"Inputs.table(await {sql_database}.query({_json_literal(sql_query)}))"
-    else:
-        source = _source_expression(data, fallback="[]")
-        value = f"Inputs.table(await {source})"
+    data_map = dict(data) if isinstance(data, Mapping) else {}
+    raw_operations = data_map.get("operations")
+    operations: dict[str, Any] = {
+        "from": {"table": None},
+        "select": {"columns": None},
+        "filter": [],
+        "sort": [],
+        "slice": {"from": None, "to": None},
+        **(dict(raw_operations) if isinstance(raw_operations, Mapping) else {}),
+    }
+    for field_name, defaults in (
+        ("from", {"table": None}),
+        ("select", {"columns": None}),
+        ("slice", {"from": None, "to": None}),
+    ):
+        value = operations[field_name]
+        if isinstance(value, Mapping):
+            operations[field_name] = {**defaults, **value}
+    source = _source_expression(data, fallback="[]")
+    source_info = data_map.get("source")
+    if isinstance(source_info, Mapping) and source_info.get("type") == "FileAttachment":
+        attachment_name = source_info.get("name")
+        if isinstance(attachment_name, str):
+            attachment = f"FileAttachment({_json_literal(attachment_name)})"
+            if source_info.get("dialect") == "sqlite":
+                source = f"{attachment}.sqlite()"
+            elif attachment_name.lower().endswith(".csv"):
+                source = f"{attachment}.csv()"
+            elif attachment_name.lower().endswith(".tsv"):
+                source = f"{attachment}.tsv()"
+    operations_name = f"{name}_operations"
+    while operations_name in context.used_names:
+        operations_name += "_"
+    source_name = f"{name}_source"
+    while source_name in context.used_names:
+        source_name += "_"
+    statements = [f"const {operations_name} = {_json_literal(operations)};"]
+    for filter_index, filter_spec in enumerate(operations["filter"]):
+        for operand_index, operand in enumerate(filter_spec.get("operands", [])):
+            if operand.get("type") == "date":
+                statements.append(
+                    f"{operations_name}.filter[{filter_index}].operands[{operand_index}].value = "
+                    f"new Date({_json_literal(operand.get('value'))});"
+                )
+    for index, derive in enumerate(operations.get("derive", [])):
+        expression = derive.get("value")
+        if not isinstance(expression, str):
+            raise TypeError(
+                "Observable table derived column value must be an expression"
+            )
+        statements.append(
+            f"{operations_name}.derive[{index}].value = (row) => (\n{expression}\n);"
+        )
+    statements.append(f"const {source_name} = await {source};")
+    query_arguments = f"{source_name}, {operations_name}, invalidation"
+    table_name = operations["from"].get("table")
+    if isinstance(source_info, Mapping) and source_info.get("type") == "cell":
+        table_name = source_info.get("name")
+    if isinstance(table_name, str):
+        query_arguments += f", {_json_literal(table_name)}"
+    statements.append(
+        f"return Array.isArray({source_name}) && {source_name}.length === 0 "
+        f"&& {source_name}.schema == null && {source_name}.columns == null "
+        f"? {source_name} : __query({query_arguments});"
+    )
+    return {
+        "id": context.ids.allocate(),
+        "value": f"{name} = {{\n" + "\n".join(statements) + "\n}",
+        "mode": "ojs",
+        "hidden": True,
+        "output": name,
+    }
+
+
+def _table_node_to_cell(node: ObservableNode, *, rows: str) -> NotebookCellSpec:
+    value = f"Inputs.table({rows})"
     if node.name is not None:
         value = f"viewof {node.name} = {value}"
     cell: dict[str, Any] = {
@@ -624,202 +706,6 @@ def _file_attachment_expression(name: str) -> str:
     if lower.endswith(".parquet"):
         return f"{attachment}.parquet()"
     return f"{attachment}.json()"
-
-
-def _table_sql_query(data: object) -> str | None:
-    if not isinstance(data, Mapping):
-        return None
-    data_map = cast(Mapping[str, Any], data)
-    operations = data_map.get("operations")
-    if not isinstance(operations, Mapping):
-        return None
-    operations_map = cast(Mapping[str, Any], operations)
-    source = data_map.get("source")
-    if not isinstance(source, Mapping):
-        return None
-    from_value = operations_map.get("from")
-    if not isinstance(from_value, Mapping):
-        return None
-    from_map = cast(Mapping[str, Any], from_value)
-    table = from_map.get("table")
-    if not isinstance(table, Mapping):
-        return None
-    table_map = cast(Mapping[str, Any], table)
-    table_name = table_map.get("table")
-    if not isinstance(table_name, str) or not table_name:
-        return None
-    select_clause = _table_select_clause(operations_map.get("select"))
-    if select_clause is None:
-        return None
-    filter_clause = _table_filter_clause(operations_map.get("filter"))
-    if filter_clause is None:
-        return None
-    sort_clause = _table_sort_clause(operations_map.get("sort"))
-    if sort_clause is None:
-        return None
-    slice_clause = _table_slice_clause(operations_map.get("slice"))
-    if slice_clause is None:
-        return None
-    return (
-        f"SELECT {select_clause} FROM {_sql_identifier(table_name)}"
-        f"{filter_clause}{sort_clause}{slice_clause}"
-    )
-
-
-def _sql_identifier(name: str) -> str:
-    return '"' + name.replace('"', '""') + '"'
-
-
-def _table_select_clause(select: object) -> str | None:
-    if not isinstance(select, Mapping):
-        return "*"
-    select_map = cast(Mapping[str, Any], select)
-    columns = select_map.get("columns")
-    if columns is None:
-        return "*"
-    if not isinstance(columns, list) or not all(
-        isinstance(column, str) and column for column in columns
-    ):
-        return None
-    return ", ".join(_sql_identifier(column) for column in columns)
-
-
-def _table_filter_clause(filters: object) -> str | None:
-    if filters in (None, []):
-        return ""
-    if not isinstance(filters, list):
-        return None
-    clauses: list[str] = []
-    for filter_spec in filters:
-        clause = _table_filter_expression(filter_spec)
-        if clause is None:
-            return None
-        clauses.append(clause)
-    return "" if not clauses else " WHERE " + " AND ".join(clauses)
-
-
-def _table_filter_expression(filter_spec: object) -> str | None:
-    if not isinstance(filter_spec, Mapping):
-        return None
-    filter_map = cast(Mapping[str, Any], filter_spec)
-    filter_type = filter_map.get("type")
-    operands = filter_map.get("operands")
-    if not isinstance(operands, list) or len(operands) < 2:
-        return None
-    if filter_type == "in":
-        left = _table_operand_expression(operands[0])
-        values = [_table_operand_expression(operand) for operand in operands[1:]]
-        if left is None or any(value is None for value in values):
-            return None
-        return f"{left} IN ({', '.join(cast(list[str], values))})"
-    if filter_type == "c":
-        left = _table_operand_expression(operands[0])
-        value = _table_primitive_value(operands[1])
-        if left is None or value is None:
-            return None
-        return f"{left} LIKE {_sql_literal(f'%{value}%')}"
-    if not isinstance(filter_type, str):
-        return None
-    operator = {
-        "eq": "=",
-        "neq": "<>",
-        "lt": "<",
-        "lte": "<=",
-        "gt": ">",
-        "gte": ">=",
-    }.get(filter_type)
-    if operator is None:
-        return None
-    if len(operands) != 2:
-        return None
-    left = _table_operand_expression(operands[0])
-    right = _table_operand_expression(operands[1])
-    if left is None or right is None:
-        return None
-    return f"{left} {operator} {right}"
-
-
-def _table_operand_expression(operand: object) -> str | None:
-    if not isinstance(operand, Mapping):
-        return None
-    operand_map = cast(Mapping[str, Any], operand)
-    operand_type = operand_map.get("type")
-    value = operand_map.get("value")
-    if operand_type == "column" and isinstance(value, str) and value:
-        return _sql_identifier(value)
-    if operand_type == "primitive":
-        return _sql_literal(value)
-    return None
-
-
-def _table_primitive_value(operand: object) -> object | None:
-    if not isinstance(operand, Mapping):
-        return None
-    operand_map = cast(Mapping[str, Any], operand)
-    if operand_map.get("type") != "primitive":
-        return None
-    return operand_map.get("value")
-
-
-def _sql_literal(value: object) -> str:
-    if value is None:
-        return "NULL"
-    if value is True:
-        return "TRUE"
-    if value is False:
-        return "FALSE"
-    if isinstance(value, int | float):
-        return json.dumps(value)
-    return "'" + str(value).replace("'", "''") + "'"
-
-
-def _table_sort_clause(sort: object) -> str | None:
-    if sort in (None, []):
-        return ""
-    if not isinstance(sort, list):
-        return None
-    parts: list[str] = []
-    for item in sort:
-        if not isinstance(item, Mapping):
-            return None
-        item_map = cast(Mapping[str, Any], item)
-        column = item_map.get("column")
-        if not isinstance(column, str) or not column:
-            return None
-        direction = item_map.get("direction")
-        if direction is None:
-            direction_sql = "ASC"
-        elif isinstance(direction, str) and direction.lower() in {"asc", "desc"}:
-            direction_sql = direction.upper()
-        else:
-            return None
-        parts.append(f"{_sql_identifier(column)} {direction_sql}")
-    return "" if not parts else " ORDER BY " + ", ".join(parts)
-
-
-def _table_slice_clause(slice_spec: object) -> str | None:
-    if not isinstance(slice_spec, Mapping):
-        return ""
-    slice_map = cast(Mapping[str, Any], slice_spec)
-    from_value = slice_map.get("from")
-    to_value = slice_map.get("to")
-    if from_value is not None and (
-        not isinstance(from_value, int)
-        or isinstance(from_value, bool)
-        or from_value < 0
-    ):
-        return None
-    if to_value is not None and (
-        not isinstance(to_value, int) or isinstance(to_value, bool) or to_value < 0
-    ):
-        return None
-    if from_value is None and to_value is None:
-        return ""
-    offset = 0 if from_value is None else from_value
-    if to_value is None:
-        return f" OFFSET {offset}" if offset else ""
-    limit = max(0, to_value - offset)
-    return f" LIMIT {limit}" + (f" OFFSET {offset}" if offset else "")
 
 
 def _chart_options_dict(data: object) -> dict[str, Any]:
@@ -907,7 +793,12 @@ def _cell_output_name(node: ObservableNode) -> str | None:
 
 
 def _json_literal(value: object) -> str:
-    return json.dumps(value, ensure_ascii=False)
+    def mapping_default(item: object) -> dict[Any, Any]:
+        if isinstance(item, Mapping):
+            return dict(item)
+        raise TypeError(f"{type(item).__name__} is not JSON serializable")
+
+    return json.dumps(value, ensure_ascii=False, default=mapping_default)
 
 
 def _explicit_node_id(value: object) -> int | None:

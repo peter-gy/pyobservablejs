@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import dataclasses
 import json
@@ -11,6 +12,7 @@ from collections.abc import Callable, Sequence
 from typing import Any, Protocol
 
 import observablejs as obs
+import pytest
 
 
 @dataclasses.dataclass(frozen=True)
@@ -238,3 +240,43 @@ process.stdin.on("end", () => {
   process.stdout.write(JSON.stringify(records));
 });
 """
+
+
+class Browser:
+    def __init__(self, view: obs.NotebookView, monkeypatch: pytest.MonkeyPatch):
+        self.view = view
+        self.messages: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+        monkeypatch.setattr(view, "send", self.send)
+
+    def send(self, content: dict[str, Any], buffers: object = None) -> None:
+        self.messages.put_nowait(content)
+
+    def deliver(self, *, buffers: tuple[bytes, ...] = (), **content: object) -> None:
+        self.view._handle_custom_msg(
+            {"kind": "observablejs:access", "protocol": 1, **content},
+            list(buffers),
+        )
+
+    def ready(self, generation: str = "first", value: object = None) -> None:
+        self.view.set_trait("_inspection", {"generation": generation, "value": value})
+
+    def catalog(self, values: object, generation: str = "first") -> None:
+        self.view.set_trait("_datasets", {"generation": generation, "values": values})
+
+    async def message(self) -> dict[str, Any]:
+        return await asyncio.wait_for(self.messages.get(), 1)
+
+    def reply(
+        self,
+        request: dict[str, Any],
+        result: object,
+        *,
+        buffers: tuple[bytes, ...] = (),
+    ) -> None:
+        self.deliver(
+            type="response",
+            id=request["id"],
+            generation=request["generation"],
+            result=result,
+            buffers=buffers,
+        )

@@ -1,23 +1,37 @@
 import type { Notebook } from "@observablehq/notebook-kit";
-import {
-	notebookDefinedNamesFromAnalysis,
-	notebookDependencyIndexes,
-	type NotebookAnalysis,
-} from "@pyobservablejs/runtime";
+import { notebookDefinedNamesFromAnalysis, notebookDependencyIndexes, type NotebookAnalysis } from "./graph";
 import { renderCellTarget, type CellRenderContext, type CellRenderTarget } from "./cell-renderer";
 import { appendCellWrapper } from "./dom";
-import { type ReadbackAttempt, type ViewReadback } from "./readback";
-import type { NotebookRuntimeSession } from "./session";
-import { createCellStateSync } from "./variable-sync";
+import { type EvaluationAttempt, type EvaluationState } from "./state";
+import type { NotebookRuntime } from "@observablehq/notebook-kit/runtime";
+import type { NotebookOptions } from "./environment";
+import type { RuntimeInputs } from "./inputs";
+import type { RuntimeViewSync } from "./view-inputs";
+import { createCellStateSync } from "./cell-state";
+import type { NotebookValues } from "./notebook-values";
+import type { AttachmentRegistry } from "./attachments";
+import type { DiagnosticCollector } from "./diagnostics";
+
+export type RenderSession = {
+	root: HTMLElement;
+	runtime: NotebookRuntime;
+	options: NotebookOptions;
+	variablesSync: RuntimeInputs;
+	viewSync: RuntimeViewSync;
+	signal: AbortSignal;
+	values: NotebookValues;
+	attachments: AttachmentRegistry;
+	diagnostics: DiagnosticCollector;
+};
 
 type RenderNotebookViewOptions = {
 	notebook: Notebook;
 	selectedIndexes: ReadonlySet<number>;
 	renderIndexes: ReadonlySet<number>;
 	analysis: NotebookAnalysis;
-	session: NotebookRuntimeSession;
-	readback: ViewReadback;
-	attempt: ReadbackAttempt;
+	session: RenderSession;
+	readback: EvaluationState;
+	attempt: EvaluationAttempt;
 	cellKeys: readonly string[];
 };
 
@@ -33,16 +47,19 @@ export function renderNotebookView({
 	cellKeys,
 }: RenderNotebookViewOptions): void {
 	readback.begin(attempt, selectedIndexes);
+	if (session.signal.aborted) return;
 	const { options, root } = session;
 	const cells = notebook.cells;
 	const context: CellRenderContext = {
 		runtime: session.runtime,
 		signal: session.signal,
-		pythonVariableNames: new Set(Object.keys(options.variables)),
+		variableNames: new Set(Object.keys(options.variables)),
 		analysis,
 		notebookNames: notebookDefinedNamesFromAnalysis(analysis),
 		runtimeProfile: options.runtimeProfile,
 		viewSync: session.viewSync,
+		values: session.values,
+		diagnostics: session.diagnostics,
 	};
 	const targets: CellRenderTarget[] = [];
 	for (let index = 0; index < cells.length; index += 1) {
@@ -50,6 +67,12 @@ export function renderNotebookView({
 		const cell = cells[index];
 		if (!cell) continue;
 		const selected = selectedIndexes.has(index);
+		const metadata = analysis.graph.cells[index];
+		session.values.register(
+			index,
+			[...new Set([...(metadata?.defines ?? []), ...(metadata?.runtimeOutputs ?? [])])],
+			metadata?.defines ?? [],
+		);
 		const wrapper = appendCellWrapper(root);
 		if (!selected) {
 			wrapper.hidden = true;
@@ -57,6 +80,7 @@ export function renderNotebookView({
 		}
 		targets.push({
 			index,
+			key: cellKeys[index] ?? "",
 			wrapper,
 			cell,
 			showSource: selected && options.showSource,
@@ -70,14 +94,10 @@ export function renderNotebookView({
 }
 
 export function notebookViewIndexes(analysis: NotebookAnalysis, selectedIndexes: ReadonlySet<number>): Set<number> {
-	const indexes = new Set<number>();
-	for (const selected of selectedIndexes) {
-		for (const index of notebookDependencyIndexes(analysis, selected)) indexes.add(index);
-	}
-	return indexes;
+	return notebookDependencyIndexes(analysis, selectedIndexes);
 }
 
-function cellSync(index: number, readback: ViewReadback, attempt: ReadbackAttempt) {
+function cellSync(index: number, readback: EvaluationState, attempt: EvaluationAttempt) {
 	return createCellStateSync({
 		begin: (channel, generation) => readback.beginCell(attempt, index, channel, generation),
 		settle: (token, value) => readback.settleCell(token, value),

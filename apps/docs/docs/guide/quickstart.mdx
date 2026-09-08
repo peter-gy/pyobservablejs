@@ -5,14 +5,17 @@ description: Render a keyed notebook, update a variable, and read structured res
 
 # Quickstart
 
-`pyobservablejs` supports Python 3.11 through 3.14. Add it to an existing
-environment:
+Create a reactive notebook in Python, display it in the browser, and read a
+calculated value back. `pyobservablejs` supports Python 3.11 through 3.14.
+Install it in the Python environment used by your notebook:
 
 ```sh
-uv pip install pyobservablejs
+pip install pyobservablejs
 ```
 
-Or open an isolated marimo editor with the package available:
+To start a new notebook, [uv](https://docs.astral.sh/uv/getting-started/installation/),
+a Python environment and package manager, can launch
+[marimo](https://docs.marimo.io/), a reactive Python notebook editor:
 
 ```sh
 uvx --with pyobservablejs marimo edit notebook.py
@@ -20,7 +23,13 @@ uvx --with pyobservablejs marimo edit notebook.py
 
 ## Create and render a notebook
 
-Paste this into a marimo cell or another anywidget notebook host:
+Paste this into one marimo cell or a JupyterLab cell.
+[anywidget](https://anywidget.dev/), the widget system connecting Python to
+browser components, supports these hosts. [Notebook
+Kit](https://observablehq.com/notebook-kit/) evaluates the JavaScript cells in
+the browser. Its input library loads from the network on first use. See
+[Browser execution](customize/browser-execution.mdx) for network and code-trust
+requirements.
 
 ```marimo-config
 requires-python = ">=3.11,<3.15"
@@ -42,7 +51,10 @@ control = obs.ojs(
 )
 
 result = obs.js(
-    'html`<strong>Threshold: ${threshold}</strong>`',
+    """
+    const doubled = threshold * 2;
+    display(html`<strong>Doubled threshold: ${doubled}</strong>`);
+    """,
     key="result",
 )
 
@@ -71,7 +83,10 @@ control = obs.ojs(
 )
 
 result = obs.js(
-    'html`<strong>Threshold: ${threshold}</strong>`',
+    """
+    const doubled = threshold * 2;
+    display(html`<strong>Doubled threshold: ${doubled}</strong>`);
+    """,
     key="result",
 )
 
@@ -85,6 +100,10 @@ view = notebook.view()
 view
 ```
 
+The slider starts at `0.5`, and the readout shows `1`. Moving the slider reruns
+the result cell. `key="result"` identifies the cell in Python. `doubled` is
+the JavaScript value defined by that cell.
+
 ## Update the browser from Python
 
 `Notebook.update_variables` accepts one mapping. Every mounted view from this
@@ -94,27 +113,37 @@ notebook receives the update.
 notebook.update_variables({"threshold": 0.8})
 ```
 
+Run the update in another cell. The slider moves to `0.8`, and the readout
+shows `1.6`.
+
 ## Read a settled result
 
 `NotebookView.state` is one consistent, read-only snapshot. Read a result after
-the current input revision finishes. In marimo, reference `view.value` first so
-the cell reruns when the view synchronizes.
+the current input revision finishes. In marimo, run this in another cell.
+The `view.value` reference makes that cell rerun when the view synchronizes.
+In Jupyter, omit that line and run the reading cell after the view renders.
 
 ```python
-view.value  # rerun this cell when synchronized widget state changes
+view.value  # marimo subscription
 state = view.state
 
-if (
+if state.errors:
+    print(state.errors)
+elif (
     not state.pending
     and state.input_revision is not None
     and state.settled_revision == state.input_revision
 ):
     result_state = state.result("result")
     if result_state.status == "success":
-        print(result_state.values)
+        print(result_state.values["doubled"])
     else:
         print(result_state.errors)
 ```
+
+The value is `1.6` after the Python update. Browser interaction changes it
+again. [Read browser results](connect/browser-results.mdx) covers observing
+updates and handling errors.
 
 Continue with [How pyobservablejs works](how-it-works.mdx), [Author notebook
 cells](create/cells.mdx), [Select cells](display/cells.mdx), or [Read browser

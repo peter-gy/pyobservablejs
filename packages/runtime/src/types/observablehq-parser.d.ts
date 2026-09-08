@@ -5,6 +5,7 @@ declare module "@observablehq/parser" {
 
 	type ParsedCell = {
 		references: Reference[];
+		body: import("acorn").Node | null;
 	};
 
 	export function parseCell(source: string): ParsedCell;

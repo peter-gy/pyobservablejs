@@ -3,7 +3,7 @@ import type { HighlighterCore, ThemedToken } from "@shikijs/core";
 import { applyNotebookTheme } from "./themes";
 
 export const CLASS_NAMES = {
-	widget: "pyobservablejs",
+	host: "pyobservablejs",
 	notebook: "pyobservablejs-notebook",
 	cell: "pyobservablejs-cell",
 	error: "pyobservablejs-error",
@@ -37,7 +37,7 @@ type SourceMode = {
 };
 
 const SHIKI_THEME = "github-light-default";
-// Very large pinned cells render as plain text to keep widget updates responsive.
+// Very large pinned cells render as plain text to keep source rendering responsive.
 const MAX_HIGHLIGHT_CHARS = 120_000;
 const FONT_STYLE_ITALIC = 1;
 const FONT_STYLE_BOLD = 2;
@@ -54,19 +54,20 @@ const SOURCE_MODE_BY_CELL_MODE = {
 	python: { label: "Python", language: null },
 	r: { label: "R", language: null },
 	sql: { label: "SQL", language: "sql" },
+	"sql.view": { label: "SQL view", language: "sql" },
 	tex: { label: "TeX", language: null },
 	ts: { label: "TypeScript", language: "typescript" },
 } satisfies Record<Cell["mode"], SourceMode>;
 
 let highlighterPromise: Promise<HighlighterCore> | undefined;
 
-export function prepareWidgetShell(el: HTMLElement): void {
+export function prepareNotebookShell(el: HTMLElement): void {
 	el.replaceChildren();
-	el.classList.add(CLASS_NAMES.widget);
+	el.classList.add(CLASS_NAMES.host);
 }
 
 export function createNotebookRoot(parent: HTMLElement, theme: Notebook["theme"]): HTMLElement {
-	const root = document.createElement("div");
+	const root = parent.ownerDocument.createElement("div");
 	root.className = `${CLASS_NAMES.notebook} observablehq observablehq-root observablehq--block`;
 	applyNotebookTheme(root, theme);
 	parent.appendChild(root);
@@ -74,21 +75,21 @@ export function createNotebookRoot(parent: HTMLElement, theme: Notebook["theme"]
 }
 
 export function appendCellWrapper(root: HTMLElement): HTMLElement {
-	const wrapper = document.createElement("div");
+	const wrapper = root.ownerDocument.createElement("div");
 	wrapper.className = CLASS_NAMES.cell;
 	root.appendChild(wrapper);
 	return wrapper;
 }
 
 export function createCellOutput(wrapper: HTMLElement, cell: Cell): HTMLDivElement {
-	const output = document.createElement("div");
+	const output = wrapper.ownerDocument.createElement("div");
 	output.id = `cell-${cell.id}`;
 	output.className = "observablehq observablehq--cell";
 	wrapper.appendChild(output);
 	return output;
 }
 
-export function createTopLevelError<Cause>(cause: Cause): HTMLElement {
+export function createTopLevelError<Cause>(cause: Cause, document: Document = window.document): HTMLElement {
 	const pre = document.createElement("pre");
 	pre.className = CLASS_NAMES.error;
 	pre.setAttribute("role", "alert");
@@ -96,7 +97,7 @@ export function createTopLevelError<Cause>(cause: Cause): HTMLElement {
 	return pre;
 }
 
-export function renderSource(cell: Cell, signal: AbortSignal): HTMLElement {
+export function renderSource(cell: Cell, signal: AbortSignal, document: Document = window.document): HTMLElement {
 	const sourceMode = SOURCE_MODE_BY_CELL_MODE[cell.mode];
 	const panel = document.createElement("div");
 	panel.className = CLASS_NAMES.sourcePanel;
@@ -202,15 +203,15 @@ async function createHighlighter(): Promise<HighlighterCore> {
 function renderTokenLines(code: HTMLElement, lines: ThemedToken[][]): void {
 	code.replaceChildren();
 	for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
-		if (lineIndex > 0) code.appendChild(document.createTextNode("\n"));
-		const line = document.createElement("span");
+		if (lineIndex > 0) code.appendChild(code.ownerDocument.createTextNode("\n"));
+		const line = code.ownerDocument.createElement("span");
 		line.className = CLASS_NAMES.sourceLine;
-		for (const token of lines[lineIndex] ?? []) line.appendChild(renderToken(token));
+		for (const token of lines[lineIndex] ?? []) line.appendChild(renderToken(token, code.ownerDocument));
 		code.appendChild(line);
 	}
 }
 
-function renderToken(token: ThemedToken): Text | HTMLSpanElement {
+function renderToken(token: ThemedToken, document: Document): Text | HTMLSpanElement {
 	if (!token.color && !token.bgColor && token.fontStyle == null && !token.htmlStyle) {
 		return document.createTextNode(token.content);
 	}

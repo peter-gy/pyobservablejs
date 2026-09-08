@@ -39,8 +39,11 @@ same_view = notebook.view(notebook.cell("readout"))
 
 ## Python defines, the browser runs
 
-Python sends the notebook and its values to the browser. Notebook Kit runs the
-cells there. Each view sends structured results back to Python.
+Python sends the notebook and its values to the browser. [Notebook
+Kit](https://observablehq.com/notebook-kit/), Observable's notebook format and
+execution library, runs the cells there. [anywidget](https://anywidget.dev/)
+connects each rendered view to Python. Each view sends structured results back
+unless created with `capture_state=False`.
 
 ```mermaid
 flowchart LR
@@ -52,7 +55,8 @@ flowchart LR
 ```
 
 `Notebook.state` is a separate, read-only snapshot of variables, files, and
-theme. Frameworks that listen to traitlets can observe it:
+theme. [Traitlets](https://traitlets.readthedocs.io/) provides Python callbacks
+for changes to these attributes:
 
 ```python
 def on_state(change):

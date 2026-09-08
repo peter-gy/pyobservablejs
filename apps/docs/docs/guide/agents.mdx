@@ -1,118 +1,108 @@
 ---
 title: Use pyobservablejs with agents
-description: Read the packaged Agent Skill and discover it from an optional marimo code-mode session.
+description: Find installed instructions, inspect the public API, and work with a live notebook.
 ---
 
 # Use pyobservablejs with agents
 
-`pyobservablejs` is independent of any notebook host. It renders through
-anywidget in JupyterLab, marimo, VS Code notebooks, Google Colab, and other
-compatible environments.
-
-Each installation carries an Agent Plugin with a version-matched Agent Skill.
-The skill teaches agents to construct `Notebook` controllers, render keyed
-views, synchronize values, read browser state, attach files, and load notebook
-sources through the public `observablejs` API.
-
-## Read the packaged skill
-
-Any Python process with `pyobservablejs` installed can locate the skill:
+The installed package includes an [Agent Skill](https://agentskills.io/what-are-skills),
+a set of instructions and recipes for constructing notebooks, selecting views,
+synchronizing values, and reading browser results. Read it in the same Python
+environment as your notebook so the instructions match the installed API.
 
 ```python
-import observablejs.agent as observablejs_agent
+import observablejs.agent as agent
 
-plugin = observablejs_agent.agent_plugin()
-skill = observablejs_agent.agent_skill()
-
-print(plugin.tree())
+skill = agent.agent_skill()
 print(skill.body)
-print(skill / "references" / "workflows.md")
+print(skill.file("references/workflows.md").read_text())
 ```
 
-These paths come from the installed distribution. The instructions and Python
-API therefore share one package version.
+## Find instructions from a terminal
 
-## Add marimo as an optional agent host
-
-The marimo integration adds discovery inside a live notebook. Four pieces take
-part, and each has one job:
-
-| Piece            | Job                                                          |
-| ---------------- | ------------------------------------------------------------ |
-| `pyobservablejs` | Builds Observable notebooks and supplies its Agent Skill.    |
-| marimo           | Hosts the Python notebook and its live kernel.               |
-| code mode        | Gives an agent a Python API for the live notebook.           |
-| marimo pair      | Connects a coding agent to marimo and teaches code-mode use. |
-
-### 1. What is marimo?
-
-[marimo](https://docs.marimo.io/) is an open-source reactive Python notebook.
-It stores each notebook as a Python file. When a cell changes, marimo runs the
-dependent cells or marks them stale. This keeps code, outputs, and in-memory
-values consistent.
-
-For `pyobservablejs`, marimo is one anywidget host. A `Notebook` and its views
-keep the same public API in every supported host.
-
-### 2. What is a code-mode agent?
-
-A coding agent usually reads files, edits source, and runs commands. A
-code-mode agent can also execute Python in a live marimo kernel. It can inspect
-current cells and variables, apply validated cell edits, run cells, and read
-their results.
-
-Marimo exposes those notebook operations through `marimo._code_mode`. The API
-is agent-facing and evolves with marimo. Agents call `help(cm)` to read its
-current contract at runtime. The marimo engineering guide explains the
-[code-mode transaction and validation model](https://marimo.io/blog/notebooks-as-a-tool-for-agents).
-
-### 3. What is marimo pair?
-
-[marimo pair](https://marimo.io/pair) connects a coding agent to a running
-marimo notebook. It combines an Agent Skill with a bridge into the live kernel.
-The agent can inspect notebook memory, use a temporary scratchpad, and commit
-finished work as notebook cells.
-
-`marimo pair` owns the connection and notebook-editing workflow. The packaged
-`pyobservablejs` skill teaches the connected agent how to build and operate
-Observable views.
-
-## Discover pyobservablejs from marimo
-
-Marimo code mode reads the `marimo.agent.capability` entry point without
-importing provider modules. Capability discovery requires marimo 0.24.0 or
-newer. Install or update the optional notebook host in the current environment:
+[`agent-plugins`](https://peter-gy.github.io/agent-plugins/) locates agent resources
+installed with Python packages. It is included with `pyobservablejs`:
 
 ```sh
-uv add "marimo>=0.24.0"
+agent-plugins locate pyobservablejs
+agent-plugins list --json
 ```
 
-Inspect its capability map and built-in guidance:
+`locate` prints the installed plugin directory. `list --json` reports the plugins
+and skill instruction files in the current environment. In a uv project, run
+these commands with `uv run` to use that project's environment.
+
+## Inspect the installed API
+
+```python
+import observablejs as obs
+import observablejs.agent as agent
+
+help(agent)
+help(obs.Notebook)
+help(obs.Notebook.view)
+```
+
+`help(agent)` includes a working notebook example and installed resource paths.
+Use `agent.agent_plugin().tree()` to inspect the packaged files.
+
+| API                                     | Result                                            |
+| --------------------------------------- | ------------------------------------------------- |
+| `agent.agent_plugin()`                  | The installed `agent_plugins.Plugin`.             |
+| `agent.agent_skill()`                   | The `agent_plugins.Skill` named `pyobservablejs`. |
+| `skill.body`                            | Instructions as Markdown.                         |
+| `skill.file("references/workflows.md")` | A checked path to the packaged workflow recipes.  |
+
+Resource lookup raises `agent_plugins.AgentPluginError` when installed plugin
+metadata or a requested resource is unavailable. Reinstall `pyobservablejs` in
+the active environment if the packaged files are missing.
+
+## Work in a live marimo notebook
+
+[marimo](https://docs.marimo.io/) is a reactive Python notebook host.
+[marimo pair](https://marimo.io/pair) connects an agent to its live kernel, where
+it can inspect variables, edit cells, and run the notebook. Use its connection
+instructions before operating on live cells.
+
+With marimo 0.24.0 or newer, a connected agent can discover `pyobservablejs`
+through marimo's code-mode API:
 
 ```python
 import marimo._code_mode as cm
 
 print(cm.capabilities()["pyobservablejs"])
-help(cm)
 ```
 
-The `pyobservablejs` entry resolves to `observablejs.agent`. Import that module
-and read its generated help:
+The result points to `observablejs.agent`. Import it and read the packaged skill
+before constructing or changing an Observable view. Use `help(cm)` for the
+installed notebook-editing contract.
 
-```python
-import observablejs.agent as observablejs_agent
+Display the view in the notebook before reading `view.state`. Browser evaluation
+starts when the host mounts it. In a marimo readback cell, reference `view.value`
+to subscribe to updates, then inspect the current snapshot. See
+[Read browser results](connect/browser-results.mdx) for readiness, named values,
+and error handling.
 
-help(observablejs_agent)
-```
+## Fetch documentation on demand
 
-## Read the documentation as Markdown
-
-The documentation build publishes two entry points for language models:
-
-- [`llms.txt`](https://peter-gy.github.io/pyobservablejs/llms.txt) maps the
-  guide, examples, and API reference to their documentation pages.
+- [`llms.txt`](https://peter-gy.github.io/pyobservablejs/llms.txt) maps tasks to
+  guide, example, and reference pages.
 - [`llms-full.txt`](https://peter-gy.github.io/pyobservablejs/llms-full.txt)
-  combines the published documentation in one Markdown document.
+  combines the published documentation as Markdown.
 
-Start with `llms.txt` when the agent can fetch pages on demand. Use
-`llms-full.txt` when one complete context document fits the task.
+Use installed skills and `help()` for the package version in the notebook.
+The website describes the published documentation version.
+
+## Check browser failures
+
+In Jupyter, display the view and call `await view.ready()` in a later cell.
+After changing Python variables, the checkpoint waits for that update before
+returning state. Browser failures raise custom Python exceptions with source,
+component, operation, stack, and cause details.
+
+In a reactive marimo cell, use `view.value` followed by
+`view.raise_for_errors()`. Let the exception reach the agent's execution result.
+`obs.errors.NotebookError` identifies authored source failures.
+`obs.errors.WidgetError` identifies runtime or adapter failures.
+See [Errors and diagnostics](../reference/errors.mdx) for the exception hierarchy
+and structured `view.diagnostics` records.

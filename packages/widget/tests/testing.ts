@@ -1,5 +1,6 @@
 import type { Experimental, Host, InitializeProps, RenderProps } from "@anywidget/types";
-import type { NotebookGraph, WireValue, WireValues } from "@pyobservablejs/runtime";
+import type { WireNotebookGraph as NotebookGraph } from "../src/model";
+import type { WireValue, WireValues } from "../src/values";
 import createWidget from "../src";
 import type { WidgetModel } from "../src/model";
 
@@ -7,6 +8,8 @@ export type Model = RenderProps<WidgetModel>["model"];
 export type TestModel = Model & {
 	saveCount(): number;
 	savedReadbacks(): NonNullable<WidgetModel["_readback"]>[];
+	sentMessages(): { content: WireValue; buffers: DataView[] }[];
+	receiveCustom(content: WireValue, buffers?: DataView[]): void;
 };
 type WidgetDefinition = ReturnType<typeof createWidget>;
 type Readback = NonNullable<WidgetModel["_readback"]>;
@@ -50,7 +53,9 @@ class TestWidgetModel implements TestModel {
 	readonly #state: WidgetModel;
 	readonly #listeners = new Map<string, Set<Listener>>();
 	readonly #savedReadbacks: Readback[] = [];
+	readonly #messages: { content: WireValue; buffers: DataView[] }[] = [];
 	#saves = 0;
+	#readbackDirty = false;
 
 	constructor(initial: Partial<WidgetModel>) {
 		this.#state = { ...initial };
@@ -62,6 +67,7 @@ class TestWidgetModel implements TestModel {
 
 	set<Key extends keyof WidgetModel>(name: Key, value: WidgetModel[Key]): void {
 		this.#state[name] = value;
+		if (name === "_readback") this.#readbackDirty = true;
 		for (const listener of this.#listeners.get(`change:${name}`) ?? []) listener();
 	}
 
@@ -76,7 +82,8 @@ class TestWidgetModel implements TestModel {
 	save_changes(): void {
 		this.#saves += 1;
 		const readback = this.#state._readback;
-		if (readback) this.#savedReadbacks.push(structuredClone(readback));
+		if (readback && this.#readbackDirty) this.#savedReadbacks.push(structuredClone(readback));
+		this.#readbackDirty = false;
 	}
 
 	on(eventName: "msg:custom", callback: (message: WireValue, buffers: DataView[]) => void): void;
@@ -100,8 +107,20 @@ class TestWidgetModel implements TestModel {
 		this.#listeners.get(eventName)?.delete(callback);
 	}
 
-	send(): void {
-		throw new Error("Unexpected custom model message");
+	send(content: WireValue, _callbacks?: Parameters<Model["send"]>[1], buffers: DataView[] = []): void {
+		this.#messages.push({ content, buffers });
+	}
+
+	sentMessages(): { content: WireValue; buffers: DataView[] }[] {
+		return this.#messages;
+	}
+
+	receiveCustom(content: WireValue, buffers: DataView[] = []): void {
+		for (const listener of this.#listeners.get("msg:custom") ?? []) {
+			// SAFETY: The msg:custom overload registers callbacks with this message signature.
+			const receive = listener as (content: WireValue, buffers: DataView[]) => void;
+			receive(content, buffers);
+		}
 	}
 }
 

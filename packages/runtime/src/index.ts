@@ -1,61 +1,31 @@
-export { createDuckDBClient, createFileAttachment, registerAttachments, SQLiteDatabaseClient } from "./attachments";
-export type { AttachmentInfo, AttachmentRegistry } from "./attachments";
-export { createRuntimeDefinition, exposedVariableNames, unprefix, viewVariableName } from "./definition";
-export type { RuntimeCellDefinition, RuntimeDefinitionOptions } from "./definition";
-export {
-	assertNoRuntimeBuiltinCollisions,
-	createRuntime,
-	createRuntimeCleanup,
-	setRuntimeVariables,
-} from "./environment";
-export type { NotebookOptions, RuntimeOptions, RuntimeProfile } from "./environment";
-export { defineCompiledRuntimeCell, defineRuntimeCell, observeRuntimeVariable } from "./execution";
-export type { DefinedCell } from "./execution";
-export {
-	analyzeNotebook,
-	createNotebookGraph,
-	createNotebookGraphFromAnalysis,
-	notebookAffectedIndexes,
-	notebookDefinedNamesFromAnalysis,
-	notebookDependencyIndexes,
-	notebookViewNamesFromAnalysis,
-	transpileNotebookCell,
-} from "./graph";
-export type { CellAnalysis, CellGraph, GraphEdge, NotebookAnalysis, NotebookGraph } from "./graph";
-export { createRuntimeInputs } from "./inputs";
-export type { RuntimeInputs } from "./inputs";
-export { createRuntimeSession } from "./session";
-export type { RuntimeSession } from "./session";
-
-export type { RuntimeVariablesSync, ViewTarget, ViewWriteResult } from "./views";
-export { runtimeDocument } from "./scope";
-export {
-	createVariableBuiltins,
-	isWritableSyncedViewValue,
-	revivePythonValue,
-	reviveSyncedValue,
-	sameWireValue,
-	toWireValue,
-} from "./values";
-export { isViewTarget, readViewValue, writeViewValue } from "./views";
-export {
-	isBigInt,
-	isBoolean,
-	isCallable,
-	isNumber,
-	isObjectValue,
-	isString,
-	isSymbol,
-	javaScriptKind,
-} from "./value-kind";
-export type { JavaScriptKind } from "./value-kind";
+export { mountNotebook } from "./mount";
+export { DiagnosticError, createDiagnostic, errorDetails } from "./diagnostics";
 export type {
-	RevivedRecord,
-	RevivedValue,
-	VariableBuiltins,
-	VariableValue,
-	WireRecord,
-	WireValue,
-	WireValues,
-} from "./values";
-export type { RuntimeValue } from "@observablehq/runtime";
+	Diagnostic,
+	DiagnosticCell,
+	DiagnosticContext,
+	DiagnosticOrigin,
+	DiagnosticPhase,
+	ErrorDetail,
+} from "./diagnostics";
+export { inspectNotebook } from "./inspection";
+export type {
+	NotebookInspection,
+	CellInspection,
+	NotebookImport,
+	ImportBinding,
+	AttachmentInspection,
+	InspectOptions,
+} from "./inspection";
+export type { DatasetInfo, ValueSelector } from "./notebook-values";
+export type { ReadSelector, ReadOptions, NotebookRead } from "./read";
+export { describeDataset, readDataset } from "./datasets";
+export type { DatasetDescription, ColumnInfo, DatasetReadOptions, DatasetRead } from "./datasets";
+export type { MountedNotebook, MountOptions } from "./mount";
+export type { NotebookState, CellResult, CellError, NotebookError, CellStatus, ErrorPhase } from "./state";
+export type { NotebookGraph, CellGraph, GraphEdge } from "./graph";
+export type { AttachmentInfo } from "./attachment-info";
+export type { RuntimeProfile } from "./environment";
+export type { RuntimeValue, Variables } from "./values";
+export { NOTEBOOK_THEMES } from "./themes";
+export type { NotebookSpec, CellSpec, NotebookTheme } from "@observablehq/notebook-kit";

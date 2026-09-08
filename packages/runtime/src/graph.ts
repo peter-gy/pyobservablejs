@@ -1,32 +1,34 @@
 import { parseCell } from "@observablehq/parser";
 import { transpile, type Cell, type Notebook } from "@observablehq/notebook-kit";
 import { exposedVariableNames, runtimeOutputNames, viewVariableName, type RuntimeCellDefinition } from "./definition";
-export type CellGraph = {
+import type { RuntimeProfile } from "./environment";
+import { transpileObservableSql } from "./observable-sql";
+export type CellGraph = Readonly<{
 	id: number;
 	index: number;
 	key: string;
 	mode: Cell["mode"];
-	defines: string[];
-	references: string[];
+	defines: readonly string[];
+	references: readonly string[];
 	output: string | null;
-	outputs: string[];
-	runtime_outputs: string[];
+	outputs: readonly string[];
+	runtimeOutputs: readonly string[];
 	autodisplay: boolean;
 	autoview: boolean;
 	automutable: boolean;
 	error?: string;
-};
+}>;
 
-export type GraphEdge = {
+export type GraphEdge = Readonly<{
 	from: number;
 	to: number;
 	variable: string;
-};
+}>;
 
-export type NotebookGraph = {
-	cells: CellGraph[];
-	edges: GraphEdge[];
-};
+export type NotebookGraph = Readonly<{
+	cells: readonly CellGraph[];
+	edges: readonly GraphEdge[];
+}>;
 
 type Definition = RuntimeCellDefinition;
 
@@ -53,8 +55,12 @@ export type NotebookAnalysis = {
 	viewNames: Set<string>;
 };
 
-export function analyzeNotebook(notebook: Notebook, keys: readonly string[] = []): NotebookAnalysis {
-	const cells = notebook.cells.map((cell, index) => analyzeCell(cell, index, keys[index] ?? ""));
+export function analyzeNotebook(
+	notebook: Notebook,
+	keys: readonly string[] = [],
+	profile?: RuntimeProfile,
+): NotebookAnalysis {
+	const cells = notebook.cells.map((cell, index) => analyzeCell(cell, index, keys[index] ?? "", profile));
 	return analysisFromCells(cells);
 }
 
@@ -82,12 +88,12 @@ export function notebookDefinedNamesFromAnalysis(analysis: NotebookAnalysis): Re
 	const names = new Set<string>();
 	for (const cell of analysis.graph.cells) {
 		for (const name of cell.defines) names.add(name);
-		for (const name of cell.runtime_outputs) names.add(name);
+		for (const name of cell.runtimeOutputs) names.add(name);
 	}
 	return names;
 }
 
-export function notebookDependencyIndexes(analysis: NotebookAnalysis, targetIndex: number): Set<number> {
+export function notebookDependencyIndexes(analysis: NotebookAnalysis, targetIndexes: Iterable<number>): Set<number> {
 	const indexById = new Map(analysis.graph.cells.map((cell) => [cell.id, cell.index]));
 	const sourcesByTarget = new Map<number, number[]>();
 	for (const edge of analysis.graph.edges) {
@@ -104,7 +110,7 @@ export function notebookDependencyIndexes(analysis: NotebookAnalysis, targetInde
 		indexes.add(index);
 		for (const source of sourcesByTarget.get(index) ?? []) visit(source);
 	};
-	visit(targetIndex);
+	for (const index of targetIndexes) visit(index);
 	return indexes;
 }
 
@@ -136,9 +142,9 @@ export function notebookAffectedIndexes(analysis: NotebookAnalysis, variableName
 	return affected;
 }
 
-function analyzeCell(cell: Cell, index: number, key: string): CellAnalysis {
+function analyzeCell(cell: Cell, index: number, key: string, profile?: RuntimeProfile): CellAnalysis {
 	try {
-		const definition = transpileNotebookCell(cell);
+		const definition = transpileNotebookCell(cell, profile);
 		return {
 			cell,
 			index,
@@ -158,7 +164,8 @@ function analyzeCell(cell: Cell, index: number, key: string): CellAnalysis {
 	}
 }
 
-export function transpileNotebookCell(cell: Cell): RuntimeCellDefinition {
+export function transpileNotebookCell(cell: Cell, profile?: RuntimeProfile): RuntimeCellDefinition {
+	if (profile === "observable" && cell.mode === "sql") return transpileObservableSql(cell);
 	return addObservableImportWithInputs(cell, transpile(cell, { resolveLocalImports: true }));
 }
 
@@ -170,7 +177,7 @@ function analysisFromCells(cells: CellAnalysis[]): NotebookAnalysis {
 	};
 }
 
-function createGraphFromCells(cells: CellGraph[]): NotebookGraph {
+function createGraphFromCells(cells: readonly CellGraph[]): NotebookGraph {
 	const definitions = new Map<string, CellGraph[]>();
 	for (const cell of cells) {
 		for (const name of definedNames(cell)) {
@@ -210,7 +217,7 @@ function cellGraphFromDefinition(
 		references: definition.inputs ?? [],
 		output: definition.output ?? null,
 		outputs: definition.outputs ?? [],
-		runtime_outputs: runtimeOutputNames(definition),
+		runtimeOutputs: runtimeOutputNames(definition),
 		autodisplay: definition.autodisplay === true,
 		autoview: definition.autoview === true,
 		automutable: definition.automutable === true,
@@ -232,7 +239,7 @@ function cellGraphFromError(
 		references: [],
 		output: null,
 		outputs: [],
-		runtime_outputs: [],
+		runtimeOutputs: [],
 		autodisplay: false,
 		autoview: false,
 		automutable: false,
@@ -241,7 +248,7 @@ function cellGraphFromError(
 }
 
 function definedNames(cell: CellGraph): string[] {
-	return Array.from(new Set([...cell.defines, ...cell.runtime_outputs]));
+	return Array.from(new Set([...cell.defines, ...cell.runtimeOutputs]));
 }
 
 function addObservableImportWithInputs(cell: Cell, definition: RuntimeCellDefinition): RuntimeCellDefinition {

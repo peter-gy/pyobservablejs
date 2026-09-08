@@ -9,17 +9,23 @@ catalog:
   "@docusaurus/theme-mermaid": 3.10.2
   "@marimo-team/mdx-marimo": 0.0.5
   "@mermaid-js/layout-elk": 0.1.9
-  "@observablehq/notebook-kit": ^2.1.9
+  "@observablehq/notebook-kit": 2.5.6
   "@observablehq/parser": ^6.1.0
   "@observablehq/runtime": 6.0.0
   "@observablehq/stdlib": ^5.8.8
   "@orama/plugin-docusaurus-v3": 3.1.18
   "@oxlint/plugins": 1.76.0
+  "@playwright/test": 1.63.0
   "@shikijs/core": ^4.3.1
   "@shikijs/engine-javascript": ^4.3.1
   "@shikijs/langs": ^4.3.1
   "@shikijs/themes": ^4.3.1
   "@types/node": ^22.20.1
+  "@uwdata/flechette": 2.5.0
+  acorn: 8.16.0
+  acorn-walk: 8.3.5
+  apache-arrow: 21.2.0
+  apache-arrow-17: npm:apache-arrow@17.0.0
   docusaurus-plugin-llms: 0.5.1
   jsdom: 29.1.1
   oxlint: 1.76.0
@@ -37,15 +43,19 @@ minimumReleaseAgeExclude:
   - uuid@11.1.1
   - brace-expansion@1.1.18 || 2.1.4
   - undici@7.29.0
-  - fast-uri@3.1.5
   - mermaid@11.16.1
   - js-yaml@3.15.1 || 4.3.1
   - dompurify@3.4.13
   - nanoid@3.3.18
+  - "@observablehq/notebook-kit@2.5.6"
+  - fast-uri@3.1.7
+  - qs@6.16.0
+  - "@playwright/test@1.63.0"
+  - playwright@1.63.0
+  - playwright-core@1.63.0
 
 overrides:
   dompurify@<=3.4.12: 3.4.13
-  fast-uri@>=3.0.0 <3.1.5: 3.1.5
   js-yaml@>=4.0.0 <4.3.1: 4.3.1
   minimatch@>=9.0.0 <9.0.7: 9.0.9
   nanoid@<3.3.18: 3.3.18
@@ -53,6 +63,9 @@ overrides:
   undici@>=7.0.0 <7.29.0: 7.29.0
   uuid@<11.1.1: 11.1.1
   vite: "catalog:"
+  fast-uri@>=3.0.0 <3.1.7: 3.1.7
+  qs@<6.16.0: 6.16.0
+  yaml@>=2.0.0 <2.8.3: 2.8.3
 
 peerDependencyRules:
   allowAny:

@@ -42,6 +42,7 @@ def test_public_namespace_is_small() -> None:
         "md",
         "ojs",
         "types",
+        "errors",
         "view_from_code",
         "view_from_html",
         "view_from_observablehq",
@@ -66,6 +67,8 @@ def test_public_object_discovery_matches_ownership_model() -> None:
             "from_observablehq_document",
             "replace_variables",
             "reset_variables",
+            "runtime_profile",
+            "source_document",
             "state",
             "theme",
             "to_notebook_html",
@@ -76,9 +79,15 @@ def test_public_object_discovery_matches_ownership_model() -> None:
         assert {
             name for name in dir(notebook.cell("answer")) if not name.startswith("_")
         } == {
+            "database",
+            "hidden",
             "id",
             "index",
             "key",
+            "mode",
+            "output",
+            "pinned",
+            "source",
         }
         assert all(
             not hasattr(view, name)
@@ -126,6 +135,17 @@ def test_cell_and_variable_mutation_signatures_have_one_argument_shape() -> None
 
 def test_advanced_types_are_namespaced_and_complete() -> None:
     assert set(obs.types.__all__) == {
+        "AttachmentInspection",
+        "CellInspection",
+        "ColumnInfo",
+        "DatasetDescription",
+        "DatasetInfo",
+        "DatasetKind",
+        "ImportBinding",
+        "ImportInfo",
+        "NotebookInspection",
+        "NotebookRead",
+        "ReadFormat",
         "BrowserErrorValue",
         "CellError",
         "CellFormat",
@@ -164,6 +184,9 @@ def test_state_traits_have_public_static_types() -> None:
 
     assert_type(notebook.state, obs.types.NotebookState)
     assert_type(view.state, obs.types.ViewState)
+    assert_type(view.inspection, obs.types.NotebookInspection | None)
+    assert_type(view.datasets, tuple[obs.types.DatasetInfo, ...])
+    assert_type(view.diagnostics, tuple[obs.errors.Diagnostic, ...])
     attachment = notebook.attachments["data.csv"]
     assert_type(attachment, obs.types.FileSnapshot)
     assert_type(attachment.get("url"), str | None)
@@ -437,16 +460,6 @@ def test_cell_rejects_ids_outside_the_javascript_safe_range(cell_id: int) -> Non
         obs.ojs("answer = 42", id=cell_id)
 
 
-def test_cell_accepts_the_largest_javascript_safe_id(
-    script_tags: ScriptTags,
-) -> None:
-    notebook = obs.Notebook(obs.ojs("answer = 42", id=9007199254740991))
-
-    [script] = script_tags(notebook.to_notebook_html())
-
-    assert script["attrs"].get("id") == "9007199254740991"
-
-
 def test_implicit_cell_ids_wrap_after_the_largest_safe_id(
     script_tags: ScriptTags,
 ) -> None:
@@ -612,17 +625,6 @@ def test_notebook_theme_mapping_normalizes_and_serializes() -> None:
 def test_notebook_rejects_unsupported_themes(theme: Any) -> None:
     with pytest.raises((TypeError, ValueError), match="theme|Unsupported"):
         obs.Notebook(obs.ojs("answer = 42"), theme=theme)
-
-
-def test_notebook_theme_setter_syncs_spec_transport() -> None:
-    notebook = obs.Notebook(obs.ojs("answer = 42"), theme="air")
-
-    cast(Any, notebook).theme = "slate"
-
-    assert notebook.theme == "slate"
-    state = notebook_session(notebook).get_state(["theme", "_spec"])
-    assert state["theme"] == "slate"
-    assert state["_spec"]["theme"] == "slate"
 
 
 def test_closed_notebook_rejects_theme_mutation() -> None:

@@ -19,12 +19,13 @@ transport, and renderable view separate.
   and detached `ViewState`. Views from one notebook share session inputs while
   keeping evaluation and readback independent. Standalone `view_from_*`
   factories return a view that owns and closes its temporary notebook session.
-- `packages/runtime/` owns Notebook Kit analysis, dependency graphs, execution,
-  attachments, runtime values, and the scoped browser environment. It has no
-  anywidget model or Python packaging responsibilities.
-- `packages/widget/` owns anywidget model resolution, view composition, DOM
-  rendering, variable synchronization, readback, widget styles, and teardown.
-  It depends on `@pyobservablejs/runtime` through `workspace:*`.
+- `packages/runtime/` owns the standalone `mountNotebook` TypeScript API,
+  Notebook Kit source normalization, analysis, dependency selection, execution,
+  attachments, native variables, input controls, DOM, styles, evaluation state,
+  and disposal. Keep its dependencies independent of Python and anywidget.
+- `packages/widget/` owns anywidget model resolution and subscriptions, Python
+  wire codecs, variable patch ordering, shared-input transport, and revisioned
+  readback publication. It calls the runtime mount API through `workspace:*`.
 - `packages/pyobservablejs/` owns the public Python API,
   `observablejs.types` input mappings and state types, private traitlets models,
   final browser bundle, wheel, and sdist.
@@ -63,6 +64,17 @@ browser checks.
   shape, accepts a strictly newer transport revision, and replaces
   `NotebookView.state` once. A view created with `capture_state=False` renders
   with its initial `ViewState` and skips browser readback publication.
+- Runtime evaluation state contains native values and camelCase fields.
+  Snapshot records and graph collections are read-only, while captured native
+  identities remain caller-owned. Preserve the prepared source and graph during
+  variable replacement. Keep Python value tags, snake_case wire mapping, and
+  transport revisions in the widget adapter.
+- `NotebookView.inspection` and `NotebookView.datasets` are readonly metadata
+  traits, independent of preview capture. TypeScript owns their analysis and
+  dataset recognition. `_inspection` carries static metadata and the render
+  generation, while `_datasets` carries the matching live catalog. Full reads
+  use correlated custom messages and Arrow IPC buffers. Keep the request client
+  separate from metadata types and decoding.
 - `_variables` carries Python-owned values. `_view_values` carries serializable
   named browser inputs across views. When Python takes ownership of a name,
   clear its browser value before applying the Python value. Variable patches
@@ -73,10 +85,24 @@ browser checks.
   Preserve both across import and serialization. Send `pinned` as an explicit
   boolean for authored cells because Notebook Kit treats an omitted value as
   pinned.
-- `packages/widget/src/styles/` owns widget CSS. `styles/widget.css` is the
-  stylesheet entry point. `themes.ts` scopes Notebook Kit theme variables to
-  `.pyobservablejs-notebook` and installs them in the owning document or shadow
-  root. Keep widget selectors scoped to pyobservablejs root classes.
+- `packages/runtime/src/styles/` owns notebook CSS. Runtime `themes.ts` scopes
+  Notebook Kit theme variables to `.pyobservablejs-notebook` and installs styles
+  in the owning document or shadow root. Keep selectors scoped to pyobservablejs
+  root classes so standalone and widget mounts share the same rendering path.
+
+## Diagnostics
+
+Runtime `diagnostics.ts` owns structured errors. Widget `_diagnostics` publishes
+`revision`, applied Python `sequence`, and current errors independently of
+preview capture. Python `observablejs.errors` owns custom exceptions and immutable
+diagnostic records. Preserve browser stacks, causes, source excerpts, and actual
+component ownership. Keep authored failures distinct from infrastructure faults.
+
+`NotebookView.ready()` is a correlated sequence-aware checkpoint. The browser
+applies the requested Python update and replies with readback and diagnostics
+snapshots, independently of trait throttling.
+`raise_for_errors()` checks the latest received report. Accepted empty reports
+clear failures. Fatal diagnostics and protocol failures reject pending requests.
 
 ## Dependency rule
 
@@ -85,6 +111,11 @@ runtime. The runtime must stay independent of the widget, anywidget, and Python
 packaging. The private `@pyobservablejs/python` workspace package composes the
 widget with npm `anywidget-bundle`. Keep the npm and PyPI `anywidget-bundle`
 versions aligned.
+
+The runtime root exports mounting, inspection, dataset utilities, and contract
+types. Its built `/inspect` entry supports Node source analysis, while `/values`
+exposes native value utilities for adapters. Keep internal execution, observer,
+and rendering modules behind these package entry points.
 
 Python and TypeScript communicate through the private session model and each
 view's traits. Change both sides when a trait, serialized value, manifest, or

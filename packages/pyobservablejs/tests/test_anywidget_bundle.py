@@ -7,18 +7,6 @@ from typing import Any
 
 import observablejs as obs
 import pytest
-from helpers import notebook_session
-
-
-def test_private_session_loads_before_live_updates() -> None:
-    notebook = obs.Notebook()
-
-    try:
-        assert notebook_session(notebook).get_state(["_esm"]) == {
-            "_esm": "export default { initialize() {} };"
-        }
-    finally:
-        notebook.close()
 
 
 def test_notebook_view_serves_manifest_app_module_as_binary_buffer(

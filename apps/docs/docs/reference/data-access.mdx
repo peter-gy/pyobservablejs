@@ -1,0 +1,243 @@
+---
+title: Inspection and data reads
+description: Inspect notebook source, discover evaluated datasets, and read exact browser values.
+---
+
+# Inspection and data reads
+
+`NotebookView.inspection` and `NotebookView.datasets` are read-only snapshots
+updated by the browser. They can be read synchronously and observed through
+traitlets. `read()` and `read_attachment()` explicitly transfer browser-owned
+values into Python.
+
+```python
+inspection = view.inspection
+available = view.datasets
+result = await view.read("rows", columns=["amount"], limit=100)
+```
+
+Display the view before reading browser-owned values. Jupyter supports direct
+`await` in a later cell. In marimo, launch full reads from a background task so
+the calling cell can finish. The [guide](../guide/connect/inspect-notebooks.mdx)
+shows both workflows. Reading metadata does not require a background task.
+
+Python reads return [Apache Arrow IPC](https://arrow.apache.org/docs/format/Columnar.html#serialization-and-interprocess-communication-ipc)
+by default. IPC is Arrow's binary format for transferring typed table data between
+runtimes. The bytes are available as `result.data`.
+
+## Source metadata
+
+These properties are available before display.
+
+| Property                       | Contract                                                                                                                                                                                |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `notebook.runtime_profile`     | `"notebook-kit"` or `"observable"`, as selected by the constructor or source HTML.                                                                                                      |
+| `notebook.source_document`     | Detached, read-only original document from an ObservableHQ constructor. Contains original nodes, data operations, and provenance. `None` for Python-authored and HTML-backed notebooks. |
+| `cell.source`                  | Prepared Notebook Kit source for the canonical `NotebookCell`.                                                                                                                          |
+| `cell.mode`                    | Prepared cell mode, such as `"ojs"` or `"sql"`.                                                                                                                                         |
+| `cell.hidden`, `cell.pinned`   | Prepared display and source-pinning flags.                                                                                                                                              |
+| `cell.output`, `cell.database` | Optional output and database declarations.                                                                                                                                              |
+
+`source_document` preserves the supplied record. For example, an ObservableHQ
+node with mode `"js"` becomes a prepared cell with mode `"ojs"`. Table and chart
+nodes retain their original configuration in `source_document`, while
+`cell.source` contains their prepared executable source.
+
+`to_notebook_html()` exports the prepared notebook. Keep `source_document`
+separately when the original document and provenance are needed. Passing that
+mapping to `Notebook.from_observablehq_document()` constructs another notebook
+from the original record.
+
+## `view.inspection`
+
+An immutable `NotebookInspection` for the full definition, including cells
+outside the view's selection. It is `None` before the browser publishes inspection
+and after the view closes. The browser uses the
+[Notebook Kit](https://observablehq.com/notebook-kit/) analyzer to inspect source
+and references. Reading the property starts no evaluation or network requests.
+
+The trait updates independently of `capture_state`. Observe `inspection` to react
+to a new definition snapshot. The view's evaluation continues independently.
+
+| `NotebookInspection` field          | Contract                                                                                      |
+| ----------------------------------- | --------------------------------------------------------------------------------------------- |
+| `title`, `theme`, `runtime_profile` | Notebook metadata used for analysis.                                                          |
+| `cells`                             | Tuple of `CellInspection` records in notebook order.                                          |
+| `graph`                             | Full [`NotebookGraph`](values-and-graph.mdx#notebookgraph), including static dependencies.    |
+| `attachments`                       | Tuple of `AttachmentInspection` records combining declared files and literal file references. |
+| `imports`                           | Tuple of static and dynamic `ImportInfo` records.                                             |
+
+`CellInspection` includes the symbolic fields of
+[`CellInfo`](values-and-graph.mdx#cellinfo), plus:
+
+| Field                           | Contract                                                                   |
+| ------------------------------- | -------------------------------------------------------------------------- |
+| `cell`                          | Canonical `NotebookCell`, accepted by `view.read()` and `notebook.view()`. |
+| `source`, `pinned`, `hidden`    | Prepared source and display metadata.                                      |
+| `files`, `databases`, `secrets` | Referenced names discovered during static analysis.                        |
+
+Cell analysis failures appear in `cell.error`. Inspection can still describe
+other cells.
+
+`AttachmentInspection` contains `name`, optional `url`, referencing `cells`,
+and optional `mime_type`, `size`, and `last_modified`. A literal file reference
+with no declared URL has `url=None`.
+
+`ImportInfo` contains its canonical `cell`, `kind` (`"static"` or `"dynamic"`),
+`source`, `resolved`, and tuples of `bindings` and `injections`. Each binding
+contains `imported` and `local` names. Computed dynamic imports have
+`source=None` and `resolved=None`.
+
+## `view.datasets`
+
+A tuple of `DatasetInfo` records for successfully evaluated datasets in this
+view, including hidden dependencies. The browser updates this read-only trait
+as values change, independently of `capture_state`. Reading the property starts
+no evaluation or attachment fetches.
+
+The tuple is empty before publication, while no dataset values are ready, and
+after the view closes. It represents the latest metadata received from the
+browser. To wait for a known value, use `await view.read("rows", ...)`.
+
+Observe metadata changes through the public traits:
+
+```python
+def on_metadata(change):
+    print(change["name"], change["new"])
+
+view.observe(on_metadata, names=["inspection", "datasets"])
+```
+
+Release the callback with
+`view.unobserve(on_metadata, names=["inspection", "datasets"])` when its consumer
+closes.
+
+| `DatasetInfo` field | Contract                                                                      |
+| ------------------- | ----------------------------------------------------------------------------- |
+| `cell`              | Canonical cell that produced the value.                                       |
+| `name`              | Variable name, or `None` for an anonymous output.                             |
+| `revision`          | Version of this evaluated value.                                              |
+| `generation`        | Browser runtime incarnation that owns the descriptor.                         |
+| `kind`              | `"arrow"`, `"arquero"`, `"rows"`, or `"array"`.                               |
+| `row_count`         | Observed number of rows or array elements.                                    |
+| `columns`           | Tuple of `ColumnInfo(name, type, nullable)` records.                          |
+| `schema_source`     | `"native"` for declared schema metadata or `"sampled"` for inferred metadata. |
+| `sampled_rows`      | Number of rows inspected for inference. Zero for native schema metadata.      |
+
+[Arquero](https://idl.uw.edu/arquero/) is a JavaScript library for working with
+tables. Row arrays and primitive arrays are also recognized. When `schema_source="sampled"`, column names and types come from the
+inspected sample. Other rows may contain additional columns or types. A column's `nullable=None` means nullability is unknown.
+
+## `await view.read(...)`
+
+```text
+await view.read(
+    selector,
+    *,
+    name=None,
+    path=(),
+    format="arrow",
+    columns=None,
+    offset=0,
+    limit=None,
+    timeout=30,
+) -> NotebookRead
+```
+
+Reads an evaluated value or waits for its current evaluation to complete. Values
+must belong to the selected cells or their evaluated dependencies. To read a
+cell outside that set, create and display a view that selects it. Python-owned
+values that are not exposed by a notebook cell remain available through
+`notebook.variables`.
+
+| Argument          | Contract                                                                                                                                     |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `selector`        | Native variable-name string, canonical `NotebookCell`, or `DatasetInfo` returned by this view.                                               |
+| `name`            | Variable name within a selected cell when that cell exposes several values. Omit for string selectors and dataset descriptors.               |
+| `path`            | Sequence of property names or nonnegative array indexes to traverse before conversion.                                                       |
+| `format`          | `"arrow"` by default, `"rows"` for table records, `"json"` for scalar and structured values, or `"bytes"` for an ArrayBuffer or typed array. |
+| `columns`         | Optional ordered sequence of unique column names. An explicit sequence must contain at least one name.                                       |
+| `offset`, `limit` | Nonnegative row offset and optional maximum row count.                                                                                       |
+| `timeout`         | Total time allowed for browser readiness and the read, in seconds.                                                                           |
+
+String selectors address JavaScript variables. Use `notebook.cell(key)` when
+selecting by a public cell key:
+
+```python
+rows = await view.read(notebook.cell("rows"), format="rows")
+amount = await view.read("rows", path=(0, "amount"), format="json")
+```
+
+Paths follow stored properties owned by the current object. Accessors and
+prototype properties raise a browser request error.
+
+Passing `DatasetInfo` requests the value at the listed revision. A descriptor
+from another view raises `ValueError`. A replaced browser runtime raises
+`obs.errors.StaleViewError`. A changed
+value revision raises `obs.errors.ReadError`. Use a newly published descriptor
+when the latest value is intended.
+
+Notebook updates and remounts invalidate pending reads. A value that changes
+during conversion also fails the read.
+
+### `NotebookRead`
+
+| Field                      | Contract                                                                                      |
+| -------------------------- | --------------------------------------------------------------------------------------------- |
+| `cell`, `name`, `revision` | Producing cell, variable name, and value revision. Attachment reads have no producing cell.   |
+| `format`                   | Format of `data`.                                                                             |
+| `data`                     | Exact binary `bytes` for Arrow and attachments. Detached Python values for `rows` and `json`. |
+| `dataset`                  | Optional `DatasetDescription` for the returned projection and row slice.                      |
+| `mime_type`                | Optional content type. Arrow reads use `application/vnd.apache.arrow.stream`.                 |
+
+`DatasetDescription` has the shape fields from `DatasetInfo`: `kind`,
+`row_count`, `columns`, `schema_source`, and `sampled_rows`.
+
+Rows become tuples of read-only mappings. Structured JSON values use the
+[Python value conversions](variables-and-serialization.mdx), including dates and
+large integers. Reads fail when a value cannot be transferred exactly. Functions,
+DOM elements, accessors, cyclic values, and oversized structured values require
+a different format or a smaller projection. Use `rows` or `arrow` for tables
+with attached schema metadata.
+
+The browser keeps native Arrow values. Python's default read encodes Arrow IPC.
+The standalone TypeScript `read()` defaults to `"native"`, retaining the original
+value's identity when no projection is requested.
+
+### `NotebookRead.to_arrow()`
+
+Decodes an Arrow read into a `pyarrow.Table`. This method requires the optional
+[PyArrow package](https://arrow.apache.org/docs/python/install.html). Receiving
+or saving Arrow bytes does not require PyArrow.
+
+```python
+result = await view.read("rows")
+table = result.to_arrow()
+```
+
+Raises `ValueError` for another read format and `ImportError` when PyArrow is
+unavailable. The Arrow decoder reports invalid IPC data.
+
+## `await view.read_attachment(name, timeout=30)`
+
+Fetches one named attachment through the browser and returns its exact `bytes`.
+The name must occur in the notebook's declared files or discovered literal file
+references. URL resolution, credentials, and browser network restrictions apply
+as described in [Browser execution](../guide/customize/browser-execution.mdx).
+HTTP and network failures raise `obs.errors.ReadError`.
+
+## Request lifecycle and errors
+
+Both read methods accept a positive finite `timeout`, defaulting to 30 seconds.
+`timeout=None` waits until completion, cancellation, or view closure. A deadline
+raises `obs.errors.NotebookTimeoutError`, a subclass of Python's `TimeoutError`. Cancelling the awaiting task cancels the browser
+request and preserves `asyncio.CancelledError` in Python.
+
+`view.close()` fails outstanding requests and prevents new requests. Browser
+errors use [custom exceptions](errors.mdx) with structured diagnostics, browser
+stacks, and cell context. Invalid Python selectors and options
+raise `TypeError` or `ValueError`.
+
+All result types are available through `observablejs.types`. See the
+[workflow guide](../guide/connect/inspect-notebooks.mdx) for rendering before reads,
+extracting data, and retaining source provenance.

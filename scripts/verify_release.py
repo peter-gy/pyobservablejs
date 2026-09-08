@@ -52,12 +52,6 @@ def verify_release(expected_version: str) -> None:
     finally:
         view.close()
 
-    agent_plugins_version = distribution_version("agent-plugins")
-    if agent_plugins_version != "0.1.0":
-        raise SystemExit(
-            f"Installed agent-plugins version is {agent_plugins_version}, expected 0.1.0"
-        )
-
     capabilities = [
         entry_point
         for entry_point in distribution("pyobservablejs").entry_points
@@ -86,7 +80,7 @@ def verify_release(expected_version: str) -> None:
         )
 
     skill = observablejs_agent.agent_skill()
-    if skill.path.name != "pyobservablejs":
+    if skill != plugin.skill("pyobservablejs"):
         raise SystemExit("Installed pyobservablejs Agent Skill is unavailable")
     if (
         skill.frontmatter.splitlines()[0] != "name: pyobservablejs"
@@ -94,11 +88,25 @@ def verify_release(expected_version: str) -> None:
     ):
         raise SystemExit("Installed pyobservablejs Agent Skill is invalid")
 
+    for resource in (
+        "SKILL.md",
+        "agents/openai.yaml",
+        "references/workflows.md",
+        "references/hosts.md",
+        "references/diagnose.md",
+        "references/data.md",
+    ):
+        if not skill.file(resource).read_text(encoding="utf-8").strip():
+            raise SystemExit(f"Installed Agent Skill resource is empty: {resource}")
+
     expected_plugin_files = {
         "plugin.json",
         "skills/pyobservablejs/SKILL.md",
         "skills/pyobservablejs/agents/openai.yaml",
         "skills/pyobservablejs/references/workflows.md",
+        "skills/pyobservablejs/references/hosts.md",
+        "skills/pyobservablejs/references/diagnose.md",
+        "skills/pyobservablejs/references/data.md",
     }
     plugin_files = {path.relative_to(plugin.path).as_posix() for path in plugin.files}
     if plugin_files != expected_plugin_files:

@@ -6,7 +6,9 @@ description: Create Notebook Kit cells with obs.js, obs.ojs, obs.md, and obs.htm
 # Author notebook cells
 
 `Notebook` accepts cells from four helpers. Each helper wraps a source string
-in one Notebook Kit cell mode.
+in one [Notebook Kit](https://observablehq.com/notebook-kit/) cell mode. Notebook
+Kit analyzes references between cells and reruns dependent cells when values
+change.
 
 | Helper          | Cell source                      |
 | --------------- | -------------------------------- |
@@ -102,9 +104,14 @@ obs.js(
 )
 ```
 
+JavaScript `view(...)` controls belong to their rendered view. For a control
+that receives Python updates or shares browser input with sibling views, use an
+Observable JavaScript `viewof` declaration.
+
 ## Observable JavaScript cells
 
-`obs.ojs` creates a classic Observable JavaScript cell. Use it for existing
+`obs.ojs` creates an [Observable JavaScript](https://observablehq.com/documentation/cells/observable-javascript)
+cell, which extends JavaScript with reactive declarations. Use it for existing
 Observable JavaScript source, `viewof` declarations, and imported Observable
 notebook code.
 
@@ -118,12 +125,14 @@ Both cell modes participate in the same Notebook Kit graph.
 
 ## Markdown and HTML cells
 
-`obs.md` renders Markdown. `obs.html` renders HTML.
+`obs.md` renders Markdown. `obs.html` renders HTML. Both interpolate JavaScript
+expressions inside `${...}` and rerun when referenced values change.
 
 ```python
 notebook = obs.Notebook(
-    obs.md("## Filtered records"),
-    obs.html("<p><strong>Status:</strong> loaded</p>"),
+    obs.js("const total = 42;", display=False),
+    obs.md("## ${total} records"),
+    obs.html("<p><strong>Total:</strong> ${total}</p>"),
 )
 ```
 

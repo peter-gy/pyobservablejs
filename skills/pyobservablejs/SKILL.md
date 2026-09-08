@@ -1,135 +1,153 @@
 ---
 name: pyobservablejs
 description: >-
-  Build, render, inspect, and synchronize Observable JavaScript notebooks from
-  Python with pyobservablejs. Use when an agent needs to author Notebook Kit
-  cells, embed a notebook in anywidget hosts such as JupyterLab or marimo, send
-  Python values into the browser graph, read structured browser results,
-  compose keyed views, attach files, or import Notebook Kit and ObservableHQ
-  sources.
+  Author, display, diagnose, and inspect Observable JavaScript notebooks from
+  Python with pyobservablejs. Use for charts and controls in Jupyter or marimo,
+  Python/browser synchronization, reusable notebook views, ObservableHQ imports,
+  source and dataset analysis, Arrow exports, and structured widget errors.
 ---
 
-# Build with pyobservablejs
+# Build and diagnose with pyobservablejs
 
-Use the public `observablejs` API for notebook construction and state. Python
-owns the `Notebook` controller and its values. Each `NotebookView` owns a
-browser runtime that analyzes, evaluates, and renders the selected cells.
+`pyobservablejs` runs [Observable Notebook Kit](https://observablehq.com/notebook-kit/)
+cells in a browser through [anywidget](https://anywidget.dev/), a widget protocol
+supported by Jupyter and marimo. Python constructs the notebook and supplies
+values. Displaying a view starts browser evaluation.
 
-Start with a keyed notebook:
+## Use the target environment
+
+Install the package with the target project's package manager and version policy.
+Run discovery in the notebook kernel or its code-mode environment:
+
+```python
+import sys
+import observablejs as obs
+import observablejs.agent as agent
+
+print(sys.executable, obs.__version__, obs.__file__)
+skill = agent.agent_skill()
+print(skill.body)
+```
+
+`agent.agent_plugin().tree()` lists the installed resources. Read a reference
+with `skill.file("references/diagnose.md").read_text(encoding="utf-8")`.
+The installed skill and `help(obs.NotebookView.ready)` match this environment.
+[hosts.md](references/hosts.md) covers installation, Jupyter, and marimo code-mode.
+
+## Keep the four objects distinct
+
+| Object         | Use it for                                                                                                   |
+| -------------- | ------------------------------------------------------------------------------------------------------------ |
+| `Notebook`     | Cell definitions, Python variables, attachments, theme, and shared session lifetime.                         |
+| `NotebookCell` | A canonical cell handle. Use its key for authored selections and the handle for imported or anonymous cells. |
+| `NotebookView` | One displayed selection with its own evaluation, results, diagnostics, and lifetime.                         |
+| `DatasetInfo`  | An evaluated table's metadata and revision, owned by one view. Relist it after data or runtime changes.      |
+
+Create one view per live output location. Views share controller variables and
+serializable named browser inputs. A focused view evaluates its dependency
+closure, hides dependency outputs, and captures the selected outputs. Source
+and selection are fixed for that view. Edit the producer and construct a new
+notebook/view when changing cell definitions.
+
+## First chart
+
+Use small cells with stable keys. Keep data transformations separate from drawing:
 
 ```python
 import observablejs as obs
 
 notebook = obs.Notebook(
     obs.js(
-        """
-        const threshold = view(Inputs.range(
-          [0, 1],
-          {value: 0.5, step: 0.1, label: "Threshold"}
-        ));
-        """,
-        key="threshold_control",
+        "const visible = rows.filter(d => d.value >= minimum);",
+        key="filtered",
     ),
     obs.js(
-        "html`<strong>Threshold: ${threshold}</strong>`",
-        key="summary",
+        """
+        const rowCount = visible.length;
+        display(Plot.barY(visible, {x: "category", y: "value"}).plot());
+        """,
+        key="chart",
     ),
+    variables={
+        "rows": [{"category": "A", "value": 3}, {"category": "B", "value": 7}],
+        "minimum": 0,
+    },
 )
-
-view = notebook.view()
+view = notebook.view("chart")
 view
 ```
 
-Keep `notebook` and `view` available while the output is mounted. Use a cell
-`key` for every cell that later code needs to select, inspect, or read back.
+[Observable Plot](https://observablehq.com/plot/) draws the chart. Its builtin
+loads in the browser and needs network access. Display `view` as a cell output
+or in the host's layout. A terminal import or notebook construction does not
+execute the JavaScript. Imported source runs with the host page's permissions.
 
-## Choose the cell mode
+Choose `obs.js` for standard JavaScript with top-level declarations,
+`obs.ojs` for Observable syntax such as `viewof`, `obs.md` for Markdown, and
+`obs.html` for HTML. Program cells use `display(...)` to render and `view(...)`
+to connect controls to the reactive graph. See [workflows.md](references/workflows.md)
+for controls, composition, files, and imports.
 
-- `obs.js(source)` runs standard Notebook Kit JavaScript. Top-level
-  declarations participate in the reactive graph. Use `view(...)` for browser
-  inputs and `display(...)` when a program cell should render a value.
-- `obs.ojs(source)` runs Observable JavaScript. Use it for `viewof`
-  declarations and existing Observable notebook source.
-- `obs.md(source)` renders Markdown.
-- `obs.html(source)` renders HTML.
+## Establish execution, then inspect the chart
 
-Cells in both JavaScript modes share one dependency graph inside a view.
-Notebook Kit schedules them from definitions and references, independent of
-source order.
-
-## Create the view the task needs
-
-`notebook.view()` renders every cell. Pass public keys, keyed authored cells,
-or canonical handles from `notebook.cell(key)` to focus the output:
+In Jupyter, run this in a later cell after displaying the view:
 
 ```python
-summary_view = notebook.view("summary")
+state = await view.ready(timeout=30)
+print(state.result("chart").values["rowCount"])
 ```
 
-A focused view evaluates the selected cell and its dependencies while hiding
-dependency outputs. Create separate views for separate host locations. Views
-from one notebook receive the same Python variables and serializable named
-browser input values, while evaluation results and lifecycle remain per view.
+The example prints `2`. After `notebook.update_variables({"minimum": 5})`, a
+new `ready()` checkpoint returns the updated state with `rowCount == 1`.
 
-Set `capture_state=False` when the host needs rendered output and Python will
-not inspect browser results:
+In a marimo reactive cell, use:
 
 ```python
-preview = notebook.view(capture_state=False)
+_ = view.value
+view.raise_for_errors()
 ```
 
-## Synchronize Python and browser values
+This raises received widget failures as Python cell errors. It is an immediate
+check, not a wait for a new evaluation. For an awaited checkpoint in marimo,
+including its code-mode scratchpad, use the task handoff in
+[hosts.md](references/hosts.md#browser-requests-in-marimo).
 
-Send a patch through the controller:
+**Empty diagnostics or an empty initial state do not establish successful
+execution.** `ready()` requires `capture_state=True`, the default. With capture
+disabled, diagnostics, source inspection, and explicit data reads still work,
+but readiness and result previews are unavailable. Create a captured diagnostic
+view when a complete evaluation checkpoint is required.
 
-```python
-notebook.update_variables({"threshold": 0.8})
-```
+After a checkpoint, inspect the relevant data and the rendered chart. Confirm
+expected marks, axes, labels, scales, and interactions. A clean evaluation can
+still produce an empty or misleading chart. Follow
+[diagnose.md](references/diagnose.md) for the structured procedure and repair loop.
 
-Use `replace_variables(mapping)` when the mapping is the complete Python-owned
-environment. Use `reset_variables(*names)` to release names back to Notebook
-Kit evaluation.
+## Choose the access path
 
-In marimo, reference `view.value` before reading `view.state` so the cell reruns
-when widget state changes. Read a result after the current browser revision
-settles:
+| Task                                              | API or reference                                                       |
+| ------------------------------------------------- | ---------------------------------------------------------------------- |
+| Change Python inputs                              | `notebook.update_variables(patch)`                                     |
+| Replace the Python-owned environment              | `notebook.replace_variables(mapping)`                                  |
+| Restore authored computation                      | `notebook.reset_variables(*names)`                                     |
+| Check or raise browser failures                   | `view.diagnostics`, `view.raise_for_errors()`, `await view.ready()`    |
+| Read a selected cell's preview                    | `state.result("chart").values`                                         |
+| Find source, dependencies, and imports            | `view.inspection`, `notebook.cells`                                    |
+| List tables or read exact data                    | `view.datasets`, `await view.read(...)`, [data.md](references/data.md) |
+| Configure hosts or live code-mode editing         | [hosts.md](references/hosts.md)                                        |
+| Compose views, use files, import or export source | [workflows.md](references/workflows.md)                                |
 
-```python
-view.value
-state = view.state
+Strings passed to `state.result()` and `notebook.view()` are cell keys.
+Strings passed to `view.read()` are JavaScript variable names. Keep that
+distinction explicit in code.
 
-if (
-    not state.pending
-    and state.input_revision is not None
-    and state.settled_revision == state.input_revision
-):
-    summary = state.result("summary")
-    print(summary.status, summary.values, summary.errors)
-```
+Let `obs.errors.ObservableError` subclasses propagate when the agent needs a
+failed execution result. They include diagnostic context. Use `error.diagnostics`
+or `view.diagnostics` for structured inspection. Keep summaries bounded and
+retrieve specific data or source as needed.
 
-Wait on these observable revision fields or a traitlets observer. Avoid elapsed
-time as a readiness signal.
-
-## Use sources, files, and advanced state deliberately
-
-Read [references/workflows.md](references/workflows.md) when the task involves:
-
-- local files or `FileAttachment`
-- Notebook Kit HTML or ObservableHQ imports
-- several synchronized views
-- browser errors or dependency graphs
-- export and close behavior
-
-Imported HTML, ObservableHQ notebooks, and remote JavaScript execute with the
-host page's browser privileges. Treat those sources as executable code.
-
-The published documentation exposes a compact map at
-<https://peter-gy.github.io/pyobservablejs/llms.txt> and the complete guide at
-<https://peter-gy.github.io/pyobservablejs/llms-full.txt>.
-
-## Finish through the consumer boundary
-
-Render the result in the target notebook host. Exercise affected inputs, read
-settled state when the task depends on it, and inspect browser errors. Close a
-view with `view.close()` when its runtime is finished. Close the controller with
-`notebook.close()` when every view from that notebook is finished.
+Retain the controller and view while they are displayed. Close obsolete views
+with `view.close()`. Close `notebook` when all its views are finished. Fetch
+additional published docs through
+[llms.txt](https://peter-gy.github.io/pyobservablejs/llms.txt) when the installed
+resources do not cover the task.

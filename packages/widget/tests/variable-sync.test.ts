@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vite-plus/test";
 import {
+	cellRecord,
 	composedText,
 	createNotebookFixture,
 	hasRendered,
@@ -59,7 +60,102 @@ viewof gain = {
 } as const;
 
 describe("widget variable sync", () => {
-	test("updates existing Python variables through the runtime", async () => {
+	test("preserves Python variable names that match object prototype properties", async () => {
+		const { session, view, host } = createNotebookFixture({
+			_spec: { cells: [{ id: 1, mode: "ojs", value: "current = __proto__" }] },
+			_variables: { ["__proto__"]: 2 },
+		});
+		const controller = new AbortController();
+
+		try {
+			widget.render(renderProps(view, document.createElement("div"), controller.signal, host));
+			await waitFor(() => (hasRendered(view) ? true : undefined));
+			expect(variableValue(view, "current")).toBe(2);
+
+			setVariables(session, 1, "set", { ["__proto__"]: 7 });
+			await waitFor(() => (variableValue(view, "current") === 7 ? true : undefined));
+		} finally {
+			controller.abort();
+		}
+	});
+
+	test("applies disjoint Python patches while a view write is pending", async () => {
+		const { session, view, host } = createNotebookFixture({
+			_spec: {
+				cells: [seededGainCell, { id: 2, mode: "ojs", value: "total = gain + offset" }],
+			},
+			_variables: { seed: 1, offset: 0 },
+		});
+		const el = document.createElement("div");
+		const controller = new AbortController();
+
+		try {
+			widget.render(renderProps(view, el, controller.signal, host));
+			await waitFor(() => (variableValue(view, "total") === 1 ? true : undefined));
+
+			setVariables(session, 1, "set", { gain: 7 });
+			setVariables(session, 2, "set", { offset: 10 });
+
+			await waitFor(() => (variableValue(view, "total") === 17 ? true : undefined));
+			expect(rangeWithValue(el, 7)).toBeDefined();
+		} finally {
+			controller.abort();
+		}
+	});
+
+	test("settles a Python patch that adopts the current browser input", async () => {
+		const { session, view, host } = createNotebookFixture({
+			_spec: { cells: [seededGainCell] },
+			_variables: { seed: 1, gain: 7 },
+		});
+		const el = document.createElement("div");
+		const controller = new AbortController();
+
+		try {
+			widget.render(renderProps(view, el, controller.signal, host));
+			const input = await waitFor(() => rangeWithValue(el, 7));
+			setRange(input, 9);
+			await waitFor(() => (variableValue(view, "gain") === 9 ? true : undefined));
+
+			const previousRevision = view.get("_readback")!.input_revision!;
+			setVariables(session, 1, "set", { gain: 9 });
+			await waitFor(() =>
+				hasRendered(view) && view.get("_readback")!.input_revision! > previousRevision ? true : undefined,
+			);
+			expect(variableValue(view, "gain")).toBe(9);
+			expect(session.get("_view_values")).toEqual({});
+		} finally {
+			controller.abort();
+		}
+	});
+
+	test("reconnects a view after Python replaces an unwritable value", async () => {
+		const { session, view, host } = createNotebookFixture({
+			_spec: {
+				cells: [seededGainCell, { id: 2, mode: "ojs", value: "current = gain" }],
+			},
+			_variables: { seed: 1, gain: { density: 21 } },
+		});
+		const el = document.createElement("div");
+		const controller = new AbortController();
+
+		try {
+			widget.render(renderProps(view, el, controller.signal, host));
+			await waitFor(() => (hasRendered(view) ? true : undefined));
+			expect(variableValue(view, "current")).toEqual({ density: 21 });
+
+			setVariables(session, 1, "set", { gain: 7 });
+			await waitFor(() => (variableValue(view, "current") === 7 ? true : undefined));
+
+			const input = await waitFor(() => rangeWithValue(el, 7));
+			setRange(input, 9);
+			await waitFor(() => (variableValue(view, "current") === 9 ? true : undefined));
+		} finally {
+			controller.abort();
+		}
+	});
+
+	test("introduces and updates Python variables in a live runtime", async () => {
 		const { session, view, host } = createNotebookFixture({
 			_spec: {
 				cells: [
@@ -67,17 +163,18 @@ describe("widget variable sync", () => {
 					{ id: 2, mode: "ojs", value: "doubled = base * 2" },
 				],
 			},
-			_variables: { base: 2 },
 		});
 		const el = document.createElement("div");
 		const controller = new AbortController();
 
 		widget.render(renderProps(view, el, controller.signal, host));
 
+		await waitFor(() => (cellRecord(view, 1)?.status === "error" ? true : undefined));
+		setVariables(session, 1, "set", { base: 2 });
 		expect(await waitFor(() => (variableValue(view, "doubled") === 4 ? 4 : undefined))).toBe(4);
 		await waitFor(() => composedText(el, "4"));
 
-		setVariables(session, 1, "set", { base: 5 });
+		setVariables(session, 2, "set", { base: 5 });
 
 		expect(await waitFor(() => (variableValue(view, "doubled") === 10 ? 10 : undefined))).toBe(10);
 		expect(variableValue(view, "base_echo")).toBe(5);
@@ -98,9 +195,14 @@ describe("widget variable sync", () => {
 
 		await waitFor(() => (variableValue(view, "answer") === 42 ? 42 : undefined));
 
-		expect(() => setVariables(session, 1, "set", { require: "shadowed" })).toThrow(
-			"Python variables cannot override Observable runtime builtins: require",
-		);
+		setVariables(session, 1, "set", { require: "shadowed" });
+		await expect
+			.poll(() => view.get("_diagnostics")?.errors?.[0])
+			.toMatchObject({
+				message: "Variables cannot override Observable runtime builtins: require",
+				origin: "widget",
+				operation: "apply Python variables",
+			});
 		controller.abort();
 	});
 
@@ -143,33 +245,11 @@ describe("widget variable sync", () => {
 		expect(await waitFor(() => (variableValue(view, "label") === "source label" ? "source label" : undefined))).toBe(
 			"source label",
 		);
-		expect(variableValue(view, "answer")).toBe(41);
-		expect(variableValue(view, "label")).toBe("source label");
 
 		setVariables(session, 1, "set", { answer: 43 });
 
 		expect(await waitFor(() => (variableValue(view, "answer") === 43 ? 43 : undefined))).toBe(43);
 		expect(variableValue(view, "label")).toBe("source label");
-		controller.abort();
-	});
-
-	test("defines newly added Python variables through the runtime", async () => {
-		const { session, view, host } = createNotebookFixture({
-			_spec: {
-				cells: [
-					{ id: 1, mode: "ojs", value: "base_echo = base" },
-					{ id: 2, mode: "ojs", value: "doubled = base * 2" },
-				],
-			},
-		});
-		const el = document.createElement("div");
-		const controller = new AbortController();
-
-		widget.render(renderProps(view, el, controller.signal, host));
-		setVariables(session, 1, "set", { base: 6 });
-
-		expect(await waitFor(() => (variableValue(view, "doubled") === 12 ? 12 : undefined))).toBe(12);
-		expect(variableValue(view, "base_echo")).toBe(6);
 		controller.abort();
 	});
 

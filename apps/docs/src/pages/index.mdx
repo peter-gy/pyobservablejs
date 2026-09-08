@@ -27,16 +27,17 @@ dependencies = ["pyobservablejs"]
 	<div className={styles.intro}>
 		<Heading as="h1">pyobservablejs</Heading>
 		<p className={styles.lead}>
-			{`Build reactive Observable notebooks from Python. Compose JavaScript,
-				Observable JavaScript, Markdown, HTML, inputs, and files, then display
-				the complete notebook or selected cells in anywidget hosts.`}
+			{`Build reactive notebooks from Python. Connect data to JavaScript charts,
+				inputs, and text, then display the notebook or selected cells.`}
 		</p>
 		<p className={styles.boundary}>
-			{`Notebook Kit evaluates each view in the browser. Python owns notebook
-				construction, shared values, files, and state readback.`}
+			<a href="https://observablehq.com/notebook-kit/">Notebook Kit</a>
+			{" evaluates cells in the browser. "}
+			<a href="https://anywidget.dev/">anywidget</a>
+			{" connects their values to Python in JupyterLab, marimo, VS Code, and Colab."}
 		</p>
 		<div className={styles.start}>
-			<code>uv pip install pyobservablejs</code>
+			<code>pip install pyobservablejs</code>
 			<Link to="/guide/quickstart/">Read the quickstart →</Link>
 		</div>
 	</div>
@@ -111,7 +112,9 @@ notebook = obs.Notebook(
             x: "culmen_length_mm",
             y: "culmen_depth_mm",
             fill: "species",
-            tip: true
+            tip: {
+              fill: "var(--marimo-island-background)"
+            }
           }).plot({
             width,
             height: 460,

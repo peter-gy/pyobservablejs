@@ -2,7 +2,7 @@
 
 from importlib.metadata import version as _version
 
-from . import types
+from . import errors, types
 from ._cells import Cell, html, js, md, ojs
 from ._factories import (
     view_from_code,
@@ -25,6 +25,7 @@ __all__ = [
     "NotebookCell",
     "NotebookGraph",
     "NotebookView",
+    "errors",
     "html",
     "js",
     "md",

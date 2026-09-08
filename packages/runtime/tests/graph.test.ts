@@ -1,13 +1,10 @@
 import { toNotebook } from "@observablehq/notebook-kit";
 import { describe, expect, test } from "vite-plus/test";
-import {
-	createRuntime,
-	createRuntimeCleanup,
-	createRuntimeDefinition,
-	isString,
-	registerAttachments,
-	runtimeDocument,
-} from "../src";
+import { createRuntime, createRuntimeCleanup } from "../src/environment";
+import { createRuntimeDefinition } from "../src/definition";
+import { isString } from "../src/value-kind";
+import { registerAttachments } from "../src/attachments";
+import { runtimeDocument } from "../src/scope";
 import { defineCompiledRuntimeCell } from "../src/execution";
 import {
 	analyzeNotebook,
@@ -33,7 +30,7 @@ describe("notebook graph metadata", () => {
 		expect(graph.cells.map((cell) => cell.defines)).toEqual([["a"], ["b"], ["gain"], []]);
 		expectMembers(graph.cells[1]?.references, ["a", "rows"]);
 		expect(graph.cells[2]?.output).toBe("viewof$gain");
-		expect(graph.cells[2]?.runtime_outputs).toEqual(["viewof$gain"]);
+		expect(graph.cells[2]?.runtimeOutputs).toEqual(["viewof$gain"]);
 		expect(graph.cells[2]?.autoview).toBe(true);
 		expect(graph.edges).toHaveLength(3);
 		expect(graph.edges).toContainEqual({ from: 1, to: 2, variable: "a" });
@@ -67,7 +64,7 @@ describe("notebook graph metadata", () => {
 
 		expectMembers(graph.cells[0]?.defines, ["x", "y"]);
 		expectMembers(graph.cells[0]?.outputs, ["x", "y"]);
-		expectMembers(graph.cells[0]?.runtime_outputs, ["x", "y"]);
+		expectMembers(graph.cells[0]?.runtimeOutputs, ["x", "y"]);
 		expect(graph.cells[0]?.output).toBe(null);
 	});
 
@@ -84,7 +81,7 @@ describe("notebook graph metadata", () => {
 
 		expect(graph.cells[0]?.defines).toEqual(["count"]);
 		expect(graph.cells[0]?.output).toBe("mutable count");
-		expectMembers(graph.cells[0]?.runtime_outputs, ["mutable count", "mutable$count"]);
+		expectMembers(graph.cells[0]?.runtimeOutputs, ["mutable count", "mutable$count"]);
 		expect(graph.cells[0]?.automutable).toBe(true);
 		expect(graph.edges).toHaveLength(2);
 		expect(graph.edges).toContainEqual({ from: 1, to: 2, variable: "count" });
@@ -106,15 +103,16 @@ describe("notebook graph metadata", () => {
 
 		expect(graph.cells[0]?.defines).toEqual(["answer"]);
 		expect(graph.cells[0]?.outputs).toEqual(["answer"]);
-		expect(graph.cells[0]?.output).toBe("answer");
+		expect(graph.cells[0]?.output).toBe(null);
 		expect(graph.cells[1]?.defines).toEqual(["title"]);
 		expect(graph.cells[1]?.references).toEqual(["md"]);
 		expect(graph.cells[2]?.defines).toEqual(["node"]);
 		expect(graph.cells[2]?.references).toEqual(["htl"]);
 		expect(graph.cells[3]?.defines).toEqual(["rows"]);
-		expect(graph.cells[3]?.output).toBe("viewof$rows");
-		expect(graph.cells[3]?.runtime_outputs).toEqual(["viewof$rows"]);
-		expect(graph.cells[3]?.autoview).toBe(true);
+		expect(graph.cells[3]?.output).toBe(null);
+		expect(graph.cells[3]?.outputs).toEqual(["rows"]);
+		expect(graph.cells[3]?.runtimeOutputs).toEqual(["rows"]);
+		expect(graph.cells[3]?.autoview).toBe(false);
 		expect(graph.cells[4]?.defines).toEqual(["hidden"]);
 		expect(graph.cells[4]?.autodisplay).toBe(false);
 		expect(graph.edges).toContainEqual({ from: 1, to: 5, variable: "answer" });
@@ -166,7 +164,7 @@ export default define;
 
 		const root = document.createElement("div");
 		const registry = registerAttachments({});
-		const runtime = createRuntime(root, root, { attachments: {}, baseUrl: document.baseURI, variables: {} }, registry);
+		const runtime = createRuntime(root, { attachments: {}, baseUrl: document.baseURI, variables: {} }, registry);
 		try {
 			const definitions = await Promise.all(
 				analysis.cells.map(async (cell) => {
@@ -246,7 +244,7 @@ from "./module.js"`,
 	});
 });
 
-function expectMembers(actual: string[] | undefined, expected: string[]): void {
+function expectMembers(actual: readonly string[] | undefined, expected: string[]): void {
 	expect(actual).toHaveLength(expected.length);
 	expect(actual).toEqual(expect.arrayContaining(expected));
 }

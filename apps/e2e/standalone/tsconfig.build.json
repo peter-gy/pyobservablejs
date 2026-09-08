@@ -1,0 +1,10 @@
+{
+	"extends": "../tsconfig.json",
+	"compilerOptions": {
+		"paths": {
+			"@pyobservablejs/runtime": ["../../../packages/runtime/dist/index.d.ts"],
+			"@pyobservablejs/runtime/values": ["../../../packages/runtime/dist/value-api.d.ts"]
+		}
+	},
+	"include": ["main.ts"]
+}

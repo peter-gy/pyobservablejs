@@ -85,9 +85,13 @@ record omits them.
 `.href` contains the attachment URL. Notebook Kit's deprecated `.url()`
 method returns the same value asynchronously. Use `.href` in new cells.
 
-The widget also adds `.sqlite()`, which returns a `SQLiteDatabaseClient`
-with `query`, `queryRow`, `sql`, and schema-inspection methods. Before
-calling it, set `globalThis.observablejsSqlite` to an object with
+`.sqlite()` returns Observable's `SQLiteDatabaseClient` with `query`, `queryRow`,
+and parameterized `sql` methods. `describeTables()` and `describeColumns({table})`
+return schema records. `describe(table)` returns an HTML table with its displayed
+rows in `.value`.
+
+The database loads through [sql.js](https://sql.js.org/), which runs SQLite in
+the browser. Before calling `.sqlite()`, set `globalThis.observablejsSqlite` to an object with
 `initSqlJs` and an optional `locateFile`, or assign the loader directly to
 `globalThis.initSqlJs`.
 

@@ -17,12 +17,7 @@
 	},
 	"dependencies": {
 		"@anywidget/types": "catalog:",
-		"@observablehq/notebook-kit": "catalog:",
-		"@pyobservablejs/runtime": "workspace:*",
-		"@shikijs/core": "catalog:",
-		"@shikijs/engine-javascript": "catalog:",
-		"@shikijs/langs": "catalog:",
-		"@shikijs/themes": "catalog:"
+		"@pyobservablejs/runtime": "workspace:*"
 	},
 	"devDependencies": {
 		"@types/node": "catalog:",

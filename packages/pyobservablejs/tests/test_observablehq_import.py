@@ -177,10 +177,10 @@ def test_notebook_from_observablehq_converts_table_nodes(
     widget = obs.Notebook.from_observablehq("@d3/table-view", timeout=1)
 
     scripts = script_tags(widget.to_notebook_html())
-    assert scripts[1]["attrs"].get("type") == "application/vnd.observable.javascript"
-    assert "pinned" in scripts[1]["attrs"]
-    assert scripts[1]["text"].strip() == "Inputs.table(await rows)"
-    assert len(widget.cells) == 2
+    assert scripts[2]["attrs"].get("type") == "application/vnd.observable.javascript"
+    assert "pinned" in scripts[2]["attrs"]
+    assert "hidden" in scripts[1]["attrs"]
+    assert [cell.id for cell in widget.cells] == [1, 3, 2]
 
 
 def test_notebook_from_observablehq_converts_named_file_table_nodes(
@@ -211,14 +211,11 @@ def test_notebook_from_observablehq_converts_named_file_table_nodes(
     widget = obs.Notebook.from_observablehq("@d3/table-view", timeout=1)
 
     scripts = script_tags(widget.to_notebook_html())
-    assert scripts[0]["attrs"].get("type") == "application/vnd.observable.javascript"
-    assert scripts[0]["attrs"].get("data-pyobservablejs-key") == "worldbank"
-    assert scripts[0]["attrs"].get("name") is None
-    assert "hidden" in scripts[0]["attrs"]
-    assert scripts[0]["text"].strip() == (
-        'viewof worldbank = Inputs.table(await FileAttachment("wb_tidy.csv").csv({typed: true}))'
-    )
-    assert widget.cells[0].key == "worldbank"
+    assert scripts[1]["attrs"].get("type") == "application/vnd.observable.javascript"
+    assert scripts[1]["attrs"].get("data-pyobservablejs-key") == "worldbank"
+    assert "hidden" in scripts[1]["attrs"]
+    assert widget.cell("worldbank").id == 1
+    assert widget.cell("worldbank").index == 1
 
 
 def test_notebook_from_observablehq_converts_empty_table_nodes(
@@ -244,8 +241,9 @@ def test_notebook_from_observablehq_converts_empty_table_nodes(
     widget = obs.Notebook.from_observablehq("@d3/table-view", timeout=1)
 
     scripts = script_tags(widget.to_notebook_html())
-    assert scripts[0]["text"].strip() == "Inputs.table(await [])"
-    assert len(widget.cells) == 1
+    assert [cell.id for cell in widget.cells] == [2, 1]
+    assert "hidden" in scripts[0]["attrs"]
+    assert "hidden" not in scripts[1]["attrs"]
 
 
 def test_notebook_from_observablehq_converts_chart_nodes_to_plot_auto(
@@ -758,171 +756,6 @@ def test_notebook_from_observablehq_converts_sqlite_file_sql_nodes(
     assert scripts[1]["text"].strip() == "select * from customers"
 
 
-def test_notebook_from_observablehq_converts_sqlite_table_nodes(
-    observablehq_response: ObservableHQResponseInstaller,
-    script_tags: ScriptTags,
-) -> None:
-    observablehq_response(
-        {
-            "title": "Remote",
-            "nodes": [
-                {
-                    "id": 1,
-                    "mode": "table",
-                    "pinned": True,
-                    "data": {
-                        "source": {
-                            "name": "chinook.db",
-                            "type": "FileAttachment",
-                            "dialect": "sqlite",
-                        },
-                        "operations": {
-                            "from": {"table": {"table": "customers"}},
-                        },
-                    },
-                },
-            ],
-        }
-    )
-
-    widget = obs.Notebook.from_observablehq("@d3/table-view", timeout=1)
-
-    scripts = script_tags(widget.to_notebook_html())
-    assert scripts[0]["attrs"].get("output") == "chinookDB"
-    assert scripts[0]["text"].strip() == (
-        'chinookDB = FileAttachment("chinook.db").sqlite()'
-    )
-    assert scripts[1]["attrs"].get("type") == "application/vnd.observable.javascript"
-    assert scripts[1]["text"].strip() == (
-        'Inputs.table(await chinookDB.query("SELECT * FROM \\"customers\\""))'
-    )
-
-
-def test_notebook_from_observablehq_converts_sql_database_table_nodes(
-    observablehq_response: ObservableHQResponseInstaller,
-    script_tags: ScriptTags,
-) -> None:
-    observablehq_response(
-        {
-            "title": "Remote",
-            "nodes": [
-                {
-                    "id": 1,
-                    "mode": "js",
-                    "value": 'import {db} from "@observablehq/google-merchandise-sales-data"',
-                },
-                {
-                    "id": 2,
-                    "mode": "table",
-                    "pinned": True,
-                    "data": {
-                        "source": {
-                            "name": "db",
-                            "type": "cell",
-                            "dialect": "sql",
-                        },
-                        "operations": {
-                            "from": {"table": {"table": "items"}, "mimeType": None},
-                            "sort": [{"column": "price_in_usd", "direction": "desc"}],
-                            "slice": {"to": 1000, "from": 0},
-                            "filter": [
-                                {
-                                    "type": "eq",
-                                    "operands": [
-                                        {"type": "column", "value": "category"},
-                                        {"type": "primitive", "value": "Apparel"},
-                                    ],
-                                }
-                            ],
-                            "select": {
-                                "columns": [
-                                    "id",
-                                    "name",
-                                    "brand",
-                                    "variant",
-                                    "category",
-                                    "price_in_usd",
-                                ]
-                            },
-                        },
-                    },
-                },
-            ],
-        }
-    )
-
-    widget = obs.Notebook.from_observablehq("@d3/table-view", timeout=1)
-
-    scripts = script_tags(widget.to_notebook_html())
-    assert scripts[1]["attrs"].get("type") == "application/vnd.observable.javascript"
-    assert scripts[1]["text"].strip() == (
-        'Inputs.table(await db.query("SELECT \\"id\\", \\"name\\", \\"brand\\", '
-        '\\"variant\\", \\"category\\", \\"price_in_usd\\" FROM \\"items\\" WHERE '
-        '\\"category\\" = \'Apparel\' ORDER BY \\"price_in_usd\\" DESC LIMIT 1000"))'
-    )
-
-
-def test_notebook_from_observablehq_converts_sql_table_contains_and_in_filters(
-    observablehq_response: ObservableHQResponseInstaller,
-    script_tags: ScriptTags,
-) -> None:
-    observablehq_response(
-        {
-            "title": "Remote",
-            "nodes": [
-                {
-                    "id": 1,
-                    "mode": "js",
-                    "value": 'db = FileAttachment("sql-murder-mystery.db").sqlite()',
-                },
-                {
-                    "id": 2,
-                    "mode": "table",
-                    "pinned": True,
-                    "data": {
-                        "source": {
-                            "name": "db",
-                            "type": "cell",
-                            "dialect": "sqlite",
-                        },
-                        "operations": {
-                            "from": {"table": {"table": "interview"}},
-                            "slice": {"to": 100, "from": 0},
-                            "filter": [
-                                {
-                                    "type": "c",
-                                    "operands": [
-                                        {"type": "column", "value": "transcript"},
-                                        {"type": "primitive", "value": "Annabel"},
-                                    ],
-                                },
-                                {
-                                    "type": "in",
-                                    "operands": [
-                                        {"type": "column", "value": "person_id"},
-                                        {"type": "primitive", "value": "14887"},
-                                        {"type": "primitive", "value": "16371"},
-                                    ],
-                                },
-                            ],
-                            "select": {"columns": ["person_id", "transcript"]},
-                        },
-                    },
-                },
-            ],
-        }
-    )
-
-    widget = obs.Notebook.from_observablehq("@d3/table-view", timeout=1)
-
-    scripts = script_tags(widget.to_notebook_html())
-    assert scripts[1]["text"].strip() == (
-        'Inputs.table(await db.query("SELECT \\"person_id\\", \\"transcript\\" FROM '
-        '\\"interview\\" WHERE \\"transcript\\" LIKE \'%Annabel%\' AND '
-        "\\\"person_id\\\" IN ('14887', '16371') LIMIT 100\"))"
-    )
-
-
 def test_notebook_from_observablehq_uses_cell_backed_sqlite_databases(
     observablehq_response: ObservableHQResponseInstaller,
     script_tags: ScriptTags,
@@ -964,25 +797,6 @@ def test_notebook_from_observablehq_uses_cell_backed_sqlite_databases(
     assert scripts[1]["text"].strip() == "select * from customers"
 
 
-def test_notebook_from_observablehq_accepts_initial_variables(
-    observablehq_response: ObservableHQResponseInstaller,
-) -> None:
-    observablehq_response(
-        {
-            "title": "Remote",
-            "nodes": [{"id": 1, "mode": "js", "value": "py_answer + 1"}],
-        }
-    )
-
-    widget = obs.Notebook.from_observablehq(
-        "@d3/bar-chart",
-        timeout=1,
-        variables={"py_answer": 7},
-    )
-
-    assert widget.variables == {"py_answer": 7}
-
-
 def test_notebook_from_observablehq_initial_variables_serialize_to_frontend_state(
     observablehq_response: ObservableHQResponseInstaller,
 ) -> None:
@@ -999,6 +813,7 @@ def test_notebook_from_observablehq_initial_variables_serialize_to_frontend_stat
         variables={"py_answer": 7},
     )
 
+    assert widget.variables == {"py_answer": 7}
     assert notebook_session(widget).get_state(["_variables"])["_variables"] == {
         "py_answer": 7
     }

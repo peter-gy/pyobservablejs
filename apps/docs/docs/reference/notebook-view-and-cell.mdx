@@ -91,11 +91,14 @@ cell = notebook.cell("answer")
 print(cell.key, cell.index, cell.id)
 ```
 
-| Member  | Contract                                                   |
-| ------- | ---------------------------------------------------------- |
-| `key`   | Portable public identity, or `None` for an anonymous cell. |
-| `index` | Zero-based notebook order metadata.                        |
-| `id`    | Notebook Kit serialization metadata.                       |
+| Member               | Contract                                                   |
+| -------------------- | ---------------------------------------------------------- |
+| `key`                | Portable public identity, or `None` for an anonymous cell. |
+| `index`              | Zero-based notebook order metadata.                        |
+| `id`                 | Notebook Kit serialization metadata.                       |
+| `source`, `mode`     | Prepared cell source and Notebook Kit language.            |
+| `pinned`, `hidden`   | Source visibility and authored output visibility.          |
+| `output`, `database` | Declared output and SQL database, when present.            |
 
 Use the key or handle as a `Notebook.view(...)` selector. The id and index do
 not select cells.
@@ -115,11 +118,17 @@ that proxies the underlying `NotebookView`. Use the returned view directly in
 cell output and layouts. Other anywidget hosts receive the `NotebookView`
 model directly.
 
-| Member     | Contract                                           |
-| ---------- | -------------------------------------------------- |
-| `notebook` | The owning `Notebook` controller.                  |
-| `cells`    | Selected `NotebookCell` handles in notebook order. |
-| `state`    | Current immutable `ViewState` browser snapshot.    |
+| Member                                                  | Contract                                                |
+| ------------------------------------------------------- | ------------------------------------------------------- |
+| `notebook`                                              | The owning `Notebook` controller.                       |
+| `cells`                                                 | Selected `NotebookCell` handles in notebook order.      |
+| `state`                                                 | Current immutable `ViewState` browser snapshot.         |
+| `inspection`, `datasets`, `read()`, `read_attachment()` | [Explicit inspection and data access](data-access.mdx). |
+
+`await view.ready()` checks a settled evaluation after current Python updates.
+`view.raise_for_errors()` raises the latest received failure immediately.
+`view.diagnostics` carries detailed errors even with preview capture disabled.
+See [Errors and diagnostics](errors.mdx) for signatures and exception types.
 
 Before a browser mounts the view, `state.input_revision` and
 `state.settled_revision` are `None`, `pending` is false, and no results or graph
@@ -137,6 +146,7 @@ view.observe(on_view_state, names="state")
 
 With `capture_state=False`, `state` remains at this initial value. Rendering,
 Python variable updates, and supported input synchronization continue.
+Explicit inspection and data reads also remain available.
 
 One `NotebookView` can have one live writable render at a time. Create another
 view from the notebook when the same selection must appear in two outputs.

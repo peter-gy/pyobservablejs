@@ -38,6 +38,7 @@ _STDLIB_IMPORT_RE = re.compile(
 )
 _NON_JAVASCRIPT_SCRIPT_TYPES = {
     "application/sql",
+    "application/sql+view",
     "application/x-tex",
     "text/html",
     "text/markdown",

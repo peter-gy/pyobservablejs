@@ -54,6 +54,7 @@ const sidebars = {
 			items: [
 				"guide/connect/python-values",
 				"guide/connect/browser-results",
+				"guide/connect/inspect-notebooks",
 				"guide/connect/shared-inputs",
 				"guide/connect/dependencies",
 			],
@@ -100,7 +101,13 @@ const sidebars = {
 		{
 			type: "category",
 			label: "State and values",
-			items: ["reference/variables-and-serialization", "reference/values-and-graph", "reference/types"],
+			items: [
+				"reference/variables-and-serialization",
+				"reference/values-and-graph",
+				"reference/data-access",
+				"reference/errors",
+				"reference/types",
+			],
 		},
 		{
 			type: "category",

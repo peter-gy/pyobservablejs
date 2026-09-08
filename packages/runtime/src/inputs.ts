@@ -1,15 +1,7 @@
-import type { NotebookRuntime } from "@observablehq/notebook-kit/runtime";
+import { library, type NotebookRuntime } from "@observablehq/notebook-kit/runtime";
 import { setRuntimeVariables } from "./environment";
+import type { RuntimeValue, Variables } from "./values";
 import {
-	revivePythonValue,
-	sameWireValue,
-	toWireValue,
-	type RevivedValue,
-	type WireValue,
-	type WireValues,
-} from "./values";
-import {
-	readViewValue,
 	writeViewValue as writeRawViewValue,
 	type RuntimeVariablesSync,
 	type ViewTarget,
@@ -17,18 +9,19 @@ import {
 } from "./views";
 
 export type RuntimeInputs = RuntimeVariablesSync & {
-	set(values: WireValues): void;
-	replace(values: WireValues): void;
+	set(values: Variables): void;
+	replace(values: Variables): void;
 };
 
 type RuntimeInputsOptions = {
 	runtime: NotebookRuntime;
-	variables: WireValues;
+	variables: Variables;
 	viewNames: ReadonlySet<string>;
 	signal: AbortSignal;
-	onVariablesChange?(variables: WireValues): void;
-	onReplace(variables: WireValues): void;
-	writeViewValue?(view: ViewTarget, value: RevivedValue): ViewWriteResult;
+	onVariablesChange?(variables: Variables): void;
+	onReplace(variables: Variables): void;
+	onError<Cause>(name: string, cause: Cause): void;
+	writeViewValue?(view: ViewTarget, value: RuntimeValue): ViewWriteResult;
 };
 
 export function createRuntimeInputs({
@@ -38,32 +31,74 @@ export function createRuntimeInputs({
 	signal,
 	onVariablesChange,
 	onReplace,
+	onError,
 	writeViewValue = writeRawViewValue,
 }: RuntimeInputsOptions): RuntimeInputs {
 	const views = new Map<string, ViewTarget>();
 	const suppressedInitialViews = new Map<string, ViewTarget>();
 	let variables = { ...initialVariables };
-	let version = 0;
+	const versions = new Map<string, number>();
+	const overriddenViews = new Set<string>();
+
+	const apply = (values: Variables) => {
+		const definitions: [string, RuntimeValue][] = [];
+		for (const [name, value] of Object.entries(values)) {
+			const view = views.get(name);
+			if (view) void write(name, view, value);
+			else if (!viewNames.has(name)) definitions.push([name, value]);
+		}
+		setRuntimeVariables(runtime, Object.fromEntries(definitions));
+	};
+
+	const write = async (name: string, view: ViewTarget, inputValue: RuntimeValue) => {
+		const version = (versions.get(name) ?? 0) + 1;
+		versions.set(name, version);
+		const current = () => !signal.aborted && version === versions.get(name) && views.get(name) === view;
+		try {
+			let value: RuntimeValue;
+			try {
+				value = await Promise.resolve(inputValue);
+			} catch {
+				if (!current()) return;
+				setRuntimeVariables(runtime, { [name]: inputValue });
+				overriddenViews.add(name);
+				return;
+			}
+			if (!current()) return;
+			// Input revisions need an Observable event to settle, including
+			// writes that adopt the control's current value.
+			const result = writeViewValue(view, value);
+			if (!current()) return;
+			if (result === "unsupported") {
+				setRuntimeVariables(runtime, { [name]: inputValue });
+				overriddenViews.add(name);
+			} else if (overriddenViews.delete(name)) {
+				// A constant override disconnects Notebook Kit's generated input variable.
+				// Restore that dependency when the control can represent the host value.
+				runtime.main.redefine(name, [`viewof$${name}`], library.Generators().input);
+			}
+		} catch (cause) {
+			if (current()) onError(name, cause);
+		}
+	};
 
 	return {
 		applyInitialViews() {
-			version += 1;
 			const initialVariables = Object.fromEntries(
 				Object.entries(variables).filter(([name]) => suppressedInitialViews.get(name) !== views.get(name)),
 			);
 			suppressedInitialViews.clear();
-			applyRuntimeVariables(runtime, initialVariables, views, viewNames, signal, () => version, writeViewValue);
+			apply(initialVariables);
 		},
 		set(values) {
 			variables = { ...variables, ...values };
 			onVariablesChange?.(variables);
-			version += 1;
-			applyRuntimeVariables(runtime, values, views, viewNames, signal, () => version, writeViewValue);
+			apply(values);
 		},
 		replace(values) {
 			variables = { ...values };
 			onVariablesChange?.(variables);
-			version += 1;
+			for (const [name, version] of versions) versions.set(name, version + 1);
 			onReplace(variables);
 		},
 		setView(name, view, options) {
@@ -71,7 +106,7 @@ export function createRuntimeInputs({
 			if (options?.applyInitialVariable === false) suppressedInitialViews.set(name, view);
 			else suppressedInitialViews.delete(name);
 			if (options?.applyInitialVariable !== false && Object.prototype.hasOwnProperty.call(variables, name)) {
-				void writeVariableToView(runtime, name, view, variables[name], views, signal, () => version, writeViewValue);
+				void write(name, view, variables[name]);
 			}
 		},
 		deleteView(name, view) {
@@ -81,45 +116,4 @@ export function createRuntimeInputs({
 			}
 		},
 	};
-}
-
-function applyRuntimeVariables(
-	runtime: NotebookRuntime,
-	variables: WireValues,
-	views: Map<string, ViewTarget>,
-	viewNames: ReadonlySet<string>,
-	signal: AbortSignal,
-	readVersion: () => number,
-	writeViewValue: (view: ViewTarget, value: RevivedValue) => ViewWriteResult,
-): void {
-	const definitions: WireValues = {};
-	for (const [name, value] of Object.entries(variables)) {
-		const view = views.get(name);
-		if (view) {
-			void writeVariableToView(runtime, name, view, value, views, signal, readVersion, writeViewValue);
-		} else if (!viewNames.has(name)) {
-			definitions[name] = value;
-		}
-	}
-	setRuntimeVariables(runtime, definitions);
-}
-
-async function writeVariableToView(
-	runtime: NotebookRuntime,
-	name: string,
-	view: ViewTarget,
-	wireValue: WireValue,
-	views: Map<string, ViewTarget>,
-	signal: AbortSignal,
-	readVersion: () => number,
-	writeViewValue: (view: ViewTarget, value: RevivedValue) => ViewWriteResult,
-): Promise<void> {
-	const version = readVersion();
-	const value = await revivePythonValue(wireValue);
-	if (signal.aborted || version !== readVersion() || views.get(name) !== view) return;
-	if (sameWireValue(toWireValue(readViewValue(view)), toWireValue(value))) return;
-	const result = writeViewValue(view, value);
-	if (result === "unsupported" && !signal.aborted && version === readVersion() && views.get(name) === view) {
-		setRuntimeVariables(runtime, { [name]: wireValue });
-	}
 }

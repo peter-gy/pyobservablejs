@@ -1,8 +1,7 @@
 import type { Cell } from "@observablehq/notebook-kit";
-import type { NotebookRuntime } from "@observablehq/notebook-kit/runtime";
+import type { Definition as RuntimeDefinition, NotebookRuntime } from "@observablehq/notebook-kit/runtime";
 import { createRuntimeDefinition, type RuntimeCellDefinition, type RuntimeDefinitionOptions } from "./definition";
 
-type RuntimeDefinition = Parameters<NotebookRuntime["define"]>[1];
 type RuntimeObserver = Parameters<NotebookRuntime["define"]>[2];
 type RuntimeVariableObserver = Parameters<NotebookRuntime["main"]["variable"]>[0];
 type RuntimeVariable = ReturnType<NotebookRuntime["main"]["variable"]>;
@@ -20,7 +19,12 @@ export function defineRuntimeCell(
 	observer?: RuntimeObserver,
 	options?: RuntimeDefinitionOptions,
 ): DefinedCell {
-	return defineCompiledRuntimeCell(runtime, root, createRuntimeDefinition(cell, definition, options), observer);
+	return defineCompiledRuntimeCell(
+		runtime,
+		root,
+		createRuntimeDefinition(cell, definition, { ...options, root }),
+		observer,
+	);
 }
 
 export function defineCompiledRuntimeCell(

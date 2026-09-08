@@ -7,19 +7,18 @@ import {
 	extendRuntimeFileAttachments,
 	loadSQLiteModule,
 	SQLiteDatabaseClient,
-	type AttachmentInfo,
 	type AttachmentRegistry,
 } from "./attachments";
+import type { AttachmentInfo } from "./attachment-info";
 import { bindRuntimeScope, cleanupRuntimeScope, createRuntimeScope, createScopedGenerators } from "./scope";
-import { createVariableBuiltins, type WireValues } from "./values";
-import { isCallable } from "./value-kind";
+import { createVariableBuiltins, type Variables } from "./values";
 
 export type RuntimeProfile = "notebook-kit" | "observable";
 
 export type RuntimeOptions = {
 	attachments: Record<string, AttachmentInfo>;
 	baseUrl: string;
-	variables: WireValues;
+	variables: Variables;
 	runtimeProfile?: RuntimeProfile;
 };
 
@@ -30,14 +29,13 @@ export type NotebookOptions = RuntimeOptions & {
 type NotebookRuntimeBuiltins = NonNullable<ConstructorParameters<typeof NotebookRuntime>[0]>;
 const RUNTIME_CORE_NAMES = ["@variable", "invalidation", "visibility"] as const;
 const builtinNamesByRuntime = new WeakMap<NotebookRuntime, ReadonlySet<string>>();
+const observableRequire = Symbol.for("@pyobservablejs/runtime/observable-require/v1");
 
 export function createRuntime(
 	root: HTMLElement,
-	el: HTMLElement,
 	options: RuntimeOptions,
 	attachmentRegistry: AttachmentRegistry,
 ): NotebookRuntime {
-	const width = () => observeWidth(root, el);
 	const scope = createRuntimeScope(root);
 	const scopedGenerators = createScopedGenerators(root);
 	const builtins = {
@@ -50,7 +48,7 @@ export function createRuntime(
 		SQLite: () => loadSQLiteModule(),
 		SQLiteDatabaseClient: () => SQLiteDatabaseClient,
 		document: () => scope.document,
-		width,
+		width: () => library.Generators().width(root),
 		dark: () => scopedGenerators.dark(),
 	} satisfies RuntimeLibrary;
 	if (options.runtimeProfile !== "observable") Object.assign(builtins, { Generators: () => scopedGenerators });
@@ -68,14 +66,20 @@ export function createRuntime(
 	return runtime;
 }
 
-export function assertNoRuntimeBuiltinCollisions(runtime: NotebookRuntime, variables: WireValues): void {
+export function assertNoRuntimeBuiltinCollisions(runtime: NotebookRuntime, variables: Variables): void {
 	const builtinNames = builtinNamesByRuntime.get(runtime);
 	if (!builtinNames) throw new Error("Runtime builtin metadata is unavailable");
 	assertNoBuiltinCollisions(variables, builtinNames);
 }
 
 function selectRuntimeLibrary(profile: RuntimeProfile = "notebook-kit"): RuntimeLibrary {
-	return profile === "observable" ? Object.assign({}, library, new Library()) : library;
+	if (profile !== "observable") return library;
+	// d3-require pairs a global AMD callback with its module queue. Independently
+	// loaded bundles must share that loader before creating classic libraries.
+	// SAFETY: This versioned symbol stores the upstream loader across bundle instances.
+	const realm = globalThis as typeof globalThis & { [observableRequire]?: typeof Library.require };
+	Library.require = realm[observableRequire] ??= Library.require;
+	return Object.assign({}, library, new Library());
 }
 
 function toNotebookRuntimeBuiltins(builtins: RuntimeLibrary): NotebookRuntimeBuiltins {
@@ -83,35 +87,16 @@ function toNotebookRuntimeBuiltins(builtins: RuntimeLibrary): NotebookRuntimeBui
 	return builtins as NotebookRuntimeBuiltins;
 }
 
-function assertNoBuiltinCollisions(variables: WireValues, builtinNames: ReadonlySet<string>): void {
+function assertNoBuiltinCollisions(variables: Variables, builtinNames: ReadonlySet<string>): void {
 	const collisions = Object.keys(variables)
 		.filter((name) => builtinNames.has(name))
 		.sort();
 	if (collisions.length > 0) {
-		throw new Error(`Python variables cannot override Observable runtime builtins: ${collisions.join(", ")}`);
+		throw new Error(`Variables cannot override Observable runtime builtins: ${collisions.join(", ")}`);
 	}
 }
 
-function observeWidth(root: HTMLElement, fallback: HTMLElement) {
-	return library.Generators().observe((notify) => {
-		let width: number | undefined;
-		const update = (value = currentWidth(root, fallback)) => {
-			const next = Math.max(320, Math.floor(value || 928));
-			if (next !== width) notify((width = next));
-		};
-		update();
-		if (!isCallable(globalThis.ResizeObserver)) return undefined;
-		const observer = new ResizeObserver(([entry]) => update(entry?.contentRect.width));
-		observer.observe(root);
-		return () => observer.disconnect();
-	});
-}
-
-function currentWidth(root: HTMLElement, fallback: HTMLElement): number {
-	return root.getBoundingClientRect().width || fallback.clientWidth || 928;
-}
-
-export function setRuntimeVariables(runtime: NotebookRuntime, variables: WireValues): void {
+export function setRuntimeVariables(runtime: NotebookRuntime, variables: Variables): void {
 	const definitions = createVariableBuiltins(variables);
 	for (const [name, define] of Object.entries(definitions)) {
 		try {

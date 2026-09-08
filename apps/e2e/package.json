@@ -1,0 +1,19 @@
+{
+	"name": "@pyobservablejs/e2e",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"test:e2e": "tsc -p standalone/tsconfig.build.json && playwright test",
+		"install-browser": "playwright install --with-deps chromium",
+		"check": "vp check"
+	},
+	"devDependencies": {
+		"@playwright/test": "catalog:",
+		"@pyobservablejs/runtime": "workspace:*",
+		"@types/node": "catalog:",
+		"typescript": "catalog:",
+		"vite": "catalog:",
+		"vite-plus": "catalog:"
+	}
+}

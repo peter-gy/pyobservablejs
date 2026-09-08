@@ -3,30 +3,47 @@
 from __future__ import annotations
 
 import pathlib
-import types as _types
 import weakref
 from collections.abc import Iterable, Mapping, Sequence
+from types import MappingProxyType
 from typing import Any, Unpack, cast
 
 import anywidget
 import traitlets
 from anywidget_bundle import Bundle, BundledWidget
 
+from . import errors
 from ._cells import Cell, NotebookCellInput
 from ._files import FileAttachment
 from ._graph import graph_from_raw
+from ._inspection import (
+    DatasetInfo,
+    NotebookInspection,
+    NotebookRead,
+    ReadFormat,
+    decode_datasets,
+    decode_inspection,
+    decode_read,
+)
 from ._model import (
     NotebookModel,
     notebook_model_from_cells,
     notebook_model_from_html,
-    notebook_model_from_observablehq,
     notebook_model_from_observablehq_document,
 )
-from ._serialize import serialize
+from ._observable import fetch_observablehq_document
+from ._readback import (
+    _cell_error_from_wire,
+    _view_error_from_wire,
+    validate_readback_wire,
+)
+from ._requests import ViewRequests
+from ._serialize import RuntimeProfile, serialize
 from ._themes import normalize_theme
 from ._variables import (
     OBSERVABLE_RESERVED_VARIABLE_NAMES,
     deserialize_value,
+    freeze_value,
     prepare_variables,
     same_wire_value,
     validate_variable_name,
@@ -36,11 +53,9 @@ from ._view_options import (
     resolve_notebook_view_options,
 )
 from .types import (
-    CellError,
     CellResult,
     CellSelector,
     CellStatus,
-    ErrorPhase,
     FileInput,
     FileSnapshot,
     NotebookState,
@@ -48,7 +63,6 @@ from .types import (
     ObservableDocument,
     Theme,
     ThemeSnapshot,
-    ViewError,
     ViewState,
 )
 
@@ -62,7 +76,6 @@ _OBSERVABLE_WIDGET_BUNDLE = Bundle(
     dev_server_env=_OBSERVABLE_WIDGET_DEV_SERVER_ENV,
 )
 _MISSING_VARIABLE = object()
-_MAX_SAFE_REVISION = (1 << 53) - 1
 
 
 def _wrap_marimo(instance: Any) -> Any:
@@ -74,18 +87,6 @@ def _wrap_marimo(instance: Any) -> Any:
     except (ImportError, ModuleNotFoundError):
         pass
     return instance
-
-
-def _freeze(value: Any) -> Any:
-    if isinstance(value, Mapping):
-        return _types.MappingProxyType(
-            {str(key): _freeze(item) for key, item in value.items()}
-        )
-    if isinstance(value, list | tuple):
-        return tuple(_freeze(item) for item in value)
-    if isinstance(value, set | frozenset):
-        return frozenset(_freeze(item) for item in value)
-    return value
 
 
 class _ObservableWidget(BundledWidget):
@@ -128,6 +129,32 @@ class NotebookCell:
         """Notebook Kit serialization identifier."""
 
         return self._owner._session._cell_ids[self._index]
+
+    @property
+    def source(self) -> str:
+        """Prepared Notebook Kit source for this cell."""
+
+        return self._owner._nodes[self._index].value
+
+    @property
+    def mode(self) -> str:
+        return self._owner._nodes[self._index].mode
+
+    @property
+    def hidden(self) -> bool:
+        return self._owner._nodes[self._index].hidden
+
+    @property
+    def pinned(self) -> bool:
+        return self._owner._nodes[self._index].pinned
+
+    @property
+    def output(self) -> str | None:
+        return self._owner._nodes[self._index].output
+
+    @property
+    def database(self) -> str | None:
+        return self._owner._nodes[self._index].database
 
 
 class _NotebookSession(anywidget.AnyWidget):
@@ -409,6 +436,8 @@ class Notebook(traitlets.HasTraits):
         show_pinned_source: bool,
     ) -> None:
         traitlets.HasTraits.__init__(self)
+        self._nodes = model.nodes
+        self._source_document: Mapping[str, object] | None = None
         self._cell_cache: dict[int, NotebookCell] = {}
         self._session = _NotebookSession(
             model,
@@ -420,14 +449,47 @@ class Notebook(traitlets.HasTraits):
     def _publish_state(self) -> None:
         variables = deserialize_value(self._session._variables)
         snapshot = NotebookState(
-            variables=cast(Mapping[str, object], _freeze(variables)),
+            variables=cast(Mapping[str, object], freeze_value(variables)),
             attachments=cast(
                 Mapping[str, FileSnapshot],
-                _freeze(dict(self._session._attachments)),
+                freeze_value(dict(self._session._attachments)),
             ),
-            theme=cast(ThemeSnapshot, _freeze(self._session.theme)),
+            theme=cast(ThemeSnapshot, freeze_value(self._session.theme)),
         )
         self.set_trait("state", snapshot)
+
+    def _publish_variables(self, names: Iterable[str] | None = None) -> None:
+        previous = self.state
+        wire = self._session._variables
+        if names is None:
+            variables = freeze_value(deserialize_value(wire))
+        else:
+            values = dict(previous.variables)
+            for name in names:
+                if name in wire:
+                    values[name] = freeze_value(deserialize_value(wire[name]))
+                else:
+                    values.pop(name, None)
+            variables = MappingProxyType(values)
+        self.set_trait(
+            "state", NotebookState(variables, previous.attachments, previous.theme)
+        )
+
+    @property
+    def runtime_profile(self) -> RuntimeProfile:
+        """The Notebook Kit or classic Observable runtime used by this notebook."""
+
+        return cast(RuntimeProfile, self._session._runtime_profile)
+
+    @property
+    def source_document(self) -> Mapping[str, object] | None:
+        """Detached original Observable document, or ``None`` for other sources.
+
+        This snapshot retains original nodes, data operations, and provenance.
+        ``NotebookCell.source`` contains the prepared Notebook Kit cell source.
+        """
+
+        return self._source_document
 
     @property
     def variables(self) -> Mapping[str, object]:
@@ -466,9 +528,17 @@ class Notebook(traitlets.HasTraits):
     @theme.setter
     def theme(self, value: Theme) -> None:
         previous = self._session.theme
-        self._session.theme = value
+        with self._session.hold_sync():
+            self._session.theme = value
         if previous != self._session.theme:
-            self._publish_state()
+            self.set_trait(
+                "state",
+                NotebookState(
+                    self.state.variables,
+                    self.state.attachments,
+                    freeze_value(self._session.theme),
+                ),
+            )
 
     def update_variables(
         self,
@@ -478,7 +548,7 @@ class Notebook(traitlets.HasTraits):
         """Merge Python-owned variable updates into every active view."""
 
         if self._session.update_variables(values):
-            self._publish_state()
+            self._publish_variables(self._session._variable_update["values"])
 
     def replace_variables(
         self,
@@ -488,13 +558,13 @@ class Notebook(traitlets.HasTraits):
         """Replace the Python-owned variable environment for every active view."""
 
         if self._session.replace_variables(values):
-            self._publish_state()
+            self._publish_variables()
 
     def reset_variables(self, *names: str) -> None:
         """Release Python ownership of variables in every active view."""
 
         if self._session.reset_variables(*names):
-            self._publish_state()
+            self._publish_variables(names)
 
     @property
     def cells(self) -> tuple[NotebookCell, ...]:
@@ -626,13 +696,10 @@ class Notebook(traitlets.HasTraits):
     ) -> Notebook:
         """Fetch a public ObservableHQ notebook through the document API."""
 
-        model = notebook_model_from_observablehq(
-            specifier,
+        document = fetch_observablehq_document(specifier, timeout=timeout)
+        return cls.from_observablehq_document(
+            document,
             files=files,
-            timeout=timeout,
-        )
-        return cls._from_model(
-            model,
             variables=variables,
             show_pinned_source=show_pinned_source,
         )
@@ -654,11 +721,13 @@ class Notebook(traitlets.HasTraits):
             title=title,
             files=files,
         )
-        return cls._from_model(
+        notebook = cls._from_model(
             model,
             variables=variables,
             show_pinned_source=show_pinned_source,
         )
+        notebook._source_document = freeze_value(document)
+        return notebook
 
     def to_notebook_html(self) -> str:
         """Return Notebook Kit HTML for saving or inspecting the definition."""
@@ -672,6 +741,18 @@ class NotebookView(_ObservableWidget):
     _owner: Notebook
     _owns_notebook: bool
     _view_closed: bool
+    _requests: ViewRequests
+    _inspection_snapshot: tuple[dict[str, object], NotebookInspection | None] | None = (
+        None
+    )
+    _datasets_snapshot: tuple[Mapping[str, object], tuple[DatasetInfo, ...]] | None = (
+        None
+    )
+    _accepted_readback: dict[str, Any] | None = None
+    _accepted_diagnostics: dict[str, Any] | None = None
+    _diagnostic_snapshot: (
+        tuple[dict[str, Any], tuple[errors.Diagnostic, ...]] | None
+    ) = None
     _session = traitlets.Instance(_NotebookSession).tag(
         sync=True,
         to_json=_WIDGET_TO_JSON,
@@ -691,6 +772,18 @@ class NotebookView(_ObservableWidget):
         }
     ).tag(sync=True)
     state: ViewState = cast(Any, traitlets.Any(read_only=True))
+    inspection: NotebookInspection | None = cast(
+        Any, traitlets.Any(default_value=None, read_only=True)
+    )
+    datasets: tuple[DatasetInfo, ...] = cast(
+        Any, traitlets.Any(default_value=(), read_only=True)
+    )
+    _inspection = traitlets.Dict(default_value={}).tag(sync=True)
+    _datasets = traitlets.Dict(default_value={}).tag(sync=True)
+    _diagnostics = traitlets.Dict(default_value={}).tag(sync=True)
+    diagnostics: tuple[errors.Diagnostic, ...] = cast(
+        Any, traitlets.Any(default_value=(), read_only=True)
+    )
 
     def __init__(self) -> None:
         raise TypeError("NotebookView objects are created with Notebook.view()")
@@ -715,9 +808,270 @@ class NotebookView(_ObservableWidget):
             _cell_indexes=indexes,
             _capture_state=options.capture_state,
         )
+        view._requests = ViewRequests(view)
+        view._accepted_readback = view._readback
         view.set_trait("state", view._state_from_readback(view._readback))
         notebook._session._views.add(view)
         return view
+
+    def set_state(self, sync_data: dict[str, Any]) -> None:
+        if not isinstance(sync_data, Mapping):
+            raise self._protocol_failure(
+                TypeError("Browser state must be a mapping"), "receive state"
+            )
+        try:
+            super().set_state(sync_data)
+        except errors.ProtocolError:
+            raise
+        except (traitlets.TraitError, TypeError, ValueError, KeyError) as cause:
+            raise self._protocol_failure(cause, "receive state") from cause
+
+    def _protocol_failure(
+        self, cause: Exception, operation: str
+    ) -> errors.ProtocolError:
+        diagnostic = errors.Diagnostic(
+            name=type(cause).__name__,
+            message=str(cause),
+            origin="widget",
+            phase="transport",
+            component="packages/pyobservablejs/src/observablejs/_notebook.py",
+            operation=operation,
+        )
+        failure = errors.ProtocolError(
+            f"Invalid notebook {operation}", diagnostics=(diagnostic,)
+        )
+        requests = getattr(self, "_requests", None)
+        if requests is not None:
+            requests.fail(failure)
+        return failure
+
+    @traitlets.validate("_diagnostics")
+    def _validate_diagnostics(self, proposal: Any) -> dict[str, Any]:
+        try:
+            value = proposal["value"]
+            current = self._accepted_diagnostics
+            if not isinstance(value, Mapping):
+                raise TypeError("Diagnostics must be a mapping")
+            if not value:
+                return current or {}
+            if set(value) != {"revision", "sequence", "errors"}:
+                raise ValueError("Diagnostics have an invalid field set")
+            revision, sequence = value["revision"], value["sequence"]
+            if type(revision) is not int or not 1 <= revision <= (1 << 53) - 1:
+                raise ValueError("Diagnostic revision must be a positive safe integer")
+            if type(sequence) is not int or not 0 <= sequence <= (1 << 53) - 1:
+                raise ValueError(
+                    "Diagnostic sequence must be a nonnegative safe integer"
+                )
+            if not isinstance(value["errors"], list | tuple):
+                raise TypeError("Diagnostic errors must be a list")
+            diagnostics = tuple(
+                errors._diagnostic_from_wire(item) for item in value["errors"]
+            )
+            if current is not None and revision <= current["revision"]:
+                return current
+            wire = dict(value)
+            self._diagnostic_snapshot = wire, diagnostics
+            return wire
+        except errors.ProtocolError:
+            raise
+        except (TypeError, ValueError, traitlets.TraitError) as cause:
+            raise self._protocol_failure(cause, "diagnostics") from cause
+
+    @traitlets.observe("_diagnostics")
+    def _publish_diagnostics(self, change: Any) -> None:
+        value = self._diagnostics
+        if not value or self._view_closed:
+            return
+        self._accepted_diagnostics = value
+        cached = self._diagnostic_snapshot
+        diagnostics = (
+            cached[1]
+            if cached is not None and cached[0] is value
+            else tuple(errors._diagnostic_from_wire(item) for item in value["errors"])
+        )
+        self.set_trait("diagnostics", diagnostics)
+
+    def _diagnostics_current(self) -> bool:
+        current = self._accepted_diagnostics
+        return current is not None and (
+            current["sequence"] >= self._session._variable_update_seq
+            or (
+                self.inspection is None
+                and self._requests.generation is None
+                and any(
+                    item.cell is None and errors._is_fatal(item)
+                    for item in self.diagnostics
+                )
+            )
+        )
+
+    def raise_for_errors(self) -> None:
+        """Raise current browser diagnostics at an explicit Python checkpoint."""
+
+        if self.diagnostics:
+            raise errors._exception_for(self.diagnostics)
+        if self._accepted_diagnostics is None:
+            diagnostics = _captured_diagnostics(self.state)
+            if diagnostics:
+                raise errors._exception_for(diagnostics)
+
+    async def ready(self, *, timeout: float | None = 30) -> ViewState:
+        """Wait for current Python updates and browser evaluation, then check errors.
+
+        Requires ``capture_state=True``. Returns the settled state snapshot.
+        """
+
+        if not self._capture_state:
+            raise ValueError("ready() requires capture_state=True")
+        sequence = self._session._variable_update_seq
+        try:
+            reply = await self._requests.request(
+                {"operation": "ready", "sequence": sequence},
+                timeout,
+            )
+        except errors.ObservableError as failure:
+            if not failure.diagnostics and self._diagnostics_current():
+                self.raise_for_errors()
+            raise
+        value = reply.result
+        if (
+            not isinstance(value, Mapping)
+            or set(value) != {"ready", "readback", "diagnostics"}
+            or reply.buffers
+        ):
+            raise self._protocol_failure(
+                ValueError("Invalid readiness acknowledgment"), "readiness response"
+            )
+        acknowledgment = cast(Mapping[str, object], value)
+        if (
+            acknowledgment["ready"] is not True
+            or not isinstance(acknowledgment["readback"], Mapping)
+            or not acknowledgment["readback"]
+            or not isinstance(acknowledgment["diagnostics"], Mapping)
+            or not acknowledgment["diagnostics"]
+        ):
+            raise self._protocol_failure(
+                ValueError("Invalid readiness acknowledgment"), "readiness response"
+            )
+        self.set_state(
+            {
+                "_readback": acknowledgment["readback"],
+                "_diagnostics": acknowledgment["diagnostics"],
+            }
+        )
+        if self._accepted_readback is None or self.state.input_revision is None:
+            raise self._protocol_failure(
+                ValueError("Readiness acknowledgment has no evaluation state"),
+                "readiness response",
+            )
+        state = self.state
+        if (
+            sequence != self._session._variable_update_seq
+            and not self._diagnostics_current()
+        ):
+            raise errors.StaleViewError(
+                "Python updates superseded the readiness checkpoint"
+            )
+        if state.pending or state.settled_revision != state.input_revision:
+            raise errors.StaleViewError(
+                "Notebook changed after the readiness checkpoint"
+            )
+        if self._diagnostics_current() or self._accepted_diagnostics is None:
+            self.raise_for_errors()
+        return state
+
+    @traitlets.validate("_inspection")
+    def _validate_inspection(self, proposal: Any) -> dict[str, object]:
+        try:
+            value = _metadata_wire(proposal["value"], "value")
+            inspection = (
+                decode_inspection(value["value"], self._owner)
+                if value and value["value"] is not None
+                else None
+            )
+            datasets = self._trait_values.get("_datasets", {})
+            if value and datasets and value["generation"] == datasets.get("generation"):
+                self._datasets_snapshot = (
+                    datasets,
+                    decode_datasets(
+                        datasets["values"],
+                        self._owner,
+                        str(value["generation"]),
+                        self._requests.identity,
+                    ),
+                )
+            self._inspection_snapshot = value, inspection
+            return value
+        except errors.ProtocolError:
+            raise
+        except (TypeError, ValueError, traitlets.TraitError) as cause:
+            raise self._protocol_failure(cause, "inspection metadata") from cause
+
+    @traitlets.validate("_datasets")
+    def _validate_datasets(self, proposal: Any) -> dict[str, object]:
+        try:
+            value = _metadata_wire(proposal["value"], "values")
+            self._datasets_snapshot = None
+            inspection = self._trait_values.get("_inspection", {})
+            if (
+                value
+                and inspection
+                and value["generation"] == inspection.get("generation")
+            ):
+                self._datasets_snapshot = (
+                    value,
+                    decode_datasets(
+                        value["values"],
+                        self._owner,
+                        str(value["generation"]),
+                        self._requests.identity,
+                    ),
+                )
+            return value
+        except errors.ProtocolError:
+            raise
+        except (TypeError, ValueError, traitlets.TraitError) as cause:
+            raise self._protocol_failure(cause, "dataset metadata") from cause
+
+    @traitlets.observe("_inspection")
+    def _publish_inspection(self, change: Any) -> None:
+        value = self._inspection
+        inspection = None
+        if not self._view_closed and value and value["value"] is not None:
+            cached = self._inspection_snapshot
+            inspection = (
+                cached[1]
+                if cached is not None and cached[0] is value
+                else decode_inspection(value["value"], self._owner)
+            )
+        with self.hold_trait_notifications():
+            self.set_trait("inspection", inspection)
+            self._publish_datasets()
+
+    @traitlets.observe("_datasets")
+    def _publish_datasets(self, change: Any = None) -> None:
+        inspection = self._trait_values.get("_inspection", {})
+        value = self._trait_values.get("_datasets", {})
+        datasets = ()
+        if (
+            not self._view_closed
+            and inspection
+            and value
+            and inspection["generation"] == value["generation"]
+        ):
+            cached = self._datasets_snapshot
+            datasets = (
+                cached[1]
+                if cached is not None and cached[0] is value
+                else decode_datasets(
+                    value["values"],
+                    self._owner,
+                    value["generation"],
+                    self._requests.identity,
+                )
+            )
+        self.set_trait("datasets", datasets)
 
     @traitlets.validate("_session")
     def _validate_session(self, proposal: Any) -> _NotebookSession:
@@ -754,21 +1108,27 @@ class NotebookView(_ObservableWidget):
 
     @traitlets.validate("_readback")
     def _validate_readback(self, proposal: Any) -> dict[str, Any]:
-        value = _validate_readback_wire(proposal["value"], self._selected_indexes())
-        revision = cast(int, value["revision"])
-        current = self._trait_values.get("_readback")
-        current_revision = (
-            current.get("revision") if isinstance(current, Mapping) else -1
-        )
-        # Marimo transports model saves independently. Keep the newest browser
-        # snapshot when an earlier save arrives after it.
-        if isinstance(current_revision, int) and revision <= current_revision:
-            return cast(dict[str, Any], current)
-        return value
+        try:
+            value = validate_readback_wire(proposal["value"], self._selected_indexes())
+            revision = cast(int, value["revision"])
+            current = self._accepted_readback
+            current_revision = (
+                current.get("revision") if isinstance(current, Mapping) else -1
+            )
+            # ipywidgets batches incoming traits before cross-validation. Compare
+            # against the last published wire state, not the staged trait value.
+            if isinstance(current_revision, int) and revision <= current_revision:
+                return cast(dict[str, Any], current)
+            return value
+        except errors.ProtocolError:
+            raise
+        except (TypeError, ValueError, traitlets.TraitError) as cause:
+            raise self._protocol_failure(cause, "readback") from cause
 
     @traitlets.observe("_readback")
     def _publish_readback_state(self, change: Any) -> None:
-        if not hasattr(self, "_owner") or not self._capture_state:
+        self._accepted_readback = change["new"]
+        if not hasattr(self, "_owner") or not self._capture_state or self._view_closed:
             return
         self.set_trait("state", self._state_from_readback(change["new"]))
 
@@ -798,7 +1158,7 @@ class NotebookView(_ObservableWidget):
                     cell=self._owner._cell_at(index),
                     revision=cast(int, raw["revision"]),
                     status=cast(CellStatus, raw["status"]),
-                    values=cast(Mapping[str, object], _freeze(decoded)),
+                    values=cast(Mapping[str, object], freeze_value(decoded)),
                     errors=errors,
                 )
             )
@@ -831,12 +1191,122 @@ class NotebookView(_ObservableWidget):
         )
         return tuple(self._owner._cell_at(index) for index in indexes)
 
+    async def read(
+        self,
+        selector: str | NotebookCell | DatasetInfo,
+        *,
+        name: str | None = None,
+        path: Sequence[str | int] = (),
+        format: ReadFormat = "arrow",
+        columns: Sequence[str] | None = None,
+        offset: int = 0,
+        limit: int | None = None,
+        timeout: float | None = 30,
+    ) -> NotebookRead:
+        """Read an evaluated value, using Arrow IPC for tabular data by default.
+
+        Strings select variable names. Cell handles select one cell's output,
+        with ``name`` resolving cells that expose several variables. Dataset
+        descriptors require the same view generation and value revision.
+        ``path`` traverses a nested value before projection and conversion.
+        """
+
+        if format not in {"arrow", "rows", "json", "bytes"}:
+            raise ValueError("format must be arrow, rows, json, or bytes")
+        if (
+            isinstance(path, str | bytes)
+            or not isinstance(path, Sequence)
+            or any(
+                not isinstance(item, str | int) or isinstance(item, bool)
+                for item in path
+            )
+        ):
+            raise TypeError("path must be a sequence of string or integer keys")
+        if name is not None and (not isinstance(name, str) or not name):
+            raise ValueError("name must be a non-empty string")
+        if columns is not None and (
+            isinstance(columns, str | bytes)
+            or not isinstance(columns, Sequence)
+            or any(not isinstance(column, str) for column in columns)
+        ):
+            raise TypeError("columns must be a sequence of column names")
+        if (
+            type(offset) is not int
+            or offset < 0
+            or (limit is not None and (type(limit) is not int or limit < 0))
+        ):
+            raise ValueError("offset and limit must be non-negative integers")
+        options: dict[str, object] = {"format": format, "offset": offset}
+        if columns is not None:
+            options["columns"] = list(columns)
+        if limit is not None:
+            options["limit"] = limit
+        selected: dict[str, object]
+        if isinstance(selector, DatasetInfo):
+            if selector._owner is not self._requests.identity:
+                raise ValueError("DatasetInfo belongs to another NotebookView")
+            if selector.generation != self._requests.generation:
+                raise errors.StaleViewError(
+                    "DatasetInfo belongs to an expired notebook runtime"
+                )
+            if name is not None:
+                raise ValueError("DatasetInfo already identifies a variable")
+            selected = {"cell": selector.cell.index}
+            if selector.name is not None:
+                selected["name"] = selector.name
+            options["revision"] = selector.revision
+        elif isinstance(selector, NotebookCell):
+            if selector._owner is not self._owner:
+                raise ValueError("NotebookCell belongs to another Notebook")
+            selected = {"cell": selector.index}
+            if name is not None:
+                selected["name"] = name
+        elif isinstance(selector, str) and selector:
+            if name is not None:
+                raise ValueError("A string selector already identifies a variable")
+            selected = {"name": selector}
+        else:
+            raise TypeError(
+                "selector must be a variable name, NotebookCell, or DatasetInfo"
+            )
+        if path:
+            selected["path"] = list(path)
+        reply = await self._requests.request(
+            {"selector": selected, "options": options}, timeout
+        )
+        try:
+            return decode_read(reply.result, self._owner, reply.buffers)
+        except (TypeError, ValueError) as cause:
+            raise self._protocol_failure(cause, "read response") from cause
+
+    async def read_attachment(self, name: str, *, timeout: float | None = 30) -> bytes:
+        """Fetch one named attachment in the browser and return its exact bytes."""
+
+        if not isinstance(name, str) or not name:
+            raise ValueError("attachment name must be a non-empty string")
+        reply = await self._requests.request(
+            {"selector": {"attachment": name}, "options": {"format": "bytes"}},
+            timeout,
+        )
+        try:
+            result = decode_read(reply.result, self._owner, reply.buffers)
+            if result.format != "bytes" or not isinstance(result.data, bytes):
+                raise ValueError("Attachment response must contain bytes")
+        except (TypeError, ValueError) as cause:
+            raise self._protocol_failure(cause, "attachment response") from cause
+        return result.data
+
     def close(self) -> None:
         """Close this display model."""
 
         if getattr(self, "_view_closed", False):
             return
         self._view_closed = True
+        requests = getattr(self, "_requests", None)
+        if requests is not None:
+            requests.close()
+        self.set_trait("_inspection", {})
+        self.set_trait("_datasets", {})
         owner = (
             getattr(self, "_owner", None)
             if getattr(self, "_owns_notebook", False)
@@ -850,287 +1320,65 @@ class NotebookView(_ObservableWidget):
             owner.close()
 
 
-def _validate_readback_wire(
-    value: object, selected_indexes: Sequence[int]
-) -> dict[str, Any]:
+def _metadata_wire(value: object, payload: str) -> dict[str, object]:
     if not isinstance(value, Mapping):
-        raise traitlets.TraitError("_readback must be a mapping")
-    value = cast(Mapping[str, object], value)
-    required = {
-        "revision",
-        "input_revision",
-        "settled_revision",
-        "pending",
-        "graph",
-        "results",
-        "errors",
-    }
-    if set(value) != required:
-        raise traitlets.TraitError("_readback has an invalid field set")
-    revision = _wire_revision(value["revision"], "revision")
-    input_revision = _optional_wire_revision(value["input_revision"], "input_revision")
-    settled_revision = _optional_wire_revision(
-        value["settled_revision"], "settled_revision"
-    )
-    pending = value["pending"]
-    raw_graph = value["graph"]
-    raw_results = value["results"]
-    raw_errors = value["errors"]
-    if not isinstance(pending, bool):
-        raise traitlets.TraitError("_readback pending must be a boolean")
-    if not isinstance(raw_graph, Mapping):
-        raise traitlets.TraitError("_readback graph must be a mapping")
-    if not isinstance(raw_results, Mapping):
-        raise traitlets.TraitError("_readback results must be a mapping")
-    if not isinstance(raw_errors, list | tuple):
-        raise traitlets.TraitError("_readback errors must be a list")
-    if input_revision is None:
-        if settled_revision is not None or pending or raw_results:
-            raise traitlets.TraitError("idle readback state is inconsistent")
-    else:
-        if settled_revision is not None and settled_revision > input_revision:
-            raise traitlets.TraitError("settled_revision cannot exceed input_revision")
-        if pending and settled_revision == input_revision:
-            raise traitlets.TraitError("pending readback cannot be settled")
-        if not pending and settled_revision != input_revision:
-            raise traitlets.TraitError("non-pending readback must be settled")
-    selected = set(selected_indexes)
-    results: dict[str, Any] = {}
-    pending_results = 0
-    for raw_index, raw_result in raw_results.items():
-        if not isinstance(raw_index, str) or not raw_index.isdecimal():
-            raise traitlets.TraitError("readback result keys must be cell indexes")
-        index = int(raw_index)
-        if index not in selected:
-            raise traitlets.TraitError("readback contains an unselected cell result")
-        result = _validate_result_wire(raw_result, input_revision)
-        if result["status"] == "pending":
-            pending_results += 1
-        results[raw_index] = result
-    if (
-        input_revision is not None
-        and set(map(int, results)) != selected
-        and not raw_errors
-    ):
-        raise traitlets.TraitError(
-            "evaluating readback must contain every selected cell"
-        )
-    if pending != (pending_results > 0):
-        raise traitlets.TraitError("readback pending state does not match results")
-    errors = [_validate_error_wire(item, cell=False) for item in raw_errors]
-    graph = _validate_graph_wire(raw_graph)
-    return {
-        "revision": revision,
-        "input_revision": input_revision,
-        "settled_revision": settled_revision,
-        "pending": pending,
-        "graph": dict(graph),
-        "results": results,
-        "errors": errors,
-    }
-
-
-def _validate_graph_wire(value: Mapping[Any, Any]) -> dict[str, Any]:
+        raise traitlets.TraitError("Notebook metadata must be a mapping")
     if not value:
         return {}
-    if set(value) != {"cells", "edges"}:
-        raise traitlets.TraitError("_readback graph has an invalid field set")
-    raw_cells = value["cells"]
-    raw_edges = value["edges"]
-    if not isinstance(raw_cells, list | tuple) or not isinstance(
-        raw_edges, list | tuple
+    generation = value.get("generation")
+    if (
+        set(value) != {"generation", payload}
+        or not isinstance(generation, str)
+        or not generation
     ):
-        raise traitlets.TraitError("_readback graph cells and edges must be lists")
+        raise traitlets.TraitError("Notebook metadata has an invalid envelope")
+    contents = value.get(payload)
+    if payload == "values" and not isinstance(contents, list | tuple):
+        raise traitlets.TraitError("Dataset metadata must contain a list")
+    return {"generation": generation, payload: contents}
 
-    required_cell_fields = {
-        "id",
-        "index",
-        "key",
-        "mode",
-        "defines",
-        "references",
-        "output",
-        "outputs",
-        "runtime_outputs",
-        "autodisplay",
-        "autoview",
-        "automutable",
-    }
-    cells: list[dict[str, Any]] = []
-    ids: set[int] = set()
-    indexes: set[int] = set()
-    for item in raw_cells:
-        if not isinstance(item, Mapping):
-            raise traitlets.TraitError("graph cells must be mappings")
-        item = cast(Mapping[Any, Any], item)
-        fields = set(item)
-        if (
-            fields - (required_cell_fields | {"error"})
-            or not required_cell_fields <= fields
-        ):
-            raise traitlets.TraitError("graph cell has an invalid shape")
-        cell_id = _wire_revision(item["id"], "graph cell id")
-        index = _wire_revision(item["index"], "graph cell index")
-        key = item["key"]
-        mode = item["mode"]
-        output = item["output"]
-        error = item.get("error")
-        if cell_id == 0:
-            raise traitlets.TraitError("graph cell id must be positive")
-        if cell_id in ids or index in indexes:
-            raise traitlets.TraitError("graph cell ids and indexes must be unique")
-        if not isinstance(key, str) or not isinstance(mode, str) or not mode:
-            raise traitlets.TraitError("graph cell key and mode must be strings")
-        if output is not None and not isinstance(output, str):
-            raise traitlets.TraitError("graph cell output must be a string or null")
-        if error is not None and not isinstance(error, str):
-            raise traitlets.TraitError("graph cell error must be a string")
-        sequences = {
-            field: _validate_string_sequence(item[field], f"graph cell {field}")
-            for field in ("defines", "references", "outputs", "runtime_outputs")
-        }
-        flags = {}
-        for field in ("autodisplay", "autoview", "automutable"):
-            flag = item[field]
-            if not isinstance(flag, bool):
-                raise traitlets.TraitError(f"graph cell {field} must be a boolean")
-            flags[field] = flag
-        ids.add(cell_id)
-        indexes.add(index)
-        cells.append(
-            {
-                "id": cell_id,
-                "index": index,
-                "key": key,
-                "mode": mode,
-                **sequences,
-                "output": output,
-                **flags,
-                **({"error": error} if error is not None else {}),
-            }
+
+def _captured_diagnostics(state: ViewState) -> tuple[errors.Diagnostic, ...]:
+    diagnostics = []
+    for result in state.results:
+        cell = result.cell
+        for error in result.errors:
+            diagnostics.append(
+                errors.Diagnostic(
+                    name=error.name,
+                    message=error.message,
+                    origin=error.origin
+                    or (
+                        "notebook"
+                        if error.phase in {"analysis", "evaluation"}
+                        else "runtime"
+                    ),
+                    phase=error.phase,
+                    component=error.component
+                    or "packages/pyobservablejs/src/observablejs/_readback.py",
+                    operation=error.operation or "capture cell error",
+                    stack=error.stack,
+                    cause=error.cause,
+                    variable=error.variable,
+                    cell=error.cell
+                    or errors.DiagnosticCell(
+                        cell.index, cell.id, cell.key or "", cell.mode, cell.source
+                    ),
+                )
+            )
+    for error in state.errors:
+        diagnostics.append(
+            errors.Diagnostic(
+                name=error.name,
+                message=error.message,
+                origin=error.origin or "runtime",
+                phase=error.phase,
+                component=error.component
+                or "packages/pyobservablejs/src/observablejs/_readback.py",
+                operation=error.operation or "capture view error",
+                stack=error.stack,
+                cause=error.cause,
+                cell=error.cell,
+            )
         )
-
-    edges: list[dict[str, Any]] = []
-    for item in raw_edges:
-        if not isinstance(item, Mapping) or set(item) != {
-            "from",
-            "to",
-            "variable",
-        }:
-            raise traitlets.TraitError("graph edge has an invalid shape")
-        item = cast(Mapping[Any, Any], item)
-        source = _wire_revision(item["from"], "graph edge source")
-        target = _wire_revision(item["to"], "graph edge target")
-        variable = item["variable"]
-        if source not in ids or target not in ids:
-            raise traitlets.TraitError("graph edge must reference known cells")
-        if not isinstance(variable, str) or not variable:
-            raise traitlets.TraitError("graph edge variable must be a non-empty string")
-        edges.append({"from": source, "to": target, "variable": variable})
-    return {"cells": cells, "edges": edges}
-
-
-def _validate_string_sequence(value: object, field: str) -> list[str]:
-    if not isinstance(value, list | tuple) or any(
-        not isinstance(item, str) for item in value
-    ):
-        raise traitlets.TraitError(f"{field} must be a list of strings")
-    return cast(list[str], list(value))
-
-
-def _validate_result_wire(value: object, input_revision: int | None) -> dict[str, Any]:
-    if not isinstance(value, Mapping) or set(value) != {
-        "revision",
-        "status",
-        "values",
-        "errors",
-    }:
-        raise traitlets.TraitError("cell result has an invalid shape")
-    value = cast(Mapping[str, object], value)
-    revision = _wire_revision(value["revision"], "cell result revision")
-    if input_revision is None or revision > input_revision:
-        raise traitlets.TraitError("cell result revision is newer than the input")
-    status = value["status"]
-    if status not in {"pending", "success", "error"}:
-        raise traitlets.TraitError("cell result has an invalid status")
-    values = value["values"]
-    raw_errors = value["errors"]
-    if not isinstance(values, Mapping) or any(
-        not isinstance(name, str) for name in values
-    ):
-        raise traitlets.TraitError("cell result values must use string keys")
-    if not isinstance(raw_errors, list | tuple):
-        raise traitlets.TraitError("cell result errors must be a list")
-    errors = [_validate_error_wire(item, cell=True) for item in raw_errors]
-    if status == "error" and not errors:
-        raise traitlets.TraitError("error results require a structured error")
-    if status != "error" and errors:
-        raise traitlets.TraitError("structured cell errors require error status")
-    if status == "pending" and values:
-        raise traitlets.TraitError("pending results cannot expose values")
-    return {
-        "revision": revision,
-        "status": status,
-        "values": dict(values),
-        "errors": errors,
-    }
-
-
-def _validate_error_wire(value: object, *, cell: bool) -> dict[str, Any]:
-    required = {"name", "message", "phase"}
-    allowed = required | ({"variable"} if cell else set())
-    if (
-        not isinstance(value, Mapping)
-        or set(value) - allowed
-        or not required <= set(value)
-    ):
-        raise traitlets.TraitError("structured error has an invalid shape")
-    value = cast(Mapping[str, object], value)
-    name = value["name"]
-    message = value["message"]
-    phase = value["phase"]
-    variable = value.get("variable")
-    if not isinstance(name, str) or not name or not isinstance(message, str):
-        raise traitlets.TraitError("structured error name and message are required")
-    if phase not in {"analysis", "evaluation", "rendering", "serialization"}:
-        raise traitlets.TraitError("structured error phase is invalid")
-    if variable is not None and not isinstance(variable, str):
-        raise traitlets.TraitError("structured error variable must be a string")
-    result: dict[str, Any] = {"name": name, "message": message, "phase": phase}
-    if cell:
-        result["variable"] = variable
-    return result
-
-
-def _cell_error_from_wire(value: object) -> CellError:
-    error = _validate_error_wire(value, cell=True)
-    return CellError(
-        name=cast(str, error["name"]),
-        message=cast(str, error["message"]),
-        phase=cast(ErrorPhase, error["phase"]),
-        variable=cast(str | None, error["variable"]),
-    )
-
-
-def _view_error_from_wire(value: object) -> ViewError:
-    error = _validate_error_wire(value, cell=False)
-    return ViewError(
-        name=cast(str, error["name"]),
-        message=cast(str, error["message"]),
-        phase=cast(ErrorPhase, error["phase"]),
-    )
-
-
-def _wire_revision(value: object, field: str) -> int:
-    if (
-        not isinstance(value, int)
-        or isinstance(value, bool)
-        or value < 0
-        or value > _MAX_SAFE_REVISION
-    ):
-        raise traitlets.TraitError(f"{field} must be a safe non-negative integer")
-    return value
-
-
-def _optional_wire_revision(value: object, field: str) -> int | None:
-    return None if value is None else _wire_revision(value, field)
+    return tuple(diagnostics)

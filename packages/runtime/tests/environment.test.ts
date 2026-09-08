@@ -24,39 +24,36 @@ describe("runtime environment", () => {
 		vi.unstubAllGlobals();
 	});
 
-	test("rejects Python variables that collide with runtime builtins", () => {
+	test("rejects variables that collide with runtime builtins", () => {
 		const registry = registerAttachments({});
 		const root = document.createElement("div");
-		const el = document.createElement("div");
 
 		try {
 			expect(() =>
 				createRuntime(
 					root,
-					el,
 					{
 						...baseOptions,
 						variables: { FileAttachment: "shadowed", document: "shadowed", invalidation: "shadowed" },
 					},
 					registry,
 				),
-			).toThrow("Python variables cannot override Observable runtime builtins: FileAttachment, document, invalidation");
+			).toThrow("Variables cannot override Observable runtime builtins: FileAttachment, document, invalidation");
 		} finally {
 			registry.cleanup();
 		}
 	});
-	test("rejects Python variables that collide with Observable stdlib builtins", () => {
+	test("rejects variables that collide with Observable stdlib builtins", () => {
 		const registry = registerAttachments({});
 
 		try {
 			expect(() =>
 				createRuntime(
 					document.createElement("div"),
-					document.createElement("div"),
 					{ ...baseOptions, runtimeProfile: "observable", variables: { require: "shadowed" } },
 					registry,
 				),
-			).toThrow("Python variables cannot override Observable runtime builtins: require");
+			).toThrow("Variables cannot override Observable runtime builtins: require");
 		} finally {
 			registry.cleanup();
 		}
@@ -64,7 +61,6 @@ describe("runtime environment", () => {
 	test("executes checkbox exports from imported Observable modules", async () => {
 		const registry = registerAttachments({});
 		const runtime = createRuntime(
-			document.createElement("div"),
 			document.createElement("div"),
 			{ ...baseOptions, runtimeProfile: "observable" },
 			registry,
@@ -101,7 +97,6 @@ describe("runtime environment", () => {
 	test("renders raw table rows with the Observable html builtin", async () => {
 		const registry = registerAttachments({});
 		const runtime = createRuntime(
-			document.createElement("div"),
 			document.createElement("div"),
 			{ ...baseOptions, runtimeProfile: "observable" },
 			registry,
@@ -142,7 +137,6 @@ describe("runtime environment", () => {
 		const registry = registerAttachments({});
 		const runtime = createRuntime(
 			document.createElement("div"),
-			document.createElement("div"),
 			{ ...baseOptions, runtimeProfile: "observable" },
 			registry,
 		);
@@ -165,7 +159,6 @@ describe("runtime environment", () => {
 	test("disposes values produced by classic Observable generators", async () => {
 		const registry = registerAttachments({});
 		const runtime = createRuntime(
-			document.createElement("div"),
 			document.createElement("div"),
 			{ ...baseOptions, runtimeProfile: "observable" },
 			registry,
@@ -225,8 +218,6 @@ describe("runtime environment", () => {
 		}
 		vi.stubGlobal("ResizeObserver", TestResizeObserver);
 		const root = document.createElement("div");
-		const el = document.createElement("div");
-		root.getBoundingClientRect = () => new DOMRect(0, 0, 400, 0);
 		const registry: AttachmentRegistry = {
 			baseUrl: "",
 			names: new Set(),
@@ -234,7 +225,7 @@ describe("runtime environment", () => {
 			disposed: false,
 			cleanup() {},
 		};
-		const runtime = createRuntime(root, el, baseOptions, registry);
+		const runtime = createRuntime(root, baseOptions, registry);
 		const values: number[] = [];
 
 		runtime.main
@@ -250,8 +241,9 @@ describe("runtime environment", () => {
 			})
 			.define("observedWidth", ["width"], (width: number) => width);
 
-		expect(await waitFor(() => (last(values) === 400 ? 400 : undefined))).toBe(400);
-		const observer = TestResizeObserver.instances[0]!;
+		const observer = await waitFor(() => TestResizeObserver.instances[0]);
+		observer.emit(240.5);
+		expect(await waitFor(() => (last(values) === 240.5 ? 240.5 : undefined))).toBe(240.5);
 		observer.emit(640);
 		expect(await waitFor(() => (last(values) === 640 ? 640 : undefined))).toBe(640);
 		const cleanup = createRuntimeCleanup(runtime, registry);
@@ -259,7 +251,7 @@ describe("runtime environment", () => {
 		await waitFor(() => (observer.observing ? undefined : true));
 		expect(observer.observing).toBe(false);
 		observer.emit(800);
-		expect(values).toEqual([400, 640]);
+		expect(values).toEqual([240.5, 640]);
 	});
 	test("reads dark mode from the notebook root", async () => {
 		const media = {
@@ -285,7 +277,7 @@ describe("runtime environment", () => {
 			disposed: false,
 			cleanup() {},
 		};
-		const runtime = createRuntime(root, el, baseOptions, registry);
+		const runtime = createRuntime(root, baseOptions, registry);
 		runtime.main.define("directDarkProbe", ["dark"], (dark: boolean) => dark);
 		runtime.main.define("generatorDarkProbe", ["Generators"], (Generators: { dark(): AsyncGenerator<boolean> }) =>
 			Generators.dark(),

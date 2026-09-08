@@ -10,3 +10,6 @@ __pycache__
 .ipynb_checkpoints
 
 packages/pyobservablejs/src/observablejs/static
+
+apps/e2e/test-results
+apps/e2e/playwright-report

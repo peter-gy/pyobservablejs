@@ -55,6 +55,12 @@ the state contains results, a handle from another notebook raises `ValueError`.
 contain values from outputs that succeeded. Read results after the current
 revision finishes.
 
+`values` uses JavaScript output names, such as `total` from
+`const total = rows.length;`. Keyed expression cells capture their displayed
+value under the cell key. Rendered elements become summaries. Results cover
+selected cells. Dependencies outside the selection appear in the graph but have
+no `CellResult` in the view.
+
 ## Structured errors
 
 `CellError` contains `name`, `message`, `phase`, and an optional output
@@ -62,9 +68,10 @@ revision finishes.
 `analysis`, `evaluation`, `rendering`, or `serialization`. Browser stack text
 is not part of the contract.
 
-A JavaScript expression that returns `new Error("invalid value")` has
-succeeded. Its value becomes `BrowserErrorValue(name, message)`. A rejected
-evaluation produces `CellError` and an error result.
+A named output such as `const problem = new Error("invalid value");` has
+succeeded. `values["problem"]` becomes `BrowserErrorValue(name, message)`.
+Throwing that error rejects evaluation and produces `CellError` and an error
+result.
 
 ## `NotebookGraph`
 
@@ -88,8 +95,9 @@ definitions raise `KeyError`.
 
 ### Diagram export
 
-`graph.to_mermaid()` returns a Mermaid `flowchart LR` string.
-`graph.to_d2()` returns a D2 diagram with rightward layout. Diagram labels use
+`graph.to_mermaid()` returns a [Mermaid](https://mermaid.js.org/) `flowchart LR`
+string. `graph.to_d2()` returns a [D2](https://d2lang.com/) diagram with
+rightward layout. Both formats describe diagrams as text. Diagram labels use
 the public key and fall back to notebook position for anonymous cells.
 
 ## `CellInfo`

@@ -25,6 +25,7 @@ SCRIPT_TYPES = {
     "tex": "application/x-tex",
     "dot": "text/vnd.graphviz",
     "sql": "application/sql",
+    "sql.view": "application/sql+view",
     "node": "application/vnd.node.javascript",
     "python": "text/x-python",
     "r": "text/x-r",
@@ -70,9 +71,12 @@ def _serialize_cell(item: Mapping[str, Any]) -> str:
         if value is not None:
             attrs.append(f'{key}="{_html.escape(str(value), quote=True)}"')
     value = re.sub(
-        r"</script", "<\\/script", str(item.get("value", "")), flags=re.IGNORECASE
+        r"<(?=\\*/script(?:\s|>))",
+        r"<\\",
+        str(item.get("value", "")),
+        flags=re.IGNORECASE,
     )
     indented = "\n".join(
-        f"    {line}" if line.strip() else "" for line in value.splitlines()
+        f"    {line}" if line.strip() else "" for line in re.split(r"\r\n?|\n", value)
     )
     return f"  <script {' '.join(attrs)}>\n{indented}\n  </script>"
