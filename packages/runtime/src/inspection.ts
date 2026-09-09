@@ -70,7 +70,11 @@ export function inspectAnalysis(
 ): NotebookInspection {
 	const imports: NotebookImport[] = [];
 	const cells = analysis.cells.map(({ cell, definition, graph }, index) => {
-		if (definition)
+		// Template metadata can also contribute expressions to the generated source.
+		if (
+			definition &&
+			(cell.value.includes("import") || cell.output?.includes("import") || cell.database?.includes("import"))
+		)
 			imports.push(
 				...cellImports(options.runtimeProfile === "observable" ? observableTemplateCell(cell) : cell, index),
 			);

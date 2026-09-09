@@ -6,6 +6,24 @@ afterEach(() => {
 	for (const mount of mounts.splice(0)) mount.dispose();
 });
 
+test.each([
+	{ id: 1, mode: "sql" as const, value: "SELECT 1", database: 'var:(await import("npm:x"))', hidden: true },
+	{ id: 1, mode: "html" as const, value: "<b>content</b>", output: '{missing = await import("npm:x")}' },
+])("inspects imports in $mode template metadata", (cell) => {
+	const info = inspectNotebook({ cells: [cell] });
+	expect(info.cells[0]?.error).toBeUndefined();
+	expect(info.imports).toEqual([
+		{
+			cell: 0,
+			kind: "dynamic",
+			source: "npm:x",
+			resolved: "https://cdn.jsdelivr.net/npm/x/+esm",
+			bindings: [],
+			injections: [],
+		},
+	]);
+});
+
 test("inspects constant dynamic import targets and preserves computed targets", () => {
 	const info = inspectNotebook({
 		cells: [
