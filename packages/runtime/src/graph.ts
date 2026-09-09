@@ -3,6 +3,7 @@ import { transpile, type Cell, type Notebook } from "@observablehq/notebook-kit"
 import { exposedVariableNames, runtimeOutputNames, viewVariableName, type RuntimeCellDefinition } from "./definition";
 import type { RuntimeProfile } from "./environment";
 import { transpileObservableSql } from "./observable-sql";
+import { observableTemplateCell } from "./observable-template";
 export type CellGraph = Readonly<{
 	id: number;
 	index: number;
@@ -166,6 +167,7 @@ function analyzeCell(cell: Cell, index: number, key: string, profile?: RuntimePr
 
 export function transpileNotebookCell(cell: Cell, profile?: RuntimeProfile): RuntimeCellDefinition {
 	if (profile === "observable" && cell.mode === "sql") return transpileObservableSql(cell);
+	if (profile === "observable") cell = observableTemplateCell(cell);
 	return addObservableImportWithInputs(cell, transpile(cell, { resolveLocalImports: true }));
 }
 

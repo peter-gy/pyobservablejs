@@ -15,6 +15,7 @@ import type { AttachmentInfo } from "./attachment-info";
 import type { RuntimeProfile } from "./environment";
 import { analyzeNotebook, type CellGraph, type NotebookAnalysis, type NotebookGraph } from "./graph";
 import { isString } from "./value-kind";
+import { observableTemplateCell } from "./observable-template";
 
 export type ImportBinding = Readonly<{ imported: string; local: string }>;
 export type NotebookImport = Readonly<{
@@ -69,7 +70,10 @@ export function inspectAnalysis(
 ): NotebookInspection {
 	const imports: NotebookImport[] = [];
 	const cells = analysis.cells.map(({ cell, definition, graph }, index) => {
-		if (definition) imports.push(...cellImports(cell, index));
+		if (definition)
+			imports.push(
+				...cellImports(options.runtimeProfile === "observable" ? observableTemplateCell(cell) : cell, index),
+			);
 		return Object.freeze({
 			...graph,
 			key: options.keys?.[index] ?? graph.key,
