@@ -1,0 +1,51 @@
+pnpm-workspace.yaml
+  s_79585de3ae40a1::t_2a1cc7aa691498 9
+  s_79585de3ae40a1::t_7d50bffe19582e 32
+packages/widget/tests/testing.ts
+  s_79585de3ae40a1::t_c24cb4f673a06a 42,240
+packages/runtime/src/dom.ts
+  s_79585de3ae40a1::t_c24cb4f673a06a 17,21
+packages/runtime/src/graph.ts
+  s_79585de3ae40a1::t_c24cb4f673a06a 36
+.github/workflows/ci.yml
+  s_79585de3ae40a1::t_cb473106d4c9fa 43
+tools/oxlint/anti-slop/shared/type-environment.ts
+  s_79585de3ae40a1::t_c24cb4f673a06a 61
+knip.jsonc
+  s_79585de3ae40a1::t_2a1cc7aa691498 6,9,13,17-19
+  s_79585de3ae40a1::t_a99175ce74b376 1-5,7-8,10-12,14-16,20
+packages/runtime/src/themes.ts
+  s_79585de3ae40a1::t_c24cb4f673a06a 78
+packages/widget/src/model.ts
+  s_79585de3ae40a1::t_c24cb4f673a06a 108,171
+packages/runtime/src/definition.ts
+  s_79585de3ae40a1::t_c24cb4f673a06a 83
+tools/oxlint/anti-slop/shared/dictionary-types.ts
+  s_79585de3ae40a1::t_c24cb4f673a06a 28
+development_docs/development.md
+  s_79585de3ae40a1::t_cb473106d4c9fa 83-94
+package.json
+  s_79585de3ae40a1::t_c24cb4f673a06a 6,9
+  s_79585de3ae40a1::t_4666021162a390 10
+  s_79585de3ae40a1::t_7d50bffe19582e 15
+packages/runtime/src/values.ts
+  s_79585de3ae40a1::t_c24cb4f673a06a 3,7
+packages/runtime/src/state.ts
+  s_79585de3ae40a1::t_c24cb4f673a06a 305
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "ea6f8fe90d367dbb3f1f0bc632af741587affaea",
+  "prompts": {},
+  "sessions": {
+    "s_79585de3ae40a1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08565-fdc7-7f80-8d26-29b84d16db77",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Péter Ferenc Gyarmati <dev.petergy@gmail.com>"
+    }
+  }
+}
