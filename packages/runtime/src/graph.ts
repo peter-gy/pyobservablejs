@@ -33,7 +33,7 @@ export type NotebookGraph = Readonly<{
 
 type Definition = RuntimeCellDefinition;
 
-export type CellAnalysis =
+type CellAnalysis =
 	| {
 			cell: Cell;
 			index: number;

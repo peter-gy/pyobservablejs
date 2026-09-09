@@ -24,10 +24,6 @@ type RuntimeFileAttachmentFactory = {
 };
 type RuntimeFileResolver = Parameters<NotebookRuntime["runtime"]["fileAttachments"]>[0];
 const NativeSQLiteDatabaseClient = new Library().SQLiteDatabaseClient();
-type NativeSQLiteClient = InstanceType<typeof NativeSQLiteDatabaseClient>;
-export type SQLiteRows = Awaited<ReturnType<NativeSQLiteClient["query"]>>;
-export type SQLiteRow = SQLiteRows[number];
-export type SQLiteValue = SQLiteRow[string];
 export type SQLiteSource = Parameters<typeof NativeSQLiteDatabaseClient.open>[0];
 type SqlJsDatabase = ConstructorParameters<typeof NativeSQLiteDatabaseClient>[0];
 type SqlJsModule = {

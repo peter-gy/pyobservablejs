@@ -302,7 +302,7 @@ export function structuredCellError<Cause>(cause: Cause, phase: ErrorPhase, vari
 	return variable === undefined ? error : { ...error, variable };
 }
 
-export function structuredError<Cause>(cause: Cause, phase: ErrorPhase): NotebookError {
+function structuredError<Cause>(cause: Cause, phase: ErrorPhase): NotebookError {
 	return Object.freeze({ ...errorDetails(cause), phase });
 }
 

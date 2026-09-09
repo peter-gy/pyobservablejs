@@ -40,7 +40,7 @@ jobs:
           run-install: |
             - args: ['--frozen-lockfile']
 
-      - name: Check JavaScript formatting, linting, and types
+      - name: Check JavaScript formatting, linting, types, and unused code
         run: vp run check
 
       - name: Check Python formatting, linting, and types

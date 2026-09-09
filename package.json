@@ -3,14 +3,16 @@
 	"private": true,
 	"scripts": {
 		"build": "vp run -F './packages/*' build",
-		"check": "vp check --no-error-on-unmatched-pattern .github apps development_docs packages scripts skills AGENTS.md README.md example.ipynb package.json plugin.json pnpm-lock.yaml pnpm-workspace.yaml pyproject.toml tsconfig.json vite.config.ts && pnpm check:anti-slop",
+		"check": "vp check --no-error-on-unmatched-pattern .github apps development_docs packages scripts skills AGENTS.md README.md example.ipynb knip.jsonc package.json plugin.json pnpm-lock.yaml pnpm-workspace.yaml pyproject.toml tsconfig.json vite.config.ts && pnpm check:anti-slop && pnpm check:knip",
 		"check:anti-slop": "node --test --test-concurrency=1 tools/oxlint/anti-slop/test/*.test.ts tools/oxlint/anti-slop/test/compatibility/*.test.ts && tsc -p tools/oxlint/anti-slop/tsconfig.json --noEmit",
 		"dev": "vp run @pyobservablejs/python#dev",
-		"test": "vp run -r test"
+		"test": "vp run -r test",
+		"check:knip": "knip --treat-config-hints-as-errors"
 	},
 	"devDependencies": {
 		"@oxlint/plugins": "catalog:",
 		"@types/node": "catalog:",
+		"knip": "catalog:",
 		"oxlint": "catalog:",
 		"oxlint-tsgolint": "catalog:",
 		"typescript": "catalog:",

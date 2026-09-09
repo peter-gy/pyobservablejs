@@ -39,7 +39,7 @@ export const widget = {
 	},
 };
 
-export function createModel(initial: Partial<WidgetModel>): TestModel {
+function createModel(initial: Partial<WidgetModel>): TestModel {
 	return new TestWidgetModel(initial);
 }
 
@@ -237,7 +237,7 @@ export function cellRecord(model: Model, index: number): CellRecord | undefined 
 	return readCellRecord(readCellValues(model)[String(index)]);
 }
 
-export function cellRecords(model: Model): CellRecord[] {
+function cellRecords(model: Model): CellRecord[] {
 	return Object.values(readCellValues(model)).flatMap((value) => {
 		const record = readCellRecord(value);
 		return record ? [record] : [];

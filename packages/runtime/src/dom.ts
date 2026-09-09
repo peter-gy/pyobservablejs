@@ -14,11 +14,11 @@ export const CLASS_NAMES = {
 	sourceToken: "pyobservablejs-source-token",
 } as const;
 
-export const DATASET_KEYS = {
+const DATASET_KEYS = {
 	sourceHighlight: "pyobservablejsSourceHighlight",
 } as const;
 
-export const CSS_VARIABLES = {
+const CSS_VARIABLES = {
 	sourceBackground: "--pyobservablejs-source-bg",
 	sourceColor: "--pyobservablejs-source-color",
 } as const;

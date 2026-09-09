@@ -1,0 +1,20 @@
+{
+	"$schema": "https://unpkg.com/knip@6/schema-jsonc.json",
+	"workspaces": {
+		"apps/docs": {
+			// Docusaurus discovers MDX pages and theme overrides by directory.
+			"entry": ["src/pages/**/*.mdx", "src/theme/**/*.{js,jsx,ts,tsx}"],
+		},
+		"apps/e2e": {
+			"vite": { "config": "standalone/vite.config.ts" },
+		},
+		"packages/pyobservablejs": {
+			// anywidget-bundle resolves its app option as the browser entry point.
+			"ignoreDependencies": ["@pyobservablejs/widget"],
+		},
+		"packages/runtime": {
+			// Observable require resolves this test fixture through its CDN loader.
+			"ignoreDependencies": ["d3-format"],
+		},
+	},
+}
