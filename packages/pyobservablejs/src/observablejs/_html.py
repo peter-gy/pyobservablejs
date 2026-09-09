@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import math
 import re
-import textwrap
 from html.parser import HTMLParser
 from typing import Any, cast
 
@@ -89,10 +88,15 @@ class _NotebookHTMLParser(HTMLParser):
             return
         attrs = self._script_attrs
         self._script_attrs = None
+        lines = re.split(r"\r\n?|\n", "".join(self._script_parts))
+        if lines and not lines[-1].strip(_ECMASCRIPT_TRIM):
+            lines.pop()
+        if lines and not lines[0].strip(_ECMASCRIPT_TRIM):
+            lines.pop(0)
         value = re.sub(
             r"<\\(?=\\*/script(?:\s|>))",
             "<",
-            textwrap.dedent("".join(self._script_parts)).strip("\n"),
+            "\n".join(line.removeprefix("    ") for line in lines),
             flags=re.IGNORECASE,
         )
         cell_attrs: dict[str, Any] = {}

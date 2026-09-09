@@ -14,12 +14,27 @@ from helpers import DocumentTitle, ObservableHQResponseInstaller, ScriptTags
         r"content = String.raw`<\/script>`",
         r"content = String.raw`<\\/SCRIPT >`",
         "content = String.raw`first\u2028second`",
+        "content = String.raw`first\n  \n\t\nlast`",
+        "    content = String.raw`first\n      second\n    last`",
+        "\n\ncontent = `first\n  \nlast`\n\n",
     ],
 )
 def test_html_roundtrip_preserves_literal_script_text(source: str) -> None:
     notebook = obs.Notebook(obs.ojs(source, key="content", raw=True))
     restored = obs.Notebook.from_html(notebook.to_notebook_html())
     assert restored.cell("content").source == source
+    restored.close()
+    notebook.close()
+
+
+def test_observable_document_html_roundtrip_preserves_template_whitespace() -> None:
+    source = "content = String.raw`first\n  \nlast`"
+    notebook = obs.Notebook.from_observablehq_document(
+        {"nodes": [{"id": 1, "mode": "js", "value": source}]}
+    )
+    restored = obs.Notebook.from_html(notebook.to_notebook_html())
+
+    assert restored.cells[0].source == source
     restored.close()
     notebook.close()
 
