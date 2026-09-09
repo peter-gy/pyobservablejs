@@ -9,4 +9,8 @@ declare module "@observablehq/parser" {
 	};
 
 	export function parseCell(source: string): ParsedCell;
+	export function parseCell(
+		source: string,
+		options: { tag: string; raw?: boolean },
+	): ParsedCell & { body: import("acorn").TemplateLiteral | null };
 }
