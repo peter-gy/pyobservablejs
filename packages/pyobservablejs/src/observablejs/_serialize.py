@@ -76,7 +76,5 @@ def _serialize_cell(item: Mapping[str, Any]) -> str:
         str(item.get("value", "")),
         flags=re.IGNORECASE,
     )
-    indented = "\n".join(
-        f"    {line}" if line.strip() else "" for line in re.split(r"\r\n?|\n", value)
-    )
+    indented = "\n".join(f"    {line}" for line in re.split(r"\r\n?|\n", value))
     return f"  <script {' '.join(attrs)}>\n{indented}\n  </script>"
