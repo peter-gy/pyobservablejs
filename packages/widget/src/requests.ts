@@ -1,7 +1,15 @@
 import { createDiagnostic, type Diagnostic, type MountedNotebook } from "@pyobservablejs/runtime";
-import { isCallable, isNumber, isObjectValue, isString, isSymbol } from "@pyobservablejs/runtime/values";
+import {
+	isBigInt,
+	isBoolean,
+	isCallable,
+	isNumber,
+	isObjectValue,
+	isString,
+	isSymbol,
+} from "@pyobservablejs/runtime/values";
 import { isRecord, type AnyWidgetModel, type WidgetModel, type WireDiagnostics } from "./model";
-import { toWireValue, type WireValue } from "./values";
+import { toWireValue, type RevivedRecord, type RevivedValue, type WireValue } from "./values";
 
 type NotebookAccess = Pick<MountedNotebook, "inspection" | "datasets" | "read">;
 type ReadSelector = Parameters<NotebookAccess["read"]>[0];
@@ -223,53 +231,86 @@ function readResponse(value: ReadResult, format: WireReadFormat): ReadResponse {
 }
 
 function encodeReadValue<Value>(value: Value): WireValue {
-	assertReadShape(value, { nodes: 500_000, bytes: 16 * 1024 * 1024, seen: new WeakSet() });
-	const encoded = toWireValue(value, { nodes: 500_000, bytes: 16 * 1024 * 1024 });
+	// Copy shared branches so the preview encoder does not summarize them as references.
+	const copy = copyReadValue(value, { nodes: 500_000, bytes: 16 * 1024 * 1024, ancestors: new WeakSet() });
+	const encoded = toWireValue(copy, { nodes: 500_000, bytes: 16 * 1024 * 1024 });
 	assertExactValue(encoded);
 	return encoded;
 }
 
-type ReadShapeBudget = { nodes: number; bytes: number; seen: WeakSet<object> };
+type ReadShapeBudget = { nodes: number; bytes: number; ancestors: WeakSet<object> };
 
-function assertReadShape<Value>(value: Value, budget: ReadShapeBudget, depth = 0): void {
+function copyReadValue<Value>(value: Value, budget: ReadShapeBudget, depth = 0): RevivedValue {
 	budget.nodes -= 1;
 	budget.bytes -= isString(value) ? 32 + value.length * 6 : 32;
 	if (budget.nodes < 0 || budget.bytes < 0 || depth >= 100) throw readShapeError();
 	if (isCallable(value) || isSymbol(value)) throw readShapeError();
-	if (!isObjectValue(value)) return;
+	if (value === null) return null;
+	if (value === undefined) return undefined;
+	if (isString(value) || isNumber(value) || isBigInt(value) || isBoolean(value)) return value;
+	if (!isObjectValue(value)) throw readShapeError();
 	const prototype = Object.getPrototypeOf(value);
 	if (prototype === Date.prototype && value instanceof Date) {
 		if (Reflect.ownKeys(value).length || !Number.isFinite(value.getTime())) throw readShapeError();
-		return;
+		return value;
 	}
-	if (budget.seen.has(value)) throw readShapeError();
-	budget.seen.add(value);
-	if (prototype === Map.prototype && value instanceof Map) {
-		if (Reflect.ownKeys(value).length || value.size * 2 > budget.nodes) throw readShapeError();
-		for (const [key, item] of value) {
-			assertReadShape(key, budget, depth + 1);
-			assertReadShape(item, budget, depth + 1);
+	if (budget.ancestors.has(value)) throw readShapeError();
+	budget.ancestors.add(value);
+	try {
+		if (prototype === Map.prototype && value instanceof Map) {
+			if (Reflect.ownKeys(value).length || value.size * 2 > budget.nodes) throw readShapeError();
+			const copy = new Map<RevivedValue, RevivedValue>();
+			for (const [key, item] of value) {
+				copy.set(copyReadValue(key, budget, depth + 1), copyReadValue(item, budget, depth + 1));
+			}
+			return copy;
 		}
-		return;
-	}
-	if (prototype === Set.prototype && value instanceof Set) {
-		if (Reflect.ownKeys(value).length || value.size > budget.nodes) throw readShapeError();
-		for (const item of value) assertReadShape(item, budget, depth + 1);
-		return;
-	}
-	const array = Array.isArray(value);
-	if (array ? prototype !== Array.prototype : prototype !== Object.prototype && prototype !== null)
-		throw readShapeError();
-	if (array && value.length > budget.nodes) throw readShapeError();
-	for (const key of Reflect.ownKeys(value)) {
-		if (array && key === "length") continue;
-		if (!isString(key)) throw readShapeError();
-		budget.bytes -= key.length * 6;
-		if (array && (String(Number(key)) !== key || Number(key) < 0 || Number(key) >= value.length))
+		if (prototype === Set.prototype && value instanceof Set) {
+			if (Reflect.ownKeys(value).length || value.size > budget.nodes) throw readShapeError();
+			const copy = new Set<RevivedValue>();
+			for (const item of value) copy.add(copyReadValue(item, budget, depth + 1));
+			return copy;
+		}
+		const array = Array.isArray(value);
+		if (array ? prototype !== Array.prototype : prototype !== Object.prototype && prototype !== null)
 			throw readShapeError();
-		const descriptor = Object.getOwnPropertyDescriptor(value, key);
-		if (!descriptor?.enumerable || !("value" in descriptor)) throw readShapeError();
-		assertReadShape(descriptor.value, budget, depth + 1);
+		if (array && value.length > budget.nodes) throw readShapeError();
+		const keys = Reflect.ownKeys(value);
+		if (array) {
+			for (const key of keys) {
+				if (key === "length") continue;
+				if (
+					!isString(key) ||
+					!Number.isInteger(Number(key)) ||
+					String(Number(key)) !== key ||
+					Number(key) < 0 ||
+					Number(key) >= value.length
+				)
+					throw readShapeError();
+			}
+			// The wire encoder visits holes as undefined values, including each shared branch.
+			const holes = value.length - (keys.length - 1);
+			budget.nodes -= holes;
+			budget.bytes -= holes * 32;
+			if (budget.nodes < 0 || budget.bytes < 0) throw readShapeError();
+		}
+		const copy: RevivedValue[] | RevivedRecord = array ? Array.from({ length: value.length }, () => undefined) : {};
+		for (const key of keys) {
+			if (array && key === "length") continue;
+			if (!isString(key)) throw readShapeError();
+			budget.bytes -= key.length * 6;
+			const descriptor = Object.getOwnPropertyDescriptor(value, key);
+			if (!descriptor?.enumerable || !("value" in descriptor)) throw readShapeError();
+			Object.defineProperty(copy, key, {
+				value: copyReadValue(descriptor.value, budget, depth + 1),
+				enumerable: true,
+				configurable: true,
+				writable: true,
+			});
+		}
+		return copy;
+	} finally {
+		budget.ancestors.delete(value);
 	}
 }
 
