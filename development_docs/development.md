@@ -80,6 +80,18 @@ Run the local gate before sending changes for review:
 make check
 ```
 
+Run [Knip](https://knip.dev/), the JavaScript and TypeScript unused-code checker,
+on its own while resolving unused files, dependencies, exports, or types:
+
+```sh
+pnpm check:knip
+```
+
+`pnpm check` and the CI quality job run this check. `knip.jsonc` records
+framework entry points and dependencies loaded through runtime strings.
+Package entry exports remain available to external consumers. Internal
+exports and types are checked for references across the workspace.
+
 CI runs JavaScript checks and tests, tests Python 3.11 through 3.14, and builds
 the Python distributions. The `test-js` job builds the widget assets once. The
 Python test matrix and `package` job download those assets from the same

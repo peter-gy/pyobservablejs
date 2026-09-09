@@ -1,10 +1,10 @@
 import { isCallable, isObjectValue } from "./value-kind";
 
-export interface RuntimeObject {
+interface RuntimeObject {
 	toString(): string;
 }
 
-export interface RuntimeRecord {
+interface RuntimeRecord {
 	[name: string]: RuntimeValue;
 }
 

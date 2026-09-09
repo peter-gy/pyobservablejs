@@ -37,8 +37,6 @@ export const NOTEBOOK_THEMES = [
 	"sun-faded",
 ] as const satisfies readonly NotebookTheme[];
 
-const NOTEBOOK_THEME_NAMES = new Set<string>(NOTEBOOK_THEMES);
-
 const THEME_CSS = {
 	air: themeAirCss,
 	coffee: themeCoffeeCss,
@@ -77,11 +75,7 @@ export function applyNotebookTheme(root: HTMLElement, theme: Notebook["theme"]):
 	root.dataset.themeDark = theme.dark;
 }
 
-export function isNotebookTheme<Value>(value: Value): value is Value & NotebookTheme {
-	return isString(value) && NOTEBOOK_THEME_NAMES.has(value);
-}
-
-export function scopedNotebookThemeCss(): string {
+function scopedNotebookThemeCss(): string {
 	return NOTEBOOK_THEMES.map((theme) => scopedCssForTheme(theme, THEME_CSS[theme])).join("\n");
 }
 

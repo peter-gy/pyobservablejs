@@ -105,7 +105,7 @@ export function readCaptureState(model: AnyWidgetModel): boolean {
 	return value;
 }
 
-export function readNotebookVariables(model: AnyWidgetModel): WireValues {
+function readNotebookVariables(model: AnyWidgetModel): WireValues {
 	return readWireValues(model.get("_variables"));
 }
 
@@ -168,7 +168,7 @@ export function readSelectedCellIndexes(model: AnyWidgetModel): Set<number> | nu
 	return indexes;
 }
 
-export function readCellKeys(model: AnyWidgetModel): string[] {
+function readCellKeys(model: AnyWidgetModel): string[] {
 	const value = model.get("_cell_keys");
 	if (!Array.isArray(value)) return [];
 	return value.map((item) => (isString(item) ? item : ""));

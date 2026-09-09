@@ -80,7 +80,7 @@ export function viewVariableName(definition: RuntimeCellDefinition): string | nu
 	return unprefix(definition.output, "viewof$");
 }
 
-export function unprefix(value: string, prefix: string): string {
+function unprefix(value: string, prefix: string): string {
 	return value.startsWith(prefix) ? value.slice(prefix.length) : value;
 }
 

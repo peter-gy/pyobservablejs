@@ -21,6 +21,7 @@
 		"react-dom": "^19.2.8"
 	},
 	"devDependencies": {
+		"@docusaurus/plugin-content-docs": "catalog:",
 		"@docusaurus/types": "3.10.2"
 	}
 }

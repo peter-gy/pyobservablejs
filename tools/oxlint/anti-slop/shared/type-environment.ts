@@ -58,7 +58,7 @@ export type LexicalTypeEnvironment = {
   isBuiltInTypeReference(type: ESTree.TSTypeReference, name: string): boolean;
 };
 
-export type TypeSubstitution = {
+type TypeSubstitution = {
   readonly type: ESTree.TSType;
   readonly substitutions: TypeSubstitutions;
 };
