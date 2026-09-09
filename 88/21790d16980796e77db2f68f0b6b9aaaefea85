@@ -1,0 +1,23 @@
+packages/pyobservablejs/src/observablejs/_html.py
+  s_a0c3b91d54d999::t_d3021a01bff0b6 91-95,99
+packages/pyobservablejs/src/observablejs/_serialize.py
+  s_a0c3b91d54d999::t_d3021a01bff0b6 79
+packages/pyobservablejs/tests/test_notebook_serialization.py
+  s_a0c3b91d54d999::t_421b82f0c9fa29 17-19,30-37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "8821790d16980796e77db2f68f0b6b9aaaefea85",
+  "prompts": {},
+  "sessions": {
+    "s_a0c3b91d54d999": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08268-0b0e-7152-8b27-c0257e93978c",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Péter Ferenc Gyarmati <dev.petergy@gmail.com>"
+    }
+  }
+}
