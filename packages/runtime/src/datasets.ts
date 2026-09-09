@@ -385,18 +385,17 @@ function inferColumns(rows: readonly RuntimeValue[], names?: readonly string[]):
 }
 
 function rowNames(rows: readonly RuntimeValue[]): string[] {
-	return [
-		...new Set(
-			rows.flatMap((row) =>
-				isRow(row)
-					? Object.keys(row).filter((name) => {
-							const descriptor = Object.getOwnPropertyDescriptor(row, name);
-							return isArrowRow(row) || (descriptor && "value" in descriptor);
-						})
-					: [],
-			),
-		),
-	];
+	const names = new Set<string>();
+	for (const row of rows) {
+		if (!isRow(row)) continue;
+		const arrow = isArrowRow(row);
+		for (const name of Object.keys(row)) {
+			if (names.has(name)) continue;
+			const descriptor = Object.getOwnPropertyDescriptor(row, name);
+			if (arrow || (descriptor && "value" in descriptor)) names.add(name);
+		}
+	}
+	return [...names];
 }
 
 function inferColumn(name: string, values: readonly RuntimeValue[]): ColumnInfo {

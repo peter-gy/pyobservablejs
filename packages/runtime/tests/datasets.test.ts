@@ -99,6 +99,28 @@ test("samples discovery but retains fields beyond the sample in explicit reads",
 	expect(table.getChild("extra")?.get(0)).toBeNull();
 });
 
+test("discovers stored columns across rows with accessors", () => {
+	const getter = vi.fn(() => 99);
+	const first = Object.defineProperty({ name: "first" }, "amount", { get: getter, enumerable: true });
+	const second = Object.defineProperty({ name: "second", amount: 7 }, "lazy", { get: getter, enumerable: true });
+	expect(describeDataset([first, second])?.columns).toEqual([
+		{ name: "name", type: "string", nullable: false },
+		{ name: "amount", type: "number", nullable: true },
+	]);
+	expect(getter).not.toHaveBeenCalled();
+});
+
+test("reads fields added and removed from mutable rows", async () => {
+	const row = { amount: 2 };
+	const rows = [row];
+	const initial = describeDataset(rows);
+	Object.assign(row, { label: "current" });
+	expect((await readDataset(rows, { format: "rows" })).data).toEqual([{ amount: 2, label: "current" }]);
+	Reflect.deleteProperty(row, "label");
+	expect((await readDataset(rows, { format: "rows" })).data).toEqual([{ amount: 2 }]);
+	expect(initial?.columns).toEqual([{ name: "amount", type: "number", nullable: false }]);
+});
+
 test("converts scalar arrays and preserves declared schemas for empty rows", async () => {
 	const values = [3n, null, 5n];
 	expect(describeDataset(values)?.kind).toBe("array");
