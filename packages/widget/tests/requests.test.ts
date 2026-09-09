@@ -199,11 +199,57 @@ test("preserves tagged scalar values and genuine user tag keys in explicit JSON 
 	controller.abort();
 });
 
+test.each(["json", "rows"] as const)("reads shared coordinate arrays as detached %s values", async (format) => {
+	const coordinates = [12.5, 48.25];
+	const data = [{ properties: { coordinates }, geometry: { type: "Point", coordinates } }];
+	const { model, controller } = connect(fixture({ read: async () => result(data) }));
+	request(model, "shared", { selector: "geoJSON", options: { format } });
+	expect((await waitFor(() => findResponse(model, "shared"))).content).toMatchObject({
+		result: {
+			format,
+			data: [
+				{
+					properties: { coordinates: [12.5, 48.25] },
+					geometry: { type: "Point", coordinates: [12.5, 48.25] },
+				},
+			],
+		},
+	});
+	controller.abort();
+});
+
+test("preserves maps and sets containing shared values in JSON reads", async () => {
+	const point = { x: 2 };
+	const data = { positions: new Map([["start", point]]), selected: new Set([point]) };
+	const { model, controller } = connect(fixture({ read: async () => result(data) }));
+	request(model, "collections", { selector: "value", options: { format: "json" } });
+	expect((await waitFor(() => findResponse(model, "collections"))).content).toMatchObject({
+		result: {
+			data: {
+				positions: { __observablejs_type__: "map", value: [["start", { x: 2 }]] },
+				selected: { __observablejs_type__: "set", value: [{ x: 2 }] },
+			},
+		},
+	});
+	controller.abort();
+});
+
 test.each([
 	["function", () => () => 1],
 	["DOM element", () => document.createElement("div")],
 	["binary", () => new Uint8Array([1, 2])],
 	["array metadata", () => Object.assign([1, 2], { columns: ["value"] })],
+	["fractional array property", () => Object.assign([1], { "0.5": 2 })],
+	["NaN array property", () => Object.assign([1], { NaN: 2 })],
+	["symbol property", () => ({ [Symbol("field")]: 3 })],
+	[
+		"shared sparse expansion",
+		() => {
+			const sparse: number[] = [];
+			sparse.length = 5_000;
+			return Array.from({ length: 101 }, () => sparse);
+		},
+	],
 	["oversized text", () => "x".repeat(3_000_000)],
 	[
 		"cycle",
