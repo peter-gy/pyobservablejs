@@ -1,0 +1,21 @@
+packages/runtime/src/inspection.ts
+  s_a0c3b91d54d999::t_5db540b23b554d 73-77
+packages/runtime/tests/access.test.ts
+  s_a0c3b91d54d999::t_e1e69077a71663 9-26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "67709f1520004563a788272115d0debc33f02b0d",
+  "prompts": {},
+  "sessions": {
+    "s_a0c3b91d54d999": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08268-0b0e-7152-8b27-c0257e93978c",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Péter Ferenc Gyarmati <dev.petergy@gmail.com>"
+    }
+  }
+}
