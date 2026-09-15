@@ -84,14 +84,14 @@ wheels = [
 
 [[package]]
 name = "anywidget-bundle"
-version = "0.0.1"
+version = "0.1.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anywidget" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b2/49/76f48fe3a92dd99a24b6831bba886a3589ebe09244713a93e2e0e11655cd/anywidget_bundle-0.0.1.tar.gz", hash = "sha256:963919d080fa5e0386d9d4b0e4b039331c2cca6894539c48b21302f16cb61303", size = 6283, upload-time = "2026-07-15T17:43:29.836Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/1a/f5/91dc12039712a63a7937e9fcf79c200776781a42d1718dbcadb40f78e7eb/anywidget_bundle-0.1.1.tar.gz", hash = "sha256:186dbdf694da0429cc989cd51408fe43e896f73ef6f9665a183caf1924380df6", size = 7164, upload-time = "2026-09-15T16:27:26.781Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/39/b2/a9b7d786f77f19d8e4cde92fdb34c810146b5d2c5be282695c11c77fc350/anywidget_bundle-0.0.1-py3-none-any.whl", hash = "sha256:4388f33b076cb17aa9ffbdbccded31c6c642e86c395cbf3361a48b4c16aaaf5c", size = 7206, upload-time = "2026-07-15T17:43:28.751Z" },
+    { url = "https://files.pythonhosted.org/packages/3d/97/b061e70494f85a2f92becf3e820d4087c22cf8a77b5cad6626bf56292c97/anywidget_bundle-0.1.1-py3-none-any.whl", hash = "sha256:f2e46d31cc2c69e9d6abb9efe6bbd4884c901280bb0b1e75cdcb79f8941ca237", size = 8642, upload-time = "2026-09-15T16:27:25.675Z" },
 ]
 
 [[package]]
@@ -2059,7 +2059,7 @@ wheels = [
 
 [[package]]
 name = "pyobservablejs"
-version = "0.1.2"
+version = "0.1.3"
 source = { editable = "packages/pyobservablejs" }
 dependencies = [
     { name = "agent-plugins" },
@@ -2078,7 +2078,7 @@ dev = [
 requires-dist = [
     { name = "agent-plugins", specifier = ">=0.2" },
     { name = "anywidget", specifier = ">=0.11.0" },
-    { name = "anywidget-bundle", specifier = "==0.0.1" },
+    { name = "anywidget-bundle", specifier = "==0.1.1" },
     { name = "traitlets", specifier = ">=5" },
 ]
 

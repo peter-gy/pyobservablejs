@@ -40,7 +40,7 @@ minimumReleaseAge: 20160
 minimumReleaseAgeStrict: true
 minimumReleaseAgeExclude:
   - "@marimo-team/mdx-marimo@0.0.5"
-  - anywidget-bundle@0.0.1
+  - anywidget-bundle@0.1.1
   - serialize-javascript@7.0.5
   - uuid@11.1.1
   - brace-expansion@1.1.18 || 2.1.4
