@@ -207,8 +207,8 @@ importers:
         specifier: 'catalog:'
         version: 22.20.1
       anywidget-bundle:
-        specifier: 0.0.1
-        version: 0.0.1(@voidzero-dev/vite-plus-core@0.2.4(@types/node@22.20.1)(jiti@2.7.0)(terser@5.49.0)(typescript@6.0.3)(yaml@2.8.3))
+        specifier: 0.1.1
+        version: 0.1.1(@voidzero-dev/vite-plus-core@0.2.4(@types/node@22.20.1)(jiti@2.7.0)(terser@5.49.0)(typescript@6.0.3)(yaml@2.8.3))
       vite:
         specifier: npm:@voidzero-dev/vite-plus-core@0.2.4
         version: '@voidzero-dev/vite-plus-core@0.2.4(@types/node@22.20.1)(jiti@2.7.0)(terser@5.49.0)(typescript@6.0.3)(yaml@2.8.3)'
@@ -3545,11 +3545,11 @@ packages:
     resolution: {integrity: sha512-KMReFUr0B4t+D+OBkjR3KYqvocp2XaSzO55UcB6mgQMd3KbcE+mWTyvVV7D/zsdEbNnV6acZUutkiHQXvTr1Rw==}
     engines: {node: '>= 8'}
 
-  anywidget-bundle@0.0.1:
-    resolution: {integrity: sha512-iSYtIOWFd8b6bKrRPlutQpxgmUWMg0LlSExDdJ5wmSgyngQCbdN07RsAvcPQm8WZXVySqbQOzXvWbBaN0jRb0w==}
+  anywidget-bundle@0.1.1:
+    resolution: {integrity: sha512-1vSxh/LeZ+//EAE1FboKwiEbVgrDuKBJLWcNaOD0W1lM54b0lA86rkUPazvq4C48kVnX4qYS+NQsfRST4Vielg==}
     engines: {node: '>=20.19.0'}
     peerDependencies:
-      vite: '>=8 || ^0.2.4'
+      vite: '>=8 || ^0.2.4 || ^0.3.2'
 
   apache-arrow@17.0.0:
     resolution: {integrity: sha512-X0p7auzdnGuhYMVKYINdQssS4EcKec9TCXyez/qtJt32DrIMGbzqiaMiQ0X6fQlQpw8Fl0Qygcv4dfRAr5Gu9Q==}
@@ -4539,6 +4539,9 @@ packages:
 
   es-module-lexer@2.3.1:
     resolution: {integrity: sha512-shc1dbU90Yl/xq1QrC7QRtfcwURZuVRfPhZbDoldJ1cn1gzDvBaBWlv0eFolj5+0znnPJz5TXLxsN77X/12KTA==}
+
+  es-module-lexer@2.3.2:
+    resolution: {integrity: sha512-poHGpORABojJJucnV9KbOavETW8lBVnphkW77ER5/BQ5Fz7oXSoCNek7IH3vR5nRjdsEz926ibFYX8KtLQmdyw==}
 
   es-object-atoms@1.1.2:
     resolution: {integrity: sha512-HWcBoN6NileqtSydK2FqHbS/LoDd2pqrnQHLyJzBj4kOp/ky2MWMN694xOfkK8/SnUsW2DH7EfyVlydKCsm1Zw==}
@@ -12325,10 +12328,10 @@ snapshots:
       normalize-path: 3.0.0
       picomatch: 2.3.2
 
-  anywidget-bundle@0.0.1(@voidzero-dev/vite-plus-core@0.2.4(@types/node@22.20.1)(jiti@2.7.0)(terser@5.49.0)(typescript@6.0.3)(yaml@2.8.3)):
+  anywidget-bundle@0.1.1(@voidzero-dev/vite-plus-core@0.2.4(@types/node@22.20.1)(jiti@2.7.0)(terser@5.49.0)(typescript@6.0.3)(yaml@2.8.3)):
     dependencies:
       '@anywidget/types': 0.4.0
-      es-module-lexer: 2.3.1
+      es-module-lexer: 2.3.2
       vite: '@voidzero-dev/vite-plus-core@0.2.4(@types/node@22.20.1)(jiti@2.7.0)(terser@5.49.0)(typescript@6.0.3)(yaml@2.8.3)'
 
   apache-arrow@17.0.0:
@@ -13380,6 +13383,8 @@ snapshots:
   es-errors@1.3.0: {}
 
   es-module-lexer@2.3.1: {}
+
+  es-module-lexer@2.3.2: {}
 
   es-object-atoms@1.1.2:
     dependencies:
