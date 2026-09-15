@@ -1,0 +1,19 @@
+packages/pyobservablejs/pyproject.toml
+  s_caf28b020e325c::t_0196a4dd0703dc 16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "861b62ec428e1b40fa21ad18b921b1160a8bd7e9",
+  "prompts": {},
+  "sessions": {
+    "s_caf28b020e325c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0a546-4d10-70d3-a5ec-07f3fd0fd554",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Péter Ferenc Gyarmati <dev.petergy@gmail.com>"
+    }
+  }
+}
