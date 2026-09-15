@@ -2059,7 +2059,7 @@ wheels = [
 
 [[package]]
 name = "pyobservablejs"
-version = "0.1.1"
+version = "0.1.2"
 source = { editable = "packages/pyobservablejs" }
 dependencies = [
     { name = "agent-plugins" },
@@ -2077,9 +2077,9 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "agent-plugins", specifier = ">=0.2" },
-    { name = "anywidget", specifier = "==0.11.0" },
+    { name = "anywidget", specifier = ">=0.11.0" },
     { name = "anywidget-bundle", specifier = "==0.0.1" },
-    { name = "traitlets", specifier = "==5.16.1" },
+    { name = "traitlets", specifier = ">=5" },
 ]
 
 [package.metadata.requires-dev]
