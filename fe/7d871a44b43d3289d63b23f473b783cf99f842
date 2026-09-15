@@ -1,0 +1,33 @@
+packages/pyobservablejs/NOTICE
+  s_213c18ef0a267b::t_782d5637814ed9 470
+  s_213c18ef0a267b::t_0adcc781fee3a8 310
+packages/pyobservablejs/pyproject.toml
+  s_213c18ef0a267b::t_0adcc781fee3a8 16
+pnpm-lock.yaml
+  ai_agent 210-211,3548-3549,3552,4543-4545,12331,12334,13387
+packages/pyobservablejs/package.json
+  s_213c18ef0a267b::t_0adcc781fee3a8 14
+pnpm-workspace.yaml
+  s_213c18ef0a267b::t_0adcc781fee3a8 43
+NOTICE
+  s_213c18ef0a267b::t_782d5637814ed9 470
+  s_213c18ef0a267b::t_0adcc781fee3a8 310
+uv.lock
+  ai_agent 87,92,94,2062,2081
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "fe7d871a44b43d3289d63b23f473b783cf99f842",
+  "prompts": {},
+  "sessions": {
+    "s_213c18ef0a267b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0a5f0-aaeb-7022-8aa3-54b0a5bb2c72",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Péter Ferenc Gyarmati <dev.petergy@gmail.com>"
+    }
+  }
+}
