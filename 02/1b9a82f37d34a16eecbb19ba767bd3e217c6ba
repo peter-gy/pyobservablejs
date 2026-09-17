@@ -1,0 +1,29 @@
+packages/runtime/src/notebook-values.ts
+  s_2d61c9243ab951::t_7251e04ba009b0 109
+  s_2d61c9243ab951::t_f2bcb6d3c5295e 155
+  s_2d61c9243ab951::t_23ef57f36abee1 21-22,24-26,39-40,42,54-58,64,68,77,81-84,150-154,156-160,166,169-173,190-196,210-227,229-231
+  s_2d61c9243ab951::t_a30fd4e999c1c0 87-108,110
+packages/runtime/src/state.ts
+  ai_agent 58,80-90,94-105,206,221,305-308
+packages/pyobservablejs/src/observablejs/_variables.py
+  s_2d61c9243ab951::t_d99974f423a41c 234
+packages/runtime/tests/access.test.ts
+  s_2d61c9243ab951::t_b90b89890b7180 347-352
+  s_2d61c9243ab951::t_8e04b05560399c 344-346,353-364
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "021b9a82f37d34a16eecbb19ba767bd3e217c6ba",
+  "prompts": {},
+  "sessions": {
+    "s_2d61c9243ab951": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b002-4774-7ac3-b399-fdb1a90be332",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Péter Ferenc Gyarmati <dev.petergy@gmail.com>"
+    }
+  }
+}
