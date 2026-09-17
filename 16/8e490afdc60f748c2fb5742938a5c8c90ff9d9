@@ -1,0 +1,25 @@
+packages/runtime/tests/datasets.test.ts
+  s_2d61c9243ab951::t_6123dc56854518 346-349
+  s_2d61c9243ab951::t_ab0dfbfb1f0463 57-61,66-79
+  s_2d61c9243ab951::t_b90b89890b7180 62-65
+packages/runtime/src/datasets.ts
+  s_2d61c9243ab951::t_483f519b59be9f 182,184,446-448,450
+  s_2d61c9243ab951::t_34fb790f3ef5ed 493-527
+  s_2d61c9243ab951::t_bbebc127918265 97,328
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "168e490afdc60f748c2fb5742938a5c8c90ff9d9",
+  "prompts": {},
+  "sessions": {
+    "s_2d61c9243ab951": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b002-4774-7ac3-b399-fdb1a90be332",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Péter Ferenc Gyarmati <dev.petergy@gmail.com>"
+    }
+  }
+}
