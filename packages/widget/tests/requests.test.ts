@@ -3,13 +3,10 @@ import { isString } from "@pyobservablejs/runtime/values";
 import { expect, test, vi } from "vite-plus/test";
 import { isRecord } from "../src/model";
 import { connectRequests } from "../src/requests";
-import type { WireValue } from "../src/values";
+import { reviveSyncedValue, type WireValue } from "@pyobservablejs/protocol";
 import { createView, waitFor, type TestModel } from "./testing";
 
 type NotebookAccess = Parameters<typeof connectRequests>[1];
-interface CyclicValue {
-	self?: CyclicValue;
-}
 const envelope = { kind: "observablejs:access", protocol: 1 };
 
 test("publishes metadata after installing the read listener", async () => {
@@ -171,112 +168,38 @@ test("closes the old generation before serving a remounted view", async () => {
 	next.abort();
 });
 
-test("preserves tagged scalar values and genuine user tag keys in explicit JSON reads", async () => {
-	const data = {
-		__observablejs_type__: "summary",
-		value: "authored",
-		count: 12n,
-		day: new Date("2030-01-02T00:00:00Z"),
-	};
-	const read = vi.fn(async () => result(data));
-	const { model, controller } = connect(fixture({ read }));
-	request(model, "json", { selector: "value", options: { format: "json" } });
-	expect((await waitFor(() => findResponse(model, "json"))).content).toMatchObject({
-		result: {
-			format: "json",
-			data: {
-				__observablejs_type__: "object",
-				value: {
-					__observablejs_type__: "summary",
-					value: "authored",
-					count: { __observablejs_type__: "bigint", value: "12" },
-					day: { __observablejs_type__: "datetime", value: "2030-01-02T00:00:00.000Z" },
-				},
-			},
-		},
-	});
-	expect(read).toHaveBeenCalledWith("value", expect.objectContaining({ format: "native" }));
-	controller.abort();
-});
-
-test.each(["json", "rows"] as const)("reads shared coordinate arrays as detached %s values", async (format) => {
+test.each(["json", "rows"] as const)("routes and returns exact %s reads", async (format) => {
 	const coordinates = [12.5, 48.25];
-	const data = [{ properties: { coordinates }, geometry: { type: "Point", coordinates } }];
-	const { model, controller } = connect(fixture({ read: async () => result(data) }));
-	request(model, "shared", { selector: "geoJSON", options: { format } });
-	expect((await waitFor(() => findResponse(model, "shared"))).content).toMatchObject({
-		result: {
-			format,
-			data: [
-				{
-					properties: { coordinates: [12.5, 48.25] },
-					geometry: { type: "Point", coordinates: [12.5, 48.25] },
-				},
-			],
+	const data = [
+		{
+			__observablejs_type__: "authored",
+			count: 12n,
+			day: new Date("2030-01-02T00:00:00.000Z"),
+			properties: { coordinates },
+			geometry: { type: "Point", coordinates },
 		},
-	});
+	];
+	const read = vi.fn(async () => result(data, format === "json" ? "native" : "rows"));
+	const { model, controller } = connect(fixture({ read }));
+	request(model, "value", { selector: "value", options: { format } });
+	const reply = await waitFor(() => findResponse(model, "value"));
+	expect(reply.content).toMatchObject({ result: { format } });
+	if (!isRecord(reply.content) || !isRecord(reply.content.result) || reply.content.result.data === undefined)
+		throw new Error("Missing exact read data");
+	expect(reviveSyncedValue(reply.content.result.data)).toEqual(data);
+	expect(read).toHaveBeenCalledWith(
+		"value",
+		expect.objectContaining({ format: format === "json" ? "native" : "rows" }),
+	);
 	controller.abort();
 });
 
-test("preserves maps and sets containing shared values in JSON reads", async () => {
-	const point = { x: 2 };
-	const data = { positions: new Map([["start", point]]), selected: new Set([point]) };
-	const { model, controller } = connect(fixture({ read: async () => result(data) }));
-	request(model, "collections", { selector: "value", options: { format: "json" } });
-	expect((await waitFor(() => findResponse(model, "collections"))).content).toMatchObject({
-		result: {
-			data: {
-				positions: { __observablejs_type__: "map", value: [["start", { x: 2 }]] },
-				selected: { __observablejs_type__: "set", value: [{ x: 2 }] },
-			},
-		},
-	});
-	controller.abort();
-});
-
-test.each([
-	["function", () => () => 1],
-	["DOM element", () => document.createElement("div")],
-	["binary", () => new Uint8Array([1, 2])],
-	["array metadata", () => Object.assign([1, 2], { columns: ["value"] })],
-	["fractional array property", () => Object.assign([1], { "0.5": 2 })],
-	["NaN array property", () => Object.assign([1], { NaN: 2 })],
-	["symbol property", () => ({ [Symbol("field")]: 3 })],
-	[
-		"shared sparse expansion",
-		() => {
-			const sparse: number[] = [];
-			sparse.length = 5_000;
-			return Array.from({ length: 101 }, () => sparse);
-		},
-	],
-	["oversized text", () => "x".repeat(3_000_000)],
-	[
-		"cycle",
-		() => {
-			const value: CyclicValue = {};
-			value.self = value;
-			return value;
-		},
-	],
-] as const)("rejects lossy %s JSON reads with a format or projection alternative", async (_name, makeValue) => {
-	const { model, controller } = connect(fixture({ read: async () => result(makeValue()) }));
+test("returns serialization diagnostics with a lossless read alternative", async () => {
+	const { model, controller } = connect(fixture({ read: async () => result(() => 42) }));
 	request(model, "lossy", { selector: "value", options: { format: "json" } });
 	expect((await waitFor(() => findResponse(model, "lossy"))).content).toMatchObject({
-		error: { name: "TypeError", message: expect.stringContaining("Arrow") },
+		error: { name: "TypeError", origin: "widget", phase: "serialization", message: expect.stringContaining("Arrow") },
 	});
-	controller.abort();
-});
-
-test("rejects accessor values before invoking their getters", async () => {
-	const getter = vi.fn(() => 42);
-	const value = Object.defineProperty({}, "answer", { enumerable: true, get: getter });
-	const { model, controller } = connect(fixture({ read: async () => result(value) }));
-	request(model, "accessor", { selector: "value" });
-	expect((await waitFor(() => findResponse(model, "accessor"))).content).toMatchObject({
-		error: { name: "TypeError" },
-	});
-	expect(getter).not.toHaveBeenCalled();
 	controller.abort();
 });
 
@@ -302,6 +225,8 @@ function fixture(overrides: Partial<NotebookAccess> = {}): NotebookAccess {
 			imports: [],
 		},
 		datasets: [],
+		diagnostics: [],
+		discover: async () => ({ datasets: [], errors: [], pending: false }),
 		read: async () => result(42),
 		...overrides,
 	};

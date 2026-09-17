@@ -2,7 +2,7 @@ import { isString } from "@pyobservablejs/runtime/values";
 import type { NotebookSource, ResolveNotebook } from "@pyobservablejs/runtime";
 import type { AttachmentInfo } from "@pyobservablejs/runtime";
 import { isRecord, type AnyWidgetModel } from "./model";
-import type { WireRecord, WireValue } from "./values";
+import type { WireRecord, WireValue } from "@pyobservablejs/protocol";
 
 export function connectNotebookSources(model: AnyWidgetModel, lifetime: AbortSignal): ResolveNotebook {
 	lifetime.throwIfAborted();

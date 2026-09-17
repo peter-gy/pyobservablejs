@@ -10,8 +10,7 @@ import {
 
 const TYPE_KEY = "__observablejs_type__";
 
-// anywidget traits carry JSON. __observablejs_type__ tags preserve values that
-// need browser or Python revival.
+// Python transports carry JSON. Tags preserve values that need native revival.
 
 type WireContext = {
 	seen: WeakMap<object, number>;

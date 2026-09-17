@@ -28,6 +28,9 @@ class CustomBuildHook(BuildHookInterface):
         static = Path(self.root, "src", "observablejs", "static")
         required = (
             static / "index.js",
+            static / "server" / "server.js",
+            static / "server" / "browser" / "browser.js",
+            static / "server" / "driver" / "index.mjs",
             static / "anywidget.json",
             static / "chunks" / "app.js",
         )

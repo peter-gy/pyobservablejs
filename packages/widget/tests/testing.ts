@@ -1,6 +1,6 @@
 import type { Experimental, Host, InitializeProps, RenderProps } from "@anywidget/types";
-import type { WireNotebookGraph as NotebookGraph } from "../src/model";
-import type { WireValue, WireValues } from "../src/values";
+import type { WireGraph as NotebookGraph } from "@pyobservablejs/protocol";
+import type { WireValue, WireValues } from "@pyobservablejs/protocol";
 import createWidget from "../src";
 import type { WidgetModel } from "../src/model";
 

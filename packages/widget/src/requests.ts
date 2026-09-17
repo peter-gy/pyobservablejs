@@ -1,31 +1,28 @@
 import { createDiagnostic, type Diagnostic, type MountedNotebook } from "@pyobservablejs/runtime";
+import { isNumber, isString } from "@pyobservablejs/runtime/values";
 import {
-	isBigInt,
-	isBoolean,
-	isCallable,
-	isNumber,
-	isObjectValue,
-	isString,
-	isSymbol,
-} from "@pyobservablejs/runtime/values";
-import { isRecord, type AnyWidgetModel, type WidgetModel, type WireDiagnostics } from "./model";
-import { toWireValue, type RevivedRecord, type RevivedValue, type WireValue } from "./values";
+	isRecord,
+	readSelector,
+	readOptions,
+	executeRead,
+	describeResponse,
+	type WireValue,
+	type WireRead,
+} from "@pyobservablejs/protocol";
+import { type AnyWidgetModel, type WidgetModel, type WireDiagnostics } from "./model";
 
-type NotebookAccess = Pick<MountedNotebook, "inspection" | "datasets" | "read">;
-type ReadSelector = Parameters<NotebookAccess["read"]>[0];
-type ReadOptions = NonNullable<Parameters<NotebookAccess["read"]>[1]>;
-type ReadResult = Awaited<ReturnType<NotebookAccess["read"]>>;
-type WireReadFormat = "json" | "rows" | "arrow" | "bytes";
-type WireReadOptions = Omit<ReadOptions, "format"> & { format: WireReadFormat };
-type WireRead = Omit<ReadResult, "data" | "format"> & { format: WireReadFormat } & (
-		| { binary: true }
-		| { data: WireValue }
-	);
+type NotebookAccess = Pick<MountedNotebook, "inspection" | "datasets" | "read" | "discover" | "diagnostics">;
 export type ReadySnapshot = { readback: NonNullable<WidgetModel["_readback"]>; diagnostics: WireDiagnostics };
 type ResponseBody =
-	| { result: WireRead | (ReadySnapshot & { ready: true }) }
+	| {
+			result:
+				| WireRead
+				| (ReadySnapshot & { ready: true })
+				| NotebookAccess["inspection"]
+				| Awaited<ReturnType<NotebookAccess["discover"]>>
+				| ReturnType<typeof describeResponse>;
+	  }
 	| { error: Diagnostic; diagnostics?: WireDiagnostics };
-type ReadResponse = { result: WireRead; buffers: DataView[] };
 type Request = {
 	id: string;
 	generation: string;
@@ -33,7 +30,6 @@ type Request = {
 };
 
 const envelope = { kind: "observablejs:access", protocol: 1 } as const;
-const exactTags = new Set(["undefined", "number", "bigint", "datetime", "map", "set"]);
 
 export function connectRequests(
 	model: AnyWidgetModel,
@@ -70,32 +66,58 @@ export function connectRequests(
 		}
 	};
 	const execute = async (request: Request, controller: AbortController) => {
-		let phase: Diagnostic["phase"] = "transport";
-		let operation = request.params.operation === "ready" ? "wait for view" : "read value";
+		const phase: Diagnostic["phase"] = "transport";
+		const operation = request.params.operation === "ready" ? "wait for view" : "read value";
 		const active = () => !signal.aborted && !controller.signal.aborted && pending.get(request.id) === controller;
 		try {
 			if (request.params.operation === "ready") {
 				if (!options?.ready) throw new Error("View readiness is unavailable");
-				await options.ready(
-					nonNegativeInteger(request.params.sequence ?? 0, "sequence"),
-					AbortSignal.any([signal, controller.signal]),
-				);
+				await options.ready(readSequence(request.params.sequence), AbortSignal.any([signal, controller.signal]));
 				if (!active()) return;
 				const snapshot = options.checkpoint();
 				if (active()) respond(request, { result: { ready: true, ...snapshot } });
 				return;
 			}
+
+			if (request.params.operation === "inspect") {
+				respond(request, { result: notebook.inspection });
+				return;
+			}
+			if (request.params.operation === "discover") {
+				const deadline = request.params.deadline;
+				const active = AbortSignal.any([signal, controller.signal]);
+				const bounded = isNumber(deadline)
+					? AbortSignal.any([active, AbortSignal.timeout(Math.max(1, Math.floor(deadline)))])
+					: active;
+				let catalog;
+				try {
+					catalog = await notebook.discover({ signal: bounded });
+				} catch (cause) {
+					if (!bounded.aborted || active.aborted) throw cause;
+					catalog = { datasets: notebook.datasets, errors: notebook.diagnostics, pending: true };
+				}
+				if (!active.aborted) respond(request, { result: catalog });
+				return;
+			}
 			const selector = readSelector(request.params.selector);
-			const { format, ...readParameters } = readOptions(request.params.options);
-			const value = await notebook.read(selector, {
-				...readParameters,
-				format: format === "json" ? "native" : format,
-				signal: AbortSignal.any([signal, controller.signal]),
-			});
+			if (request.params.operation === "describe") {
+				const value = await notebook.read(selector, {
+					...readOptions(request.params.options),
+					format: "native",
+					signal: AbortSignal.any([signal, controller.signal]),
+				});
+				respond(request, { result: describeResponse(value) });
+				return;
+			}
+
+			const { result, buffers } = await executeRead(
+				notebook,
+				selector,
+				readOptions(request.params.options),
+				AbortSignal.any([signal, controller.signal]),
+				"widget",
+			);
 			if (!active()) return;
-			phase = "serialization";
-			operation = "serialize read value";
-			const { result, buffers } = readResponse(value, format);
 			respond(request, { result }, buffers);
 		} catch (cause) {
 			if (active()) {
@@ -172,167 +194,9 @@ export function connectRequests(
 	return publishDatasets;
 }
 
-function readSelector(value: WireValue | undefined): ReadSelector {
-	if (isString(value) && value) return value;
-	if (!isRecord(value)) throw new TypeError("Read selector must identify a variable, cell, or attachment");
-	if (isString(value.attachment) && value.attachment) return { attachment: value.attachment };
-	const path = value.path === undefined ? undefined : readPath(value.path);
-	const name = value.name;
-	if (name !== undefined && name !== null && (!isString(name) || !name))
-		throw new TypeError("Read name must be a non-empty string or null");
-	if (value.cell !== undefined) return { cell: nonNegativeInteger(value.cell, "cell"), name, path };
-	if (isString(name)) return { name, path };
-	throw new TypeError("Read selector must identify a variable, cell, or attachment");
-}
-
-function readPath(value: WireValue): (string | number)[] {
-	if (!Array.isArray(value)) throw new TypeError("Read path must be an array of property names or indexes");
-	return value.map((part) => {
-		if (isString(part) || (isNumber(part) && Number.isFinite(part))) return part;
-		throw new TypeError("Read path must contain property names or numeric indexes");
-	});
-}
-
-function nonNegativeInteger(value: WireValue, name: string): number {
+function readSequence(value: WireValue | undefined): number {
+	if (value === undefined) return 0;
 	if (!isNumber(value) || !Number.isSafeInteger(value) || value < 0)
-		throw new TypeError(`${name} must be a non-negative integer`);
+		throw new TypeError("sequence must be a non-negative integer");
 	return value;
-}
-
-function readOptions(value: WireValue | undefined): WireReadOptions {
-	if (value === undefined) return { format: "json" };
-	if (!isRecord(value)) throw new TypeError("Read options must be an object");
-	const options: WireReadOptions = { format: "json" };
-	if (value.format !== undefined) {
-		if (value.format !== "json" && value.format !== "rows" && value.format !== "arrow" && value.format !== "bytes") {
-			throw new TypeError("Python reads require json, rows, arrow, or bytes format");
-		}
-		options.format = value.format;
-	}
-	for (const name of ["offset", "limit", "revision"] as const) {
-		if (value[name] !== undefined) options[name] = nonNegativeInteger(value[name], name);
-	}
-	if (value.columns !== undefined) {
-		if (!Array.isArray(value.columns) || !value.columns.every(isString))
-			throw new TypeError("Read columns must be an array of names");
-		options.columns = value.columns;
-	}
-	return options;
-}
-
-function readResponse(value: ReadResult, format: WireReadFormat): ReadResponse {
-	const { data, format: _format, ...metadata } = value;
-	if (format === "arrow" || format === "bytes") {
-		if (!(data instanceof Uint8Array)) throw new TypeError("Binary reads must return a Uint8Array");
-		const bytes = new Uint8Array(data);
-		return { result: { ...metadata, format, binary: true }, buffers: [new DataView(bytes.buffer)] };
-	}
-	return { result: { ...metadata, format, data: encodeReadValue(data) }, buffers: [] };
-}
-
-function encodeReadValue<Value>(value: Value): WireValue {
-	// Copy shared branches so the preview encoder does not summarize them as references.
-	const copy = copyReadValue(value, { nodes: 500_000, bytes: 16 * 1024 * 1024, ancestors: new WeakSet() });
-	const encoded = toWireValue(copy, { nodes: 500_000, bytes: 16 * 1024 * 1024 });
-	assertExactValue(encoded);
-	return encoded;
-}
-
-type ReadShapeBudget = { nodes: number; bytes: number; ancestors: WeakSet<object> };
-
-function copyReadValue<Value>(value: Value, budget: ReadShapeBudget, depth = 0): RevivedValue {
-	budget.nodes -= 1;
-	budget.bytes -= isString(value) ? 32 + value.length * 6 : 32;
-	if (budget.nodes < 0 || budget.bytes < 0 || depth >= 100) throw readShapeError();
-	if (isCallable(value) || isSymbol(value)) throw readShapeError();
-	if (value === null) return null;
-	if (value === undefined) return undefined;
-	if (isString(value) || isNumber(value) || isBigInt(value) || isBoolean(value)) return value;
-	if (!isObjectValue(value)) throw readShapeError();
-	const prototype = Object.getPrototypeOf(value);
-	if (prototype === Date.prototype && value instanceof Date) {
-		if (Reflect.ownKeys(value).length || !Number.isFinite(value.getTime())) throw readShapeError();
-		return value;
-	}
-	if (budget.ancestors.has(value)) throw readShapeError();
-	budget.ancestors.add(value);
-	try {
-		if (prototype === Map.prototype && value instanceof Map) {
-			if (Reflect.ownKeys(value).length || value.size * 2 > budget.nodes) throw readShapeError();
-			const copy = new Map<RevivedValue, RevivedValue>();
-			for (const [key, item] of value) {
-				copy.set(copyReadValue(key, budget, depth + 1), copyReadValue(item, budget, depth + 1));
-			}
-			return copy;
-		}
-		if (prototype === Set.prototype && value instanceof Set) {
-			if (Reflect.ownKeys(value).length || value.size > budget.nodes) throw readShapeError();
-			const copy = new Set<RevivedValue>();
-			for (const item of value) copy.add(copyReadValue(item, budget, depth + 1));
-			return copy;
-		}
-		const array = Array.isArray(value);
-		if (array ? prototype !== Array.prototype : prototype !== Object.prototype && prototype !== null)
-			throw readShapeError();
-		if (array && value.length > budget.nodes) throw readShapeError();
-		const keys = Reflect.ownKeys(value);
-		if (array) {
-			for (const key of keys) {
-				if (key === "length") continue;
-				if (
-					!isString(key) ||
-					!Number.isInteger(Number(key)) ||
-					String(Number(key)) !== key ||
-					Number(key) < 0 ||
-					Number(key) >= value.length
-				)
-					throw readShapeError();
-			}
-			// The wire encoder visits holes as undefined values, including each shared branch.
-			const holes = value.length - (keys.length - 1);
-			budget.nodes -= holes;
-			budget.bytes -= holes * 32;
-			if (budget.nodes < 0 || budget.bytes < 0) throw readShapeError();
-		}
-		const copy: RevivedValue[] | RevivedRecord = array ? Array.from({ length: value.length }, () => undefined) : {};
-		for (const key of keys) {
-			if (array && key === "length") continue;
-			if (!isString(key)) throw readShapeError();
-			budget.bytes -= key.length * 6;
-			const descriptor = Object.getOwnPropertyDescriptor(value, key);
-			if (!descriptor?.enumerable || !("value" in descriptor)) throw readShapeError();
-			Object.defineProperty(copy, key, {
-				value: copyReadValue(descriptor.value, budget, depth + 1),
-				enumerable: true,
-				configurable: true,
-				writable: true,
-			});
-		}
-		return copy;
-	} finally {
-		budget.ancestors.delete(value);
-	}
-}
-
-function readShapeError(): TypeError {
-	return new TypeError(
-		"This value cannot be read exactly as JSON. Use Arrow, attachment bytes, or a smaller projection",
-	);
-}
-
-function assertExactValue(value: WireValue): void {
-	if (Array.isArray(value)) {
-		for (const item of value) assertExactValue(item);
-		return;
-	}
-	if (!isRecord(value)) return;
-	const tag = value.__observablejs_type__;
-	if (tag === "object" && isRecord(value.value)) {
-		for (const item of Object.values(value.value)) if (item !== undefined) assertExactValue(item);
-		return;
-	}
-	if (tag !== undefined && (!isString(tag) || !exactTags.has(tag))) {
-		throw readShapeError();
-	}
-	for (const item of Object.values(value)) if (item !== undefined) assertExactValue(item);
 }

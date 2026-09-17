@@ -29,6 +29,8 @@ catalog:
   apache-arrow-17: npm:apache-arrow@17.0.0
   docusaurus-plugin-llms: 0.5.1
   jsdom: 29.1.1
+  happy-dom: 20.13.2
+  playwright-core: 1.63.0
   knip: 6.32.2
   oxlint: 1.76.0
   oxlint-tsgolint: 7.0.2001

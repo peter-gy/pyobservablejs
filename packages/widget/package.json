@@ -17,6 +17,7 @@
 	},
 	"dependencies": {
 		"@anywidget/types": "catalog:",
+		"@pyobservablejs/protocol": "workspace:*",
 		"@pyobservablejs/runtime": "workspace:*"
 	},
 	"devDependencies": {

@@ -3,10 +3,11 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
-		"build": "vp build",
+		"build": "vp build && node scripts/copy-server.mjs",
 		"dev": "vp dev"
 	},
 	"dependencies": {
+		"@pyobservablejs/server": "workspace:*",
 		"@pyobservablejs/widget": "workspace:*"
 	},
 	"devDependencies": {

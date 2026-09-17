@@ -55,7 +55,7 @@ export default defineConfig({
 				},
 			},
 			{
-				files: ["packages/widget/src/values.ts", "packages/runtime/src/views.ts"],
+				files: ["packages/protocol/src/values.ts", "packages/runtime/src/views.ts"],
 				rules: {
 					// These boundaries deliberately apply JavaScript's string coercion to
 					// primitive wire values and form-control values.
@@ -81,6 +81,10 @@ export default defineConfig({
 								"@pyobservablejs/widget/*",
 								"@anywidget/types",
 								"@pyobservablejs/python",
+								"@pyobservablejs/protocol",
+								"@pyobservablejs/protocol/*",
+								"@pyobservablejs/server",
+								"@pyobservablejs/server/*",
 							],
 						},
 					],
