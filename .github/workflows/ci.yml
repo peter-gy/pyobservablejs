@@ -92,10 +92,13 @@ jobs:
           name: widget-assets
           path: packages/pyobservablejs/src/observablejs/static/
 
+      - name: Install Chromium for server tests
+        run: vp exec -F @pyobservablejs/e2e playwright install --with-deps chromium
+
       - name: Run Python tests
         env:
           UV_PYTHON: ${{ matrix.python-version }}
-        run: uv run --frozen pytest -q packages/pyobservablejs/tests
+        run: uv run --frozen --package pyobservablejs --extra server --group dev pytest -q packages/pyobservablejs/tests
 
   test-js:
     runs-on: ubuntu-latest
