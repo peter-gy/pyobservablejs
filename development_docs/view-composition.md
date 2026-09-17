@@ -9,25 +9,27 @@ definitions and controller values through its private session model.
 
 Paths are relative to their package's `src/` directory.
 
-| Package and component                                        | Ownership                                                                          |
-| ------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| `pyobservablejs/observablejs/_notebook.py`                   | Resolves public selectors and owns controller and view lifecycle.                  |
-| `pyobservablejs/observablejs/_observable_model.py`           | Adapts loaded classic or native Observable records to Notebook Kit HTML.           |
-| `pyobservablejs/observablejs/_readback.py`                   | Validates wire snapshots and builds detached Python state.                         |
-| `widget/model.ts`                                            | Reads session references, selection traits, source, and mount options.             |
-| `widget/view.ts`                                             | Resolves models, subscribes to changes, and forwards values to the mount.          |
-| `widget/values.ts`                                           | Encodes browser values and decodes Python wire values.                             |
-| `widget/readback.ts`                                         | Publishes complete wire snapshots with monotonic transport revisions.              |
-| `widget/imports.ts`                                          | Correlates dependency source requests over the anywidget custom-message channel.   |
-| `runtime/mount.ts`                                           | Owns notebook preparation, render attempts, variable methods, and disposal.        |
-| `runtime/source.ts`                                          | Parses Notebook Kit source profile, identity, and dependency resolutions.          |
-| `runtime/notebook-imports.ts`                                | Lowers notebook imports before Notebook Kit compiles modern cells.                 |
-| `runtime/modules.ts` and `runtime/module-definition.ts`      | Resolve source and define lazy native Runtime modules.                             |
-| `runtime/composition.ts`                                     | Expands dependencies and maps selected and hidden cell targets.                    |
-| `runtime/cell-renderer.ts`                                   | Defines cells, attaches observers, and classifies evaluation and rendering errors. |
-| `runtime/inputs.ts` and `runtime/view-inputs.ts`             | Apply injected variables and coordinate named controls and interaction events.     |
-| `runtime/cell-state.ts` and `runtime/state.ts`               | Aggregate observer channels into native cell results and evaluation snapshots.     |
-| `runtime/dom.ts`, `runtime/themes.ts`, and `runtime/styles/` | Render cell containers and source, and install scoped notebook styles.             |
+| Package and component                                        | Ownership                                                                        |
+| ------------------------------------------------------------ | -------------------------------------------------------------------------------- |
+| `pyobservablejs/observablejs/_notebook.py`                   | Owns the controller, canonical cell handles, and public selection.               |
+| `pyobservablejs/observablejs/_view.py`                       | Owns the renderable widget, browser read requests, and detached view state.      |
+| `pyobservablejs/observablejs/_observable_model.py`           | Adapts loaded classic or native Observable records to Notebook Kit HTML.         |
+| `pyobservablejs/observablejs/_readback.py`                   | Validates wire snapshots and builds detached Python state.                       |
+| `widget/model.ts`                                            | Reads session references, selection traits, source, and mount options.           |
+| `widget/view.ts`                                             | Resolves models, subscribes to changes, and forwards values to the mount.        |
+| `protocol/values.ts`                                         | Encodes browser values and decodes Python wire values.                           |
+| `widget/readback.ts`                                         | Publishes complete wire snapshots with monotonic transport revisions.            |
+| `widget/imports.ts`                                          | Correlates dependency source requests over the anywidget custom-message channel. |
+| `runtime/mount.ts`                                           | Owns notebook preparation, render attempts, variable methods, and disposal.      |
+| `runtime/source.ts`                                          | Parses Notebook Kit source profile, identity, and dependency resolutions.        |
+| `runtime/notebook-imports.ts`                                | Lowers notebook imports before Notebook Kit compiles modern cells.               |
+| `runtime/modules.ts` and `runtime/module-definition.ts`      | Resolve source and define lazy native Runtime modules.                           |
+| `runtime/composition.ts`                                     | Expands dependencies and maps selected and hidden cell targets.                  |
+| `runtime/cell-evaluation.ts`                                 | Observes native named values and owns shared cell diagnostic attribution.        |
+| `runtime/cell-renderer.ts`                                   | Defines browser cells and wraps display observers with DOM and input behavior.   |
+| `runtime/inputs.ts` and `runtime/view-inputs.ts`             | Apply injected variables and coordinate named controls and interaction events.   |
+| `runtime/cell-state.ts` and `runtime/state.ts`               | Aggregate observer channels into native cell results and evaluation snapshots.   |
+| `runtime/dom.ts`, `runtime/themes.ts`, and `runtime/styles/` | Render cell containers and source, and install scoped notebook styles.           |
 
 ## Model boundary
 
@@ -120,7 +122,10 @@ already-running work. A new attempt or superseding change rejects stale tokens.
 
 Native snapshots expose `inputRevision`, `settledRevision`, `pending`, `graph`,
 `results`, and `errors`. Snapshot records and graph collections are read-only.
-Unchanged cell records are shared across snapshots. Captured values keep their
+Hosts that only request state materialize a snapshot on access. Readiness checks
+use revision and pending counters without copying cell results. An `onState`
+subscriber still receives each snapshot synchronously. Unchanged cell records
+are shared across snapshots. Captured values keep their
 native identities and remain owned by their caller.
 
 `ReadbackPublisher` converts each native snapshot into one `_readback` mapping:
@@ -128,7 +133,9 @@ native identities and remain owned by their caller.
 and `errors`. It translates `runtimeOutputs` to `runtime_outputs`, serializes
 values, records serialization errors, and keeps revisions monotonic across
 mount replacements. Capture runs synchronously so later mutations cannot alter
-a queued wire value. The publisher reuses the converted graph and sends the
+a queued wire value. The publisher reuses the converted graph and empty cell encodings. Cached
+encodings that consume budget still require the same available capacity, so
+preceding cells can change whether later values are summarized. It sends the
 latest complete snapshot from a microtask. This batches cell settlements before
 anywidget clones changed traits for the comm. Its generation guard rejects
 publication from a replaced mount.

@@ -18,7 +18,9 @@ flowchart TB
 | Package                   | Contract                                                                                                 |
 | ------------------------- | -------------------------------------------------------------------------------------------------------- |
 | `packages/runtime`        | Source-to-DOM mounting, analysis, execution, native values, input controls, styles, and evaluation state |
-| `packages/widget`         | anywidget model resolution, Python wire codecs, shared-input transport, and readback publication         |
+| `packages/widget`         | anywidget model resolution, shared-input transport, and readback publication                             |
+| `packages/protocol`       | Python value codecs and exact read contracts shared by adapters                                          |
+| `packages/server`         | Deno and Chromium hosts, packaged Playwright driver, and framed transport                                |
 | `anywidget-bundle`        | Vite plugin, manifest, module transport, lifecycle protocol, and Python response runtime                 |
 | `packages/pyobservablejs` | Python API, traitlets, final widget assets, wheel, and sdist                                             |
 | `apps/e2e`                | Standalone TypeScript, marimo, and JupyterLab browser tests                                              |
@@ -27,7 +29,7 @@ flowchart TB
 Arrows indicate imports from consumer to dependency. Cross-package TypeScript
 imports use package names and internal dependencies use `workspace:*`.
 `runtime` exposes `mountNotebook` and contract types at its root, plus native
-value utilities at `/values`. The widget owns Python serialization and consumes
+value utilities at `/values`. The protocol package owns Python serialization. Both adapters consume
 these entry points. Read the [TypeScript API](../packages/runtime/README.md) for
 the mount contract.
 
@@ -75,7 +77,7 @@ group owns Hatchling and watchfiles. Use the package selector for distribution
 metadata and builds:
 
 ```sh
-uv run --frozen pytest -q packages/pyobservablejs/tests
+uv run --frozen --package pyobservablejs --extra server --group dev pytest -q packages/pyobservablejs/tests
 make build
 uv version --package pyobservablejs --short
 ```
@@ -108,3 +110,10 @@ Run the cross-language gate:
 ```sh
 make check
 ```
+
+The server build writes `packages/server/dist/`. The Python build replaces
+`static/server/` with that complete output. The Hatch hook requires the server
+entry point along with the widget manifest and assets. Both wheel and sdist
+carry the server bundle and pinned Playwright driver. Chromium itself is installed
+into Playwright's platform-specific cache at first use. Rebuilding a wheel from the sdist needs no JavaScript
+workspace.
