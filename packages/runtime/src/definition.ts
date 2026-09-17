@@ -65,7 +65,7 @@ function bindOutputRoot(body: RuntimeBody, index: number, root: HTMLDivElement):
 export function exposedVariableNames(definition: RuntimeCellDefinition): string[] {
 	if (definition.output) {
 		if (definition.autoview) return [unprefix(definition.output, "viewof$")];
-		if (definition.automutable) return [unprefix(definition.output, "mutable ")];
+		if (definition.automutable) return [unprefix(definition.output, "initial ")];
 		return [definition.output];
 	}
 	return definition.outputs ?? [];
@@ -74,7 +74,7 @@ export function exposedVariableNames(definition: RuntimeCellDefinition): string[
 export function runtimeOutputNames(definition: RuntimeCellDefinition): string[] {
 	if (!definition.output) return definition.outputs ?? [];
 	if (definition.automutable) {
-		return [definition.output, `mutable$${unprefix(definition.output, "mutable ")}`];
+		return [definition.output, `mutable$${unprefix(definition.output, "initial ")}`];
 	}
 	return [definition.output];
 }
@@ -130,7 +130,7 @@ function definitionNames(definition: RuntimeCellDefinition): Set<string> {
 	names.add(definition.output);
 	if (definition.autoview) names.add(unprefix(definition.output, "viewof$"));
 	if (definition.automutable) {
-		const name = unprefix(definition.output, "mutable ");
+		const name = unprefix(definition.output, "initial ");
 		names.add(name);
 		names.add(`mutable$${name}`);
 	}
