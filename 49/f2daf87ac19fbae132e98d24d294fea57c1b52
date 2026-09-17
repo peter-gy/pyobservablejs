@@ -1,0 +1,69 @@
+packages/runtime/src/evaluate.ts
+  s_2d61c9243ab951::t_a30fd4e999c1c0 45-47,78,134,140-142,145-146,230-233,235,251-253,255-257
+  s_2d61c9243ab951::t_d910f31716a5f4 1,14,23,115-132,135,148,152-153,157-158,162-164,166,174,178,180,200-208,222,236,254,268
+  s_2d61c9243ab951::t_7251e04ba009b0 234
+  s_2d61c9243ab951::t_ee9bec601235cc 2-13,15-22,24-44,48-77,79-114,133,136-139,143-144,147,149-151,154-156,159-161,165,167-173,175-177,179,181-199,209-221,223-229,237-250,258-267,269-272
+packages/runtime/tests/evaluation.test.ts
+  s_2d61c9243ab951::t_22218d519bbb9d 1-100
+packages/runtime/src/source.ts
+  s_2d61c9243ab951::t_9bf3d2f94fa8eb 14-20
+packages/runtime/package.json
+  s_2d61c9243ab951::t_ee9bec601235cc 16-17
+packages/runtime/src/cell-renderer.ts
+  s_2d61c9243ab951::t_d910f31716a5f4 21,54-60,87,89-94,131,133-138,171,173,330,332-337,347,349-354,363,365-371,377,379-384
+  s_2d61c9243ab951::t_ee9f4ae8c863ff 1,10,50-51,53,61-64,67-68,71,78,105,129,165,318
+  s_2d61c9243ab951::t_adb2df7f4c213c 2
+packages/runtime/src/diagnostics.ts
+  s_2d61c9243ab951::t_6b59c20e062f39 4
+packages/runtime/src/cell-evaluation.ts
+  s_2d61c9243ab951::t_ee9f4ae8c863ff 1-32,43-63,75-80,94-103
+  s_2d61c9243ab951::t_d910f31716a5f4 33-42,64-74,81-93
+packages/runtime/src/headless-api.ts
+  s_2d61c9243ab951::t_ee9bec601235cc 1-4
+  s_2d61c9243ab951::t_9bf3d2f94fa8eb 5-10
+packages/runtime/README.md
+  s_2d61c9243ab951::t_dbe3bc0c658c74 272-286
+packages/runtime/tests/access.test.ts
+  s_2d61c9243ab951::t_8e04b05560399c 365-378
+packages/runtime/src/selection.ts
+  s_2d61c9243ab951::t_adb2df7f4c213c 1-11
+packages/runtime/src/headless-require.ts
+  s_2d61c9243ab951::t_1f9c33e480afd9 1-43
+packages/runtime/vite.config.ts
+  s_2d61c9243ab951::t_ee9bec601235cc 6
+packages/runtime/src/session.ts
+  s_2d61c9243ab951::t_ee9bec601235cc 16-22
+packages/runtime/src/ready.ts
+  s_2d61c9243ab951::t_adb2df7f4c213c 1-41
+packages/runtime/src/mount.ts
+  s_2d61c9243ab951::t_7251e04ba009b0 342
+  s_2d61c9243ab951::t_adb2df7f4c213c 1-2,329
+  s_2d61c9243ab951::t_a30fd4e999c1c0 59-61,330-341
+packages/runtime/src/modules.ts
+  s_2d61c9243ab951::t_ee9bec601235cc 13,52
+packages/runtime/src/module-definition.ts
+  s_2d61c9243ab951::t_ee9bec601235cc 19,42
+packages/runtime/src/read.ts
+  s_2d61c9243ab951::t_7887e27bb0ce19 85
+packages/runtime/src/environment.ts
+  s_2d61c9243ab951::t_adb2df7f4c213c 25,74-75
+  s_2d61c9243ab951::t_1f9c33e480afd9 1,65,91,93-101
+packages/runtime/src/ownership.ts
+  s_2d61c9243ab951::t_adb2df7f4c213c 1-22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "49f2daf87ac19fbae132e98d24d294fea57c1b52",
+  "prompts": {},
+  "sessions": {
+    "s_2d61c9243ab951": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b002-4774-7ac3-b399-fdb1a90be332",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Péter Ferenc Gyarmati <dev.petergy@gmail.com>"
+    }
+  }
+}
