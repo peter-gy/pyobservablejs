@@ -1,0 +1,17 @@
+pnpm-lock.yaml
+  ai_agent 25-26,223,1898-1899,10790
+packages/runtime/tests/imports.test.ts
+  ai_agent 309-326
+packages/runtime/tests/graph.test.ts
+  ai_agent 93-94
+packages/runtime/src/definition.ts
+  ai_agent 68,77,133
+packages/runtime/src/module-cell.ts
+  ai_agent 27-28,30-33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "b69e90945e27d94b211240df7efe53762ce054ca",
+  "prompts": {}
+}
