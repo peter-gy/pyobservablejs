@@ -140,8 +140,9 @@ shared Vite+ policy. Package manifests own dependencies, tests, and builds. Use
 the pnpm catalog for shared external versions.
 
 The root `pyproject.toml` is a virtual uv workspace. The publishable project and
-Hatch configuration live in `packages/pyobservablejs/pyproject.toml`. Scope uv
-commands with `--package pyobservablejs`.
+Hatch configuration live in `packages/pyobservablejs/pyproject.toml`. Scope package builds and metadata commands with `--package pyobservablejs`.
+Use `--all-packages --extra server` for shared Python checks so the root development
+group and the package server extra are both installed.
 
 Prefer dependency-provided types. The parser and classic standard-library
 packages do not publish types, so their declarations stay with the runtime

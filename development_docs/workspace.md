@@ -77,7 +77,7 @@ group owns Hatchling and watchfiles. Use the package selector for distribution
 metadata and builds:
 
 ```sh
-uv run --frozen --package pyobservablejs --extra server --group dev pytest -q packages/pyobservablejs/tests
+uv run --frozen --all-packages --extra server --group dev pytest -q packages/pyobservablejs/tests
 make build
 uv version --package pyobservablejs --short
 ```
