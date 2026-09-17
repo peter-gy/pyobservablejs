@@ -132,8 +132,8 @@ and its dependencies as executable code with the host page's privileges.
 imported = obs.Notebook.from_observablehq("@d3/bar-chart", timeout=10)
 ```
 
-This fetches a public Observable document in Python. The displayed browser view
-then resolves its runtime modules and attachments. Inspect `imported.cells`
+This fetches the source model from a public Observable page in Python. The
+displayed browser view then resolves notebook modules and attachments. Inspect `imported.cells`
 before choosing a selection. Use canonical handles for anonymous cells.
 
 For an already loaded document mapping:
@@ -143,9 +143,10 @@ imported = obs.Notebook.from_observablehq_document(document)
 ```
 
 Read JSON or compressed dataset storage with the data tooling appropriate to
-that storage, then supply the document mapping. Preserve its `id` and `version`
-to retain import provenance and dependency resolution. `source_document` holds
-the original record, while `cells` describe the prepared Notebook Kit form.
+that storage, then supply the document mapping. Preserve `id`, `version`, and
+`resolutions` to retain import provenance and declared dependency pins.
+`source_document` holds the original record, while `cells` describe the
+prepared Notebook Kit form.
 Keep corpus samples and diagnostics in the user's designated artifact location.
 
 ## Export and finish

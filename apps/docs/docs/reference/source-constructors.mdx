@@ -69,8 +69,9 @@ Notebook.from_observablehq(
 ) -> Notebook
 ```
 
-Fetches a public ObservableHQ notebook through its document API. The specifier
-may be a notebook URL, slug, id, or document API URL.
+Fetches the original source model from a public Observable notebook page.
+The specifier may be a notebook URL, slug, id, or document API URL. Append
+`@version` to request an exact revision.
 
 ```python
 import observablejs as obs
@@ -79,8 +80,10 @@ notebook = obs.Notebook.from_observablehq("@d3/bar-chart", timeout=10)
 ```
 
 Remote uploaded files become URL-backed attachments. Explicit `files` replace
-records with the same file name. The fetched document id and version pin its
-Observable notebook imports. `timeout=None` disables the per-request timeout.
+records with the same file name. Notebook dependencies are fetched through
+Python when the browser requests them and evaluated in the same Observable
+Runtime. Each dependency retains its own library and attachment scope.
+`timeout=None` disables the constructor fetch timeout.
 
 Invalid specifiers and document shapes raise `ValueError`. Network failures
 raise `OSError`. Response decoding may raise `UnicodeError`.
@@ -99,7 +102,13 @@ Notebook.from_observablehq_document(
 ```
 
 Creates a notebook from an existing `observablejs.types.ObservableDocument`.
-ObservableHQ node names become public cell keys at this adapter boundary.
+`ObservableClassicDocument` uses `nodes`, where `js` means Observable
+JavaScript. `ObservableNotebookModel` uses `cells`, while
+`ObservablePageDocument` carries those cells in `body`. Native cells preserve
+`js`, `ts`, and `ojs` as distinct languages. `stdlib` selects the library independently:
+`"1"` uses classic Observable builtins and `"2"` uses Notebook Kit builtins.
+The defaults are `"1"` for classic documents and `"2"` for native models.
+Classic node names become public cell keys.
 
 ```python
 import observablejs as obs
@@ -118,10 +127,14 @@ notebook = obs.Notebook.from_observablehq_document(document)
 
 `title=None` uses the document title and then `"Untitled"`. Document files
 become URL-backed attachments, with explicit `files` taking precedence.
-Preserve a valid source `id` and `version` when imported Observable notebooks
-must keep the source revision's dependency resolution.
+Preserve `id`, `version`, and `resolutions` when saving classic documents.
+Explicit import revisions and declared notebook resolutions are retained
+through HTML export and reimport. Unpinned dependencies resolve when loaded.
 
-The document must be a mapping with a node sequence. Unsupported node modes,
+A document must contain exactly one cell collection, `nodes` or `cells`.
+A supplied legacy API response marked `unsupported_mode` has already lost
+its cell languages. Fetch its original source with `from_observablehq()`.
+Unsupported cell modes,
 unsafe or duplicate ids, duplicate public keys, and malformed node records
 raise `TypeError` or `ValueError`.
 

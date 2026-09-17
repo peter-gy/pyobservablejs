@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html as _html
+import json
 import re
 from collections.abc import Mapping
 from typing import Any, Literal
@@ -14,6 +15,7 @@ Mode = CellMode
 RuntimeProfile = Literal["notebook-kit", "observable"]
 
 RUNTIME_PROFILE_ATTRIBUTE = "data-pyobservablejs-runtime-profile"
+ORIGIN_ATTRIBUTE = "data-pyobservablejs-origin"
 CELL_KEY_ATTRIBUTE = "data-pyobservablejs-key"
 
 SCRIPT_TYPES = {
@@ -36,6 +38,7 @@ def serialize(
     spec: Mapping[str, Any],
     *,
     runtime_profile: RuntimeProfile = "notebook-kit",
+    origin: Mapping[str, Any] | None = None,
 ) -> str:
     """Render a Notebook Kit HTML document from the Python cell spec."""
 
@@ -43,6 +46,10 @@ def serialize(
     notebook_attrs = [f'theme="{_html.escape(theme_value, quote=True)}"']
     if runtime_profile == "observable":
         notebook_attrs.append(f'{RUNTIME_PROFILE_ATTRIBUTE}="observable"')
+    if origin:
+        notebook_attrs.append(
+            f'{ORIGIN_ATTRIBUTE}="{_html.escape(json.dumps(dict(origin)), quote=True)}"'
+        )
     parts = [
         "<!doctype html>",
         f"<notebook {' '.join(notebook_attrs)}>",

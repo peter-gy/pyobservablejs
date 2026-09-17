@@ -8,9 +8,12 @@ export type RuntimeScope = {
 
 const runtimeScopes = new WeakMap<NotebookRuntime, RuntimeScope>();
 
-export function createRuntimeScope(root: HTMLElement): RuntimeScope {
+export function createRuntimeScope(root: HTMLElement, baseUrl = root.ownerDocument.baseURI): RuntimeScope {
 	return {
-		document: createScopedDocument(root),
+		document: createScopedDocument(
+			root,
+			new URL(baseUrl || root.ownerDocument.baseURI, root.ownerDocument.baseURI).href,
+		),
 		cleanup() {},
 	};
 }
@@ -66,12 +69,13 @@ function observeDark(root: HTMLElement, generators: RuntimeGenerators): ReturnTy
 	});
 }
 
-function createScopedDocument(root: HTMLElement): Document {
+function createScopedDocument(root: HTMLElement, baseUrl: string): Document {
 	const customProperties = new Map<PropertyKey, unknown>();
 	const ownerDocument = root.ownerDocument;
 	const scoped: Document = new Proxy(ownerDocument, {
 		get(target, property) {
 			if (customProperties.has(property)) return customProperties.get(property);
+			if (property === "baseURI") return baseUrl;
 			if (property === "querySelector") return (selectors: string) => scopedQuerySelector(root, selectors);
 			if (property === "querySelectorAll") return (selectors: string) => scopedQuerySelectorAll(root, selectors);
 			if (property === "getElementById") return (id: string) => scopedGetElementById(root, id);

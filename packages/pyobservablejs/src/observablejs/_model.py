@@ -16,16 +16,9 @@ from ._cells import (
 )
 from ._files import FileAttachment, normalize_files, prepare_source
 from ._html import parse_html
-from ._observable import (
-    ObservableFileInput,
-    ObservableNodeInput,
-    observable_document_import_resolution,
-    observable_files_to_attachments,
-    observable_nodes_to_cells,
-)
 from ._serialize import SCRIPT_TYPES, Mode, RuntimeProfile, serialize
 from ._themes import normalize_theme
-from .types import FileInput, ObservableDocument, Theme
+from .types import FileInput, Theme
 
 
 @dataclasses.dataclass(frozen=True)
@@ -169,48 +162,6 @@ def notebook_model_from_html(
     )
 
 
-def notebook_model_from_observablehq_document(
-    document: ObservableDocument,
-    *,
-    title: str | None = None,
-    files: Mapping[str, FileInput] | None = None,
-) -> NotebookModel:
-    if not isinstance(document, Mapping):
-        raise TypeError("ObservableHQ document must be a mapping")
-    return _notebook_model_from_observable_document_parts(
-        _document_nodes(document),
-        files=_document_files(document),
-        title=title or _document_title(document),
-        local_files=files,
-        import_resolution=observable_document_import_resolution(document),
-    )
-
-
-def _notebook_model_from_observable_document_parts(
-    nodes: Sequence[ObservableNodeInput],
-    *,
-    files: Sequence[ObservableFileInput] | None = None,
-    title: str = "Untitled",
-    local_files: Mapping[str, FileInput] | None = None,
-    import_resolution: str | None = None,
-) -> NotebookModel:
-    if not isinstance(nodes, Sequence) or isinstance(nodes, (str, bytes, bytearray)):
-        raise TypeError("ObservableHQ nodes must be a sequence of node mappings")
-    cells = observable_nodes_to_cells(nodes, import_resolution=import_resolution)
-    spec = {"title": title, "theme": "air", "cells": cells}
-    discovered = observable_files_to_attachments(files)
-    normalized = normalize_files(local_files, base_path=None)
-    model_nodes = tuple(NotebookNode.from_spec(cell) for cell in cells)
-    return NotebookModel(
-        title=title,
-        theme="air",
-        nodes=_validate_nodes(model_nodes),
-        source=serialize(spec, runtime_profile="observable"),
-        attachments={**discovered, **normalized},
-        runtime_profile="observable",
-    )
-
-
 def _nodes_from_cells(cells: Sequence[Cell]) -> tuple[NotebookNode, ...]:
     explicit_ids = [cell.id for cell in cells if cell.id is not None]
     duplicates = _duplicates(explicit_ids)
@@ -267,31 +218,6 @@ def _duplicates(values: Iterable[int]) -> set[int]:
             duplicates.add(value)
         seen.add(value)
     return duplicates
-
-
-def _document_nodes(document: ObservableDocument) -> Sequence[ObservableNodeInput]:
-    nodes = document.get("nodes")
-    if nodes is None:
-        raise ValueError("ObservableHQ data is missing a nodes list")
-    if not isinstance(nodes, Sequence) or isinstance(nodes, (str, bytes, bytearray)):
-        raise TypeError("ObservableHQ nodes must be a list")
-    return nodes
-
-
-def _document_files(
-    document: ObservableDocument,
-) -> Sequence[ObservableFileInput] | None:
-    files = document.get("files")
-    if files is None:
-        return None
-    if not isinstance(files, Sequence) or isinstance(files, (str, bytes, bytearray)):
-        raise TypeError("ObservableHQ files must be a list")
-    return files
-
-
-def _document_title(document: ObservableDocument) -> str:
-    title = document.get("title")
-    return title if isinstance(title, str) and title else "Untitled"
 
 
 def _int_cell_id(value: object) -> int:

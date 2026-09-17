@@ -28,12 +28,13 @@ The notebook source selects the runtime profile before a view
 starts. The profile is fixed for the notebook session and inherited by each
 view.
 
-| Source                                                       | Profile      |
-| ------------------------------------------------------------ | ------------ |
-| Python-authored cells                                        | Notebook Kit |
-| Notebook Kit HTML                                            | Notebook Kit |
-| `Notebook.from_observablehq*`                                | Observable   |
-| ObservableHQ-derived HTML serialized by `to_notebook_html()` | Observable   |
+| Source                                                                           | Profile                  |
+| -------------------------------------------------------------------------------- | ------------------------ |
+| Python-authored cells                                                            | Notebook Kit             |
+| Notebook Kit HTML                                                                | Notebook Kit             |
+| Observable model with `stdlib: "1"` or classic nodes with no library declaration | Observable               |
+| Observable model with `stdlib: "2"` or native cells with no library declaration  | Notebook Kit             |
+| HTML serialized by `to_notebook_html()`                                          | Preserved source profile |
 
 The Notebook Kit profile uses the builtins exported by Notebook Kit. The
 Observable profile uses the [classic Observable standard
@@ -96,10 +97,10 @@ modules](../create/files-and-modules.mdx).
 
 Network access happens at two distinct times:
 
-| When                    | What                                                                             | Where it runs |
-| ----------------------- | -------------------------------------------------------------------------------- | ------------- |
-| `Notebook` construction | `from_observablehq` fetches the document API. Local files are read and embedded. | Python        |
-| View render             | npm imports, URL-backed attachments, remote datasets, imported notebooks.        | Browser       |
+| When                    | What                                                                                     | Where it runs |
+| ----------------------- | ---------------------------------------------------------------------------------------- | ------------- |
+| `Notebook` construction | `from_observablehq` fetches original notebook source. Local files are read and embedded. | Python        |
+| View render             | npm imports, URL-backed attachments, remote datasets, imported notebooks.                | Browser       |
 
 ## Promises, generators, and invalidation
 

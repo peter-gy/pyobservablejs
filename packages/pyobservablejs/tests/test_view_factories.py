@@ -115,7 +115,7 @@ def test_view_from_observablehq_accepts_url_factory_input(
         assert view.cells == view.notebook.cells
         assert view.cells[0].key == "answer"
         assert view.get_state(["_capture_state"]) == {"_capture_state": False}
-        assert requests == [("https://api.observablehq.com/document/@d3/bar-chart", 1)]
+        assert requests == [("https://observablehq.com/@d3/bar-chart", 1)]
     finally:
         view.close()
 

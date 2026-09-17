@@ -2,6 +2,24 @@ import { expect, test } from "./fixture";
 
 test.use({ baseURL: "http://127.0.0.1:27346" });
 
+test("derives compiled module exports with aliases and view bindings", async ({ page }) => {
+	await page.goto("/?scenario=compiled-imports");
+	const result = page.getByLabel("Compiled exports", { exact: true });
+	await expect(result).toHaveText("Q:override / true / view-control / styles");
+	await page.getByRole("button", { name: "Update compiled import", exact: true }).click();
+	await expect(result).toHaveText("Q:updated / true / view-control / styles");
+});
+
+test("renders native SQL results through Notebook Kit table display", async ({ page }) => {
+	await page.goto("/?scenario=sql");
+	const tables = page.getByRole("region", { name: "SQL notebook", exact: true }).getByRole("table");
+	await expect(tables).toHaveCount(1);
+	await expect(tables.getByRole("cell", { name: "7", exact: true })).toBeVisible();
+	await page.getByRole("button", { name: "Update SQL amount", exact: true }).click();
+	await expect(tables.getByRole("cell", { name: "11", exact: true })).toBeVisible();
+	await expect(tables).toHaveCount(1);
+});
+
 test("mounts source with hidden dependencies and preserves native JavaScript identities", async ({ page }) => {
 	await page.goto("/");
 	await expect(page.getByLabel("Native result")).toHaveText("21 on 2026-01-02, missing=true");

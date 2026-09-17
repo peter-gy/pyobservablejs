@@ -14,5 +14,5 @@ await test("inspects a Notebook Kit specification through the built Node entry p
 	assert.equal(info.title, "Batch inspection");
 	assert.deepEqual(info.cells[0].files, ["rows.csv"]);
 	assert.deepEqual(info.graph.edges, [{ from: 1, to: 2, variable: "rows" }]);
-	assert.equal(info.imports[0].resolved, "https://api.observablehq.com/@example/chart.js?v=4");
+	assert.equal(info.imports[0].resolved, "https://observablehq.com/@example/chart");
 });

@@ -1,20 +1,30 @@
 import { toNotebook } from "@observablehq/notebook-kit";
 import { describe, expect, test } from "vite-plus/test";
-import { createRuntime, createRuntimeCleanup } from "../src/environment";
-import { createRuntimeDefinition } from "../src/definition";
-import { isString } from "../src/value-kind";
-import { registerAttachments } from "../src/attachments";
-import { runtimeDocument } from "../src/scope";
-import { defineCompiledRuntimeCell } from "../src/execution";
 import {
 	analyzeNotebook,
 	createNotebookGraph,
 	createNotebookGraphFromAnalysis,
 	notebookViewNamesFromAnalysis,
-	transpileNotebookCell,
+	notebookAffectedIndexes,
+	notebookDependencyIndexes,
 } from "../src/graph";
 
 describe("notebook graph metadata", () => {
+	test("follows upstream and downstream dependencies across branches and cycles", () => {
+		const analysis = analyzeNotebook(
+			toNotebook({
+				cells: ["a = seed", "b = a * 2", "c = a + 1", "d = b + c", "island = other", "x = y", "y = x + seed"].map(
+					(value, index) => ({ id: index + 1, mode: "ojs", value }),
+				),
+			}),
+		);
+		expect(notebookDependencyIndexes(analysis, [3])).toEqual(new Set([0, 1, 2, 3]));
+		expect(notebookAffectedIndexes(analysis, new Set(["a"]))).toEqual(new Set([0, 1, 2, 3]));
+		expect(notebookAffectedIndexes(analysis, new Set(["seed"]))).toEqual(new Set([0, 1, 2, 3, 5, 6]));
+		expect(notebookDependencyIndexes(analysis, [5])).toEqual(new Set([5, 6]));
+		expect(notebookAffectedIndexes(analysis, new Set(["unused"]))).toEqual(new Set());
+	});
+
 	test("uses Notebook Kit transpile metadata for references, outputs, and edges", () => {
 		const notebook = toNotebook({
 			cells: [
@@ -109,8 +119,8 @@ describe("notebook graph metadata", () => {
 		expect(graph.cells[2]?.defines).toEqual(["node"]);
 		expect(graph.cells[2]?.references).toEqual(["htl"]);
 		expect(graph.cells[3]?.defines).toEqual(["rows"]);
-		expect(graph.cells[3]?.output).toBe(null);
-		expect(graph.cells[3]?.outputs).toEqual(["rows"]);
+		expect(graph.cells[3]?.output).toBe("rows");
+		expect(graph.cells[3]?.outputs).toEqual([]);
 		expect(graph.cells[3]?.runtimeOutputs).toEqual(["rows"]);
 		expect(graph.cells[3]?.autoview).toBe(false);
 		expect(graph.cells[4]?.defines).toEqual(["hidden"]);
@@ -129,65 +139,23 @@ describe("notebook graph metadata", () => {
 		expect(graph.cells[0]?.outputs).toEqual(["foo"]);
 	});
 
-	test("lowers Observable import-with cells through runtime module derivation", async () => {
-		const importedModule = encodeURIComponent(`
-function define(runtime, observer) {
-  const main = runtime.module();
-  main.variable(observer("renderSnippet")).define("renderSnippet", [], () => "default");
-  main.variable(observer("Q")).define("Q", ["renderSnippet"], (renderSnippet) => "Q:" + renderSnippet);
-  main.variable(observer("viewof showAll")).define("viewof showAll", [], () => "view-control");
-  main.variable(observer("showAll")).define("showAll", ["viewof showAll"], () => true);
-  main.variable(observer("styles")).define("styles", [], () => "styles");
-  return main;
-}
-export default define;
-`);
+	test("tracks aliased import-with bindings and their injection dependencies", () => {
 		const notebook = toNotebook({
 			cells: [
 				{ id: 1, mode: "ojs", value: 'renderSnippetOverride = "override"' },
 				{
 					id: 2,
 					mode: "ojs",
-					value: `// imported cells often carry source comments\nimport {Q, viewof showAll, styles as themeStyles} with {renderSnippetOverride as renderSnippet} from "data:text/javascript,${importedModule}"`,
+					value: `// imported cells often carry source comments\nimport {Q, viewof showAll, styles as themeStyles} with {renderSnippetOverride as renderSnippet} from "./module.js"`,
 				},
 			],
 		});
 
-		const analysis = analyzeNotebook(notebook);
-		const graph = createNotebookGraphFromAnalysis(analysis);
-		const definition = transpileNotebookCell(notebook.cells[1]!);
+		const graph = createNotebookGraph(notebook);
 
 		expect(graph.cells[1]?.defines).toEqual(["Q", "showAll", "viewof$showAll", "themeStyles"]);
 		expectMembers(graph.cells[1]?.references, ["@variable", "renderSnippetOverride"]);
-		expect(definition.inputs).toEqual(["@variable", "renderSnippetOverride"]);
-		expect(definition.outputs).toEqual(["Q", "showAll", "viewof$showAll", "themeStyles"]);
-
-		const root = document.createElement("div");
-		const registry = registerAttachments({});
-		const runtime = createRuntime(root, { attachments: {}, baseUrl: document.baseURI, variables: {} }, registry);
-		try {
-			const definitions = await Promise.all(
-				analysis.cells.map(async (cell) => {
-					if (!cell.definition) throw cell.error;
-					const definition = createRuntimeDefinition(cell.cell, cell.definition, {
-						document: runtimeDocument(runtime),
-					});
-					if (isString(cell.definition.body)) {
-						const url = `data:text/javascript;charset=utf-8,export default (${encodeURIComponent(cell.definition.body)})`;
-						definition.body = (await import(/* @vite-ignore */ url)).default;
-					}
-					return definition;
-				}),
-			);
-			for (const definition of definitions) {
-				defineCompiledRuntimeCell(runtime, document.createElement("div"), definition);
-			}
-			await expect(runtime.main.value("Q")).resolves.toBe("Q:override");
-			await expect(runtime.main.value("showAll")).resolves.toBe(true);
-			await expect(runtime.main.value("themeStyles")).resolves.toBe("styles");
-		} finally {
-			createRuntimeCleanup(runtime, registry)();
-		}
+		expect(graph.edges).toContainEqual({ from: 1, to: 2, variable: "renderSnippetOverride" });
 	});
 
 	test("tracks view and mutable import-with injections", () => {

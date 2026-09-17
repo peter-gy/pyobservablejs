@@ -1,7 +1,9 @@
+import { transpileNotebookImports } from "./notebook-imports";
+import { resolveRuntimeImport } from "./import-code";
 import { parseCell } from "@observablehq/parser";
 import { transpile, type Cell, type Notebook } from "@observablehq/notebook-kit";
 import { exposedVariableNames, runtimeOutputNames, viewVariableName, type RuntimeCellDefinition } from "./definition";
-import type { RuntimeProfile } from "./environment";
+import type { RuntimeProfile } from "./source";
 import { transpileObservableSql } from "./observable-sql";
 import { observableTemplateCell } from "./observable-template";
 export type CellGraph = Readonly<{
@@ -56,6 +58,15 @@ export type NotebookAnalysis = {
 	viewNames: Set<string>;
 };
 
+type DependencyIndex = {
+	sources: Map<number, number[]>;
+	targets: Map<number, number[]>;
+	names?: Map<string, number[]>;
+};
+
+// Analysis survives variable replacement; its dependency topology stays fixed.
+const dependencyIndexes = new WeakMap<NotebookAnalysis, DependencyIndex>();
+
 export function analyzeNotebook(
 	notebook: Notebook,
 	keys: readonly string[] = [],
@@ -78,7 +89,7 @@ export function createNotebookGraphFromAnalysis(
 		...cell,
 		key: keys[index] ?? "",
 	}));
-	return createGraphFromCells(cells);
+	return { cells, edges: analysis.graph.edges };
 }
 
 export function notebookViewNamesFromAnalysis(analysis: NotebookAnalysis): Set<string> {
@@ -95,52 +106,59 @@ export function notebookDefinedNamesFromAnalysis(analysis: NotebookAnalysis): Re
 }
 
 export function notebookDependencyIndexes(analysis: NotebookAnalysis, targetIndexes: Iterable<number>): Set<number> {
-	const indexById = new Map(analysis.graph.cells.map((cell) => [cell.id, cell.index]));
-	const sourcesByTarget = new Map<number, number[]>();
-	for (const edge of analysis.graph.edges) {
-		const sourceIndex = indexById.get(edge.from);
-		const target = indexById.get(edge.to);
-		if (sourceIndex === undefined || target === undefined) continue;
-		const sources = sourcesByTarget.get(target);
-		if (sources) sources.push(sourceIndex);
-		else sourcesByTarget.set(target, [sourceIndex]);
-	}
-	const indexes = new Set<number>();
-	const visit = (index: number) => {
-		if (indexes.has(index)) return;
-		indexes.add(index);
-		for (const source of sourcesByTarget.get(index) ?? []) visit(source);
-	};
-	for (const index of targetIndexes) visit(index);
-	return indexes;
+	return reachableIndexes(targetIndexes, dependencyIndex(analysis).sources);
 }
 
 export function notebookAffectedIndexes(analysis: NotebookAnalysis, variableNames: ReadonlySet<string>): Set<number> {
-	const affected = new Set<number>();
-	const targetIndexesBySource = new Map<number, number[]>();
+	const index = dependencyIndex(analysis);
+	const names = (index.names ??= variableIndex(analysis));
+	const roots = Array.from(variableNames).flatMap((name) => names.get(name) ?? []);
+	return reachableIndexes(roots, index.targets);
+}
+
+function dependencyIndex(analysis: NotebookAnalysis): DependencyIndex {
+	const cached = dependencyIndexes.get(analysis);
+	if (cached) return cached;
+	const sources = new Map<number, number[]>();
+	const targets = new Map<number, number[]>();
 	const indexById = new Map(analysis.graph.cells.map((cell) => [cell.id, cell.index]));
 	for (const edge of analysis.graph.edges) {
 		const source = indexById.get(edge.from);
 		const target = indexById.get(edge.to);
 		if (source === undefined || target === undefined) continue;
-		const targets = targetIndexesBySource.get(source);
-		if (targets) targets.push(target);
-		else targetIndexesBySource.set(source, [target]);
+		appendIndex(sources, target, source);
+		appendIndex(targets, source, target);
 	}
-	const visit = (index: number) => {
-		if (affected.has(index)) return;
-		affected.add(index);
-		for (const target of targetIndexesBySource.get(index) ?? []) visit(target);
-	};
+	const index = { sources, targets };
+	dependencyIndexes.set(analysis, index);
+	return index;
+}
+
+function variableIndex(analysis: NotebookAnalysis): Map<string, number[]> {
+	const names = new Map<string, number[]>();
 	for (const cell of analysis.graph.cells) {
-		if (
-			cell.references.some((name) => variableNames.has(name)) ||
-			definedNames(cell).some((name) => variableNames.has(name))
-		) {
-			visit(cell.index);
-		}
+		for (const name of new Set([...cell.references, ...cell.defines, ...cell.runtimeOutputs]))
+			appendIndex(names, name, cell.index);
 	}
-	return affected;
+	return names;
+}
+
+function appendIndex<Key>(map: Map<Key, number[]>, key: Key, index: number): void {
+	const indexes = map.get(key);
+	if (indexes) indexes.push(index);
+	else map.set(key, [index]);
+}
+
+function reachableIndexes(roots: Iterable<number>, neighbors: ReadonlyMap<number, readonly number[]>): Set<number> {
+	const visited = new Set<number>();
+	const pending = Array.from(roots);
+	while (pending.length) {
+		const index = pending.pop()!;
+		if (visited.has(index)) continue;
+		visited.add(index);
+		for (const neighbor of neighbors.get(index) ?? []) pending.push(neighbor);
+	}
+	return visited;
 }
 
 function analyzeCell(cell: Cell, index: number, key: string, profile?: RuntimeProfile): CellAnalysis {
@@ -165,10 +183,14 @@ function analyzeCell(cell: Cell, index: number, key: string, profile?: RuntimePr
 	}
 }
 
-export function transpileNotebookCell(cell: Cell, profile?: RuntimeProfile): RuntimeCellDefinition {
+function transpileNotebookCell(cell: Cell, profile?: RuntimeProfile): RuntimeCellDefinition {
 	if (profile === "observable" && cell.mode === "sql") return transpileObservableSql(cell);
 	if (profile === "observable") cell = observableTemplateCell(cell);
-	return addObservableImportWithInputs(cell, transpile(cell, { resolveLocalImports: true }));
+	return addObservableImportWithInputs(
+		cell,
+		transpileNotebookImports(cell) ??
+			transpile(cell, { resolveImport: resolveRuntimeImport, resolveLocalImports: true }),
+	);
 }
 
 function analysisFromCells(cells: CellAnalysis[]): NotebookAnalysis {
@@ -216,7 +238,9 @@ function cellGraphFromDefinition(
 		key,
 		mode: notebookCell.mode,
 		defines: exposedVariableNames(definition),
-		references: definition.inputs ?? [],
+		references: (definition.inputs ?? []).filter(
+			(name) => !definition.imports?.some((imported) => imported.outputs?.includes(name)),
+		),
 		output: definition.output ?? null,
 		outputs: definition.outputs ?? [],
 		runtimeOutputs: runtimeOutputNames(definition),

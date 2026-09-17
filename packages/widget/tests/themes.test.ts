@@ -52,7 +52,7 @@ describe("widget themes", () => {
 		controller.abort();
 	});
 
-	test("renders source-backed theme traits through NotebookView", async () => {
+	test("uses source-backed themes from Notebook Kit HTML", async () => {
 		const { view, host } = createNotebookFixture({
 			_source: '<!doctype html><notebook theme="air"></notebook>',
 			theme: { light: "cotton", dark: "slate" },
@@ -64,9 +64,9 @@ describe("widget themes", () => {
 
 		const root = await waitFor(() => notebookRoot(el));
 
-		expect(root.dataset.theme).toBe("light-dark");
-		expect(root.dataset.themeLight).toBe("cotton");
-		expect(root.dataset.themeDark).toBe("slate");
+		expect(root.dataset.theme).toBe("air");
+		expect(root.dataset.themeLight).toBeUndefined();
+		expect(root.dataset.themeDark).toBeUndefined();
 		controller.abort();
 	});
 });

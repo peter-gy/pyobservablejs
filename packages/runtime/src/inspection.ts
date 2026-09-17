@@ -1,18 +1,19 @@
+import { normalizeNotebook } from "./source";
 import {
-	deserialize,
 	parseJavaScript,
 	resolveImportDefault,
-	toNotebook,
 	transpileTemplate,
 	type Cell,
 	type Notebook,
 	type NotebookSpec,
 } from "@observablehq/notebook-kit";
+import type { NotebookOrigin } from "./source";
+import { notebookReference, resolveNotebookReference, notebookSourceUrl } from "./import-code";
 import { parseCell } from "@observablehq/parser";
 import { simple, base, type RecursiveVisitors } from "acorn-walk";
 import type { AnyNode, ImportDeclaration, ImportSpecifier } from "acorn";
 import type { AttachmentInfo } from "./attachment-info";
-import type { RuntimeProfile } from "./environment";
+import type { RuntimeProfile } from "./source";
 import { analyzeNotebook, type CellGraph, type NotebookAnalysis, type NotebookGraph } from "./graph";
 import { isString } from "./value-kind";
 import { observableTemplateCell } from "./observable-template";
@@ -44,6 +45,7 @@ export type AttachmentInspection = Readonly<{
 	cells: readonly number[];
 }>;
 export type InspectOptions = {
+	origin?: NotebookOrigin;
 	keys?: readonly string[];
 	attachments?: Readonly<Record<string, AttachmentInfo>>;
 	runtimeProfile?: RuntimeProfile;
@@ -59,8 +61,13 @@ export type NotebookInspection = Readonly<{
 }>;
 
 export function inspectNotebook(source: string | NotebookSpec, options: InspectOptions = {}): NotebookInspection {
-	const notebook = isString(source) ? deserialize(source) : toNotebook(source);
-	return inspectAnalysis(notebook, analyzeNotebook(notebook, options.keys, options.runtimeProfile), options);
+	const normalized = normalizeNotebook(source, options);
+	options = { ...options, runtimeProfile: normalized.runtimeProfile, origin: normalized.origin };
+	return inspectAnalysis(
+		normalized.notebook,
+		analyzeNotebook(normalized.notebook, options.keys, options.runtimeProfile),
+		options,
+	);
 }
 
 export function inspectAnalysis(
@@ -70,13 +77,14 @@ export function inspectAnalysis(
 ): NotebookInspection {
 	const imports: NotebookImport[] = [];
 	const cells = analysis.cells.map(({ cell, definition, graph }, index) => {
-		// Template metadata can also contribute expressions to the generated source.
-		if (
-			definition &&
-			(cell.value.includes("import") || cell.output?.includes("import") || cell.database?.includes("import"))
-		)
+		// SQL database metadata can contribute expressions to the generated source.
+		if (definition && (cell.value.includes("import") || cell.database?.includes("import")))
 			imports.push(
-				...cellImports(options.runtimeProfile === "observable" ? observableTemplateCell(cell) : cell, index),
+				...cellImports(
+					options.runtimeProfile === "observable" ? observableTemplateCell(cell) : cell,
+					index,
+					options.origin,
+				),
 			);
 		return Object.freeze({
 			...graph,
@@ -93,13 +101,20 @@ export function inspectAnalysis(
 			secrets: Object.freeze([...(definition?.secrets ?? [])]),
 		});
 	});
-	const names = new Set([...Object.keys(options.attachments ?? {}), ...cells.flatMap((cell) => cell.files)]);
-	const attachments = [...names].map((name) =>
+	const fileCells = new Map<string, number[]>(Object.keys(options.attachments ?? {}).map((name) => [name, []]));
+	for (const cell of cells) {
+		for (const name of cell.files) {
+			const indexes = fileCells.get(name);
+			if (indexes) indexes.push(cell.index);
+			else fileCells.set(name, [cell.index]);
+		}
+	}
+	const attachments = Array.from(fileCells, ([name, indexes]) =>
 		Object.freeze({
 			name,
 			url: options.attachments?.[name]?.url ?? null,
 			...options.attachments?.[name],
-			cells: Object.freeze(cells.filter((cell) => cell.files.includes(name)).map((cell) => cell.index)),
+			cells: Object.freeze(indexes),
 		}),
 	);
 	return Object.freeze({
@@ -131,7 +146,12 @@ export function inspectAnalysis(
 type ObservableSpecifier = ImportSpecifier & { view?: boolean; mutable?: boolean };
 type ObservableImport = ImportDeclaration & { injections?: ObservableSpecifier[] };
 
-function cellImports(cell: Cell, index: number): NotebookImport[] {
+function cellImports(cell: Cell, index: number, origin?: NotebookOrigin): NotebookImport[] {
+	const resolve = (source: string) => {
+		const resolved = resolveImportDefault(source);
+		const reference = notebookReference(resolved);
+		return reference === null ? resolved : notebookSourceUrl(resolveNotebookReference(reference, origin));
+	};
 	const node =
 		cell.mode === "ojs"
 			? parseCell(cell.value).body
@@ -146,9 +166,7 @@ function cellImports(cell: Cell, index: number): NotebookImport[] {
 			ImportDeclaration(declaration) {
 				if ("importKind" in declaration && declaration.importKind === "type") return;
 				const source = String(declaration.source.value);
-				const resolved = resolveImportDefault(
-					cell.mode === "ojs" && !/^\w+:/.test(source) ? `observable:${source}` : source,
-				);
+				const resolved = resolve(cell.mode === "ojs" && !/^\w+:/.test(source) ? `observable:${source}` : source);
 				// SAFETY: Observable's import AST extends Acorn with view, mutable, and injection bindings.
 				const observable = declaration as ObservableImport;
 				imports.push(
@@ -174,9 +192,9 @@ function cellImports(cell: Cell, index: number): NotebookImport[] {
 				const source = constantString(expression.source);
 				let resolved = source;
 				if (source !== null) {
-					if (cell.mode !== "ojs") resolved = resolveImportDefault(source);
+					if (cell.mode !== "ojs") resolved = resolve(source);
 					else if (!/^(\w+:|\.?\.?\/)/.test(source))
-						resolved = resolveImportDefault(`npm:${source}${/\.(js|mjs|cjs)$/.test(source) ? "/+esm" : ""}`);
+						resolved = resolve(`npm:${source}${/\.(js|mjs|cjs)$/.test(source) ? "/+esm" : ""}`);
 				}
 				imports.push(freezeImport({ cell: index, kind: "dynamic", source, resolved, bindings: [], injections: [] }));
 			},

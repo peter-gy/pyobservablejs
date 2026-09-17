@@ -6,11 +6,28 @@ afterEach(() => {
 	for (const mount of mounts.splice(0)) mount.dispose();
 });
 
-test.each([
-	{ id: 1, mode: "sql" as const, value: "SELECT 1", database: 'var:(await import("npm:x"))', hidden: true },
-	{ id: 1, mode: "html" as const, value: "<b>content</b>", output: '{missing = await import("npm:x")}' },
-])("inspects imports in $mode template metadata", (cell) => {
-	const info = inspectNotebook({ cells: [cell] });
+test("indexes declared and referenced attachments in source order", () => {
+	const info = inspectNotebook(
+		{
+			cells: [
+				{ id: 1, mode: "js", value: 'const files = [FileAttachment("z.csv"), FileAttachment("z.csv")];' },
+				{ id: 2, mode: "js", value: 'const a = FileAttachment("a.csv");' },
+				{ id: 3, mode: "js", value: 'const z = FileAttachment("z.csv");' },
+			],
+		},
+		{ attachments: { "unused.csv": { url: "https://example.test/unused.csv" } } },
+	);
+	expect(info.attachments.map(({ name, cells }) => ({ name, cells }))).toEqual([
+		{ name: "unused.csv", cells: [] },
+		{ name: "z.csv", cells: [0, 2] },
+		{ name: "a.csv", cells: [1] },
+	]);
+});
+
+test("inspects imports in SQL database metadata", () => {
+	const info = inspectNotebook({
+		cells: [{ id: 1, mode: "sql", value: "SELECT 1", database: 'var:(await import("npm:x"))', hidden: true }],
+	});
 	expect(info.cells[0]?.error).toBeUndefined();
 	expect(info.imports).toEqual([
 		{
@@ -22,6 +39,14 @@ test.each([
 			injections: [],
 		},
 	]);
+});
+
+test("treats Notebook Kit output names as metadata rather than source", () => {
+	const info = inspectNotebook({
+		cells: [{ id: 1, mode: "html", value: "<b>content</b>", output: '{missing = await import("npm:x")}' }],
+	});
+	expect(info.cells[0]?.error).toBeUndefined();
+	expect(info.imports).toEqual([]);
 });
 
 test("inspects constant dynamic import targets and preserves computed targets", () => {
@@ -107,7 +132,7 @@ test("inspects complete source, imports, attachments, and diagnostics without ev
 			cell: 2,
 			kind: "static",
 			source: "@example/charts",
-			resolved: "https://api.observablehq.com/@example/charts.js?v=4",
+			resolved: "https://observablehq.com/@example/charts",
 			bindings: [{ imported: "chart", local: "plot" }],
 			injections: [{ imported: "rows", local: "data" }],
 		},

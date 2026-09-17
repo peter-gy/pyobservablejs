@@ -139,7 +139,11 @@ class _NotebookHTMLParser(HTMLParser):
 def parse_html(source: str) -> tuple[list[Cell], Theme, RuntimeProfile]:
     parser = _NotebookHTMLParser()
     parser.feed(source)
-    return parser.cells, parser.theme or "air", parser.runtime_profile or "notebook-kit"
+    return (
+        parser.cells,
+        parser.theme or "air",
+        parser.runtime_profile or "notebook-kit",
+    )
 
 
 def _runtime_profile(value: str | None) -> RuntimeProfile:

@@ -12,8 +12,9 @@ transport, and renderable view separate.
   definition, canonical cell handles, Python variables, attachment records,
   theme, lifecycle, and a detached `NotebookState` snapshot.
 - `_NotebookSession` is the private anywidget model. It carries the definition,
-  runtime profile, attachments, theme, options, Python variables, shared browser
-  inputs, and cell keys to each view. Browser results stay on the view model.
+  attachments, theme, options, Python variables, shared browser inputs, and cell
+  keys to each view. Source HTML carries its runtime profile and origin. Browser
+  results stay on the view model.
 - `NotebookView` is the public renderable anywidget. Each call to
   `Notebook.view()` creates one view model, DOM lifecycle, Notebook Kit runtime,
   and detached `ViewState`. Views from one notebook share session inputs while
@@ -82,9 +83,13 @@ browser checks.
   names return to Notebook Kit evaluation.
 - `NotebookModel` carries authored notebooks through `_spec` and source-backed
   notebooks through `_source`. Source HTML owns its theme and runtime profile.
-  Preserve both across import and serialization. Send `pinned` as an explicit
-  boolean for authored cells because Notebook Kit treats an omitted value as
-  pinned.
+  Observable-derived HTML also owns source identity and dependency resolutions.
+  Preserve these across import and serialization. Send `pinned` as an explicit
+  boolean for authored cells because Notebook Kit treats an omitted value as pinned.
+- TypeScript owns notebook import compilation, resolution, native Runtime module
+  definition, library and attachment scope, caching, and disposal. Python fetches
+  and adapts source records and serves prepared Notebook Kit HTML over the private
+  widget request channel.
 - `packages/runtime/src/styles/` owns notebook CSS. Runtime `themes.ts` scopes
   Notebook Kit theme variables to `.pyobservablejs-notebook` and installs styles
   in the owning document or shadow root. Keep selectors scoped to pyobservablejs

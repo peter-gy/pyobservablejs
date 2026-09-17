@@ -70,5 +70,6 @@ declare module "@observablehq/runtime" {
 		import(name: string, module: Module): Variable;
 		import(remote: string, name: string, module: Module): Variable;
 		delete(): Variable;
+		dispose(): void;
 	}
 }

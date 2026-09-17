@@ -9,13 +9,14 @@ import {
 	SQLiteDatabaseClient,
 	type AttachmentRegistry,
 } from "./attachments";
+import type { NotebookOrigin, ResolveNotebook, RuntimeProfile } from "./source";
 import type { AttachmentInfo } from "./attachment-info";
 import { bindRuntimeScope, cleanupRuntimeScope, createRuntimeScope, createScopedGenerators } from "./scope";
 import { createVariableBuiltins, type Variables } from "./values";
 
-export type RuntimeProfile = "notebook-kit" | "observable";
-
 export type RuntimeOptions = {
+	origin?: NotebookOrigin;
+	resolveNotebook?: ResolveNotebook;
 	attachments: Record<string, AttachmentInfo>;
 	baseUrl: string;
 	variables: Variables;
@@ -36,22 +37,7 @@ export function createRuntime(
 	options: RuntimeOptions,
 	attachmentRegistry: AttachmentRegistry,
 ): NotebookRuntime {
-	const scope = createRuntimeScope(root);
-	const scopedGenerators = createScopedGenerators(root);
-	const builtins = {
-		...selectRuntimeLibrary(options.runtimeProfile),
-		DuckDBClient: () =>
-			Promise.resolve(library.DuckDBClient()).then((DuckDBClient) =>
-				createDuckDBClient(DuckDBClient, attachmentRegistry),
-			),
-		FileAttachment: () => createFileAttachment(options.baseUrl, attachmentRegistry),
-		SQLite: () => loadSQLiteModule(),
-		SQLiteDatabaseClient: () => SQLiteDatabaseClient,
-		document: () => scope.document,
-		width: () => library.Generators().width(root),
-		dark: () => scopedGenerators.dark(),
-	} satisfies RuntimeLibrary;
-	if (options.runtimeProfile !== "observable") Object.assign(builtins, { Generators: () => scopedGenerators });
+	const { builtins, scope } = createRuntimeBuiltins(root, options, attachmentRegistry);
 	const builtinNames = new Set([...RUNTIME_CORE_NAMES, ...Object.keys(builtins)]);
 	assertNoBuiltinCollisions(options.variables, builtinNames);
 	const runtime = new NotebookRuntime(
@@ -64,6 +50,30 @@ export function createRuntime(
 	extendRuntimeFileAttachments(runtime);
 	bindRuntimeScope(runtime, scope);
 	return runtime;
+}
+
+export function createRuntimeBuiltins(
+	root: HTMLElement,
+	options: RuntimeOptions,
+	attachmentRegistry: AttachmentRegistry,
+) {
+	const scope = createRuntimeScope(root, options.baseUrl);
+	const scopedGenerators = createScopedGenerators(root);
+	const builtins: RuntimeLibrary = {
+		...selectRuntimeLibrary(options.runtimeProfile),
+		DuckDBClient: () =>
+			Promise.resolve(library.DuckDBClient()).then((DuckDBClient) =>
+				createDuckDBClient(DuckDBClient, attachmentRegistry),
+			),
+		FileAttachment: () => createFileAttachment(options.baseUrl, attachmentRegistry),
+		SQLite: () => loadSQLiteModule(),
+		SQLiteDatabaseClient: () => SQLiteDatabaseClient,
+		document: () => scope.document,
+		width: () => library.Generators().width(root),
+		dark: () => scopedGenerators.dark(),
+	};
+	if (options.runtimeProfile !== "observable") Object.assign(builtins, { Generators: () => scopedGenerators });
+	return { builtins, scope };
 }
 
 export function assertNoRuntimeBuiltinCollisions(runtime: NotebookRuntime, variables: Variables): void {

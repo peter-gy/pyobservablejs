@@ -184,10 +184,8 @@ describe("widget variable sync", () => {
 
 	test("rejects live variables that collide with the selected runtime builtins", async () => {
 		const { session, view, host } = createNotebookFixture({
-			_spec: {
-				cells: [{ id: 1, mode: "ojs", value: "answer = 42" }],
-			},
-			_runtime_profile: "observable",
+			_source:
+				'<!doctype html><notebook data-pyobservablejs-runtime-profile="observable"><script id="1" type="application/vnd.observable.javascript">answer = 42</script></notebook>',
 		});
 		const controller = new AbortController();
 

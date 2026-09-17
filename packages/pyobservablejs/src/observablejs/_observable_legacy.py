@@ -1,13 +1,10 @@
-"""Convert public ObservableHQ documents to Notebook Kit inputs."""
+"""Adapt classic Observable node records to Notebook Kit cell inputs."""
 
 from __future__ import annotations
 
 import datetime as _dt
 import json
 import re
-import urllib.error
-import urllib.parse
-import urllib.request
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, cast
@@ -16,20 +13,12 @@ from ._cell_ids import _MAX_SAFE_CELL_ID, _CellIdAllocator, _is_safe_cell_id
 from ._cells import NotebookCellSpec
 from ._files import FileAttachment
 from .types import (
-    ObservableDocument,
-)
-from .types import (
     ObservableFile as ObservableFileRecord,
 )
 from .types import (
     ObservableNode as ObservableNodeRecord,
 )
 
-_UI_ORIGIN = "https://observablehq.com"
-_ID_SPECIFIER_RE = re.compile(r"^[0-9a-f]{16}(?:@\d+|@latest|@\w+|~\d+)?$")
-_SLUG_SPECIFIER_RE = re.compile(
-    r"^@[0-9a-z_-]+/[0-9a-z_-]+(?:/\d+)?(?:@\d+|@latest|@\w+|~\d+)?$"
-)
 _JS_IDENTIFIER_RE = re.compile(r"^[A-Za-z_$][0-9A-Za-z_$]*$")
 _OJS_OUTPUT_RE = re.compile(
     r"^\s*(?:mutable\s+|viewof\s+)?([A-Za-z_$][0-9A-Za-z_$]*)\s*="
@@ -120,96 +109,13 @@ class LoweringContext:
         return SqlPlan(database=database, cells=(generated,))
 
 
-def resolve_observablehq_api_url(specifier: str) -> str:
-    """Return the ObservableHQ document API URL for a public notebook specifier."""
-
-    value = specifier.strip()
-    if _ID_SPECIFIER_RE.fullmatch(value):
-        value = f"{_UI_ORIGIN}/d/{value}"
-    elif _SLUG_SPECIFIER_RE.fullmatch(value):
-        value = f"{_UI_ORIGIN}/{value}"
-
-    url = urllib.parse.urlsplit(value)
-    if not url.scheme or not url.netloc:
-        raise ValueError(f"Invalid ObservableHQ notebook specifier: {specifier!r}")
-    if url.netloc not in {"observablehq.com", "api.observablehq.com"}:
-        raise ValueError(f"Invalid ObservableHQ notebook specifier: {specifier!r}")
-
-    if url.path.startswith("/document/"):
-        api_path = url.path
-    else:
-        path = (
-            url.path.replace("/d/", "/", 1) if url.path.startswith("/d/") else url.path
-        )
-        api_path = f"/document{path}"
-    return urllib.parse.urlunsplit(
-        (url.scheme, "api.observablehq.com", api_path, url.query, "")
-    )
-
-
-def fetch_observablehq_document(
-    specifier: str,
-    *,
-    timeout: float | None = 30,
-) -> ObservableDocument:
-    """Fetch a public ObservableHQ notebook document."""
-
-    api_url = resolve_observablehq_api_url(specifier)
-    request = urllib.request.Request(
-        api_url,
-        headers={
-            "Accept": "application/json",
-            "User-Agent": "pyobservablejs",
-        },
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            raw = response.read().decode("utf-8")
-    except urllib.error.HTTPError as error:
-        raise OSError(
-            f"Unable to fetch ObservableHQ notebook {api_url}: HTTP {error.code}"
-        ) from error
-    except urllib.error.URLError as error:
-        raise OSError(
-            f"Unable to fetch ObservableHQ notebook {api_url}: {error.reason}"
-        ) from error
-
-    try:
-        document = json.loads(raw)
-    except json.JSONDecodeError as error:
-        raise ValueError(
-            f"ObservableHQ document response was not JSON: {api_url}"
-        ) from error
-    if not isinstance(document, Mapping):
-        raise TypeError(f"ObservableHQ document response was not an object: {api_url}")
-    return cast(ObservableDocument, document)
-
-
 def observable_nodes_to_cells(
     nodes: Sequence[ObservableNodeInput],
-    *,
-    import_resolution: str | None = None,
 ) -> list[NotebookCellSpec]:
     """Convert ObservableHQ document nodes to Notebook Kit cell specs."""
 
     normalized = _normalize_nodes(nodes)
-    return _lower_nodes(normalized, import_resolution=import_resolution)
-
-
-def observable_document_import_resolution(document: Mapping[str, Any]) -> str | None:
-    """Return the document revision used to resolve imported notebooks."""
-
-    notebook_id = document.get("id")
-    version = document.get("version")
-    if (
-        not isinstance(notebook_id, str)
-        or not re.fullmatch(r"[0-9a-f]{16}", notebook_id)
-        or not isinstance(version, int)
-        or isinstance(version, bool)
-        or version < 0
-    ):
-        return None
-    return f"{notebook_id}@{version}"
+    return _lower_nodes(normalized)
 
 
 def observable_files_to_attachments(
@@ -263,8 +169,6 @@ def _normalize_node(
 
 def _lower_nodes(
     nodes: list[ObservableNode],
-    *,
-    import_resolution: str | None,
 ) -> list[NotebookCellSpec]:
     cells: list[NotebookCellSpec] = []
     used_names: set[str] = set()
@@ -303,7 +207,6 @@ def _lower_nodes(
                 node,
                 sql_database=sql_plan.database,
                 use_builtin_duckdb=use_builtin_duckdb,
-                import_resolution=import_resolution,
             )
         )
     return cells
@@ -333,7 +236,6 @@ def _lower_node(
     *,
     sql_database: str | None = None,
     use_builtin_duckdb: bool = False,
-    import_resolution: str | None = None,
 ) -> NotebookCellSpec:
     if node.mode == "chart":
         return _chart_node_to_cell(node)
@@ -341,7 +243,6 @@ def _lower_node(
         node,
         sql_database=sql_database,
         use_builtin_duckdb=use_builtin_duckdb,
-        import_resolution=import_resolution,
     )
 
 
@@ -350,7 +251,6 @@ def _code_node_to_cell(
     *,
     sql_database: str | None = None,
     use_builtin_duckdb: bool = False,
-    import_resolution: str | None = None,
 ) -> NotebookCellSpec:
     value = "" if node.value is None else str(node.value)
     uses_builtin_duckdb = (
@@ -360,11 +260,7 @@ def _code_node_to_cell(
     )
     cell: dict[str, Any] = {
         "id": node.id,
-        "value": (
-            "undefined"
-            if uses_builtin_duckdb
-            else _pin_observable_import(value, import_resolution)
-        ),
+        "value": "undefined" if uses_builtin_duckdb else value,
         # ObservableHQ hosted notebooks label OJS cells as "js". Notebook Kit
         # reserves "js" for ES modules, so imported cells keep OJS semantics.
         "mode": "ojs" if node.mode == "js" else node.mode,
@@ -385,38 +281,6 @@ def _code_node_to_cell(
         if value is not None and key not in cell:
             cell[key] = value
     return cast(NotebookCellSpec, cell)
-
-
-def _pin_observable_import(source: str, resolution: str | None) -> str:
-    if resolution is None or re.match(r"^\s*import\b", source) is None:
-        return source
-    match = re.search(
-        r"(?P<prefix>\bfrom\s*)(?P<quote>[\"'])(?P<specifier>[^\"']+)(?P=quote)",
-        source,
-    )
-    if match is None:
-        return source
-    specifier = match.group("specifier")
-    if specifier.startswith("observable:"):
-        specifier = specifier.removeprefix("observable:")
-    parsed = urllib.parse.urlsplit(specifier)
-    if parsed.scheme and parsed.hostname != "api.observablehq.com":
-        return source
-    path = parsed.path.lstrip("/")
-    if not path:
-        return source
-    if re.match(r"^[0-9a-f]{16}(?:@|$)", path):
-        path = f"d/{path}"
-    if not path.endswith(".js"):
-        path += ".js"
-    # The full API URL keeps Notebook Kit's Observable import type while
-    # carrying the parent revision that a bare specifier cannot express.
-    query = urllib.parse.urlencode({"v": "4", "resolutions": resolution}, safe="@")
-    resolved = urllib.parse.urlunsplit(
-        ("https", "api.observablehq.com", f"/{path}", query, "")
-    )
-    start, end = match.span("specifier")
-    return f"{source[:start]}{resolved}{source[end:]}"
 
 
 def _can_use_builtin_duckdb_client(nodes: list[ObservableNode]) -> bool:

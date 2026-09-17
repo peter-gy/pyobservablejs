@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+from html.parser import HTMLParser
+
 import observablejs as obs
 import pytest
 from helpers import (
@@ -11,49 +14,51 @@ from helpers import (
 
 
 @pytest.mark.parametrize(
-    ("specifier", "api_url"),
+    ("specifier", "source_url"),
     [
         (
             "https://observablehq.com/@d3/bar-chart",
-            "https://api.observablehq.com/document/@d3/bar-chart",
+            "https://observablehq.com/@d3/bar-chart",
         ),
         (
             "https://observablehq.com/@d3/bar-chart/2",
-            "https://api.observablehq.com/document/@d3/bar-chart/2",
+            "https://observablehq.com/@d3/bar-chart/2",
         ),
         (
             "https://observablehq.com/@d3/bar-chart@latest",
-            "https://api.observablehq.com/document/@d3/bar-chart@latest",
+            "https://observablehq.com/@d3/bar-chart@latest",
         ),
         (
             "https://observablehq.com/d/1234567890abcdef",
-            "https://api.observablehq.com/document/1234567890abcdef",
+            "https://observablehq.com/d/1234567890abcdef",
         ),
         (
             "https://api.observablehq.com/document/@d3/bar-chart",
-            "https://api.observablehq.com/document/@d3/bar-chart",
+            "https://observablehq.com/@d3/bar-chart",
         ),
         (
             "https://api.observablehq.com/document/1234567890abcdef",
-            "https://api.observablehq.com/document/1234567890abcdef",
+            "https://observablehq.com/d/1234567890abcdef",
         ),
-        ("@d3/bar-chart", "https://api.observablehq.com/document/@d3/bar-chart"),
+        ("@d3/bar-chart", "https://observablehq.com/@d3/bar-chart"),
         (
             "1234567890abcdef",
-            "https://api.observablehq.com/document/1234567890abcdef",
+            "https://observablehq.com/d/1234567890abcdef",
         ),
     ],
 )
-def test_observablehq_specifier_resolution_matches_document_api(
+def test_observablehq_specifier_resolution_fetches_public_source(
     observablehq_response: ObservableHQResponseInstaller,
     specifier: str,
-    api_url: str,
+    source_url: str,
 ) -> None:
-    requests = observablehq_response({"title": "Remote", "nodes": []})
+    requests = observablehq_response(
+        {"id": "1234567890abcdef", "title": "Remote", "nodes": []}
+    )
 
     obs.Notebook.from_observablehq(specifier, timeout=1)
 
-    assert requests == [(api_url, 1)]
+    assert requests == [(source_url, 1)]
 
 
 def test_observablehq_rejects_non_observable_specifier() -> None:
@@ -93,66 +98,58 @@ def test_notebook_from_observablehq_fetches_source_and_remote_attachments(
     assert set(widget.attachments) == {"data.csv", "local.csv"}
     assert widget.attachments["data.csv"]["url"] == "https://static.example/data.csv"
     assert widget.attachments["local.csv"]["url"] == "https://example.test/local.csv"
-    assert notebook_session(widget).get_state(["_options", "_runtime_profile"]) == {
-        "_options": {"show_source": False},
-        "_runtime_profile": "observable",
+    assert notebook_session(widget).get_state(["_options"]) == {
+        "_options": {"show_source": False}
     }
+    assert widget.runtime_profile == "observable"
     assert len(widget.cells) == 1
 
 
-def test_observablehq_document_pins_imports_to_its_revision(
-    script_tags: ScriptTags,
-) -> None:
+def test_observablehq_preserves_source_profile_and_resolutions_across_html():
+    class Metadata(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.origin: object = None
+
+        def handle_starttag(self, tag, attrs):
+            if tag == "notebook":
+                self.origin = json.loads(dict(attrs)["data-pyobservablejs-origin"])
+
+    source = 'import {checkbox} from "@jashkenas/inputs"'
     notebook = obs.Notebook.from_observablehq_document(
         {
             "id": "0123456789abcdef",
             "version": 42,
-            "title": "Imported modules",
-            "nodes": [
+            "nodes": [{"id": 1, "mode": "js", "value": source}],
+            "resolutions": [
                 {
-                    "id": 1,
-                    "mode": "js",
-                    "value": 'import {checkbox} from "@jashkenas/inputs"',
-                },
-                {
-                    "id": 2,
-                    "mode": "js",
-                    "value": (
-                        'import {footer} from "https://api.observablehq.com/'
-                        '@tomlarkworthy/footer.js?v=4"'
-                    ),
-                },
+                    "type": "notebook",
+                    "specifier": "@jashkenas/inputs",
+                    "value": "abcdef0123456789@12",
+                }
             ],
         }
     )
-
-    assert [
-        script["text"].strip() for script in script_tags(notebook.to_notebook_html())
-    ] == [
-        (
-            'import {checkbox} from "https://api.observablehq.com/@jashkenas/'
-            'inputs.js?v=4&resolutions=0123456789abcdef@42"'
-        ),
-        (
-            'import {footer} from "https://api.observablehq.com/@tomlarkworthy/'
-            'footer.js?v=4&resolutions=0123456789abcdef@42"'
-        ),
-    ]
-
-
-def test_observablehq_document_preserves_imports_without_a_valid_revision(
-    script_tags: ScriptTags,
-) -> None:
-    source = 'import {checkbox} from "@jashkenas/inputs"'
-    notebook = obs.Notebook.from_observablehq_document(
-        {
-            "title": "Imported module",
-            "nodes": [{"id": 1, "mode": "js", "value": source}],
-        }
-    )
-
-    [script] = script_tags(notebook.to_notebook_html())
-    assert script["text"].strip() == source
+    restored = obs.Notebook.from_html(notebook.to_notebook_html())
+    try:
+        for current in (notebook, restored):
+            assert current.cells[0].source == source
+            assert current.runtime_profile == "observable"
+            metadata = Metadata()
+            metadata.feed(current.to_notebook_html())
+            assert metadata.origin == {
+                "format": "classic",
+                "id": "0123456789abcdef",
+                "version": 42,
+                "resolutions": {"@jashkenas/inputs": "abcdef0123456789@12"},
+            }
+        with pytest.raises(
+            ValueError, match="Reserved Observable runtime name: 'require'"
+        ):
+            restored.update_variables({"require": "shadowed"})
+    finally:
+        restored.close()
+        notebook.close()
 
 
 def test_notebook_from_observablehq_converts_table_nodes(
