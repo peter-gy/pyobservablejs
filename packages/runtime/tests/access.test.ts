@@ -340,3 +340,25 @@ test("qualified value selectors preserve anonymous and multi-output identity", a
 	await expect(mount.read({ cell: 1 })).rejects.toThrow("ambiguous");
 	expect((await mount.read({ cell: 1, name: "right" })).data).toBe(2);
 });
+
+test("named lookup retains ambiguity and current values through patches and replacement", async () => {
+	const mount = mountNotebook(
+		document.createElement("div"),
+		{
+			cells: [
+				{ id: 1, value: "const shared = 1" },
+				{ id: 2, value: "const shared = 2" },
+			],
+		},
+		{ variables: { shared: 3 }, captureState: false },
+	);
+	mounts.push(mount);
+	await expect(mount.read("shared")).rejects.toThrow("ambiguous");
+	expect((await mount.read({ cell: 0 })).data).toBe(3);
+	mount.updateVariables({ shared: 4 });
+	expect((await mount.read({ cell: 1, name: "shared" })).data).toBe(4);
+	mount.replaceVariables({ shared: 5 });
+	await expect(mount.read("shared")).rejects.toThrow("ambiguous");
+	expect((await mount.read({ cell: 0, name: "shared" })).data).toBe(5);
+	await expect(mount.read("absent")).rejects.toThrow("not defined");
+});

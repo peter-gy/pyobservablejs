@@ -34,6 +34,7 @@ def freeze_value(value: Any) -> Any:
 
 TYPE_KEY = "__observablejs_type__"
 _MAX_SAFE_JS_INTEGER = 9_007_199_254_740_991
+_JSON_SCALAR_TYPES = frozenset({type(None), bool, int, float, str})
 
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z_$][0-9A-Za-z_$]*$")
 RESERVED_VARIABLE_NAMES = frozenset(
@@ -230,6 +231,9 @@ def deserialize_value(value: Any) -> Any:
     Other browser-only values become summaries or plain dictionaries.
     """
 
+    # Exact JSON scalar types are immutable; subclasses retain mapping checks.
+    if type(value) in _JSON_SCALAR_TYPES:
+        return value
     if isinstance(value, list):
         return [deserialize_value(item) for item in value]
     if not isinstance(value, Mapping):

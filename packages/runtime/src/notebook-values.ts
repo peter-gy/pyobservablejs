@@ -18,8 +18,12 @@ const datasetOwners = new WeakMap<object, NotebookValues>();
 
 export class NotebookValues {
 	#entries = new Map<string, ValueEntry>();
+	#cells = new Map<number, Set<string>>();
+	#names = new Map<string | null, Set<string>>();
 	#primary = new Map<number, ReadonlySet<string | null>>();
-	#listeners = new Set<() => void>();
+	#listeners = new Map<string, Set<() => void>>();
+	#settlers = new Set<() => void>();
+	#pending = 0;
 	#revision = 0;
 	#epoch = 0;
 	#datasetCache = new WeakMap<ValueEntry, DatasetInfo | null>();
@@ -32,7 +36,10 @@ export class NotebookValues {
 
 	reset(): void {
 		this.#entries.clear();
+		this.#cells.clear();
+		this.#names.clear();
 		this.#primary.clear();
+		this.#pending = 0;
 		this.#epoch++;
 		this.#notify();
 	}
@@ -44,20 +51,21 @@ export class NotebookValues {
 
 	invalidate(cells: ReadonlySet<number>): void {
 		this.#epoch++;
-		for (const entry of this.#entries.values()) {
-			if (cells.has(entry.cell)) this.pending(entry.cell, entry.name);
+		for (const cell of cells) {
+			for (const key of this.#cells.get(cell) ?? []) {
+				const entry = this.#entries.get(key)!;
+				this.pending(entry.cell, entry.name);
+			}
 		}
 		this.#notify();
 	}
 
 	pending(cell: number, name: string | null): void {
-		this.#entries.set(valueKey(cell, name), { cell, name, revision: ++this.#revision, status: "pending" });
-		this.#notify();
+		this.#set({ cell, name, revision: ++this.#revision, status: "pending" });
 	}
 
 	fulfilled(cell: number, name: string | null, value: RuntimeValue): void {
-		this.#entries.set(valueKey(cell, name), { cell, name, revision: ++this.#revision, status: "success", value });
-		this.#notify();
+		this.#set({ cell, name, revision: ++this.#revision, status: "success", value });
 	}
 
 	rejected<Cause>(cell: number, name: string | null, cause: Cause, diagnostic?: Diagnostic): void {
@@ -66,13 +74,40 @@ export class NotebookValues {
 			: cause instanceof Error
 				? cause
 				: new Error(errorDetails(cause).message);
-		this.#entries.set(valueKey(cell, name), { cell, name, revision: ++this.#revision, status: "error", error });
-		this.#notify();
+		this.#set({ cell, name, revision: ++this.#revision, status: "error", error });
 	}
 
 	fail<Cause>(cell: number, cause: Cause, diagnostic?: Diagnostic): void {
-		for (const entry of this.#entries.values())
-			if (entry.cell === cell) this.rejected(cell, entry.name, cause, diagnostic);
+		for (const key of this.#cells.get(cell) ?? []) {
+			const entry = this.#entries.get(key)!;
+			this.rejected(cell, entry.name, cause, diagnostic);
+		}
+	}
+
+	async settle(signal: AbortSignal): Promise<void> {
+		const epoch = this.#epoch;
+		await new Promise<void>((resolve, reject) => {
+			const cleanup = () => {
+				this.#settlers.delete(check);
+				signal.removeEventListener("abort", check);
+			};
+			const check = () => {
+				if (signal.aborted) {
+					cleanup();
+					reject(signal.reason);
+				} else if (epoch !== this.#epoch || this.#pending === 0) {
+					cleanup();
+					resolve();
+				}
+			};
+			this.#settlers.add(check);
+			signal.addEventListener("abort", check, { once: true });
+			check();
+		});
+		signal.throwIfAborted();
+	}
+	get isPending(): boolean {
+		return this.#pending > 0;
 	}
 
 	datasets(): readonly DatasetInfo[] {
@@ -112,22 +147,30 @@ export class NotebookValues {
 				throw new Error("Value is outside the evaluated selection or is not defined");
 			return entry;
 		}
-		const entries = [...this.#entries.values()].filter(
-			(entry) =>
-				(query.cell === undefined || query.cell === entry.cell) &&
-				(query.name === undefined ? this.#primary.get(entry.cell)?.has(entry.name) : query.name === entry.name),
-		);
-		if (entries.length === 0) throw new Error("Value is outside the evaluated selection or is not defined");
-		if (entries.length !== 1) throw new Error("Value selection is ambiguous. Specify both cell and name");
-		return entries[0]!;
+		const keys = query.cell === undefined ? this.#names.get(query.name ?? null) : this.#cells.get(query.cell);
+		let selected: ValueEntry | undefined;
+		for (const key of keys ?? []) {
+			const entry = this.#entries.get(key)!;
+			if (query.name === undefined && !this.#primary.get(entry.cell)?.has(entry.name)) continue;
+			if (query.name !== undefined && query.name !== entry.name) continue;
+			if (selected) throw new Error("Value selection is ambiguous. Specify both cell and name");
+			selected = entry;
+		}
+		if (!selected) throw new Error("Value is outside the evaluated selection or is not defined");
+		return selected;
 	}
 
 	wait(selector: ValueSelector, signal: AbortSignal, revision?: number): Promise<ValueEntry> {
 		const epoch = this.#epoch;
 		let target: { cell: number; name: string | null } | undefined;
+		let key: string | undefined;
 		return new Promise((resolve, reject) => {
 			const cleanup = () => {
-				this.#listeners.delete(check);
+				if (key !== undefined) {
+					const listeners = this.#listeners.get(key);
+					listeners?.delete(check);
+					if (!listeners?.size) this.#listeners.delete(key);
+				}
 				signal.removeEventListener("abort", onAbort);
 			};
 			const fail = (error: Error) => {
@@ -144,7 +187,13 @@ export class NotebookValues {
 						return fail(new Error("Dataset revision is stale"));
 					if (entry.status === "error") return fail(entry.error ?? new Error("Notebook value failed"));
 					if (entry.status !== "success") {
-						target ??= { cell: entry.cell, name: entry.name };
+						if (!target) {
+							target = { cell: entry.cell, name: entry.name };
+							key = valueKey(entry.cell, entry.name);
+							let listeners = this.#listeners.get(key);
+							if (!listeners) this.#listeners.set(key, (listeners = new Set()));
+							listeners.add(check);
+						}
 						return;
 					}
 					cleanup();
@@ -153,15 +202,37 @@ export class NotebookValues {
 					fail(cause instanceof Error ? cause : new Error(String(cause)));
 				}
 			};
-			this.#listeners.add(check);
 			signal.addEventListener("abort", onAbort, { once: true });
 			check();
 		});
 	}
 
-	#notify(): void {
+	#set(entry: ValueEntry): void {
+		const key = valueKey(entry.cell, entry.name);
+		// Membership is stable through settlements; indexes retain keys, not stale entries.
+		if (!this.#entries.has(key)) {
+			let cells = this.#cells.get(entry.cell);
+			if (!cells) this.#cells.set(entry.cell, (cells = new Set()));
+			cells.add(key);
+			let names = this.#names.get(entry.name);
+			if (!names) this.#names.set(entry.name, (names = new Set()));
+			names.add(key);
+		}
+		if (this.#entries.get(key)?.status === "pending") this.#pending--;
+		if (entry.status === "pending") this.#pending++;
+		this.#entries.set(key, entry);
+		this.#notify(key);
+	}
+
+	#notify(key?: string): void {
 		this.#catalogDirty = true;
-		for (const listener of this.#listeners) listener();
+		// A completion only concerns readers of that value. Epoch changes invalidate all reads.
+		if (key === undefined) {
+			for (const listeners of this.#listeners.values()) for (const listener of listeners) listener();
+		} else {
+			for (const listener of this.#listeners.get(key) ?? []) listener();
+		}
+		for (const listener of this.#settlers) listener();
 		if (!this.onDatasets || this.#scheduled) return;
 		this.#scheduled = true;
 		queueMicrotask(() => {
