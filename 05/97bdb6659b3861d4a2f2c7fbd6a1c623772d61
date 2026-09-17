@@ -1,0 +1,15 @@
+AGENTS.md
+  ai_agent 143-145
+.github/workflows/ci.yml
+  ai_agent 51-52,101
+Makefile
+  ai_agent 32-33,36
+development_docs/workspace.md
+  ai_agent 80
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "0597bdb6659b3861d4a2f2c7fbd6a1c623772d61",
+  "prompts": {}
+}
