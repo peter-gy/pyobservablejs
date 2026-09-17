@@ -7,7 +7,7 @@ import type { RuntimeValue } from "./values";
 
 export type ReadSelector = ValueSelector | { attachment: string };
 export type ReadOptions = {
-	format?: "native" | "rows" | "arrow" | "bytes";
+	format?: "native" | "rows" | "arrow" | "bytes" | "html";
 	columns?: readonly string[];
 	offset?: number;
 	limit?: number;
@@ -39,10 +39,10 @@ export async function readNotebook(
 	const signal = options.signal ? AbortSignal.any([options.signal, context.signal]) : context.signal;
 	signal.throwIfAborted();
 	if (
-		(options.format === "bytes" || (!isString(selector) && "attachment" in selector)) &&
+		(options.format === "bytes" || options.format === "html" || (!isString(selector) && "attachment" in selector)) &&
 		(options.columns !== undefined || (options.offset ?? 0) !== 0 || options.limit !== undefined)
 	)
-		throw new Error("Byte reads do not accept dataset projection or row ranges");
+		throw new Error("Byte and HTML reads do not accept dataset projection or row ranges");
 	if (!isString(selector) && "attachment" in selector) {
 		if (options.format !== undefined && options.format !== "bytes")
 			throw new Error("Attachment reads use format bytes");
@@ -82,10 +82,13 @@ export async function readNotebook(
 	) {
 		const result = await readDataset(value, {
 			...options,
-			format: format === "bytes" ? "native" : format,
+			format: format === "bytes" || format === "html" ? "native" : format,
 		});
 		data = result.data;
 		dataset = result.description;
+	} else if (format === "html") {
+		if (!(value instanceof Element)) throw new TypeError("HTML reads require a DOM element");
+		data = value.outerHTML;
 	} else {
 		dataset = describeDataset(value) ?? undefined;
 		if (format === "bytes") {
@@ -103,7 +106,7 @@ export async function readNotebook(
 		format,
 		data,
 		dataset,
-		mimeType: format === "arrow" ? "application/vnd.apache.arrow.stream" : undefined,
+		mimeType: format === "arrow" ? "application/vnd.apache.arrow.stream" : format === "html" ? "text/html" : undefined,
 	});
 }
 

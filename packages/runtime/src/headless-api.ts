@@ -1,0 +1,10 @@
+export { evaluateNotebook } from "./evaluate";
+export type { EvaluatedNotebook, EvaluateOptions } from "./evaluate";
+export { inspectNotebook } from "./inspection";
+export { createDiagnostic, DiagnosticError } from "./diagnostics";
+export type { Diagnostic } from "./diagnostics";
+export type { NotebookInspection } from "./inspection";
+export type { NotebookRead, ReadSelector, ReadOptions } from "./read";
+export type { NotebookState } from "./state";
+export type { DatasetInfo } from "./notebook-values";
+export type { NotebookSpec } from "@observablehq/notebook-kit";

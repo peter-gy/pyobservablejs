@@ -1,7 +1,7 @@
 import { isBigInt, isBoolean, isNumber, isObjectValue, isString } from "./value-kind";
 import type { RuntimeValue } from "./values";
 
-export type DiagnosticOrigin = "notebook" | "runtime" | "widget";
+export type DiagnosticOrigin = "notebook" | "runtime" | "widget" | "server";
 export type DiagnosticPhase = "analysis" | "evaluation" | "rendering" | "serialization" | "transport";
 export type ErrorDetail = Readonly<{ name: string; message: string; stack?: string; cause?: ErrorDetail }>;
 type MutableErrorDetail = { -readonly [Key in keyof ErrorDetail]: ErrorDetail[Key] };

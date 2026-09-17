@@ -3,7 +3,7 @@ import { defineConfig } from "vite-plus";
 export default defineConfig({
 	pack: {
 		dts: true,
-		entry: ["src/index.ts", "src/value-api.ts", "src/inspect-api.ts"],
+		entry: ["src/index.ts", "src/value-api.ts", "src/inspect-api.ts", "src/headless-api.ts", "src/diagnostic-api.ts"],
 		platform: "browser",
 		deps: { alwaysBundle: [/\.css(?:\?.*)?$/] },
 	},

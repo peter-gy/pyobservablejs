@@ -1,3 +1,4 @@
+import { headlessRequire } from "./headless-require";
 import { NotebookRuntime, library } from "@observablehq/notebook-kit/runtime";
 import type { RuntimeLibrary } from "@observablehq/runtime";
 import { Library } from "@observablehq/stdlib";
@@ -12,7 +13,7 @@ import {
 import type { NotebookOrigin, ResolveNotebook, RuntimeProfile } from "./source";
 import type { AttachmentInfo } from "./attachment-info";
 import { bindRuntimeScope, cleanupRuntimeScope, createRuntimeScope, createScopedGenerators } from "./scope";
-import { createVariableBuiltins, type Variables } from "./values";
+import { createVariableBuiltins, type Variables, type RuntimeValue } from "./values";
 
 export type RuntimeOptions = {
 	origin?: NotebookOrigin;
@@ -21,6 +22,7 @@ export type RuntimeOptions = {
 	baseUrl: string;
 	variables: Variables;
 	runtimeProfile?: RuntimeProfile;
+	headless?: boolean;
 };
 
 export type NotebookOptions = RuntimeOptions & {
@@ -60,7 +62,7 @@ export function createRuntimeBuiltins(
 	const scope = createRuntimeScope(root, options.baseUrl);
 	const scopedGenerators = createScopedGenerators(root);
 	const builtins: RuntimeLibrary = {
-		...selectRuntimeLibrary(options.runtimeProfile),
+		...selectRuntimeLibrary(options.runtimeProfile, options.headless),
 		DuckDBClient: () =>
 			Promise.resolve(library.DuckDBClient()).then((DuckDBClient) =>
 				createDuckDBClient(DuckDBClient, attachmentRegistry),
@@ -69,9 +71,13 @@ export function createRuntimeBuiltins(
 		SQLite: () => loadSQLiteModule(),
 		SQLiteDatabaseClient: () => SQLiteDatabaseClient,
 		document: () => scope.document,
-		width: () => library.Generators().width(root),
-		dark: () => scopedGenerators.dark(),
+		width: options.headless ? () => 640 : () => library.Generators().width(root),
+		dark: options.headless ? () => false : () => scopedGenerators.dark(),
 	};
+	if (options.headless) {
+		builtins.display = () => (value: RuntimeValue) => value;
+		builtins.view = () => library.Generators().input;
+	}
 	if (options.runtimeProfile !== "observable") Object.assign(builtins, { Generators: () => scopedGenerators });
 	return { builtins, scope };
 }
@@ -82,8 +88,17 @@ export function assertNoRuntimeBuiltinCollisions(runtime: NotebookRuntime, varia
 	assertNoBuiltinCollisions(variables, builtinNames);
 }
 
-function selectRuntimeLibrary(profile: RuntimeProfile = "notebook-kit"): RuntimeLibrary {
+function selectRuntimeLibrary(profile: RuntimeProfile = "notebook-kit", headless = false): RuntimeLibrary {
 	if (profile !== "observable") return library;
+	if (headless) {
+		const previous = Library.require;
+		try {
+			Library.require = headlessRequire();
+			return Object.assign({}, library, new Library());
+		} finally {
+			Library.require = previous;
+		}
+	}
 	// d3-require pairs a global AMD callback with its module queue. Independently
 	// loaded bundles must share that loader before creating classic libraries.
 	// SAFETY: This versioned symbol stores the upstream loader across bundle instances.

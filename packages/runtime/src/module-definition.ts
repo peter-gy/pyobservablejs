@@ -16,6 +16,7 @@ export function createNotebookModule(
 	importModule: ImportModule,
 	signal: AbortSignal,
 	cleanups: (() => void)[],
+	headless = false,
 ): ModuleDefinition {
 	const { notebook, origin, runtimeProfile, attachments: attachmentInfo = {}, baseUrl } = record;
 	const analysis = analyzeNotebook(notebook, [], runtimeProfile);
@@ -38,6 +39,7 @@ export function createNotebookModule(
 			{
 				attachments: attachmentInfo,
 				variables: {},
+				headless,
 				baseUrl: baseUrl ?? root.ownerDocument.baseURI,
 				runtimeProfile,
 			},

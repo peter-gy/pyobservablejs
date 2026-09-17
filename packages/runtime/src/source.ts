@@ -11,15 +11,13 @@ export type NotebookOrigin = {
 	resolutions?: Readonly<Record<string, string>>;
 };
 
-export type NotebookSource =
-	| { source: string; attachments?: Record<string, AttachmentInfo>; baseUrl?: string }
-	| {
-			source: NotebookSpec;
-			origin?: NotebookOrigin;
-			runtimeProfile?: RuntimeProfile;
-			attachments?: Record<string, AttachmentInfo>;
-			baseUrl?: string;
-	  };
+export type NotebookSource = {
+	source: string | NotebookSpec;
+	origin?: NotebookOrigin;
+	runtimeProfile?: RuntimeProfile;
+	attachments?: Record<string, AttachmentInfo>;
+	baseUrl?: string;
+};
 
 export type ResolveNotebook = (specifier: string, options: { signal: AbortSignal }) => Promise<NotebookSource>;
 

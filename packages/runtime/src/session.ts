@@ -13,7 +13,13 @@ export function createRuntimeSession(root: HTMLElement, options: RuntimeOptions)
 	const attachments = registerAttachments(options.attachments);
 	try {
 		const runtime = createRuntime(root, options, attachments);
-		const closeImports = connectNotebookImports(runtime, root, options.resolveNotebook, options.origin);
+		const closeImports = connectNotebookImports(
+			runtime,
+			root,
+			options.resolveNotebook,
+			options.origin,
+			options.headless,
+		);
 		const closeRuntime = createRuntimeCleanup(runtime, attachments);
 		return {
 			runtime,

@@ -362,3 +362,37 @@ test("named lookup retains ambiguity and current values through patches and repl
 	expect((await mount.read({ cell: 0, name: "shared" })).data).toBe(5);
 	await expect(mount.read("absent")).rejects.toThrow("not defined");
 });
+
+test("concurrent discovery waits for all values and cancels independently of individual reads", async () => {
+	let release!: (value: number[]) => void;
+	const pending = new Promise<number[]>((resolve) => {
+		release = resolve;
+	});
+	const mount = mountNotebook(
+		document.createElement("div"),
+		{
+			cells: [
+				{ id: 1, mode: "ojs", value: "rows = pending" },
+				{ id: 2, mode: "ojs", value: "other = [2]" },
+			],
+		},
+		{ variables: { pending }, captureState: false },
+	);
+	mounts.push(mount);
+	const controller = new AbortController();
+	const cancelled = mount.discover({ signal: controller.signal });
+	const discovery = mount.discover();
+	const read = mount.read("rows");
+	controller.abort();
+	await expect(cancelled).rejects.toThrow();
+	expect((await mount.read("other")).data).toEqual([2]);
+	release([1]);
+	expect((await read).data).toEqual([1]);
+	const catalog = await discovery;
+	expect(catalog.pending).toBe(false);
+	expect(catalog.errors).toEqual([]);
+	expect(catalog.datasets.map((dataset) => dataset.name)).toEqual(["rows", "other"]);
+	mount.replaceVariables({ pending: [3] });
+	expect((await mount.discover()).pending).toBe(false);
+	expect((await mount.read("rows")).data).toEqual([3]);
+});
