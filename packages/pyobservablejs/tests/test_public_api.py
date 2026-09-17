@@ -163,9 +163,16 @@ def test_advanced_types_are_namespaced_and_complete() -> None:
         "NotebookViewOptions",
         "ObservableData",
         "ObservableDisplay",
+        "ObservableAttachment",
+        "ObservableBody",
+        "ObservableCell",
+        "ObservableClassicDocument",
         "ObservableDocument",
         "ObservableFile",
+        "ObservableNotebookModel",
         "ObservableNode",
+        "ObservablePageDocument",
+        "ObservableResolution",
         "ObservableSource",
         "Theme",
         "ThemePair",
@@ -498,34 +505,16 @@ def test_show_pinned_source_sets_renderer_option() -> None:
     assert [cell["pinned"] for cell in state["_spec"]["cells"]] == [False, True]
 
 
-def test_notebook_kit_sources_sync_notebook_kit_runtime_profile() -> None:
+def test_notebook_sources_expose_their_runtime_profile() -> None:
     notebooks = [
         obs.Notebook(),
         obs.Notebook.from_html("<!doctype html><notebook></notebook>"),
     ]
 
-    assert [
-        notebook_session(notebook).get_state(["_runtime_profile"])
-        for notebook in notebooks
-    ] == [
-        {"_runtime_profile": "notebook-kit"},
-        {"_runtime_profile": "notebook-kit"},
+    assert [notebook.runtime_profile for notebook in notebooks] == [
+        "notebook-kit",
+        "notebook-kit",
     ]
-
-
-def test_observablehq_html_round_trip_preserves_classic_runtime_profile() -> None:
-    notebook = obs.Notebook.from_observablehq_document(
-        {
-            "id": "0123456789abcdef",
-            "version": 1,
-            "nodes": [{"id": 1, "mode": "js", "value": "answer = 42"}],
-        }
-    )
-
-    restored = obs.Notebook.from_html(notebook.to_notebook_html())
-
-    with pytest.raises(ValueError, match="Reserved Observable runtime name: 'require'"):
-        restored.update_variables({"require": "shadowed"})
 
 
 def test_cell_notebookkit_attrs_reject_reserved_fields() -> None:

@@ -124,14 +124,14 @@ rendering and input callbacks continue.
 
 ## Display and attachments
 
-| Option           | Default and behavior                                                                 |
-| ---------------- | ------------------------------------------------------------------------------------ |
-| `theme`          | Uses the source theme. Accepts a Notebook Kit theme or `{ light, dark }`.            |
-| `showSource`     | `false`. Shows source panels for selected pinned cells.                              |
-| `runtimeProfile` | `"notebook-kit"`. Use `"observable"` for the classic Observable standard library.    |
-| `attachments`    | `{}`. Maps names to `{ url, mimeType?, lastModified?, size? }` for `FileAttachment`. |
-| `baseUrl`        | The element's document base URI. Resolves relative attachment URLs.                  |
-| `signal`         | Optional `AbortSignal` that disposes the mount when aborted.                         |
+| Option           | Default and behavior                                                                                                                |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `theme`          | Uses the source theme. Accepts a Notebook Kit theme or `{ light, dark }`.                                                           |
+| `showSource`     | `false`. Shows source panels for selected pinned cells.                                                                             |
+| `runtimeProfile` | Uses HTML metadata or `"notebook-kit"` for a `NotebookSpec`. Set it for a `NotebookSpec` that needs the classic Observable library. |
+| `attachments`    | `{}`. Maps names to `{ url, mimeType?, lastModified?, size? }` for `FileAttachment`.                                                |
+| `baseUrl`        | The element's document base URI. Resolves relative attachment URLs.                                                                 |
+| `signal`         | Optional `AbortSignal` that disposes the mount when aborted.                                                                        |
 
 Notebook Kit supplies cell defaults, including mode-specific pinning. Set
 `pinned` explicitly when constructing cells whose source visibility matters.
@@ -239,3 +239,33 @@ The [`/values` entry point](src/value-api.ts) exports native value predicates
 and `sameValue` for adapters. The [standalone browser tests](../../apps/e2e/tests/runtime.spec.ts)
 exercise mounting, native identity, input updates, styles, and disposal through
 the [TypeScript consumer](../../apps/e2e/standalone/main.ts).
+
+## Resolve notebook imports
+
+Provide `resolveNotebook` when source imports Observable notebooks. The resolver
+returns prepared Notebook Kit source, its library profile, attachment records,
+and optional source identity and revision pins. The widget supplies this loader
+through Python. A standalone host supplies its own source service or local catalog.
+
+```ts
+const notebook = mountNotebook(element, source, {
+	async resolveNotebook(reference, { signal }) {
+		const response = await fetch(`/notebooks?reference=${encodeURIComponent(reference)}`, { signal });
+		if (!response.ok) throw new Error(`Notebook source request failed: ${response.status}`);
+		return response.json();
+	},
+});
+```
+
+The response matches `NotebookSource`. Returning Notebook Kit HTML keeps its
+profile and origin metadata in one source string: `{ source, attachments?,
+baseUrl? }`. A `NotebookSpec` response may also provide `runtimeProfile` and
+`origin`. `origin` may contain `id`, `version`, `format`, and a `resolutions`
+mapping from notebook specifiers to pinned references. Explicit revisions take
+precedence over that mapping. Ordinary JavaScript module imports continue to
+use browser module loading.
+
+Notebook Kit compiles each dependency with its declared language. Observable
+Runtime owns module identity, reactive imports, and `import with` derivation.
+Imported cells evaluate when required. Disposing the mount aborts pending source
+requests and disposes dependency generators and attachment registries.

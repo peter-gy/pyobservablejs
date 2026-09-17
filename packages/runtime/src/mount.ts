@@ -1,8 +1,11 @@
-import { deserialize, toNotebook, type Notebook, type NotebookSpec } from "@observablehq/notebook-kit";
+import type { NotebookOrigin, ResolveNotebook } from "./source";
+import type { Notebook, NotebookSpec } from "@observablehq/notebook-kit";
+import { normalizeNotebook } from "./source";
 import type { AttachmentInfo } from "./attachment-info";
 import { notebookViewIndexes, renderNotebookView, type RenderSession } from "./composition";
 import { CLASS_NAMES, createNotebookRoot, createTopLevelError, prepareNotebookShell } from "./dom";
-import { assertNoRuntimeBuiltinCollisions, type NotebookOptions, type RuntimeProfile } from "./environment";
+import { assertNoRuntimeBuiltinCollisions, type NotebookOptions } from "./environment";
+import type { RuntimeProfile } from "./source";
 import {
 	analyzeNotebook,
 	notebookAffectedIndexes,
@@ -14,7 +17,6 @@ import { createRuntimeSession } from "./session";
 import { EvaluationState, type NotebookState } from "./state";
 import { installNotebookThemeStyles } from "./themes";
 import { createRuntimeViewSync, writeProgrammaticViewValue } from "./view-inputs";
-import { isString } from "./value-kind";
 import type { RuntimeValue, Variables } from "./values";
 import { inspectAnalysis, type NotebookInspection } from "./inspection";
 import { NotebookValues, type DatasetInfo } from "./notebook-values";
@@ -28,6 +30,8 @@ import {
 } from "./diagnostics";
 
 export type MountOptions = {
+	origin?: NotebookOrigin;
+	resolveNotebook?: ResolveNotebook;
 	variables?: Variables;
 	inputs?: Variables;
 	selection?: readonly number[];
@@ -150,7 +154,9 @@ export function mountNotebook(
 		session = undefined;
 		try {
 			if (!prepared) {
-				const parsed = isString(source) ? deserialize(source) : toNotebook(source);
+				const normalized = normalizeNotebook(source, options);
+				options = { ...options, runtimeProfile: normalized.runtimeProfile, origin: normalized.origin };
+				const parsed = normalized.notebook;
 				const notebook = options.theme === undefined ? parsed : { ...parsed, theme: options.theme };
 				const selected = selectedIndexes(options.selection, notebook.cells.length);
 				const analysis = analyzeNotebook(notebook, [], options.runtimeProfile);
@@ -173,6 +179,8 @@ export function mountNotebook(
 				attachments: options.attachments ?? {},
 				baseUrl: options.baseUrl ?? el.ownerDocument.baseURI,
 				runtimeProfile: options.runtimeProfile,
+				origin: options.origin,
+				resolveNotebook: options.resolveNotebook,
 				showSource: options.showSource ?? false,
 			};
 			const core = createRuntimeSession(root, runtimeOptions);

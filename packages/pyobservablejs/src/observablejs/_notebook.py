@@ -16,6 +16,7 @@ from . import errors
 from ._cells import Cell, NotebookCellInput
 from ._files import FileAttachment
 from ._graph import graph_from_raw
+from ._imports import NotebookImports
 from ._inspection import (
     DatasetInfo,
     NotebookInspection,
@@ -29,9 +30,9 @@ from ._model import (
     NotebookModel,
     notebook_model_from_cells,
     notebook_model_from_html,
-    notebook_model_from_observablehq_document,
 )
-from ._observable import fetch_observablehq_document
+from ._observable_fetch import fetch_observablehq_document
+from ._observable_model import notebook_model_from_observablehq_document
 from ._readback import (
     _cell_error_from_wire,
     _view_error_from_wire,
@@ -163,10 +164,6 @@ class _NotebookSession(anywidget.AnyWidget):
     # AnyWidget applies later comm updates after this module has loaded.
     _esm = "export default { initialize() {} };"
     _model_role = traitlets.Unicode("session").tag(sync=True)
-    _runtime_profile = traitlets.Enum(
-        values=["notebook-kit", "observable"],
-        default_value="notebook-kit",
-    ).tag(sync=True)
     _source = traitlets.Unicode("").tag(sync=True)
     _spec = traitlets.Dict().tag(sync=True)
     theme = traitlets.Any(default_value="air").tag(sync=True)
@@ -204,7 +201,6 @@ class _NotebookSession(anywidget.AnyWidget):
         self._initializing_notebook = True
         try:
             super().__init__(
-                _runtime_profile=model.runtime_profile,
                 _source=model.source,
                 _spec=spec,
                 theme=model.theme,
@@ -215,6 +211,7 @@ class _NotebookSession(anywidget.AnyWidget):
             )
         finally:
             self._initializing_notebook = False
+        self._imports = NotebookImports(self)
 
     @traitlets.validate("theme")
     def _validate_theme(self, proposal: Any) -> Theme:
@@ -373,6 +370,8 @@ class _NotebookSession(anywidget.AnyWidget):
         if getattr(self, "_notebook_closed", False):
             return
         self._notebook_closed = True
+        if imports := getattr(self, "_imports", None):
+            imports.close()
         for view in tuple(getattr(self, "_views", ())):
             view.close()
         super().close()
@@ -437,6 +436,7 @@ class Notebook(traitlets.HasTraits):
     ) -> None:
         traitlets.HasTraits.__init__(self)
         self._nodes = model.nodes
+        self._runtime_profile = model.runtime_profile
         self._source_document: Mapping[str, object] | None = None
         self._cell_cache: dict[int, NotebookCell] = {}
         self._session = _NotebookSession(
@@ -479,7 +479,7 @@ class Notebook(traitlets.HasTraits):
     def runtime_profile(self) -> RuntimeProfile:
         """The Notebook Kit or classic Observable runtime used by this notebook."""
 
-        return cast(RuntimeProfile, self._session._runtime_profile)
+        return self._runtime_profile
 
     @property
     def source_document(self) -> Mapping[str, object] | None:
@@ -694,7 +694,7 @@ class Notebook(traitlets.HasTraits):
         show_pinned_source: bool = False,
         timeout: float | None = 30,
     ) -> Notebook:
-        """Fetch a public ObservableHQ notebook through the document API."""
+        """Fetch a public Observable notebook with its original cell languages."""
 
         document = fetch_observablehq_document(specifier, timeout=timeout)
         return cls.from_observablehq_document(
@@ -714,7 +714,7 @@ class Notebook(traitlets.HasTraits):
         files: Mapping[str, FileInput] | None = None,
         show_pinned_source: bool = False,
     ) -> Notebook:
-        """Create a notebook from an ObservableHQ document API mapping."""
+        """Create a notebook from classic nodes or a native Notebook Kit model."""
 
         model = notebook_model_from_observablehq_document(
             document,

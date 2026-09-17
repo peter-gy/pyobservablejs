@@ -1,6 +1,7 @@
 import { transpile, type Cell } from "@observablehq/notebook-kit";
 import type { Definition as RuntimeDefinition } from "@observablehq/notebook-kit/runtime";
-import type { RuntimeProfile } from "./environment";
+import type { RuntimeProfile } from "./source";
+import { bindNotebookImports, type ImportModule } from "./import-code";
 import { isCallable, isString } from "./value-kind";
 
 type NotebookKitDefinition = ReturnType<typeof transpile>;
@@ -12,6 +13,7 @@ export type RuntimeCellDefinition = Omit<NotebookKitDefinition, "body"> & {
 	body: NotebookKitDefinition["body"] | RuntimeBody;
 	display?: RuntimeDefinition["display"];
 	rootInput?: number;
+	imports?: RuntimeCellDefinition[];
 };
 
 interface DisplayOverride {
@@ -19,6 +21,7 @@ interface DisplayOverride {
 }
 
 export type RuntimeDefinitionOptions = {
+	importModule?: ImportModule;
 	document?: Document;
 	notebookNames?: ReadonlySet<string>;
 	runtimeProfile?: RuntimeProfile;
@@ -46,6 +49,7 @@ export function createRuntimeDefinition(
 		autoview: definition.autoview,
 		automutable: definition.automutable,
 		display: definition.display,
+		displayMode: cell.mode === "sql" ? "table" : "default",
 		...observableDisplayOverride(definition, notebookNames, runtimeProfile),
 	};
 }
@@ -84,10 +88,19 @@ function unprefix(value: string, prefix: string): string {
 	return value.startsWith(prefix) ? value.slice(prefix.length) : value;
 }
 
-function compileRuntimeBody(source: RuntimeCellDefinition["body"], globals: { document?: Document }): RuntimeBody {
+function compileRuntimeBody(
+	source: RuntimeCellDefinition["body"],
+	globals: { document?: Document; importModule?: ImportModule },
+): RuntimeBody {
 	if (!isString(source)) return source;
 	const names: string[] = [];
-	const values: Document[] = [];
+	const values: (Document | ImportModule)[] = [];
+	if (source.includes("import")) {
+		const imports = bindNotebookImports(source, globals.importModule);
+		source = imports.source;
+		names.push(imports.name);
+		values.push(imports.load);
+	}
 	if (globals.document !== undefined) {
 		names.push("document");
 		values.push(globals.document);

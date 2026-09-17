@@ -27,7 +27,6 @@ export type WidgetModel = {
 	_inspection?: { generation: string; value: NotebookInspection | null } | Record<string, never>;
 	_datasets?: { generation: string; values: readonly DatasetInfo[] } | Record<string, never>;
 	_model_role?: "session";
-	_runtime_profile?: "notebook-kit" | "observable";
 	_session?: string | null;
 	_cell_indexes?: number[] | null;
 	_capture_state?: WireValue;
@@ -87,7 +86,6 @@ export const SESSION_MODEL_CHANGE_EVENTS = [
 	"change:theme",
 	"change:_attachments",
 	"change:_base_url",
-	"change:_runtime_profile",
 	"change:_options",
 	"change:_cell_keys",
 ] as const;
@@ -124,7 +122,6 @@ export function readNotebookOptions(model: AnyWidgetModel): MountOptions {
 		baseUrl: model.get("_base_url") || undefined,
 		variables: decodeVariables(readNotebookVariables(model)),
 		showSource: model.get("_options")?.show_source === true,
-		runtimeProfile: model.get("_runtime_profile") === "observable" ? "observable" : "notebook-kit",
 		theme: readNotebookTheme(model),
 		keys: readCellKeys(model),
 	};
@@ -135,6 +132,7 @@ function isNotebookTheme<Value>(value: Value): value is Value & (typeof NOTEBOOK
 }
 
 function readNotebookTheme(model: AnyWidgetModel): MountOptions["theme"] {
+	if (model.get("_source")?.trim()) return undefined;
 	const theme = model.get("theme");
 	if (isNotebookTheme(theme)) return theme;
 	if (!isRecord(theme)) return undefined;

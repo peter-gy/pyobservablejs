@@ -1,3 +1,4 @@
+import { connectNotebookSources } from "./imports";
 import { isNumber } from "@pyobservablejs/runtime/values";
 import type { RenderProps } from "@anywidget/types";
 import { mountNotebook, type MountedNotebook, type RuntimeValue, type Variables } from "@pyobservablejs/runtime";
@@ -238,6 +239,7 @@ async function mountView(
 	);
 	mounted = mountNotebook(props.el, readNotebookSource(model), {
 		...readNotebookOptions(model),
+		resolveNotebook: connectNotebookSources(model, signal),
 		inputs: decodeInputs(sharedValues),
 		selection: selection === null ? undefined : [...selection],
 		captureState,

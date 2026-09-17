@@ -20,7 +20,15 @@ declare module "@observablehq/stdlib" {
 		new (database: SQLiteDatabase): SQLiteClient;
 		open(source: SQLiteSource): Promise<SQLiteClient>;
 	}
+	interface MutableValue {
+		value: import("@observablehq/runtime").RuntimeValue;
+		generator: Generator<import("@observablehq/runtime").RuntimeValue>;
+	}
+	interface MutableConstructor {
+		new (value: import("@observablehq/runtime").RuntimeValue): MutableValue;
+	}
 	export class Library {
+		Mutable(): MutableConstructor;
 		static require: (...specifiers: string[]) => Promise<import("@observablehq/runtime").RuntimeValue>;
 		constructor(resolver?: (specifier: string, base?: string) => string | Promise<string>);
 		SQLiteDatabaseClient(): SQLiteClientConstructor;

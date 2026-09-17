@@ -156,7 +156,7 @@ access](customize/browser-execution.mdx#module-imports-and-the-network).
 
 ## `OSError` or `ValueError` from `from_observablehq`
 
-The constructor fetches the document API on every call: network failures
+The constructor fetches original notebook source on every call: network failures
 raise `OSError`, invalid specifiers and non-JSON responses raise
 `ValueError`. Only public notebooks are reachable. Cache the document once
 and use `from_observablehq_document` in builds and tests. See [Import

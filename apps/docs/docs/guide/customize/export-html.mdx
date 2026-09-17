@@ -75,9 +75,9 @@ html_text = notebook.to_notebook_html()
 restored = obs.Notebook.from_html(html_text, variables={"rows": []})
 ```
 
-ObservableHQ-derived notebooks record their classic standard-library profile
-in the exported document, so a round trip through `from_html` preserves
-`require` and the other classic builtins.
+Observable-derived notebooks record their standard-library profile, source
+identity, and declared dependency resolutions in the exported document.
+A round trip through `from_html` preserves those choices and each cell language.
 
 ## Use with Notebook Kit tooling
 

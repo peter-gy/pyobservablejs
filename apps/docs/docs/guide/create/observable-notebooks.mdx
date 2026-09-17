@@ -5,10 +5,10 @@ description: Fetch public observablehq.com notebooks and render them from Python
 
 # Import ObservableHQ notebooks
 
-`Notebook.from_observablehq` fetches a public ObservableHQ notebook through
-the document API and returns a `Notebook` definition. Call `view()` to create
-its renderable view. Imported cells run with the classic Observable standard
-library, including `require`, `html`, `Generators`, `Mutable`, and `DOM`.
+`Notebook.from_observablehq` fetches the original source of a public Observable
+notebook and returns a `Notebook` definition. Call `view()` to render it.
+Cell languages and the notebook's standard-library version are preserved,
+including classic OJS and modern JavaScript or TypeScript.
 
 Imported notebooks and remote modules run with the host page's browser
 privileges. Review the trust boundary in [Browser
@@ -30,7 +30,7 @@ obs.Notebook.from_observablehq("https://observablehq.com/@d3/bar-chart")
 obs.Notebook.from_observablehq("@d3/bar-chart", timeout=10)
 ```
 
-The constructor fetches the document on every call. To skip that request
+The constructor fetches notebook source on every call. To skip that request
 during a build or test, save the response once and pass it to
 [`Notebook.from_observablehq_document(...)`](../../reference/source-constructors.mdx#notebookfrom_observablehq_document).
 Imports, uploaded files, libraries, and datasets may still load from the
@@ -38,15 +38,15 @@ network when the view renders.
 
 ## Keep imported notebooks pinned
 
-The fetched document identifies its source revision. `pyobservablejs` uses
-that revision when resolving imported Observable notebooks, so their
-dependency versions match the source notebook.
+Append `@version` to a notebook URL or id to request an exact source revision.
+Dependencies with explicit revisions keep those revisions. For archived classic
+records, retain `resolutions` together with `id` and `version` to preserve the
+declared dependency pins. These records survive HTML export and reimport.
+Unpinned imports resolve when the view loads them.
 
-Keep `id` and `version` when saving a document API response. Passing the
-saved mapping to `from_observablehq_document` restores the same import
-resolution. For a node collection, pass a document mapping such as
-`{"nodes": nodes}`. Add the source `id` and `version` when imports must stay
-pinned to that published revision.
+For an archived node collection, pass `{"nodes": nodes}`. Native Notebook Kit
+models use `{"cells": cells, "stdlib": "2"}` and retain each cell's language.
+Notebook imports load through Python, so the kernel must remain connected.
 
 ## Override variables
 
@@ -71,12 +71,13 @@ notebook = obs.Notebook.from_observablehq_document(
 Remote uploaded files become URL-backed file records. Explicit `files`
 override fetched files with the same name.
 
-## Runtime profile
+## Cell language and standard library
 
-Every ObservableHQ constructor selects the _observable_ runtime profile,
-which supplies the classic Observable standard library and `require`.
-Python-authored notebooks select the Notebook Kit builtins. The profile is
-fixed for the notebook session and survives
+Classic node documents use Observable JavaScript cells and default to the
+classic standard library, which includes `require`. Native notebook models
+preserve JavaScript, TypeScript, and Observable JavaScript cells and default to
+Notebook Kit's current library. An explicit `stdlib` value overrides that
+default. Cell language and standard-library choice survive
 `to_notebook_html()` round trips. See [Browser execution and network
 access](../customize/browser-execution.mdx#runtime-profiles).
 

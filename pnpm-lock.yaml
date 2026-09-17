@@ -22,14 +22,14 @@ catalogs:
       specifier: 0.1.9
       version: 0.1.9
     '@observablehq/notebook-kit':
-      specifier: 2.5.6
-      version: 2.5.6
+      specifier: 2.6.0
+      version: 2.6.0
     '@observablehq/parser':
       specifier: ^6.1.0
       version: 6.1.0
     '@observablehq/runtime':
-      specifier: 6.0.0
-      version: 6.0.0
+      specifier: 6.0.1
+      version: 6.0.1
     '@observablehq/stdlib':
       specifier: ^5.8.8
       version: 5.8.8
@@ -220,13 +220,13 @@ importers:
     dependencies:
       '@observablehq/notebook-kit':
         specifier: 'catalog:'
-        version: 2.5.6(@types/markdown-it@14.1.2)(@types/node@22.20.1)(jiti@2.7.0)(supports-color@8.1.1)(terser@5.49.0)(typescript@6.0.3)(yaml@2.8.3)
+        version: 2.6.0(@types/markdown-it@14.1.2)(@types/node@22.20.1)(jiti@2.7.0)(supports-color@8.1.1)(terser@5.49.0)(typescript@6.0.3)(yaml@2.8.3)
       '@observablehq/parser':
         specifier: 'catalog:'
         version: 6.1.0
       '@observablehq/runtime':
         specifier: 'catalog:'
-        version: 6.0.0
+        version: 6.0.1
       '@observablehq/stdlib':
         specifier: 'catalog:'
         version: 5.8.8
@@ -1895,8 +1895,8 @@ packages:
   '@observablehq/inspector@5.0.1':
     resolution: {integrity: sha512-euwWxwDa6KccU4G3D2JBD7GI/2McJh/z7HHEzJKbj2TDa7zhI37eTbTxiwE9rgTWBagvVBel+hAmnJRYBYOv2Q==}
 
-  '@observablehq/notebook-kit@2.5.6':
-    resolution: {integrity: sha512-63eEEaPTwy0my2Zjzp/2w/fs7HwMUaLTxu0viXiigbwBMc5hd+RkakS0gQQSM0VUjL+YCHeDUqBZ7AdmyZUnug==}
+  '@observablehq/notebook-kit@2.6.0':
+    resolution: {integrity: sha512-Byn3I39pugAeKGDtL8CJiBR8eVacAWmnVOm3EBP9wK/jC/VRWNsnvFrJL4db5t0YOt5/nhC59Em5WBqxKfHdEA==}
     hasBin: true
     peerDependencies:
       '@databricks/sql': ^1.14.0
@@ -1920,8 +1920,8 @@ packages:
     resolution: {integrity: sha512-S9qfCrAMrL2J229FwMGbyzPskCMqvPkodkn4MJ2r012Bc4yqaNjl8HyT/dKY1zjOwsSrryFQoCiwvWxS8IeASg==}
     engines: {node: '>=14.5.0'}
 
-  '@observablehq/runtime@6.0.0':
-    resolution: {integrity: sha512-t3UXP69O0JK20HY/neF4/DDDSDorwo92As806Y1pNTgTmj1NtoPyVpesYzfH31gTFOFrXC2cArV+wLpebMk9eA==}
+  '@observablehq/runtime@6.0.1':
+    resolution: {integrity: sha512-FDPxasOwRnRqb6gzZKXk4zQNLj0HIaYrYnoGv+PVuklSuH5MK553I9GrtuRtvTSqRKmNwBeVAhNcEeGMNYHRYQ==}
 
   '@observablehq/stdlib@5.8.8':
     resolution: {integrity: sha512-XxVfXX4N+8QYqg308+KT2cpXcsiL6yFphrYNOyCNReqezeoK0Zd9xOdSvo/0NX8NJ8HypIZdTQNwPeOvQWOm2Q==}
@@ -10787,7 +10787,7 @@ snapshots:
     dependencies:
       isoformat: 0.2.1
 
-  '@observablehq/notebook-kit@2.5.6(@types/markdown-it@14.1.2)(@types/node@22.20.1)(jiti@2.7.0)(supports-color@8.1.1)(terser@5.49.0)(typescript@6.0.3)(yaml@2.8.3)':
+  '@observablehq/notebook-kit@2.6.0(@types/markdown-it@14.1.2)(@types/node@22.20.1)(jiti@2.7.0)(supports-color@8.1.1)(terser@5.49.0)(typescript@6.0.3)(yaml@2.8.3)':
     dependencies:
       '@fontsource-variable/inter': 5.3.0
       '@fontsource-variable/source-serif-4': 5.3.0
@@ -10801,7 +10801,7 @@ snapshots:
       '@lezer/python': 1.1.19
       '@observablehq/inspector': 5.0.1
       '@observablehq/parser': 6.1.0
-      '@observablehq/runtime': 6.0.0
+      '@observablehq/runtime': 6.0.1
       '@sindresorhus/slugify': 2.2.1
       '@sveltejs/acorn-typescript': 1.0.13(acorn@8.18.0)
       acorn: 8.18.0
@@ -10839,7 +10839,7 @@ snapshots:
       acorn: 8.18.0
       acorn-walk: 8.3.5
 
-  '@observablehq/runtime@6.0.0': {}
+  '@observablehq/runtime@6.0.1': {}
 
   '@observablehq/stdlib@5.8.8':
     dependencies:
@@ -17844,7 +17844,7 @@ snapshots:
       browserslist: 4.28.7
       chrome-trace-event: 1.0.4
       enhanced-resolve: 5.24.5
-      es-module-lexer: 2.3.1
+      es-module-lexer: 2.3.2
       eslint-scope: 5.1.1
       events: 3.3.0
       graceful-fs: 4.2.11

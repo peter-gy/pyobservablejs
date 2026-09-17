@@ -264,7 +264,7 @@ def view_from_observablehq_document(
     show_pinned_source: bool = False,
     **view_options: Unpack[NotebookViewOptions],
 ) -> NotebookView:
-    """Create a renderable view from an ObservableHQ document API mapping.
+    """Create a renderable view from classic nodes or a native Notebook Kit model.
 
     Closing the returned view also closes its notebook session. Use
     ``capture_state=False`` when the rendered output is all the caller needs.

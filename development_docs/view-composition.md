@@ -12,12 +12,17 @@ Paths are relative to their package's `src/` directory.
 | Package and component                                        | Ownership                                                                          |
 | ------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
 | `pyobservablejs/observablejs/_notebook.py`                   | Resolves public selectors and owns controller and view lifecycle.                  |
+| `pyobservablejs/observablejs/_observable_model.py`           | Adapts loaded classic or native Observable records to Notebook Kit HTML.           |
 | `pyobservablejs/observablejs/_readback.py`                   | Validates wire snapshots and builds detached Python state.                         |
 | `widget/model.ts`                                            | Reads session references, selection traits, source, and mount options.             |
 | `widget/view.ts`                                             | Resolves models, subscribes to changes, and forwards values to the mount.          |
 | `widget/values.ts`                                           | Encodes browser values and decodes Python wire values.                             |
 | `widget/readback.ts`                                         | Publishes complete wire snapshots with monotonic transport revisions.              |
+| `widget/imports.ts`                                          | Correlates dependency source requests over the anywidget custom-message channel.   |
 | `runtime/mount.ts`                                           | Owns notebook preparation, render attempts, variable methods, and disposal.        |
+| `runtime/source.ts`                                          | Parses Notebook Kit source profile, identity, and dependency resolutions.          |
+| `runtime/notebook-imports.ts`                                | Lowers notebook imports before Notebook Kit compiles modern cells.                 |
+| `runtime/modules.ts` and `runtime/module-definition.ts`      | Resolve source and define lazy native Runtime modules.                             |
 | `runtime/composition.ts`                                     | Expands dependencies and maps selected and hidden cell targets.                    |
 | `runtime/cell-renderer.ts`                                   | Defines cells, attaches observers, and classifies evaluation and rendering errors. |
 | `runtime/inputs.ts` and `runtime/view-inputs.ts`             | Apply injected variables and coordinate named controls and interaction events.     |
@@ -26,8 +31,9 @@ Paths are relative to their package's `src/` directory.
 
 ## Model boundary
 
-`_NotebookSession` carries the definition, runtime profile, attachments, theme,
-Python variables, named browser inputs, render options, and cell keys.
+`_NotebookSession` carries the definition, attachments, theme, Python
+variables, named browser inputs, render options, and cell keys. Source-backed
+definitions carry their runtime profile and origin inside the Notebook Kit HTML.
 `NotebookView` carries an anywidget session reference, normalized cell indexes,
 the `_capture_state` boolean, and its `_readback` mapping.
 
@@ -77,8 +83,8 @@ the hidden dependency can evaluate while a selected cell waits for its value.
 7. Runtime observers publish native results. The widget serializes snapshots
    and sends them to Python.
 
-Changes to selection, source, spec, theme, attachments, base URL, runtime profile,
-render options, or cell keys replace the mount. Python `set` patches call
+Changes to selection, source, spec, theme, attachments, base URL, render
+options, or cell keys replace the mount. Python `set` patches call
 `updateVariables`. Replacement calls `replaceVariables`, rebuilding evaluation
 with the new injected environment while retaining the mount's prepared source,
 selection, and read-only graph in pending and settled snapshots.

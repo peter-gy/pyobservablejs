@@ -25,7 +25,8 @@ export type { MountedNotebook, MountOptions } from "./mount";
 export type { NotebookState, CellResult, CellError, NotebookError, CellStatus, ErrorPhase } from "./state";
 export type { NotebookGraph, CellGraph, GraphEdge } from "./graph";
 export type { AttachmentInfo } from "./attachment-info";
-export type { RuntimeProfile } from "./environment";
 export type { RuntimeValue, Variables } from "./values";
 export { NOTEBOOK_THEMES } from "./themes";
 export type { NotebookSpec, CellSpec, NotebookTheme } from "@observablehq/notebook-kit";
+
+export type { NotebookSource, NotebookOrigin, ResolveNotebook, RuntimeProfile } from "./source";

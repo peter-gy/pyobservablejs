@@ -244,6 +244,56 @@ function lifecycle(): void {
 	});
 }
 
+function sqlTable(): void {
+	const notebook = mountNotebook(
+		region("SQL notebook"),
+		{ cells: [{ id: 1, mode: "sql", value: "SELECT ${amount} AS value", output: "rows" }] },
+		{
+			variables: {
+				amount: 7,
+				db: { sql: (_strings: readonly string[], value: number) => [{ value }] },
+			},
+		},
+	);
+	button("Update SQL amount", () => notebook.updateVariables({ amount: 11 }));
+}
+
+function compiledImports(): void {
+	const source = `export default function define(runtime) {
+		const main = runtime.module();
+		main.define("renderSnippet", [], () => "default");
+		main.define("Q", ["renderSnippet"], value => "Q:" + value);
+		main.define("viewof showAll", [], () => "view-control");
+		main.define("showAll", ["viewof showAll"], () => true);
+		main.define("styles", [], () => "styles");
+		return main;
+	}`;
+	const result = status("Compiled exports");
+	const notebook = mountNotebook(
+		region("Compiled notebook"),
+		{
+			cells: [
+				{
+					id: 1,
+					mode: "ojs",
+					value: `import {Q, viewof showAll, styles as themeStyles} with {override as renderSnippet} from "data:text/javascript,${encodeURIComponent(source)}"`,
+				},
+			],
+		},
+		{
+			variables: { override: "override" },
+			onState(state) {
+				if (state.pending) return;
+				const values = state.results[0]?.values;
+				result.textContent = [values?.Q, values?.showAll, values?.["viewof$showAll"], values?.themeStyles]
+					.map(describeInput)
+					.join(" / ");
+			},
+		},
+	);
+	button("Update compiled import", () => notebook.updateVariables({ override: "updated" }));
+}
+
 function responsiveWidth(): void {
 	const target = region("Responsive notebook");
 	target.style.width = "240.5px";
@@ -267,6 +317,12 @@ function responsiveWidth(): void {
 }
 
 switch (new URLSearchParams(location.search).get("scenario")) {
+	case "compiled-imports":
+		compiledImports();
+		break;
+	case "sql":
+		sqlTable();
+		break;
 	case "width":
 		responsiveWidth();
 		break;

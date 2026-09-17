@@ -3,8 +3,9 @@
 `@pyobservablejs/runtime` mounts notebook source into a browser element.
 `@pyobservablejs/widget` connects that mount to Python through
 [anywidget](https://anywidget.dev/), the browser component protocol used by
-marimo and Jupyter. Python owns authoring, imports, controller lifecycle, and
-validation of the synchronized state.
+marimo and Jupyter. Python owns authoring, source acquisition, controller
+lifecycle, and validation of synchronized state. The runtime owns source interpretation,
+compilation, module resolution, evaluation, and browser resources.
 
 The same runtime powers the widget and the
 [standalone TypeScript API](../packages/runtime/README.md). Dependency arrows
@@ -129,24 +130,60 @@ initial Python state while rendering and input synchronization continue.
 
 ## Source imports and runtime profiles
 
+The source path has one owner for each transition:
+
+| Transition                                                          | Owner                                              |
+| ------------------------------------------------------------------- | -------------------------------------------------- |
+| Fetch a public page and decode its data records                     | Python Observable adapter                          |
+| Convert classic nodes or native cells into Notebook Kit HTML        | Python `_observable_model.py` adapter              |
+| Read profile, source identity, and dependency resolutions from HTML | Runtime `source.ts`                                |
+| Parse and compile cell languages                                    | Observable Notebook Kit through runtime `graph.ts` |
+| Lower notebook imports in modern JavaScript or TypeScript cells     | Runtime `notebook-imports.ts`                      |
+| Resolve revisions, cache source, and define native modules          | Runtime `modules.ts` and `module-definition.ts`    |
+| Request dependency source over the widget comm                      | Widget `imports.ts` and Python `_imports.py`       |
+
+Python performs the first two transitions before a browser exists because the
+public controller exposes canonical cell handles synchronously and retains the
+original source document. The adapter produces Notebook Kit HTML and does not
+compile or evaluate JavaScript. The same runtime module loader is available to
+standalone TypeScript callers through `resolveNotebook`.
+
 Python `from_html` retains Notebook Kit HTML. Optional attachment embedding
 registers local files as data URL records. Optional import rewriting embeds
 local JavaScript modules before the source reaches the browser.
 
-`from_observablehq` converts public notebook documents to Notebook Kit HTML.
-The document id and version form an import resolution token, preserving the
-dependency revisions chosen by that notebook. A document mapping with neither
-field retains its supplied import specifiers. Python lowers table operations
-to classic `__query` calls. SQL source remains in SQL cells, which the runtime
-compiles with Notebook Kit's template parser and classic `__query.sql` for
-row arrays and query invalidation.
+`from_observablehq` fetches the original model embedded in the public notebook
+page. `_observable_fetch.py` decodes the page's data records without executing
+scripts. It preserves explicit cell languages and verifies requested revisions.
+The controller model distinguishes classic `nodes` from native `cells` or
+`body.cells`. `_observable_legacy.py` lowers classic table, chart, SQL, and code
+nodes. Classic `js` becomes `ojs`. Native modes remain unchanged. Library
+version is independent of source shape: `stdlib: "1"` selects `observable`,
+and `"2"` selects `notebook-kit`. Missing declarations default to the source
+format's library.
 
-`NotebookModel.runtime_profile` selects evaluation behavior and the standard library:
+Python lowers classic table and chart records to Notebook Kit cells. SQL source
+retains the classic query semantics when the source selects the classic library.
+HTML exports retain the runtime profile and the source origin, including declared
+notebook resolutions.
 
-- `notebook-kit` uses `@observablehq/notebook-kit/runtime` builtins and is the
-  default for authored notebooks and HTML with no profile metadata.
-- `observable` includes the classic `@observablehq/stdlib` library and is
-  selected by ObservableHQ constructors.
+The browser uses Notebook Kit's parsers and compiler for imported source too.
+The widget requests dependency models over the private session's correlated
+`observablejs:import` channel. Python caches fetched source per session. The
+runtime caches module definitions per resolved identity and resolution scope,
+then uses native Runtime modules, imports, and derivation. Notebook Kit's public
+`resolveImport` option maps notebook imports to the runtime's private module
+protocol before compilation, so evaluation does not depend on the compiled
+JavaScript export endpoint. Dependency modules
+have separate libraries and attachment registries and share the view's Runtime
+lifecycle. Runtime disposal owns all cell variables, including derived modules;
+the source loader releases attachment registries after runtime invalidation.
+Their cells remain lazy. Literal notebook imports require a source
+resolver for standalone TypeScript mounts.
+
+Modern cells containing notebook imports lower the bindings into private input
+variables before compilation, allowing calculations in the same cell to react
+to imported values. Inspection retains the authored source and public bindings.
 
 Notebook Kit's public `transpile`, `NotebookRuntime.define`, and `observe`
 APIs own compilation, variable definitions, and output inspection. Observable
@@ -154,11 +191,14 @@ Runtime resolves asynchronous dependencies, supplies `invalidation`, advances
 generators, and disposes their resources. The mount tracks selection, native
 values, and host input ownership around those APIs.
 
-The private `_runtime_profile` trait becomes the mount's `runtimeProfile`
-option. The runtime adds scoped document helpers, `width`, `dark`, attachments,
-and injected variables to the selected library. Python HTML serialization
-stores the profile in `data-pyobservablejs-runtime-profile` and restores it on
-import. Direct TypeScript callers choose the profile through mount options.
+The notebook source is the wire authority for its runtime profile and origin.
+Python HTML serialization stores them in
+`data-pyobservablejs-runtime-profile` and `data-pyobservablejs-origin`.
+The widget forwards source without parallel profile or origin traits. The
+runtime parses those attributes before analysis and adds scoped document
+helpers, `width`, `dark`, attachments, and injected variables to the selected
+library. Direct TypeScript callers using `NotebookSpec` choose the profile and
+origin through mount options.
 
 ## Error propagation
 

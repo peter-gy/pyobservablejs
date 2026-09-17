@@ -210,7 +210,7 @@ class ObservableData(TypedDict, total=False):
 
 
 class ObservableNode(TypedDict, total=False):
-    """One node from the ObservableHQ document API."""
+    """One classic Observable document node."""
 
     id: int | str
     mode: str
@@ -225,7 +225,7 @@ class ObservableNode(TypedDict, total=False):
 
 
 class ObservableFile(TypedDict, total=False):
-    """One file record from the ObservableHQ document API."""
+    """One classic Observable attachment record."""
 
     name: str
     download_url: str
@@ -234,14 +234,82 @@ class ObservableFile(TypedDict, total=False):
     create_time: str
 
 
-class ObservableDocument(TypedDict, total=False):
-    """ObservableHQ document API payload accepted by the constructor."""
+class ObservableAttachment(TypedDict, total=False):
+    """One attachment from a native Observable notebook model."""
+
+    id: str
+    name: str
+    href: str
+    type: str
+    lastModified: int | float
+    size: int
+
+
+class ObservableCell(TypedDict, total=False):
+    """One native Observable Notebook Kit cell."""
+
+    id: int
+    mode: CellMode
+    value: str
+    pinned: bool
+    hidden: bool
+    output: str
+    database: str
+    format: str
+    since: str | int | float
+
+
+class ObservableBody(TypedDict, total=False):
+    """Native notebook source embedded in a public Observable page."""
+
+    title: str
+    cells: Sequence[ObservableCell]
+    files: Sequence[ObservableAttachment]
+    stdlib: Literal["1", "2"]
+    theme: Theme
+    titling: str
+
+
+class ObservableResolution(TypedDict):
+    """A classic notebook dependency or standard-library resolution."""
+
+    type: str
+    specifier: str
+    value: str
+
+
+class _ObservableDocumentMetadata(TypedDict, total=False):
+    """Identity shared by Observable source records."""
 
     id: str
     version: int
+    latest_version: int
     title: str
+
+
+class ObservableClassicDocument(_ObservableDocumentMetadata, total=False):
+    """Classic Observable source with document nodes."""
+
     nodes: Sequence[ObservableNode]
     files: Sequence[ObservableFile]
+    stdlib: Literal["1", "2"]
+    theme: Theme
+    resolutions: Sequence[ObservableResolution]
+
+
+class ObservableNotebookModel(_ObservableDocumentMetadata, ObservableBody):
+    """Native Observable source with Notebook Kit cells."""
+
+
+class ObservablePageDocument(_ObservableDocumentMetadata, total=False):
+    """Public-page metadata containing a native notebook body."""
+
+    body: ObservableBody
+
+
+ObservableDocument: TypeAlias = (
+    ObservableClassicDocument | ObservableNotebookModel | ObservablePageDocument
+)
 
 
 CellStatus: TypeAlias = Literal["pending", "success", "error"]
@@ -378,11 +446,18 @@ __all__ = [
     "NotebookState",
     "NotebookTheme",
     "NotebookViewOptions",
+    "ObservableAttachment",
+    "ObservableBody",
+    "ObservableCell",
+    "ObservableClassicDocument",
     "ObservableData",
     "ObservableDisplay",
     "ObservableDocument",
     "ObservableFile",
     "ObservableNode",
+    "ObservableNotebookModel",
+    "ObservablePageDocument",
+    "ObservableResolution",
     "ObservableSource",
     "ReadFormat",
     "Theme",

@@ -9,8 +9,8 @@ from observablejs._model import (
     NotebookModel,
     NotebookNode,
     notebook_model_from_html,
-    notebook_model_from_observablehq_document,
 )
+from observablejs._observable_model import notebook_model_from_observablehq_document
 
 
 def test_notebook_model_serializes_python_authored_nodes(
