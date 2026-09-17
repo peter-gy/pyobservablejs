@@ -1,4 +1,4 @@
-import type { Schema } from "apache-arrow";
+import type { DataType, Schema } from "apache-arrow";
 import type { BigIntArray, TypedArray } from "apache-arrow/interfaces";
 import {
 	isArrowDataset,
@@ -92,16 +92,23 @@ function describeValue(value: RuntimeValue): DatasetDescription | null {
 	if (!Array.isArray(value)) return null;
 	const length = dataProperty(value, "length");
 	if (!isNumber(length)) return null;
-	const schema = arraySchema(value);
 	const sample = dataArray(value, SAMPLE_ROWS);
 	if (!sample) return null;
+	const schema = arraySchema(value, sample);
 	if (schema || (sample.length > 0 && sample.every(isRow))) {
+		const added = schema
+			? inferColumns(
+					sample,
+					rowNames(sample).filter((name) => !schema.some((field) => field.name === name)),
+				)
+			: [];
+		const native = schema !== null && added.length === 0;
 		return description(
 			"rows",
 			length,
-			schema ?? inferColumns(sample),
-			schema ? "native" : "sampled",
-			schema ? 0 : sample.length,
+			schema ? [...schema, ...added] : inferColumns(sample),
+			native ? "native" : "sampled",
+			native ? 0 : sample.length,
 		);
 	}
 	if (sample.some((item) => !isScalar(item))) return null;
@@ -125,22 +132,13 @@ export async function readDataset(value: RuntimeValue, options: DatasetReadOptio
 	if (initial.kind === "rows" && (options.format !== "native" || options.columns)) {
 		validateRowProperties(selectedRows, options.columns);
 	}
-	const available =
-		initial.kind === "rows" && initial.schemaSource === "sampled"
-			? inferColumns(selectedRows.slice(0, SAMPLE_ROWS), [
-					...new Set([...initial.columns.map((column) => column.name), ...rowNames(selectedRows)]),
-				]).map((column) =>
-					column.type === "unknown"
-						? {
-								...column,
-								type: initial.columns.find((item) => item.name === column.name)?.type ?? column.type,
-							}
-						: column,
-				)
-			: initial.columns;
+	const available = initial.kind === "rows" ? rowColumns(selectedRows, initial, options.columns) : initial.columns;
 	const columns = options.columns ? [...options.columns] : available.map((column) => column.name);
 	if (options.columns && columns.length === 0) throw new TypeError("columns must contain at least one column name");
-	if (new Set(columns).size !== columns.length && (options.columns || options.format === "rows")) {
+	if (
+		new Set(columns).size !== columns.length &&
+		(options.columns || options.format === "rows" || initial.kind === "rows")
+	) {
 		throw new TypeError("Row projections require unique column names");
 	}
 	for (const column of columns) {
@@ -181,8 +179,9 @@ export async function readDataset(value: RuntimeValue, options: DatasetReadOptio
 		if (offset !== 0 || limit !== undefined) table = (await apacheTable(table)).slice(offset, end);
 		if (options.format === "native") return { data: table, description: projected, format: "native" };
 		if (options.format === "arrow") return { data: await arrowBytes(table), description: projected, format: "arrow" };
+		const vectors = columns.map((name) => table.getChild(name));
 		const rows = Array.from({ length: table.numRows }, (_, index) =>
-			Object.fromEntries(columns.map((name) => [name, table.getChild(name)?.get(index)])),
+			Object.fromEntries(columns.map((name, column) => [name, vectors[column]?.get(index)])),
 		);
 		return { data: rows, description: projected, format: "rows" };
 	}
@@ -203,31 +202,38 @@ export async function readDataset(value: RuntimeValue, options: DatasetReadOptio
 	}
 	if (!Array.isArray(value)) throw new TypeError("Value is not a supported dataset");
 	const sliced = selectedRows;
-	const rows: Row[] = sliced.map((row) => (initial.kind === "array" ? { value: row } : selectRow(row, columns)));
 	if (options.format === "arrow") {
+		// Capture projected values before yielding to the lazy Arrow import, without rebuilding rows.
+		const columnValues = projected.columns.map((column) =>
+			sliced.map((row) => (initial.kind === "array" ? row : ownValue(row, column.name)) ?? null),
+		);
+		validateNestedValues(columnValues);
 		const arrow = await import("apache-arrow");
 		const sourceSchema = nativeArraySchema(value);
 		const nativeSchema = sourceSchema ? await arrowSchema(sourceSchema) : undefined;
 		const vectors = Object.fromEntries(
-			projected.columns.map((column) => {
-				const values = rows.map((row) => row[column.name] ?? null);
+			projected.columns.map((column, index) => {
+				const values = columnValues[index]!;
 				const type =
 					nativeSchema?.fields.find((field) => field.name === column.name)?.type ??
 					(values.some((entry) => entry !== null && entry !== undefined)
-						? integerType(values, arrow)
+						? columnType(values, arrow)
 						: emptyColumnType(column.type, arrow));
-				return [column.name, type ? arrow.vectorFromArray(values, type) : arrow.vectorFromArray(values)];
+				// Missing nested properties are nulls, including list and struct children.
+				const builder = arrow.makeBuilder({ type, nullValues: [null, undefined] });
+				for (const value of values) builder.append(value);
+				return [column.name, builder.finish().toVector()];
 			}),
 		);
 		let table = new arrow.Table(vectors);
-		if (projected.columns.length === 0 && rows.length > 0) {
+		if (projected.columns.length === 0 && sliced.length > 0) {
 			const schema = new arrow.Schema([]);
 			table = new arrow.Table(
 				new arrow.RecordBatch(
 					schema,
 					arrow.makeData({
 						type: new arrow.Struct([]),
-						length: rows.length,
+						length: sliced.length,
 						children: [],
 						nullCount: 0,
 					}),
@@ -248,9 +254,12 @@ export async function readDataset(value: RuntimeValue, options: DatasetReadOptio
 			schema,
 			table.batches.map((batch) => new arrow.RecordBatch(schema, batch.data)),
 		);
-		return { data: arrow.tableToIPC(typed), description: projected, format: "arrow" };
+		return { data: await arrowBytes(typed), description: projected, format: "arrow" };
 	}
-	const data = options.format === "native" && options.columns === undefined ? sliced : rows;
+	const data =
+		options.format === "native" && options.columns === undefined
+			? sliced
+			: sliced.map((row) => (initial.kind === "array" ? { value: row } : selectRow(row, columns)));
 	return { data, description: projected, format: options.format };
 }
 
@@ -316,10 +325,13 @@ function nativeTypeName(type: RuntimeValue): string {
 	return JSON.stringify(type) ?? "unknown";
 }
 
-function arraySchema(value: RuntimeValue[]): ColumnInfo[] | null {
+function arraySchema(value: RuntimeValue[], sample: readonly RuntimeValue[]): ColumnInfo[] | null {
 	const schema = Object.getOwnPropertyDescriptor(value, "schema")?.value;
 	const fields = dataArray(schema) ?? dataArray(dataProperty(schema, "fields"));
 	if (fields?.every(isNativeField)) return nativeColumns(fields);
+	// CSV headers describe the input, not rows subsequently replaced or extended.
+	// Nonempty arrays use their actual fields; empty files retain their headers.
+	if (sample.length) return null;
 	const names = dataArray(Object.getOwnPropertyDescriptor(value, "columns")?.value);
 	if (names?.every(isString)) return names.map((name) => ({ name, type: "unknown", nullable: null }));
 	return null;
@@ -384,6 +396,24 @@ function inferColumns(rows: readonly RuntimeValue[], names?: readonly string[]):
 	);
 }
 
+function rowColumns(
+	rows: readonly RuntimeValue[],
+	initial: DatasetDescription,
+	selected?: readonly string[],
+): readonly ColumnInfo[] {
+	const declared = new Map(initial.columns.map((column) => [column.name, column]));
+	const names = new Set(declared.keys());
+	if (!selected?.every((name) => declared.has(name))) {
+		for (const name of rowNames(rows)) names.add(name);
+	}
+	return inferColumns(rows.slice(0, SAMPLE_ROWS), [...names]).map((column) => {
+		const previous = declared.get(column.name);
+		if (previous && initial.schemaSource === "native") return previous;
+		if (previous && column.type === "unknown") return { ...column, type: previous.type };
+		return column;
+	});
+}
+
 function rowNames(rows: readonly RuntimeValue[]): string[] {
 	const names = new Set<string>();
 	for (const row of rows) {
@@ -413,9 +443,11 @@ function inferColumn(name: string, values: readonly RuntimeValue[]): ColumnInfo 
 
 function ownValue(value: RuntimeValue, name: string): RuntimeValue {
 	if (!isObjectValue(value)) return undefined;
+	const property = Object.getOwnPropertyDescriptor(value, name);
+	if (!property) return undefined;
+	if (property.value !== undefined) return property.value;
 	// Arrow rows expose their schema fields through a native Proxy.
-	if (isArrowRow(value) && Object.prototype.hasOwnProperty.call(value, name)) return value[name];
-	return Object.getOwnPropertyDescriptor(value, name)?.value;
+	return isArrowRow(value) ? value[name] : undefined;
 }
 
 function selectRow(row: RuntimeValue, columns: readonly string[]): Row {
@@ -425,13 +457,74 @@ function selectRow(row: RuntimeValue, columns: readonly string[]): Row {
 function validateRowProperties(rows: readonly RuntimeValue[], columns?: readonly string[]): void {
 	for (const row of rows) {
 		if (!isObjectValue(row)) continue;
-		for (const key of columns ?? Reflect.ownKeys(row)) {
+		for (const key of columns ?? Object.keys(row)) {
 			const descriptor = Object.getOwnPropertyDescriptor(row, key);
 			if (!descriptor || (!descriptor.enumerable && !columns)) continue;
-			if (!isString(key)) throw new TypeError("Dataset rows cannot export enumerable symbol properties");
 			if ("get" in descriptor || "set" in descriptor) throw new TypeError(`Dataset row property ${key} is an accessor`);
 		}
 	}
+}
+
+function validateNestedValues(columns: readonly (readonly RuntimeValue[])[]): void {
+	const ancestors = new WeakSet<object>();
+	const validated = new WeakSet<object>();
+	function visit(value: RuntimeValue, depth: number): void {
+		if (depth > 30) throw new TypeError("Dataset nesting exceeds the Arrow conversion limit");
+		if (!isObjectValue(value) || value instanceof Date) return;
+		if (ancestors.has(value)) throw new TypeError("Cyclic values cannot be exported as Arrow");
+		if (validated.has(value)) return;
+		ancestors.add(value);
+		if (Array.isArray(value)) {
+			const children = dataArray(value);
+			if (!children) throw new TypeError("Dataset list values must have data properties");
+			for (const child of children) visit(child, depth + 1);
+		} else if (isRow(value)) {
+			validateRowProperties([value]);
+			for (const name of Object.keys(value)) visit(ownValue(value, name), depth + 1);
+		}
+		ancestors.delete(value);
+		validated.add(value);
+	}
+	// Schema inference merges sibling rows; cycle detection must follow each
+	// value's own ancestry, so shared but acyclic nested records remain valid.
+	for (const column of columns) for (const value of column) visit(value, 0);
+}
+
+function columnType(values: readonly RuntimeValue[], arrow: typeof import("apache-arrow"), depth = 0): DataType {
+	if (depth > 30) throw new TypeError("Dataset nesting exceeds the Arrow conversion limit");
+	const valid = values.filter((value) => value !== null && value !== undefined);
+	if (!valid.length) return new arrow.Null();
+	if (valid.every(isNumber)) return new arrow.Float64();
+	if (valid.every(isString)) return new arrow.Dictionary(new arrow.Utf8(), new arrow.Int32());
+	if (valid.every(isBoolean)) return new arrow.Bool();
+	if (valid.every(isBigInt)) return integerType(valid, arrow)!;
+	if (valid.every((value) => value instanceof Date)) return new arrow.TimestampMillisecond();
+	if (valid.every(Array.isArray)) {
+		const children = valid.flatMap((value) => {
+			const items = dataArray(value);
+			if (!items) throw new TypeError("Dataset list values must have data properties");
+			return items;
+		});
+		return new arrow.List(new arrow.Field("item", columnType(children, arrow, depth + 1), true));
+	}
+	if (valid.every(isRow)) {
+		validateRowProperties(valid);
+		return new arrow.Struct(
+			rowNames(valid).map(
+				(name) =>
+					new arrow.Field(
+						name,
+						columnType(
+							valid.map((row) => ownValue(row, name)),
+							arrow,
+							depth + 1,
+						),
+						true,
+					),
+			),
+		);
+	}
+	throw new TypeError("Dataset columns contain mixed or unsupported JavaScript types");
 }
 
 function integerType(values: readonly RuntimeValue[], arrow: typeof import("apache-arrow")) {

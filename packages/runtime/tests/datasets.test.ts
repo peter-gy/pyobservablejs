@@ -54,6 +54,29 @@ test("exports Arrow 17 record batches with dictionaries and nested values", asyn
 	expect(Array.from(restored.getChild("values")?.get(1))).toEqual([1, 2]);
 });
 
+test.each([
+	["current", tableFromArrays],
+	["17", arrow17FromArrays],
+] as const)("reads Arrow %s rows through native vectors and row proxies", async (_version, fromArrays) => {
+	const table = fromArrays({ id: [1, 2], label: ["first", null] });
+	const expected = [
+		{ id: 1, label: "first" },
+		{ id: 2, label: null },
+	];
+	expect((await readDataset(table, { format: "rows" })).data).toEqual(expected);
+	const exported = ipcTable((await readDataset([...table], { format: "arrow" })).data);
+	expect(exported.toArray().map((row) => row.toJSON())).toEqual(expected);
+});
+
+test("row reads reuse native columns across record-batch boundaries", async () => {
+	const first = tableFromArrays({ id: [1, 2], label: ["a", null] });
+	const second = tableFromArrays({ id: [3, 4], label: ["c", "d"] });
+	expect((await readDataset(first.concat(second), { format: "rows", offset: 1, limit: 2 })).data).toEqual([
+		{ id: 2, label: null },
+		{ id: 3, label: "c" },
+	]);
+});
+
 test("exports Flechette buffers directly and slices through Arrow IPC", async () => {
 	const table = flechetteFromArrays(
 		{ id: [9007199254740993n, 11n], label: ["a", "b"] },
@@ -150,7 +173,11 @@ test("rejects omitted properties in explicit reads and permits intentional proje
 	await expect(readDataset(source, { format: "arrow" })).rejects.toThrow("accessor");
 	expect((await readDataset(source, { format: "rows", columns: ["amount"] })).data).toEqual([{ amount: 2 }]);
 	const symbolRow = { amount: 2, [Symbol("field")]: 3 };
-	await expect(readDataset([symbolRow], { format: "arrow" })).rejects.toThrow("symbol");
+	expect(
+		ipcTable((await readDataset([symbolRow], { format: "arrow" })).data)
+			.getChild("amount")
+			?.get(0),
+	).toBe(2);
 	expect(getter).not.toHaveBeenCalled();
 	await expect(readDataset([row], { format: "rows", columns: ["missing"] })).rejects.toThrow("Unknown dataset column");
 	await expect(readDataset([row], { format: "rows", offset: -1 })).rejects.toThrow("offset");
@@ -260,4 +287,66 @@ test("ignores accessor metadata and opaque sample entries during discovery", asy
 	const taggedRow = Object.defineProperty({}, Symbol.toStringTag, { get: getter });
 	expect(describeDataset([taggedRow])).toBeNull();
 	expect(getter).not.toHaveBeenCalled();
+});
+
+test("Arrow projection captures values before asynchronous conversion and retains late columns", async () => {
+	const rows = Array.from({ length: 110 }, (_, id) => ({ id, label: "original" }));
+	const reading = readDataset(rows, { format: "arrow", columns: ["id"] });
+	rows[0]!.id = 999;
+	expect(
+		ipcTable((await reading).data)
+			.getChild("id")
+			?.get(0),
+	).toBe(0);
+	const late = [...rows, { id: 110, label: "last", extra: 7 }];
+	const projected = ipcTable((await readDataset(late, { format: "arrow", columns: ["extra"] })).data);
+	expect(projected.numRows).toBe(111);
+	expect(projected.getChild("extra")?.get(110)).toBe(7);
+	await expect(readDataset(late, { format: "arrow", columns: ["absent"] })).rejects.toThrow("Unknown dataset column");
+});
+
+test("CSV headers do not override transformed rows or hide fields beyond the schema sample", async () => {
+	const rows = Object.assign(
+		[
+			...Array.from({ length: 100 }, () => ({ state: "CA", ages: [{ population: 7 }] })),
+			{ state: "NY", ages: [], extra: 3 },
+		],
+		{ columns: ["State", "Value"] },
+	);
+	expect(describeDataset(rows)?.columns.map((column) => column.name)).toEqual(["state", "ages"]);
+	const table = ipcTable((await readDataset(rows, { format: "arrow" })).data);
+	expect(table.schema.fields.map((field) => field.name)).toEqual(["state", "ages", "extra"]);
+	expect(table.getChild("state")?.get(0)).toBe("CA");
+	expect(table.getChild("extra")?.get(100)).toBe(3);
+	const empty = Object.assign([], { columns: ["State", "Value"] });
+	expect(describeDataset(empty)?.columns.map((column) => column.name)).toEqual(["State", "Value"]);
+});
+
+test("retains calculated fields added to schema-bearing query rows, including beyond the sample", async () => {
+	const rows = Object.assign(
+		Array.from({ length: 101 }, (_, id) => (id === 100 ? { id, total: 7 } : { id })),
+		{ schema: [{ name: "id", type: "integer", nullable: false }] },
+	);
+	expect(describeDataset(rows)?.schemaSource).toBe("native");
+	const result = await readDataset(rows, { format: "arrow" });
+	const table = ipcTable(result.data);
+	expect(table.schema.fields.map((field) => field.name)).toEqual(["id", "total"]);
+	expect(table.getChild("total")?.get(100)).toBe(7);
+	Object.assign(rows[0]!, { total: 3 });
+	expect(describeDataset(rows)?.columns.map((column) => column.name)).toEqual(["id", "total"]);
+	expect((await readDataset(rows, { format: "rows", limit: 1 })).data).toEqual([{ id: 0, total: 3 }]);
+});
+
+test("Arrow inference distinguishes shared nested records from cycles", async () => {
+	const shared = { x: 1 };
+	const rows = [{ value: { child: shared } }, { value: shared }];
+	const table = ipcTable((await readDataset(rows, { format: "arrow" })).data);
+	expect(table.getChild("value")?.get(0)?.toJSON()).toMatchObject({ child: { x: 1 }, x: null });
+	expect(table.getChild("value")?.get(1)?.toJSON()).toEqual({ child: null, x: 1 });
+	interface CyclicRecord {
+		child?: CyclicRecord;
+	}
+	const cycle: CyclicRecord = {};
+	cycle.child = cycle;
+	await expect(readDataset([{ value: cycle }], { format: "arrow" })).rejects.toThrow("Cyclic values");
 });
