@@ -41,7 +41,7 @@ def test_from_html_embeds_static_template_and_stdlib_alias_file_attachments(
     widget = notebook_from_html_path(notebook)
     module_text = script_by_id(script_tags(widget.to_notebook_html()), "1")["text"]
 
-    assert set(widget.attachments) == {"templated.csv", "aliased.csv"}
+    assert set(widget.state.attachments) == {"templated.csv", "aliased.csv"}
     assert normalized_source(module_text) == normalized_source(
         """
         import {FileAttachment as localFile} from "observablehq:stdlib";
@@ -51,8 +51,13 @@ def test_from_html_embeds_static_template_and_stdlib_alias_file_attachments(
         const c = FileAttachment(`${name}.csv`).csv();
         """
     )
-    assert decode_data_url(widget.attachments["templated.csv"]["url"])[1] == b"x\n1\n"
-    assert decode_data_url(widget.attachments["aliased.csv"]["url"])[1] == b"x\n2\n"
+    assert (
+        decode_data_url(widget.state.attachments["templated.csv"]["url"])[1]
+        == b"x\n1\n"
+    )
+    assert (
+        decode_data_url(widget.state.attachments["aliased.csv"]["url"])[1] == b"x\n2\n"
+    )
 
 
 def test_from_html_embeds_only_bare_file_attachment_calls(
@@ -80,7 +85,7 @@ def test_from_html_embeds_only_bare_file_attachment_calls(
     widget = notebook_from_html_path(notebook)
     module_text = script_by_id(script_tags(widget.to_notebook_html()), "1")["text"]
 
-    assert set(widget.attachments) == {"data.csv"}
+    assert set(widget.state.attachments) == {"data.csv"}
     assert normalized_source(module_text) == normalized_source(
         """
         obj.FileAttachment("secret.csv");
@@ -90,7 +95,9 @@ def test_from_html_embeds_only_bare_file_attachment_calls(
         FileAttachment("data.csv");
         """
     )
-    assert decode_data_url(widget.attachments["data.csv"]["url"])[1] == b"x,y\n1,2\n"
+    assert (
+        decode_data_url(widget.state.attachments["data.csv"]["url"])[1] == b"x,y\n1,2\n"
+    )
 
 
 @pytest.mark.parametrize(
@@ -164,7 +171,7 @@ def test_from_html_embeds_only_executable_file_attachments(
     ignored_text = script_by_id(script_tags(widget.to_notebook_html()), "1")["text"]
     module_text = script_by_id(script_tags(widget.to_notebook_html()), "2")["text"]
 
-    assert set(widget.attachments) == {"image.csv", "points.csv"}
+    assert set(widget.state.attachments) == {"image.csv", "points.csv"}
     assert normalized_source(ignored_text) == normalized_source(body)
     assert normalized_source(module_text) == normalized_source(
         """
@@ -172,8 +179,11 @@ def test_from_html_embeds_only_executable_file_attachments(
         const points = FileAttachment("points.csv").csv();
         """
     )
-    assert decode_data_url(widget.attachments["image.csv"]["url"])[1] == b"name\nplot\n"
-    mime_type, payload = decode_data_url(widget.attachments["points.csv"]["url"])
+    assert (
+        decode_data_url(widget.state.attachments["image.csv"]["url"])[1]
+        == b"name\nplot\n"
+    )
+    mime_type, payload = decode_data_url(widget.state.attachments["points.csv"]["url"])
     assert mime_type == "text/csv"
     assert payload == b"x,y\n1,2\n"
 
@@ -209,9 +219,11 @@ def test_from_html_discovers_file_attachments_after_member_expression_division(
     widget = notebook_from_html_path(notebook)
     module_text = script_by_id(script_tags(widget.to_notebook_html()), "1")["text"]
 
-    assert set(widget.attachments) == {"data.csv"}
+    assert set(widget.state.attachments) == {"data.csv"}
     assert module_text.strip() == body
-    assert decode_data_url(widget.attachments["data.csv"]["url"])[1] == b"x,y\n1,2\n"
+    assert (
+        decode_data_url(widget.state.attachments["data.csv"]["url"])[1] == b"x,y\n1,2\n"
+    )
 
 
 def test_from_html_respects_unquoted_script_types(
@@ -263,7 +275,7 @@ def test_from_html_respects_unquoted_script_types(
         FileAttachment("points.csv");
         """
     )
-    assert set(widget.attachments) == {"points.csv"}
+    assert set(widget.state.attachments) == {"points.csv"}
 
 
 def test_from_html_ignores_data_type_when_script_type_is_absent(
@@ -315,7 +327,7 @@ def test_from_html_ignores_data_type_when_script_type_is_absent(
         FileAttachment("points.csv");
         """
     )
-    assert set(widget.attachments) == {"points.csv"}
+    assert set(widget.state.attachments) == {"points.csv"}
 
 
 def test_from_html_handles_gt_in_script_attribute_values(
@@ -352,7 +364,7 @@ def test_from_html_handles_gt_in_script_attribute_values(
         FileAttachment("points.csv");
         """
     )
-    assert set(widget.attachments) == {"points.csv"}
+    assert set(widget.state.attachments) == {"points.csv"}
 
 
 def test_from_html_ignores_scripts_outside_notebook(
@@ -393,7 +405,7 @@ def test_from_html_ignores_scripts_outside_notebook(
     ]
     notebook_script = script_by_id(scripts, "1")
 
-    assert widget.attachments == {}
+    assert widget.state.attachments == {}
     assert len(widget.cells) == 1
     assert len(outside_scripts) == 1
     assert normalized_source(outside_scripts[0]["text"]) == normalized_source(
@@ -442,7 +454,7 @@ def test_from_html_ignores_script_tags_inside_html_comments(
     comments = comment_nodes(rendered)
     real_script = script_by_id(scripts, "real")
 
-    assert widget.attachments == {}
+    assert widget.state.attachments == {}
     assert len(widget.cells) == 1
     assert [script["attrs"].get("id") for script in scripts] == ["real"]
     assert real_script["text"].strip() == "const value = 1;"
@@ -493,7 +505,7 @@ def test_from_html_ignores_longer_closing_tag_prefixes(
         FileAttachment("points.csv");
         """
     )
-    assert set(widget.attachments) == {"points.csv"}
+    assert set(widget.state.attachments) == {"points.csv"}
 
 
 def test_from_html_ignores_notebook_close_text_inside_script(
@@ -530,7 +542,7 @@ def test_from_html_ignores_notebook_close_text_inside_script(
         FileAttachment("points.csv");
         """
     )
-    assert set(widget.attachments) == {"points.csv"}
+    assert set(widget.state.attachments) == {"points.csv"}
 
 
 def test_from_html_treats_unknown_script_type_as_javascript(
@@ -566,7 +578,7 @@ def test_from_html_treats_unknown_script_type_as_javascript(
         FileAttachment("points.csv");
         """
     )
-    assert set(widget.attachments) == {"points.csv"}
+    assert set(widget.state.attachments) == {"points.csv"}
 
 
 def test_from_html_rewrites_minified_static_imports(

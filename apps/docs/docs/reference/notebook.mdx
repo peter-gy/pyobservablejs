@@ -61,7 +61,7 @@ notebook = obs.Notebook(answer, double)
 
 full_view = notebook.view()
 answer_view = notebook.view("answer")
-mixed_view = notebook.view(double, notebook.cell("answer"))
+mixed_view = notebook.view(double, notebook.cells["answer"])
 preview = notebook.view(capture_state=False)
 ```
 
@@ -89,21 +89,31 @@ Unknown options and non-boolean `capture_state` values raise `TypeError`. See
 capture](../guide/display/notebooks.mdx#skip-python-state-capture) for performance
 guidance.
 
-## `Notebook.cell(key)`
-
-Returns the stable `NotebookCell` for one unique string key.
-
-```python
-answer = notebook.cell("answer")
-```
-
-Unknown keys raise `KeyError`. Non-string selectors raise `TypeError`. The
-Notebook Kit `id` and notebook-order `index` are metadata and are not selectors.
-
 ## `Notebook.cells`
 
-Returns all `NotebookCell` handles in notebook order. Anonymous cells remain
-available in this tuple.
+An ordered collection of canonical cell handles. String indexing selects public
+keys and integer indexing selects notebook positions. Iteration follows notebook
+order, including anonymous cells.
+
+```python
+answer = notebook.cells["answer"]
+first = notebook.cells[0]
+keys = notebook.cells.keys()
+```
+
+Unknown or ambiguous keys raise `KeyError`. Notebook Kit `id` is serialization
+metadata. Pass a cell handle or key to `view()` when selecting cells.
+
+## Data and files
+
+`notebook.files[name]` exposes attachment metadata and synchronous file loading.
+`notebook.data[name]` reads computed values through the optional headless engine.
+`notebook.graph` provides static dependencies and imports. See the
+[data namespace reference](data-access.mdx).
+
+`notebook.with_variables(**variables)` returns an independent notebook with merged
+Python bindings. It preserves source, attachments, theme, and original source
+records. Use a context manager or `close()` for its execution lifetime.
 
 ## Controller state
 
@@ -117,7 +127,7 @@ def on_state(change):
 notebook.observe(on_state, names="state")
 ```
 
-`Notebook.variables`, `Notebook.attachments`, and `Notebook.theme` read from the
+`Notebook.variables` and `Notebook.theme` read from the
 latest snapshot. Changing an object passed during construction does not change
 the notebook. Snapshot values cannot be edited. Use the variable methods or
 assign `notebook.theme` for changes. Each real change publishes one `state`

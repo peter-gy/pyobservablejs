@@ -31,10 +31,10 @@ def test_view_from_code_returns_full_anywidget_view(
     try:
         assert isinstance(view, anywidget.AnyWidget)
         assert isinstance(view, obs.NotebookView)
-        assert view.cells == view.notebook.cells
+        assert tuple(view.cells) == tuple(view.notebook.cells)
         assert view.notebook.variables == {"rows": ({"value": 1},)}
         assert view.notebook.theme == "coffee"
-        assert view.notebook.attachments["data.csv"]["url"] == (
+        assert view.notebook.state.attachments["data.csv"]["url"] == (
             "https://example.test/data.csv"
         )
         assert view.get_state(["_capture_state"]) == {"_capture_state": False}
@@ -78,7 +78,7 @@ def test_imported_source_factories_return_full_anywidget_views(
         for view in (html_view, document_view):
             assert isinstance(view, anywidget.AnyWidget)
             assert isinstance(view, obs.NotebookView)
-            assert view.cells == view.notebook.cells
+            assert tuple(view.cells) == tuple(view.notebook.cells)
             assert view.cells[0].key == "answer"
             assert view.get_state(["_capture_state"]) == {"_capture_state": False}
         assert html_view.notebook.variables == {"precision": 2}
@@ -112,7 +112,7 @@ def test_view_from_observablehq_accepts_url_factory_input(
     try:
         assert isinstance(view, anywidget.AnyWidget)
         assert isinstance(view, obs.NotebookView)
-        assert view.cells == view.notebook.cells
+        assert tuple(view.cells) == tuple(view.notebook.cells)
         assert view.cells[0].key == "answer"
         assert view.get_state(["_capture_state"]) == {"_capture_state": False}
         assert requests == [("https://observablehq.com/@d3/bar-chart", 1)]
@@ -180,4 +180,5 @@ def test_view_factory_closes_temporary_notebook_when_view_creation_fails(
         obs.view_from_code("answer = 42")
 
     assert len(notebooks) == 1
-    assert notebook_session(notebooks[0]).comm is None
+    with pytest.raises(RuntimeError, match="closed Notebook"):
+        notebooks[0].update_variables({"x": 1})

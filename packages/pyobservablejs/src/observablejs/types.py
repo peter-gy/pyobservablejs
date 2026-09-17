@@ -19,6 +19,10 @@ from typing import (
     overload,
 )
 
+from ._async_data import AsyncDataReference
+from ._data import DataReference
+from ._data_types import DataCatalog, DataDescription, DataSource
+from ._file_access import AsyncFileReference, FileReference
 from ._inspection import (
     AttachmentInspection,
     CellInspection,
@@ -29,8 +33,6 @@ from ._inspection import (
     ImportBinding,
     ImportInfo,
     NotebookInspection,
-    NotebookRead,
-    ReadFormat,
 )
 from .errors import DiagnosticCell, ErrorDetail, Origin
 
@@ -421,6 +423,8 @@ class ViewState:
 
 
 __all__ = [
+    "AsyncDataReference",
+    "AsyncFileReference",
     "AttachmentInspection",
     "BrowserErrorValue",
     "CellError",
@@ -431,18 +435,22 @@ __all__ = [
     "CellSelector",
     "CellStatus",
     "ColumnInfo",
+    "DataCatalog",
+    "DataDescription",
+    "DataReference",
+    "DataSource",
     "DatasetDescription",
     "DatasetInfo",
     "DatasetKind",
     "ErrorPhase",
     "FileInput",
+    "FileReference",
     "FileSnapshot",
     "FileSpec",
     "ImportBinding",
     "ImportInfo",
     "NotebookInspection",
     "NotebookKitCellMetadata",
-    "NotebookRead",
     "NotebookState",
     "NotebookTheme",
     "NotebookViewOptions",
@@ -459,7 +467,6 @@ __all__ = [
     "ObservablePageDocument",
     "ObservableResolution",
     "ObservableSource",
-    "ReadFormat",
     "Theme",
     "ThemePair",
     "ThemeSnapshot",

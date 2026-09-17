@@ -81,11 +81,10 @@ data_notebook = obs.Notebook(
 )
 data_view = data_notebook.view("count", capture_state=False)
 data_view""",
-    """export = await data_view.read("rows", columns=["x"], offset=1, limit=1)
+    """table = await data_view.data["rows"].to_arrow(columns=["x"], offset=1, limit=1)
 inspection = data_view.inspection
-table = export.to_arrow()
-datasets = data_view.datasets
-attachment = await data_view.read_attachment("payload.bin")
+datasets = (await data_view.data.discover()).datasets
+attachment = await data_view.files["payload.bin"].read_bytes()
 print(f"Data Arrow: rows={table.num_rows} value={int(table.column('x')[0].as_py())}")
 print(f"Data catalog: cells={len(inspection.cells)} datasets={len(datasets)}")
 print(f"Data bytes: {list(attachment)}")

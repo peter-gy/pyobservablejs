@@ -1,0 +1,152 @@
+---
+title: Headless Python
+description: Read notebook values and datasets from Python scripts, with optional Chromium rendering.
+---
+
+# Headless Python
+
+Install the server extra to run notebook computation in Deno. Add the dataframe
+library you want to use:
+
+```sh
+pip install 'pyobservablejs[server]' polars
+```
+
+```python
+import observablejs as obs
+
+with obs.Notebook(
+    obs.js("const sales = [{amount: price * 2}]", key="result"),
+    variables={"price": 7},
+) as notebook:
+    frame = notebook.data["sales"].to_polars()
+    print(frame)
+
+    notebook.update_variables({"price": 9})
+    print(notebook.data["sales"].to_python())  # [{'amount': 18}]
+```
+
+Reads evaluate the producing cell and its dependencies and return the requested
+Python object directly. The notebook owns its lazy execution resources. Use its
+context manager or call `notebook.close()` when finished.
+
+`notebook.with_variables(price=9)` creates an independent notebook binding.
+The original notebook and its views retain their current variables.
+
+## Inspect and discover
+
+```python
+names = notebook.data.names()
+upstream = notebook.graph.upstream("result")
+catalog = notebook.data.discover()
+```
+
+Names and graph inspection compile source without executing cells or fetching
+imports. Discovery evaluates values and returns actionable dataset references,
+diagnostics, and a `pending` flag. See the
+[data namespace reference](../reference/data-access.mdx).
+
+## Network and imports
+
+Headless reads can fetch attachments, modules, and public Observable notebook
+imports by default:
+
+```python
+with obs.Notebook.from_observablehq("@d3/sized-donut-multiples") as notebook:
+    frame = notebook.data["data"].to_polars()
+```
+
+Use `network=False` for offline execution, or a host list to restrict requests:
+
+```python
+offline = notebook.data.using(network=False)
+restricted = notebook.data.using(
+    network=["cdn.jsdelivr.net", "static.observableusercontent.com"]
+)
+```
+
+Deno caches downloaded modules. Its classic `require()` loads packages through
+native ESM entries while preserving declared package versions. Use Chromium for
+libraries that require AMD globals or browser-specific behavior.
+
+Supply local notebook dependencies through `resolve_notebook`:
+
+```python
+dependency = obs.Notebook(obs.ojs("factor = 3"))
+main = obs.Notebook(
+    obs.ojs('import {factor} from "@example/constants"'),
+    obs.ojs("answer = factor * 7"),
+)
+
+def resolve(specifier):
+    if specifier == "@example/constants":
+        return dependency
+    raise KeyError(specifier)
+
+data = main.data.using(resolve_notebook=resolve)
+print(data["answer"].to_python())  # 21
+main.close()
+dependency.close()
+```
+
+The resolver runs on a background thread. Return an open notebook. The caller
+owns those dependency notebooks. The runtime caches source within an execution
+and resolves version pins before calling the resolver.
+
+## Chromium
+
+Use Chromium for canvas, layout, and browser APIs:
+
+```python
+data = notebook.data.using(engine="chromium")
+frame = data["sales"].to_polars()
+png = notebook.render.png("chart", timeout=120)
+```
+
+Deno runs the bundled, pinned Playwright driver. The driver installs matching
+Chromium on first use. Engine preparation has a separate three-minute deadline,
+so the initial download does not consume the read timeout. Each
+execution uses a fresh browser context and closes the browser with the notebook.
+Notebook request policy applies to both engines. Browser installation is separate
+from notebook network access.
+
+Engine selection is explicit. A failing Deno computation is not automatically
+reexecuted in Chromium, which could repeat its side effects.
+
+## Deno DOM capabilities
+
+The default engine provides a DOM implementation for HTML, SVG, and input
+construction. It has no browser layout or graphics engine. Its `width` is 640
+and `dark` is false. Supply Python-owned values to bypass control construction:
+
+```python
+with obs.Notebook(
+    obs.ojs("viewof threshold = Inputs.range([0, 1])"),
+    obs.ojs("answer = threshold * 2"),
+    variables={"threshold": 0.5},
+) as notebook:
+    print(notebook.data["answer"].to_python())  # 1
+```
+
+A timeout terminates the affected execution, including a synchronous JavaScript
+loop. A subsequent unpinned read starts a new execution. Exceptions retain
+JavaScript stacks, source excerpts, and structured diagnostics.
+
+## Async and widget access
+
+Synchronous reads are the default. Use `notebook.data.aio` or
+`notebook.files.aio` when an async application should yield while waiting:
+
+```python
+frame = await notebook.data.aio["sales"].to_polars()
+```
+
+A displayed widget has its own awaitable namespace:
+
+```python
+frame = await view.data["sales"].to_polars()
+```
+
+Widget construction, display, and widget data access work with the base package
+and do not require Deno or the server extra. They read the originating view's
+browser values, including its current interactions.

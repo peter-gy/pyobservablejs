@@ -137,3 +137,10 @@ upstream asynchronous generator cleanup can remain in the browser console.
 
 `view.close()` closes the Python model synchronously. It does not await browser
 teardown, so failures after the comm closes cannot be raised from that call.
+
+## Server errors
+
+Headless checkpoints use the same structured diagnostics. `ServerError` identifies
+failures in the Deno host. Background notebook exceptions remain notebook diagnostics, so independent data stays readable. A
+`NotebookTimeoutError` closes the affected server. See
+[Headless Python](../guide/server.mdx) for synchronous checkpoints and lifecycle.

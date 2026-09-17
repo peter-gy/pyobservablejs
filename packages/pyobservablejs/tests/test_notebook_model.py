@@ -260,7 +260,7 @@ def test_notebook_accepts_observablehq_document_nodes_with_files(
     )
 
     assert notebook.variables == {"py_value": 7}
-    assert notebook.attachments["rows.csv"] == {
+    assert notebook.state.attachments["rows.csv"] == {
         "url": "https://static.example/rows.csv",
         "mimeType": "text/csv",
     }

@@ -6,7 +6,7 @@ Read [SKILL.md](../SKILL.md) for the object model and first chart.
 
 Use the notebook project's dependency manager or the host's package-management
 API. Apply that project's version pins and lockfile policy. Install `pyarrow`
-when Python must decode Arrow exports with `NotebookRead.to_arrow()`.
+when using `reference.to_arrow()` or evaluated `reference.to_pandas()`.
 
 Check the running kernel, which may differ from a terminal environment:
 
@@ -48,8 +48,8 @@ Run checkpoints and reads in a later cell:
 
 ```python
 state = await view.ready(timeout=30)
-count = await view.read("rowCount", format="json")
-print(count.data)
+count = await view.data["rowCount"].to_python()
+print(count)
 ```
 
 Jupyter can process widget replies while this call awaits. `ready()` waits for
@@ -130,7 +130,7 @@ errors such as duplicate Python definitions must be fixed in the host cells.
 
 Current marimo processes widget replies on the same command loop as ordinary
 cell and code-mode execution. Top-level async syntax does not make a direct
-`await view.ready()` or `await view.read(...)` safe inside that executing call.
+`await view.ready()` or `await view.data[name].to_python()` safe inside that executing call.
 Start the request, return control, and consume its result later.
 
 For reactive data reads, use two separate Python cells. The producer starts a
@@ -145,7 +145,7 @@ get_data, set_data = mo.state(None)
 
 async def load_rows():
     try:
-        set_data(await view.read("visible", format="rows", limit=10))
+        set_data(await view.data["visible"].to_python(limit=10))
     except Exception as error:
         set_data(error)
 
@@ -160,7 +160,7 @@ data = get_data()
 if isinstance(data, Exception):
     raise data
 if data is not None:
-    print(data.data)
+    print(data)
 ```
 
 The displayed `view` comes from the starter. A `None` value means the request
@@ -214,7 +214,7 @@ else:
     print("Browser checkpoint pending")
 ```
 
-Use the same container for one-off `view.read(...)` tasks. Cancel unfinished
+Use the same container for one-off `view.data[name].to_python()` tasks. Cancel unfinished
 tasks and remove consumed entries. Delete a temporary helper cell through
 `ctx.delete_cell(...)` inside a context when finished, or retain it for repeated
 checks. Do not spin in the same execution waiting for `task.done()`.

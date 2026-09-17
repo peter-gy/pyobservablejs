@@ -70,6 +70,7 @@ const sidebars = {
 			},
 			items: ["guide/customize/themes-and-source", "guide/customize/export-html", "guide/customize/browser-execution"],
 		},
+		"guide/server",
 		"guide/troubleshooting",
 	],
 	examples: [

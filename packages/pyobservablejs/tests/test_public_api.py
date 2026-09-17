@@ -58,8 +58,11 @@ def test_public_object_discovery_matches_ownership_model() -> None:
 
     try:
         assert {
-            "attachments",
-            "cell",
+            "files",
+            "data",
+            "graph",
+            "render",
+            "with_variables",
             "cells",
             "close",
             "from_html",
@@ -77,8 +80,9 @@ def test_public_object_discovery_matches_ownership_model() -> None:
             "view",
         } <= {name for name in dir(notebook) if not name.startswith("_")}
         assert {
-            name for name in dir(notebook.cell("answer")) if not name.startswith("_")
+            name for name in dir(notebook.cells["answer"]) if not name.startswith("_")
         } == {
+            "data",
             "database",
             "hidden",
             "id",
@@ -123,10 +127,6 @@ def test_notebook_view_signature_uses_typed_options() -> None:
 
 
 def test_cell_and_variable_mutation_signatures_have_one_argument_shape() -> None:
-    cell_parameters = tuple(inspect.signature(obs.Notebook.cell).parameters.values())
-    assert [parameter.name for parameter in cell_parameters] == ["self", "key"]
-    assert cell_parameters[1].annotation in {"str", str}
-
     for method in (obs.Notebook.update_variables, obs.Notebook.replace_variables):
         parameters = tuple(inspect.signature(method).parameters.values())
         assert [parameter.name for parameter in parameters] == ["self", "values"]
@@ -144,8 +144,13 @@ def test_advanced_types_are_namespaced_and_complete() -> None:
         "ImportBinding",
         "ImportInfo",
         "NotebookInspection",
-        "NotebookRead",
-        "ReadFormat",
+        "DataReference",
+        "AsyncDataReference",
+        "DataCatalog",
+        "DataDescription",
+        "DataSource",
+        "FileReference",
+        "AsyncFileReference",
         "BrowserErrorValue",
         "CellError",
         "CellFormat",
@@ -194,7 +199,7 @@ def test_state_traits_have_public_static_types() -> None:
     assert_type(view.inspection, obs.types.NotebookInspection | None)
     assert_type(view.datasets, tuple[obs.types.DatasetInfo, ...])
     assert_type(view.diagnostics, tuple[obs.errors.Diagnostic, ...])
-    attachment = notebook.attachments["data.csv"]
+    attachment = notebook.state.attachments["data.csv"]
     assert_type(attachment, obs.types.FileSnapshot)
     assert_type(attachment.get("url"), str | None)
     mapping: Mapping[str, str | int] = attachment
@@ -238,7 +243,7 @@ def test_file_mapping_keeps_browser_attachment_fields() -> None:
     )
 
     expected = {"rows.csv": {"url": "https://example.test/rows.csv"}}
-    assert notebook.attachments == expected
+    assert notebook.state.attachments == expected
     assert notebook_session(notebook).get_state(["_attachments"]) == {
         "_attachments": expected
     }
@@ -259,7 +264,7 @@ def test_windows_drive_path_strings_are_local_files(tmp_path: pathlib.Path) -> N
         base_path=tmp_path,
     )
 
-    assert decode_data_url(notebook.attachments["rows.csv"]["url"])[1] == (
+    assert decode_data_url(notebook.state.attachments["rows.csv"]["url"])[1] == (
         b"value\n42\n"
     )
     notebook.close()

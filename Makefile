@@ -33,7 +33,7 @@ check:
 	uv run --frozen pyrefly check --min-severity warn
 	$(MAKE) build
 	node --test packages/runtime/tests/inspect-node.test.mjs
-	uv run --frozen pytest -q packages/pyobservablejs/tests
+	uv run --frozen --package pyobservablejs --extra server --group dev pytest -q packages/pyobservablejs/tests
 	$(VP) run @pyobservablejs/e2e#test:e2e
 	$(MAKE) docs
 	git diff --check

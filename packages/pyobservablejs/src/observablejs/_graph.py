@@ -195,3 +195,25 @@ def _int_field(raw: Mapping[str, Any], key: str) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def dependency_indexes(
+    graph: NotebookGraph, index: int, *, upstream: bool = True, transitive: bool = True
+) -> tuple[int, ...]:
+    neighbors: dict[int, list[int]] = {}
+    for edge in graph.edges:
+        source, target = (
+            (edge.target.index, edge.source.index)
+            if upstream
+            else (edge.source.index, edge.target.index)
+        )
+        neighbors.setdefault(source, []).append(target)
+    seen = {index}
+    pending = [index]
+    while pending:
+        for target in neighbors.get(pending.pop(), ()):
+            if target not in seen:
+                seen.add(target)
+                if transitive:
+                    pending.append(target)
+    return tuple(sorted(seen - {index}))

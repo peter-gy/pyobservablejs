@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from ._notebook import Notebook, NotebookCell
     from .types import ThemeSnapshot
 
-ReadFormat = Literal["rows", "arrow", "json", "bytes"]
+ReadFormat = Literal["rows", "arrow", "json", "bytes", "html", "python"]
 DatasetKind = Literal["arrow", "arquero", "rows", "array"]
 
 
@@ -51,7 +51,7 @@ class DatasetInfo(DatasetDescription):
 
 
 @dataclasses.dataclass(frozen=True)
-class NotebookRead:
+class ReadResult:
     """An explicit read containing binary bytes or detached Python values."""
 
     cell: NotebookCell | None
@@ -61,17 +61,6 @@ class NotebookRead:
     data: object
     dataset: DatasetDescription | None = None
     mime_type: str | None = None
-
-    def to_arrow(self) -> Any:
-        """Decode Arrow IPC bytes with the optional ``pyarrow`` package."""
-
-        if self.format != "arrow" or not isinstance(self.data, bytes):
-            raise ValueError("to_arrow() requires an Arrow read")
-        try:
-            from pyarrow import ipc
-        except ImportError as error:
-            raise ImportError("Install pyarrow to decode Arrow reads") from error
-        return ipc.open_stream(self.data).read_all()
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -83,6 +72,7 @@ class CellInspection(CellInfo):
     pinned: bool
     hidden: bool
     files: tuple[str, ...]
+    urls: tuple[str, ...]
     databases: tuple[str, ...]
     secrets: tuple[str, ...]
 
@@ -239,15 +229,15 @@ def decode_datasets(
 
 def decode_read(
     value: object, notebook: Notebook, buffers: Sequence[bytes]
-) -> NotebookRead:
-    from ._variables import deserialize_value, freeze_value
+) -> ReadResult:
+    from ._variables import deserialize_value
 
     raw = _object(
         value,
         {"cell", "name", "revision", "format"},
         {"data", "dataset", "mimeType", "binary"},
     )
-    if raw["format"] not in {"rows", "arrow", "json", "bytes"}:
+    if raw["format"] not in {"rows", "arrow", "json", "bytes", "html"}:
         raise ValueError("Notebook response has an invalid read format")
     if raw.get("binary") is True:
         if (
@@ -260,8 +250,8 @@ def decode_read(
     else:
         if "data" not in raw or buffers or raw["format"] in {"arrow", "bytes"}:
             raise ValueError("Notebook read has an invalid payload")
-        data = freeze_value(deserialize_value(raw["data"]))
-    return NotebookRead(
+        data = deserialize_value(raw["data"])
+    return ReadResult(
         cell=None if raw["cell"] is None else _cell(notebook, raw["cell"]),
         name=_string(raw["name"], nullable=True),
         revision=_integer(raw["revision"]),
@@ -307,7 +297,7 @@ def decode_inspection(value: object, notebook: Notebook) -> NotebookInspection:
     graph_fields = {field.name for field in dataclasses.fields(CellInfo)} - {"error"}
     graph_fields.remove("runtime_outputs")
     graph_fields.add("runtimeOutputs")
-    extra = {"source", "pinned", "hidden", "files", "databases", "secrets"}
+    extra = {"source", "pinned", "hidden", "files", "urls", "databases", "secrets"}
     cells: list[CellInspection] = []
     for item in _sequence(raw["cells"]):
         cell_raw = _object(item, graph_fields | extra, {"error"})
@@ -334,6 +324,7 @@ def decode_inspection(value: object, notebook: Notebook) -> NotebookInspection:
                 pinned=cell_raw["pinned"],
                 hidden=cell_raw["hidden"],
                 files=_strings(cell_raw["files"]),
+                urls=_strings(cell_raw["urls"]),
                 databases=_strings(cell_raw["databases"]),
                 secrets=_strings(cell_raw["secrets"]),
             )
@@ -395,3 +386,81 @@ def decode_inspection(value: object, notebook: Notebook) -> NotebookInspection:
         tuple(attachments),
         tuple(imports),
     )
+
+
+def read_parameters(
+    notebook: Notebook,
+    identity: object,
+    generation: str | None,
+    selector: str | NotebookCell | DatasetInfo,
+    *,
+    name: str | None,
+    path: Sequence[str | int],
+    format: ReadFormat,
+    columns: Sequence[str] | None,
+    offset: int,
+    limit: int | None,
+) -> dict[str, object]:
+    from . import errors
+    from ._notebook import NotebookCell
+
+    if format not in {"arrow", "rows", "json", "bytes", "html", "python"}:
+        raise ValueError("format must be arrow, rows, json, bytes, or html")
+    if (
+        isinstance(path, str | bytes)
+        or not isinstance(path, Sequence)
+        or any(
+            not isinstance(item, str | int) or isinstance(item, bool) for item in path
+        )
+    ):
+        raise TypeError("path must be a sequence of string or integer keys")
+    if name is not None and (not isinstance(name, str) or not name):
+        raise ValueError("name must be a non-empty string")
+    if columns is not None and (
+        isinstance(columns, str | bytes)
+        or not isinstance(columns, Sequence)
+        or any(not isinstance(column, str) for column in columns)
+    ):
+        raise TypeError("columns must be a sequence of column names")
+    if (
+        type(offset) is not int
+        or offset < 0
+        or (limit is not None and (type(limit) is not int or limit < 0))
+    ):
+        raise ValueError("offset and limit must be non-negative integers")
+    options: dict[str, object] = {"format": format, "offset": offset}
+    if columns is not None:
+        options["columns"] = list(columns)
+    if limit is not None:
+        options["limit"] = limit
+    selected: dict[str, object]
+    if isinstance(selector, DatasetInfo):
+        if selector._owner is not identity:
+            raise ValueError("DatasetInfo belongs to another notebook evaluation")
+        if selector.generation != generation:
+            raise errors.StaleViewError(
+                "DatasetInfo belongs to an expired notebook runtime"
+            )
+        if name is not None:
+            raise ValueError("DatasetInfo already identifies a variable")
+        selected = {"cell": selector.cell.index}
+        if selector.name is not None:
+            selected["name"] = selector.name
+        options["revision"] = selector.revision
+    elif isinstance(selector, NotebookCell):
+        if selector._owner is not notebook:
+            raise ValueError("NotebookCell belongs to another Notebook")
+        selected = {"cell": selector.index}
+        if name is not None:
+            selected["name"] = name
+    elif isinstance(selector, str) and selector:
+        if name is not None:
+            raise ValueError("A string selector already identifies a variable")
+        selected = {"name": selector}
+    else:
+        raise TypeError(
+            "selector must be a variable name, NotebookCell, or DatasetInfo"
+        )
+    if path:
+        selected["path"] = list(path)
+    return {"selector": selected, "options": options}

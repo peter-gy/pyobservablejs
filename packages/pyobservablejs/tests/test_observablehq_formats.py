@@ -100,9 +100,10 @@ def test_native_document_languages_are_independent_of_library(
         assert notebook.runtime_profile == profile
         assert restored.runtime_profile == profile
         assert (
-            notebook.attachments["data.csv"]["url"] == "https://example.test/data.csv"
+            notebook.state.attachments["data.csv"]["url"]
+            == "https://example.test/data.csv"
         )
-        assert notebook.attachments["data.csv"]["lastModified"] == 12
+        assert notebook.state.attachments["data.csv"]["lastModified"] == 12
     finally:
         restored.close()
         notebook.close()

@@ -125,20 +125,20 @@ still produce an empty or misleading chart. Follow
 
 ## Choose the access path
 
-| Task                                              | API or reference                                                       |
-| ------------------------------------------------- | ---------------------------------------------------------------------- |
-| Change Python inputs                              | `notebook.update_variables(patch)`                                     |
-| Replace the Python-owned environment              | `notebook.replace_variables(mapping)`                                  |
-| Restore authored computation                      | `notebook.reset_variables(*names)`                                     |
-| Check or raise browser failures                   | `view.diagnostics`, `view.raise_for_errors()`, `await view.ready()`    |
-| Read a selected cell's preview                    | `state.result("chart").values`                                         |
-| Find source, dependencies, and imports            | `view.inspection`, `notebook.cells`                                    |
-| List tables or read exact data                    | `view.datasets`, `await view.read(...)`, [data.md](references/data.md) |
-| Configure hosts or live code-mode editing         | [hosts.md](references/hosts.md)                                        |
-| Compose views, use files, import or export source | [workflows.md](references/workflows.md)                                |
+| Task                                              | API or reference                                                                    |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| Change Python inputs                              | `notebook.update_variables(patch)`                                                  |
+| Replace the Python-owned environment              | `notebook.replace_variables(mapping)`                                               |
+| Restore authored computation                      | `notebook.reset_variables(*names)`                                                  |
+| Check or raise browser failures                   | `view.diagnostics`, `view.raise_for_errors()`, `await view.ready()`                 |
+| Read a selected cell's preview                    | `state.result("chart").values`                                                      |
+| Find source, dependencies, and imports            | `view.inspection`, `notebook.cells`                                                 |
+| List tables or read exact data                    | `view.datasets`, `await view.data[name].to_python()`, [data.md](references/data.md) |
+| Configure hosts or live code-mode editing         | [hosts.md](references/hosts.md)                                                     |
+| Compose views, use files, import or export source | [workflows.md](references/workflows.md)                                             |
 
 Strings passed to `state.result()` and `notebook.view()` are cell keys.
-Strings passed to `view.read()` are JavaScript variable names. Keep that
+Strings passed to `view.data[name]` are JavaScript variable names. Keep that
 distinction explicit in code.
 
 Let `obs.errors.ObservableError` subclasses propagate when the agent needs a

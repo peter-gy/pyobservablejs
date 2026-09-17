@@ -213,7 +213,7 @@ def test_fatal_diagnostics_fail_bootstrap_reads_before_runtime_ready(
     browser: Browser,
 ) -> None:
     async def run() -> None:
-        pending = asyncio.create_task(browser.view.read("answer", format="json"))
+        pending = asyncio.create_task(browser.view._read("answer", format="json"))
         asyncio.get_running_loop().call_soon(
             publish,
             browser,
@@ -228,7 +228,7 @@ def test_fatal_diagnostics_fail_bootstrap_reads_before_runtime_ready(
         with pytest.raises(obs.errors.WidgetError):
             await pending
         with pytest.raises(obs.errors.WidgetError):
-            await browser.view.read("answer", format="json")
+            await browser.view._read("answer", format="json")
 
     asyncio.run(run())
 
@@ -236,7 +236,7 @@ def test_fatal_diagnostics_fail_bootstrap_reads_before_runtime_ready(
 def test_authored_diagnostics_do_not_fail_unrelated_reads(browser: Browser) -> None:
     async def run() -> None:
         browser.ready()
-        pending = asyncio.create_task(browser.view.read("answer", format="json"))
+        pending = asyncio.create_task(browser.view._read("answer", format="json"))
         request = await browser.message()
         publish(browser, [diagnostic()])
         browser.reply(
@@ -320,7 +320,7 @@ def test_read_error_taxonomy_preserves_remote_ownership(
 ) -> None:
     async def run() -> None:
         browser.ready()
-        pending = asyncio.create_task(browser.view.read("answer", format="json"))
+        pending = asyncio.create_task(browser.view._read("answer", format="json"))
         request = await browser.message()
         browser.deliver(
             type="response", id=request["id"], generation="first", error=record
@@ -342,7 +342,7 @@ def test_renewed_fatal_report_fails_waiting_work_at_the_new_sequence(
         )
         publish(browser, [record])
         browser.view.notebook.update_variables({"fix": True})
-        pending = asyncio.create_task(browser.view.read("answer", format="json"))
+        pending = asyncio.create_task(browser.view._read("answer", format="json"))
         asyncio.get_running_loop().call_soon(
             lambda: publish(browser, [record], revision=2, sequence=1)
         )
@@ -552,9 +552,7 @@ def test_invalid_browser_traits_fail_pending_work_with_protocol_errors(
             browser.view.set_state(wire)
         with pytest.raises(obs.errors.ProtocolError) as caught:
             await pending
-        assert "packages/pyobservablejs/src/observablejs/_notebook.py" in str(
-            caught.value
-        )
+        assert "packages/pyobservablejs/src/observablejs/_view.py" in str(caught.value)
         assert browser.view.diagnostics == ()
 
     asyncio.run(run())

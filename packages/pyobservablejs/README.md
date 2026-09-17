@@ -45,6 +45,18 @@ trust, since their JavaScript runs in the host page.
 
 **Experimental:** the API may change between releases.
 
+## Run headlessly
+
+Install `pyobservablejs[server]` to inspect and evaluate notebooks in Python
+scripts and services:
+
+```python
+print(notebook.with_variables(threshold=0.5).data["doubled"].to_python())
+```
+
+Read Python values, Polars or pandas dataframes, Arrow tables, and attachment bytes
+through the data and file namespaces. [Headless Python guide](https://peter-gy.github.io/pyobservablejs/guide/server/).
+
 ## Build on it
 
 - **Compose views.** `notebook.view("result")` displays the result and evaluates

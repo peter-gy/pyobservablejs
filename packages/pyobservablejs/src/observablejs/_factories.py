@@ -7,7 +7,8 @@ from collections.abc import Mapping
 from typing import Unpack
 
 from ._cells import Cell
-from ._notebook import Notebook, NotebookView
+from ._notebook import Notebook
+from ._view import NotebookView
 from ._view_options import (
     ResolvedNotebookViewOptions,
     resolve_notebook_view_options,

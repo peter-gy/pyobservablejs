@@ -1,8 +1,8 @@
 """Serialize Python values for Observable JavaScript variables.
 
-Python sends variables through anywidget as JSON-compatible trait state. Plain values
+Python sends variables through widget or server transports as JSON. Plain values
 stay normal JSON. Values that need a browser-side type use
-``__observablejs_type__`` tags that ``packages/runtime/src/values.ts`` revives
+``__observablejs_type__`` tags that ``packages/protocol/src/values.ts`` revives
 before the OJS runtime evaluates cells.
 """
 

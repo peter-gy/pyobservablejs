@@ -47,7 +47,7 @@ test("JupyterLab reads Arrow and attachments independently of preview capture", 
 	await page.getByRole("textbox").filter({ hasText: "import observablejs as obs" }).click();
 	await page.getByRole("button", { name: /Run this cell and advance/ }).click();
 	await expect(page.locator(".pyobservablejs-notebook")).toBeVisible();
-	await page.getByRole("textbox").filter({ hasText: "export = await data_view.read" }).click();
+	await page.getByRole("textbox").filter({ hasText: "table = await data_view.data" }).click();
 	await page.getByRole("button", { name: /Run this cell and advance/ }).click();
 	const output = page.locator(".jp-OutputArea-output");
 	await expect(output.filter({ hasText: "Data Arrow: rows=1 value=2" })).toBeVisible();
