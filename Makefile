@@ -29,8 +29,8 @@ check:
 	uv lock --check --no-config
 	uv run --frozen ruff format --check .
 	uv run --frozen ruff check
-	uv run --frozen ty check packages/pyobservablejs scripts apps/e2e
-	uv run --frozen pyrefly check --min-severity warn
+	uv run --frozen --package pyobservablejs --extra server --group dev ty check packages/pyobservablejs scripts apps/e2e
+	uv run --frozen --package pyobservablejs --extra server --group dev pyrefly check --min-severity warn
 	$(MAKE) build
 	node --test packages/runtime/tests/inspect-node.test.mjs
 	uv run --frozen --package pyobservablejs --extra server --group dev pytest -q packages/pyobservablejs/tests
