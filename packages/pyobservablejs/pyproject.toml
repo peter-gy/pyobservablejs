@@ -4,7 +4,7 @@ build-backend = "agent_plugins.build.hatchling"
 
 [project]
 name = "pyobservablejs"
-version = "0.2.0"
+version = "0.2.1"
 description = "Observable notebooks as Python widgets and headless computations"
 readme = "README.md"
 license = "MIT"
