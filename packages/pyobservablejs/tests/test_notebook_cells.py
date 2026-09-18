@@ -17,6 +17,20 @@ from helpers import (
 from IPython.core.formatters import DisplayFormatter
 
 
+@pytest.mark.parametrize("scale", [True, "2", 0, -1, float("nan"), float("inf")])
+def test_png_rejects_invalid_scale_before_starting_browser(
+    scale: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def unexpected_process(*args: Any, **kwargs: Any) -> None:
+        pytest.fail("Invalid scale must be rejected before starting a browser")
+
+    monkeypatch.setattr("subprocess.Popen", unexpected_process)
+    with obs.Notebook(obs.md("# Chart")) as notebook:
+        expected = TypeError if isinstance(scale, bool | str) else ValueError
+        with pytest.raises(expected, match="scale must be a positive finite number"):
+            notebook.render.png(scale=scale)
+
+
 def test_cell_defaults_to_observable_js_and_dedents(script_tags: ScriptTags) -> None:
     item = obs.ojs(
         """

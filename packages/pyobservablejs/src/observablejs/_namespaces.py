@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterator, Sequence
 from typing import TYPE_CHECKING, overload
 
@@ -103,15 +104,26 @@ class Render:
     def png(
         self,
         *selectors: CellSelector,
+        scale: float = 1.0,
         network: bool | Sequence[str] = True,
         timeout: float | None = 30,
     ) -> bytes:
+        """Render PNG bytes at ``scale`` pixels per CSS pixel.
+
+        ``scale`` must be a positive finite number. Layout dimensions remain
+        unchanged, while ``scale=2`` doubles the PNG width and height.
+        """
         from ._execution import Evaluation
 
+        if isinstance(scale, bool) or not isinstance(scale, int | float):
+            raise TypeError("scale must be a positive finite number")
+        if not math.isfinite(scale) or scale <= 0:
+            raise ValueError("scale must be a positive finite number")
         with Evaluation(
             self._notebook,
             selectors,
             engine="chromium",
+            scale=scale,
             network=network,
             timeout=timeout,
         ) as evaluation:

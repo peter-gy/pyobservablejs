@@ -71,6 +71,7 @@ class Evaluation:
         selectors: Sequence[CellSelector] = (),
         *,
         engine: Literal["deno", "chromium"] = "deno",
+        scale: float = 1.0,
         network: bool | Sequence[str] = True,
         resolve_notebook: Callable[[str], Notebook] | None = None,
         timeout: float | None = 30,
@@ -98,7 +99,7 @@ class Evaluation:
         self._network = network
         self._resolve_notebook = resolve_notebook
         self._process = ServerProcess(
-            engine=engine, network=network, source=self._resolve_source
+            engine=engine, scale=scale, network=network, source=self._resolve_source
         )
         self._finalizer = weakref.finalize(self, self._process.close)
         controller._resources.add(self)

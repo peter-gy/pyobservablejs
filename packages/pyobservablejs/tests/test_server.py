@@ -5,6 +5,7 @@ import datetime
 import gc
 import gzip
 import math
+import struct
 import subprocess
 import threading
 import weakref
@@ -399,12 +400,27 @@ data.forEach((row, i) => data[i] = ({{state: row.State, total: +row.Value * fact
         worker.join()
 
 
-def test_chromium_canvas_rendering() -> None:
+def test_chromium_canvas_reads_and_png_pixel_density() -> None:
     with obs.Notebook(
         obs.js(
-            'const canvas = document.createElement("canvas"); canvas.width=24; canvas.height=16; const ctx=canvas.getContext("2d"); ctx.fillStyle="red";ctx.fillRect(0,0,24,16);display(canvas);const pixels=Array.from(ctx.getImageData(0,0,1,1).data)',
+            """
+            if (devicePixelRatio !== expectedScale) {
+                throw new Error("Pixel density must be set before evaluation");
+            }
+            const canvas = document.createElement("canvas");
+            canvas.width = 24 * devicePixelRatio;
+            canvas.height = 16 * devicePixelRatio;
+            canvas.style.width = "24px";
+            canvas.style.height = "16px";
+            const ctx = canvas.getContext("2d");
+            ctx.fillStyle = "red";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            display(canvas);
+            const pixels = Array.from(ctx.getImageData(0, 0, 1, 1).data);
+            """,
             key="chart",
-        )
+        ),
+        variables={"expectedScale": 1},
     ) as notebook:
         assert notebook.data.using(engine="chromium")["pixels"].to_python() == [
             255,
@@ -412,7 +428,16 @@ def test_chromium_canvas_rendering() -> None:
             0,
             255,
         ]
-        assert notebook.render.png("chart").startswith(b"\x89PNG")
+        png = notebook.render.png("chart")
+        assert png.startswith(b"\x89PNG")
+        width, height = struct.unpack(">II", png[16:24])
+        for scale in (0.5, 2):
+            notebook.update_variables({"expectedScale": scale})
+            scaled = notebook.render.png("chart", scale=scale)
+            assert struct.unpack(">II", scaled[16:24]) == (
+                width * scale,
+                height * scale,
+            )
 
 
 def test_collecting_a_notebook_releases_its_child_processes(
