@@ -1,0 +1,11 @@
+packages/pyobservablejs/pyproject.toml
+  ai_agent 7
+uv.lock
+  ai_agent 16-28,2296
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "d1cfafd25bee2019a47a2b2b4600d341f367b993",
+  "prompts": {}
+}
