@@ -80,6 +80,23 @@ def test_notebook_cell_lookup_accepts_keys_and_rejects_metadata_selectors() -> N
             cast(Any, notebook.cells)[selector]
 
 
+def test_selected_view_keys_preserve_order_and_exclude_other_cells() -> None:
+    with obs.Notebook(
+        obs.ojs("first = 1", key="first"),
+        obs.md("Anonymous"),
+        obs.ojs("last = 2", key="last"),
+    ) as notebook:
+        view = notebook.view("last", notebook.cells[1])
+        try:
+            assert view.cells.keys() == ("last",)
+            assert view.cells["last"] is notebook.cells["last"]
+            assert view.cells[0] is notebook.cells[1]
+            with pytest.raises(KeyError, match="Unknown Observable cell key"):
+                view.cells["first"]
+        finally:
+            view.close()
+
+
 def test_notebook_view_calls_create_distinct_stable_display_models() -> None:
     notebook = obs.Notebook(
         obs.md("# Title", key="title"),

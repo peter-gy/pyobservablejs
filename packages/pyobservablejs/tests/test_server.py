@@ -52,6 +52,30 @@ def test_names_and_graph_do_not_execute_cells_or_open_widgets() -> None:
         assert notebook._session is None
 
 
+def test_graph_traversals_preserve_direction_scope_and_cycles() -> None:
+    with obs.Notebook(
+        obs.ojs("a = b", key="a", id=10),
+        obs.ojs("b = a", key="b", id=30),
+        obs.ojs("c = a + b", key="c", id=20),
+        obs.ojs("d = c", key="d", id=40),
+    ) as notebook:
+        assert notebook.graph.upstream("d", transitive=False) == (notebook.cells["c"],)
+        assert notebook.graph.upstream("d") == notebook.cells[:3]
+        assert notebook.graph.upstream("a") == (notebook.cells["b"],)
+        assert notebook.graph.downstream("b") == (
+            notebook.cells["a"],
+            notebook.cells["c"],
+            notebook.cells["d"],
+        )
+        assert notebook.graph.downstream("b", transitive=False) == (
+            notebook.cells["a"],
+            notebook.cells["c"],
+        )
+        with notebook.with_variables(a=1) as bound:
+            assert bound.graph.upstream("d") == bound.cells[:3]
+            assert bound.graph.upstream("a") == (bound.cells["b"],)
+
+
 def test_selected_reads_bindings_and_detached_python_values() -> None:
     with obs.Notebook(
         obs.js("const x = 3; const unused = 4", key="input"),

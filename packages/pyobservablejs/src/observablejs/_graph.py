@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import dataclasses
 from collections.abc import Iterable, Mapping
+from functools import cached_property
+from types import MappingProxyType
 from typing import Any
 
 from ._graph_diagram import graph_to_d2, graph_to_mermaid
@@ -50,6 +52,14 @@ class NotebookGraph:
 
     cells: tuple[CellInfo, ...]
     edges: tuple[DependencyEdge, ...]
+
+    @cached_property
+    def _upstream(self) -> Mapping[int, tuple[int, ...]]:
+        return _dependency_neighbors(self.edges, upstream=True)
+
+    @cached_property
+    def _downstream(self) -> Mapping[int, tuple[int, ...]]:
+        return _dependency_neighbors(self.edges, upstream=False)
 
     @property
     def defines(self) -> tuple[str, ...]:
@@ -197,17 +207,26 @@ def _int_field(raw: Mapping[str, Any], key: str) -> int | None:
         return None
 
 
-def dependency_indexes(
-    graph: NotebookGraph, index: int, *, upstream: bool = True, transitive: bool = True
-) -> tuple[int, ...]:
+def _dependency_neighbors(
+    edges: tuple[DependencyEdge, ...], *, upstream: bool
+) -> Mapping[int, tuple[int, ...]]:
     neighbors: dict[int, list[int]] = {}
-    for edge in graph.edges:
+    for edge in edges:
         source, target = (
             (edge.target.index, edge.source.index)
             if upstream
             else (edge.source.index, edge.target.index)
         )
         neighbors.setdefault(source, []).append(target)
+    return MappingProxyType(
+        {index: tuple(values) for index, values in neighbors.items()}
+    )
+
+
+def dependency_indexes(
+    graph: NotebookGraph, index: int, *, upstream: bool = True, transitive: bool = True
+) -> tuple[int, ...]:
+    neighbors = graph._upstream if upstream else graph._downstream
     seen = {index}
     pending = [index]
     while pending:
