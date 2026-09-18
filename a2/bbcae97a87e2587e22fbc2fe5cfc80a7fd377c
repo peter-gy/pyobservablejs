@@ -1,0 +1,23 @@
+packages/runtime/tests/values.test.ts
+  s_b3f1bb7cf5e2e8::t_a33efb9b96cd11 4,17,26,33-34
+  s_b3f1bb7cf5e2e8::t_a6e3b34899f038 1-2,18-25,27-32
+packages/runtime/src/value-kind.ts
+  s_b3f1bb7cf5e2e8::t_8f6ed2e5b0324a 40
+  s_b3f1bb7cf5e2e8::t_46edc3a0ddda9f 41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "a2bbcae97a87e2587e22fbc2fe5cfc80a7fd377c",
+  "prompts": {},
+  "sessions": {
+    "s_b3f1bb7cf5e2e8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b2e9-f47e-7dd0-83b7-26961c9a2146",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Péter Ferenc Gyarmati <dev.petergy@gmail.com>"
+    }
+  }
+}
