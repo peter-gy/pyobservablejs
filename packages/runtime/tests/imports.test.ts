@@ -306,3 +306,21 @@ test("aborts pending source requests when the mount is disposed", async () => {
 	mount.dispose();
 	expect(requestSignal?.aborted).toBe(true);
 });
+
+test("preserves dollar signs in ordinary imported names", async () => {
+	const mount = mountNotebook(
+		document.createElement("div"),
+		{
+			cells: [
+				{
+					id: 1,
+					mode: "js",
+					value: 'import {tax$rate} from "observable:@example/rates"; const result = tax$rate * 7;',
+				},
+			],
+		},
+		{ resolveNotebook: async () => ({ source: { cells: [{ id: 1, mode: "ojs", value: "tax$rate = 6" }] } }) },
+	);
+	mounts.push(mount);
+	expect((await mount.read("result")).data).toBe(42);
+});

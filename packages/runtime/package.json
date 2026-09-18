@@ -13,7 +13,9 @@
 		"./inspect": {
 			"types": "./src/inspect-api.ts",
 			"default": "./dist/inspect-api.js"
-		}
+		},
+		"./headless": "./src/headless-api.ts",
+		"./diagnostics": "./src/diagnostic-api.ts"
 	},
 	"scripts": {
 		"build": "vp pack",

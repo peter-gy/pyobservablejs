@@ -10,6 +10,7 @@ export function connectNotebookImports(
 	root: HTMLElement,
 	resolve: ResolveNotebook | undefined,
 	origin: NotebookOrigin = {},
+	headless = false,
 ): () => void {
 	const lifetime = new AbortController();
 	const sources = new Map<string, Promise<LoadedNotebook>>();
@@ -48,7 +49,7 @@ export function connectNotebookImports(
 			]);
 			let define = definitions.get(key);
 			if (!define) {
-				define = createNotebookModule(root, record, loader(context), lifetime.signal, cleanups);
+				define = createNotebookModule(root, record, loader(context), lifetime.signal, cleanups, headless);
 				definitions.set(key, define);
 			}
 			return { default: define };

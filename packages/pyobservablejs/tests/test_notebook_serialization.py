@@ -22,7 +22,7 @@ from helpers import DocumentTitle, ObservableHQResponseInstaller, ScriptTags
 def test_html_roundtrip_preserves_literal_script_text(source: str) -> None:
     notebook = obs.Notebook(obs.ojs(source, key="content", raw=True))
     restored = obs.Notebook.from_html(notebook.to_notebook_html())
-    assert restored.cell("content").source == source
+    assert restored.cells["content"].source == source
     restored.close()
     notebook.close()
 
@@ -93,7 +93,7 @@ def test_observable_document_serializes_to_notebook_kit_html(
     assert ["pinned" in script["attrs"] for script in scripts] == [False, True]
     assert scripts[0]["text"].strip() == "# Remote Plot"
     assert scripts[1]["text"].strip() == 'data = FileAttachment("data.csv").csv()'
-    assert notebook.attachments == {
+    assert notebook.state.attachments == {
         "data.csv": {
             "url": "https://static.example/data.csv",
             "mimeType": "text/csv",
@@ -187,4 +187,4 @@ def test_sql_view_cells_round_trip_through_notebook_html(
     assert script["attrs"]["database"] == "var:db"
     assert script["attrs"]["output"] == "query"
     assert script["text"].strip() == "SELECT * FROM rows"
-    assert restored.cell("query").key == "query"
+    assert restored.cells["query"].key == "query"

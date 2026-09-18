@@ -33,6 +33,7 @@ export type CellInspection = CellGraph &
 		pinned: boolean;
 		hidden: boolean;
 		files: readonly string[];
+		urls: readonly string[];
 		databases: readonly string[];
 		secrets: readonly string[];
 	}>;
@@ -77,15 +78,14 @@ export function inspectAnalysis(
 ): NotebookInspection {
 	const imports: NotebookImport[] = [];
 	const cells = analysis.cells.map(({ cell, definition, graph }, index) => {
-		// SQL database metadata can contribute expressions to the generated source.
-		if (definition && (cell.value.includes("import") || cell.database?.includes("import")))
-			imports.push(
-				...cellImports(
+		const references = definition
+			? cellReferences(
 					options.runtimeProfile === "observable" ? observableTemplateCell(cell) : cell,
 					index,
 					options.origin,
-				),
-			);
+				)
+			: { imports: [], urls: [] };
+		imports.push(...references.imports);
 		return Object.freeze({
 			...graph,
 			key: options.keys?.[index] ?? graph.key,
@@ -97,6 +97,7 @@ export function inspectAnalysis(
 			pinned: cell.pinned,
 			hidden: cell.hidden,
 			files: Object.freeze([...(definition?.files ?? [])]),
+			urls: Object.freeze(references.urls),
 			databases: Object.freeze([...(definition?.databases ?? [])]),
 			secrets: Object.freeze([...(definition?.secrets ?? [])]),
 		});
@@ -112,7 +113,7 @@ export function inspectAnalysis(
 	const attachments = Array.from(fileCells, ([name, indexes]) =>
 		Object.freeze({
 			name,
-			url: options.attachments?.[name]?.url ?? null,
+			url: options.attachments?.[name]?.url ?? (/^(https?:|data:)/.test(name) ? name : null),
 			...options.attachments?.[name],
 			cells: Object.freeze(indexes),
 		}),
@@ -130,6 +131,7 @@ export function inspectAnalysis(
 						pinned: _pinned,
 						hidden: _hidden,
 						files: _files,
+						urls: _urls,
 						databases: _databases,
 						secrets: _secrets,
 						...cell
@@ -146,7 +148,7 @@ export function inspectAnalysis(
 type ObservableSpecifier = ImportSpecifier & { view?: boolean; mutable?: boolean };
 type ObservableImport = ImportDeclaration & { injections?: ObservableSpecifier[] };
 
-function cellImports(cell: Cell, index: number, origin?: NotebookOrigin): NotebookImport[] {
+function cellReferences(cell: Cell, index: number, origin?: NotebookOrigin) {
 	const resolve = (source: string) => {
 		const resolved = resolveImportDefault(source);
 		const reference = notebookReference(resolved);
@@ -158,11 +160,28 @@ function cellImports(cell: Cell, index: number, origin?: NotebookOrigin): Notebo
 			: cell.mode === "js" || cell.mode === "ts"
 				? parseJavaScript(cell.value, cell.mode).body
 				: parseJavaScript(transpileTemplate(cell)).body;
-	if (!node) return [];
+	if (!node) return { imports: [], urls: [] };
 	const imports: NotebookImport[] = [];
+	const urls = new Set<string>();
 	simple(
 		node,
 		{
+			CallExpression(call) {
+				const target = call.callee;
+				const fetch = target.type === "Identifier" && target.name === "fetch";
+				const loader =
+					target.type === "MemberExpression" &&
+					target.object.type === "Identifier" &&
+					target.object.name === "d3" &&
+					!target.computed &&
+					target.property.type === "Identifier" &&
+					["csv", "tsv", "json", "text", "xml"].includes(target.property.name);
+				if (!fetch && !loader) return;
+				const argument = call.arguments[0];
+				if (!argument) return;
+				const url = constantString(argument);
+				if (url !== null) urls.add(url);
+			},
 			ImportDeclaration(declaration) {
 				if ("importKind" in declaration && declaration.importKind === "type") return;
 				const source = String(declaration.source.value);
@@ -201,7 +220,7 @@ function cellImports(cell: Cell, index: number, origin?: NotebookOrigin): Notebo
 		},
 		templateWalker,
 	);
-	return imports;
+	return { imports, urls: [...urls] };
 }
 
 function constantString(node: AnyNode): string | null {

@@ -269,3 +269,18 @@ Notebook Kit compiles each dependency with its declared language. Observable
 Runtime owns module identity, reactive imports, and `import with` derivation.
 Imported cells evaluate when required. Disposing the mount aborts pending source
 requests and disposes dependency generators and attachment registries.
+
+## Headless hosts and discovery
+
+`@pyobservablejs/runtime/headless` exposes `evaluateNotebook` for a host-provided
+DOM. Establish the DOM before importing the entry point: Notebook Kit reads
+`document` during module initialization. The server package supplies that host
+for Deno. Its Chromium adapter uses `mountNotebook` in a real browser.
+
+Both handles expose `discover({signal})`, which settles the native value
+inventory and returns datasets, diagnostics, and a pending flag independently of
+preview capture. Inspection includes literal URL references alongside files and
+imports. `read(selector, {format: "html"})` serializes a DOM element.
+
+`@pyobservablejs/runtime/diagnostics` provides error contracts without loading a
+DOM-dependent entry point. Python value encoding belongs to the protocol adapter.

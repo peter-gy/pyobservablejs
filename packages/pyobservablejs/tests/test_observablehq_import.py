@@ -95,9 +95,13 @@ def test_notebook_from_observablehq_fetches_source_and_remote_attachments(
     assert document_title(source) == "Remote"
     assert scripts[0]["attrs"].get("type") == "application/vnd.observable.javascript"
     assert scripts[0]["text"].strip() == "answer = 42"
-    assert set(widget.attachments) == {"data.csv", "local.csv"}
-    assert widget.attachments["data.csv"]["url"] == "https://static.example/data.csv"
-    assert widget.attachments["local.csv"]["url"] == "https://example.test/local.csv"
+    assert set(widget.state.attachments) == {"data.csv", "local.csv"}
+    assert (
+        widget.state.attachments["data.csv"]["url"] == "https://static.example/data.csv"
+    )
+    assert (
+        widget.state.attachments["local.csv"]["url"] == "https://example.test/local.csv"
+    )
     assert notebook_session(widget).get_state(["_options"]) == {
         "_options": {"show_source": False}
     }
@@ -211,8 +215,8 @@ def test_notebook_from_observablehq_converts_named_file_table_nodes(
     assert scripts[1]["attrs"].get("type") == "application/vnd.observable.javascript"
     assert scripts[1]["attrs"].get("data-pyobservablejs-key") == "worldbank"
     assert "hidden" in scripts[1]["attrs"]
-    assert widget.cell("worldbank").id == 1
-    assert widget.cell("worldbank").index == 1
+    assert widget.cells["worldbank"].id == 1
+    assert widget.cells["worldbank"].index == 1
 
 
 def test_notebook_from_observablehq_converts_empty_table_nodes(

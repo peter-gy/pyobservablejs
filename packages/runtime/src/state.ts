@@ -55,6 +55,7 @@ export class EvaluationState {
 		errors: Object.freeze([]),
 	});
 	readonly #captureState: boolean;
+	#dirty = false;
 	#results: CellResults = {};
 	#graph: NotebookGraph | null = null;
 	#errors: NotebookError[] = [];
@@ -76,7 +77,30 @@ export class EvaluationState {
 	}
 
 	get state(): NotebookState {
+		if (this.#dirty) {
+			this.#state = Object.freeze({
+				inputRevision: this.#inputRevision,
+				settledRevision: this.#settledRevision,
+				pending: this.#pending.size > 0,
+				graph: this.#graph,
+				results: Object.freeze({ ...this.#results }),
+				errors: Object.freeze(this.#errors.map((error) => Object.freeze({ ...error }))),
+			});
+			this.#dirty = false;
+		}
 		return this.#state;
+	}
+
+	get pending(): boolean {
+		return this.#pending.size > 0;
+	}
+
+	get inputRevision(): number | null {
+		return this.#inputRevision;
+	}
+
+	get settledRevision(): number | null {
+		return this.#settledRevision;
 	}
 
 	subscribe(listener: () => void): () => void {
@@ -179,10 +203,7 @@ export class EvaluationState {
 			this.#openRevision(new Set([index]));
 		} else if (current?.status !== "pending") {
 			this.#pending.add(index);
-			this.#results = {
-				...this.#results,
-				[String(index)]: pendingResult(this.#requireInputRevision()),
-			};
+			this.#results[index] = pendingResult(this.#requireInputRevision());
 			this.#save();
 		}
 		return {
@@ -197,10 +218,7 @@ export class EvaluationState {
 	settleCell(token: EvaluationToken, result: Omit<CellResult, "revision">): void {
 		if (!this.#isCurrentToken(token)) return;
 		const revision = this.#requireInputRevision();
-		this.#results = {
-			...this.#results,
-			[String(token.index)]: freezeCellResult({ revision, ...result }),
-		};
+		this.#results[token.index] = freezeCellResult({ revision, ...result });
 		this.#pending.delete(token.index);
 		if (this.#pending.size > 0) this.#save();
 		this.#scheduleSettlement(revision);
@@ -284,15 +302,10 @@ export class EvaluationState {
 	#save(): void {
 		if (!this.#captureState) return;
 
-		this.#state = Object.freeze({
-			inputRevision: this.#inputRevision,
-			settledRevision: this.#settledRevision,
-			pending: this.#pending.size > 0,
-			graph: this.#graph,
-			results: Object.freeze(this.#results),
-			errors: Object.freeze(this.#errors.map((error) => Object.freeze({ ...error }))),
-		});
-		this.#onState?.(this.#state);
+		// Hosts without a preview subscriber need no full snapshot until an explicit read.
+		// Subscribers still capture native values synchronously at each state transition.
+		this.#dirty = true;
+		if (this.#onState) this.#onState(this.state);
 		for (const listener of this.#listeners) listener();
 	}
 }

@@ -44,8 +44,10 @@ def test_from_html_embeds_file_attachments_and_local_imports(
 
     widget = notebook_from_html_path(notebook)
 
-    assert set(widget.attachments) == {"data/points.csv"}
-    mime_type, payload = decode_data_url(widget.attachments["data/points.csv"]["url"])
+    assert set(widget.state.attachments) == {"data/points.csv"}
+    mime_type, payload = decode_data_url(
+        widget.state.attachments["data/points.csv"]["url"]
+    )
     assert mime_type == "text/csv"
     assert payload == b"x,y\n1,2\n"
     module_text = script_by_id(script_tags(widget.to_notebook_html()), "1")["text"]
@@ -87,8 +89,8 @@ def test_from_html_uses_explicit_base_path_for_relative_attachments(
         rewrite_imports=True,
     )
 
-    assert set(widget.attachments) == {"points.csv"}
-    mime_type, payload = decode_data_url(widget.attachments["points.csv"]["url"])
+    assert set(widget.state.attachments) == {"points.csv"}
+    mime_type, payload = decode_data_url(widget.state.attachments["points.csv"]["url"])
     assert mime_type == "text/csv"
     assert payload == b"x,y\n1,2\n"
     assert script_by_id(script_tags(widget.to_notebook_html()), "1")[
@@ -168,7 +170,7 @@ def test_source_backed_script_names_do_not_create_public_keys() -> None:
     assert len(widget.cells) == 3
     assert [cell.key for cell in widget.cells] == [None, None, None]
     with pytest.raises(KeyError, match="Unknown Observable cell key"):
-        widget.cell("display")
+        widget.cells["display"]
 
 
 def test_source_backed_data_attribute_creates_public_key() -> None:
@@ -180,8 +182,8 @@ def test_source_backed_data_attribute_creates_public_key() -> None:
 """
     )
 
-    assert widget.cell("answer") is widget.cells[0]
-    assert widget.cell("answer").id == 10
+    assert widget.cells["answer"] is widget.cells[0]
+    assert widget.cells["answer"].id == 10
 
 
 def test_source_backed_notebook_preserves_input_html() -> None:
@@ -213,7 +215,7 @@ def test_from_html_preserves_markdown_import_text(
     assert (
         markdown_text.strip() == 'Prose mentioning from "./helper.js" must remain text.'
     )
-    assert widget.attachments == {}
+    assert widget.state.attachments == {}
 
 
 def test_from_html_rewrites_static_and_dynamic_javascript_imports(
@@ -376,7 +378,7 @@ def test_from_html_allows_comments_between_file_attachment_tokens(
     widget = notebook_from_html_path(notebook)
     module_text = script_by_id(script_tags(widget.to_notebook_html()), "1")["text"]
 
-    assert set(widget.attachments) == {"block.csv", "line.csv"}
+    assert set(widget.state.attachments) == {"block.csv", "line.csv"}
     assert normalized_source(module_text) == normalized_source(
         """
         const a = FileAttachment /* block */ ("block.csv").csv();
@@ -384,5 +386,10 @@ def test_from_html_allows_comments_between_file_attachment_tokens(
           ("line.csv").csv();
         """
     )
-    assert decode_data_url(widget.attachments["block.csv"]["url"])[1] == b"x,y\n1,2\n"
-    assert decode_data_url(widget.attachments["line.csv"]["url"])[1] == b"x,y\n3,4\n"
+    assert (
+        decode_data_url(widget.state.attachments["block.csv"]["url"])[1]
+        == b"x,y\n1,2\n"
+    )
+    assert (
+        decode_data_url(widget.state.attachments["line.csv"]["url"])[1] == b"x,y\n3,4\n"
+    )

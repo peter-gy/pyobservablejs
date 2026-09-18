@@ -906,3 +906,8 @@ IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
 CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+The optional server runtime includes the Playwright driver under Apache-2.0.
+Its LICENSE, NOTICE, and ThirdPartyNotices.txt accompany the driver in
+observablejs/static/server/driver/. Chromium is installed into the Playwright
+browser cache when first requested.

@@ -5,7 +5,7 @@ import {
 	reviveSyncedValue,
 	sameWireValue,
 	toWireValue,
-} from "../src/values";
+} from "@pyobservablejs/protocol";
 
 interface NestedValue {
 	leaf?: boolean;

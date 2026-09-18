@@ -1,18 +1,16 @@
 ---
 title: Inspect notebook data
-description: Find source and datasets, read hidden dependencies, and bring browser data into Python.
+description: Discover browser datasets and read their values through the data namespace.
 ---
 
 # Inspect notebook data
 
-Read `view.inspection` for source and references, and `view.datasets` for
-completed tables. These read-only properties update as browser metadata arrives.
-Use an explicit asynchronous read when transferring a full value into Python.
+A displayed view exposes `data`, `files`, and `graph` namespaces through anywidget.
+This route uses the base package and does not require Deno.
 
 ## Display a notebook
 
-In a [Jupyter notebook](https://docs.jupyter.org/en/latest/), which executes Python
-cells alongside their displayed outputs, run this cell first:
+In Jupyter, display the view first:
 
 ```python
 import observablejs as obs
@@ -25,86 +23,77 @@ view = notebook.view("total", capture_state=False)
 view
 ```
 
-The view displays `12`. It evaluates `rows` as a hidden dependency of `total`.
-`capture_state=False` skips automatic result previews. Metadata updates and
-explicit reads remain available. Displaying a notebook executes its JavaScript in the
-browser. Imported code follows the same
-[browser execution boundary](../customize/browser-execution.mdx).
+The view displays `12`. It evaluates `rows` as a hidden dependency. Preview
+capture is optional for namespace reads and dataset discovery.
 
-## Find the producing source
+## Inspect source and dependencies
 
-Read the latest inspection after the view displays:
+Cell handles and source are available immediately:
 
 ```python
-inspection = view.inspection
-if inspection is not None:
-    for cell in inspection.cells:
-        print(cell.cell.key, cell.defines, cell.source)
-else:
-    print("Waiting for browser metadata")
+print(notebook.cells["rows"].source)
+print(notebook.cells.keys())
 ```
 
-Inspection describes every cell in the definition, including cells outside the
-view's selection. It reports dependency edges, imports, literal file references,
-and cell analysis errors. Accessing it starts no evaluation or network requests.
-It is `None` until the browser publishes metadata.
-
-Each record includes a canonical `cell` handle accepted by `view.read()`. Source
-available before display also lives on `notebook.cells`, through each handle's
-`source`, `mode`, `hidden`, `pinned`, `output`, and `database` properties.
-
-## Discover completed datasets
+After display, ask the originating browser for its analysis:
 
 ```python
-for dataset in view.datasets:
-    print(dataset.name, dataset.kind, dataset.row_count, dataset.schema_source)
+names = await view.data.names()
+graph = await view.graph.snapshot()
+upstream = await view.graph.upstream("total")
 ```
 
-For this notebook, the tuple contains `rows`, with three rows and a sampled
-schema. It can be empty while cells are loading. The property describes the
-latest metadata received from the browser and starts no data transfer.
-
-Inspection covers the full definition. Dataset metadata and reads cover this
-view's evaluated cells and their dependencies. To evaluate another cell, create
-and display another view that selects it.
-
-In [marimo](https://docs.marimo.io/), a reactive Python notebook, use `view.value`
-to subscribe a cell to metadata updates:
-
-```python
-view.value
-[(item.name, item.row_count) for item in view.datasets]
-```
-
-Metadata can also be observed through
-[`view.observe(...)`](../../reference/data-access.mdx#viewdatasets).
+The graph describes the full definition. Reading it does not execute additional
+cells or fetch imports. `view.inspection` is the latest readonly analysis snapshot
+for traitlets observers and starts as `None` before publication.
 
 ## Read a hidden dependency
 
-In Jupyter, run the read in a later cell, after the view has displayed:
+Run this in a later Jupyter cell:
 
 ```python
-result = await view.read("rows", format="rows")
-print([dict(row) for row in result.data])
+rows = await view.data["rows"].to_python()
+print(rows)
 ```
 
 ```text
 [{'amount': 2}, {'amount': 4}, {'amount': 6}]
 ```
 
-The read waits for the current `rows` evaluation. It returns detached data and
-leaves the live browser value in place. Jupyter can await the remaining examples
-directly. In marimo, run full reads inside a background coroutine as described
-next.
+The method waits for the requested value and returns detached Python data. It
+reads this view's current browser values, including browser interactions.
+
+Use a target library directly when you need a dataframe:
+
+```python
+frame = await view.data["rows"].to_polars(columns=["amount"], limit=2)
+table = await view.data["rows"].to_arrow()
+```
+
+Install Polars or PyArrow for the corresponding conversion. Projection and row
+ranges reduce transfer volume before conversion.
+
+## Discover datasets
+
+```python
+catalog = await view.data.discover()
+for dataset in catalog.datasets:
+    print(dataset.name, await dataset.describe())
+frame = await catalog.datasets["rows"].to_polars()
+```
+
+`catalog.errors` reports failures while retaining independent datasets.
+`catalog.pending` marks incomplete evaluation. Discovered references pin the
+observed value revision. Get a new catalog when a value changes.
+
+For passive reactive observation, `view.datasets` publishes the latest readonly
+metadata tuple. Inspect that trait directly or observe it with traitlets. In
+marimo, `view.value` subscribes a cell to frontend updates.
 
 ## Run full reads in marimo
 
-For a full read, replace the initial display cell with a cell that creates the
-view and launches its read task together.
-[asyncio.create_task](https://docs.python.org/3/library/asyncio-task.html#asyncio.create_task)
-lets the cell finish while the request runs, so marimo can process browser
-replies. [mo.state](https://docs.marimo.io/api/state/) publishes the result to a
-dependent cell.
+An executing marimo cell blocks browser response processing. Launch the read in
+a background coroutine so the cell can finish and the browser can reply:
 
 ```python
 import asyncio
@@ -113,17 +102,13 @@ import observablejs as obs
 
 notebook = obs.Notebook(
     obs.ojs("rows = [{amount: 2}, {amount: 4}, {amount: 6}]", key="rows"),
-    obs.ojs("total = rows.reduce((sum, row) => sum + row.amount, 0)", key="total"),
 )
-view = notebook.view("total", capture_state=False)
-get_read, set_read = mo.state({"status": "loading", "rows": []})
+view = notebook.view(capture_state=False)
+get_rows, set_rows = mo.state(None)
 
 async def collect_rows():
-    try:
-        result = await view.read("rows", format="rows")
-        set_read({"status": "ready", "rows": [dict(row) for row in result.data]})
-    except Exception as error:
-        set_read({"status": str(error), "rows": []})
+    rows = await view.data["rows"].to_python()
+    set_rows(rows)
 
 read_task = asyncio.create_task(collect_rows())
 view
@@ -132,123 +117,24 @@ view
 Display the result in another cell:
 
 ```python
-_read = get_read()
-mo.ui.table(_read["rows"]) if _read["status"] == "ready" else mo.md(_read["status"])
+rows = get_rows()
+mo.ui.table(rows) if rows is not None else mo.md("Loading data")
 ```
 
-The table contains the amounts `2`, `4`, and `6`. Retain `read_task` to cancel
-an outstanding read with `read_task.cancel()`. `view.close()` also ends pending
-requests. Metadata properties remain synchronous.
+Keep `read_task` to cancel outstanding work. `view.close()` also ends pending
+requests. Exceptions should be handled in the coroutine when the UI needs to
+show an error state.
 
-## Transfer Arrow or a smaller projection
-
-Python reads default to [Apache Arrow IPC](https://arrow.apache.org/docs/format/Columnar.html#serialization-and-interprocess-communication-ipc),
-a binary format for transferring typed tables. Select columns and rows before
-transferring them:
+## Read original files
 
 ```python
-result = await view.read("rows", columns=["amount"], limit=2)
+raw = await view.files["sales.csv"].read_bytes()
+frame = await view.files["sales.csv"].to_polars()
 ```
 
-With the optional [PyArrow package](https://arrow.apache.org/docs/python/install.html)
-installed, decode the bytes into a Python Arrow table:
+These methods use the view's browser URL resolution and credentials. Reading
+`view.data[name]` evaluates the producing code and its transformations instead.
 
-```python
-table = result.to_arrow()
-print(table.to_pylist())
-```
-
-```text
-[{'amount': 2.0}, {'amount': 4.0}]
-```
-
-To save the returned bytes, choose a file path explicitly:
-
-```python
-from pathlib import Path
-
-Path("rows.arrow").write_bytes(result.data)
-```
-
-Use `format="rows"` for Python records, or `format="json"` for a scalar or nested
-stored value:
-
-```python
-total = await view.read("total", format="json")
-first_amount = await view.read("rows", path=(0, "amount"), format="json")
-print(total.data, first_amount.data)
-```
-
-```text
-12 2
-```
-
-A path follows property names and array indexes. It does not execute getters or
-follow prototype properties.
-
-For a variable containing an ArrayBuffer or typed array, `format="bytes"`
-returns the exact bytes. Declared file inputs can be fetched by name with
-`view.read_attachment(name)`.
-
-## Keep a read tied to a dataset revision
-
-Once `rows` appears in `view.datasets`, use its descriptor for a revision-checked
-read:
-
-```python
-available = view.datasets
-rows_dataset = next(item for item in available if item.name == "rows")
-result = await view.read(rows_dataset)
-```
-
-The descriptor identifies this view's runtime and the observed value revision.
-If the value changes before the read, the request fails. Wait for the metadata
-update and choose a new descriptor to read the latest value. A descriptor from another view or a remounted runtime
-also fails.
-
-`timeout=30` bounds each request, including the wait for browser readiness. Use
-`timeout=None` when the request should remain pending until it completes or is
-cancelled. Closing the view cancels its outstanding requests.
-
-## Retain the original imported document
-
-Imports from [Observable](https://observablehq.com/), the hosted notebook platform,
-retain a detached original record alongside the prepared
-[Notebook Kit](https://observablehq.com/notebook-kit/) browser notebook source:
-
-```python
-imported = obs.Notebook.from_observablehq_document({
-    "title": "Loaded source",
-    "nodes": [{"id": 7, "name": "data", "mode": "js", "value": "data = [2, 4, 6]"}],
-})
-
-print(imported.source_document["nodes"][0]["mode"])
-print(imported.cell("data").mode)
-```
-
-```text
-js
-ojs
-```
-
-`source_document` preserves the fetched or supplied record. Classic documents
-retain nodes, table and chart operations, and declared resolutions. Native
-documents retain `body.cells`, attachment metadata, cell languages, and their
-standard-library version. `NotebookCell.source` describes the prepared
-executable cell. The source record is read-only and is available from both
-Observable constructors. Python-authored and HTML-backed notebooks have
-`source_document=None`.
-
-Reuse the retained document when its original configuration is needed:
-
-```python
-copy = obs.Notebook.from_observablehq_document(imported.source_document)
-```
-
-Use `notebook.attachments` to inspect declared file records. An explicit
-`await view.read_attachment(name)` fetches an attachment through the browser and
-returns its bytes. File records identify attachment inputs. Dataset descriptors
-identify values produced by evaluated cells.
-
-See [Inspection and data reads](../../reference/data-access.mdx) for selectors,
-formats, result fields, schema inference, and error contracts.
+For synchronous Python scripts, use [headless notebook data](../server.mdx).
+See the [namespace reference](../../reference/data-access.mdx) for descriptions,
+provenance, conversion options, and async headless access.

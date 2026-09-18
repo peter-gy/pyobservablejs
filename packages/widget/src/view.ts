@@ -17,7 +17,13 @@ import {
 } from "./model";
 import { ReadbackPublisher } from "./readback";
 import { connectRequests, type ReadySnapshot } from "./requests";
-import { isWritableSyncedViewValue, reviveSyncedValue, sameWireValue, toWireValue, type WireValues } from "./values";
+import {
+	isWritableSyncedViewValue,
+	reviveSyncedValue,
+	sameWireValue,
+	toWireValue,
+	type WireValues,
+} from "@pyobservablejs/protocol";
 import { DiagnosticPublisher, showError, type DiagnosticContext, type DiagnosticScope } from "./errors";
 
 export function renderNotebookViewModel(props: RenderProps<WidgetModel>, diagnostics: DiagnosticPublisher): void {

@@ -48,7 +48,7 @@ CommentNodes = Callable[[str], list[str]]
 def notebook_session(notebook: obs.Notebook) -> Any:
     """Return the private widget model used for browser protocol assertions."""
 
-    return notebook._session
+    return notebook._session or notebook._widget_session()
 
 
 class BrowserGraphCellBuilder(Protocol):

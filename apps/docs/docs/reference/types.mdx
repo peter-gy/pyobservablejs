@@ -71,7 +71,7 @@ See [Notebook](notebook.mdx#controller-state) for controller snapshots and
 `NotebookInspection`, `CellInspection`, `ImportInfo`, `ImportBinding`, and
 `AttachmentInspection` describe prepared source and static references.
 `DatasetInfo`, `DatasetDescription`, and `ColumnInfo` describe evaluated data.
-`NotebookRead` carries an explicit result. These records are available under
+`DataReference` and `AsyncDataReference` provide direct conversions. `DataCatalog` carries discovered references and diagnostics. These records are available under
 `obs.types`. Custom exceptions and diagnostic records live under
 [`obs.errors`](errors.mdx).
 

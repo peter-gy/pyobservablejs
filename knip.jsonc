@@ -12,6 +12,9 @@
 			// anywidget-bundle resolves its app option as the browser entry point.
 			"ignoreDependencies": ["@pyobservablejs/widget"],
 		},
+		"packages/server": {
+			"vite": { "config": ["vite.config.ts", "vite.browser.config.ts"] },
+		},
 		"packages/runtime": {
 			// Observable require resolves this test fixture through its CDN loader.
 			"ignoreDependencies": ["d3-format"],

@@ -24,13 +24,13 @@ export function defineModuleCell(module: Module, definition: Definition): void {
 		return;
 	}
 	if (definition.automutable && output) {
-		const name = unprefix(output, "mutable ");
-		const initial = `initial ${name}`;
+		const name = unprefix(output, "initial ");
+		const mutable = `mutable ${name}`;
 		const Mutable = new Library().Mutable();
-		module.define(initial, inputs, body);
-		module.define(output, [initial], (value) => new Mutable(value));
-		module.import(output, `mutable$${name}`, module);
-		module.define(name, [output], (value) => value.generator);
+		module.define(output, inputs, body);
+		module.define(mutable, [output], (value) => new Mutable(value));
+		module.import(mutable, `mutable$${name}`, module);
+		module.define(name, [mutable], (value) => value.generator);
 		return;
 	}
 	if (output) {

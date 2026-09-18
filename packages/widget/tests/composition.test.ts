@@ -1,5 +1,5 @@
 import type { CellSpec } from "@pyobservablejs/runtime";
-import type { WireValue } from "../src/values";
+import type { WireValue } from "@pyobservablejs/protocol";
 import { isRecord } from "../src/model";
 import { describe, expect, test } from "vite-plus/test";
 import {

@@ -11,8 +11,9 @@ from ._factories import (
     view_from_observablehq_document,
 )
 from ._graph import CellInfo, DependencyEdge, NotebookGraph
-from ._notebook import Notebook, NotebookCell, NotebookView
+from ._notebook import Notebook, NotebookCell
 from ._themes import NOTEBOOK_THEMES
+from ._view import NotebookView
 
 __version__ = _version("pyobservablejs")
 

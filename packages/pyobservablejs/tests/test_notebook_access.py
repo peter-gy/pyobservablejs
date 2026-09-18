@@ -58,6 +58,7 @@ def inspection() -> dict[str, Any]:
                 "files": ["numbers.csv"] if index == 0 else [],
                 "databases": [],
                 "secrets": [],
+                "urls": [],
             }
             for index, cell in enumerate(cells)
         ],
@@ -98,7 +99,7 @@ def test_cell_metadata_describes_prepared_source() -> None:
         'data-pyobservablejs-key="query" database="var:db" output="rows" '
         "pinned hidden>select 1</script></notebook>"
     )
-    cell = notebook.cell("query")
+    cell = notebook.cells["query"]
     assert (cell.id, cell.index, cell.mode, cell.source) == (17, 0, "sql", "select 1")
     assert cell.hidden and cell.pinned
     assert (cell.output, cell.database) == ("rows", "var:db")
@@ -133,9 +134,9 @@ def test_source_document_preserves_detached_provenance_and_authored_nodes() -> N
     assert source["creator"]["login"] == "example-author"
     assert source["nodes"][0]["data"]["operations"]["select"]["columns"] == ("label",)
     assert source["nodes"][0]["mode"] == "table"
-    assert notebook.cell("preview").id == 37
-    assert notebook.cell("preview").mode == "ojs"
-    assert notebook.cell("preview").source
+    assert notebook.cells["preview"].id == 37
+    assert notebook.cells["preview"].mode == "ojs"
+    assert notebook.cells["preview"].source
     assert notebook.runtime_profile == "observable"
     with pytest.raises(TypeError):
         setitem(source["creator"], "login", "changed")
@@ -144,7 +145,7 @@ def test_source_document_preserves_detached_provenance_and_authored_nodes() -> N
     copied = obs.Notebook.from_observablehq_document(source)
     assert copied.source_document == notebook.source_document
     assert copied.to_notebook_html() == notebook.to_notebook_html()
-    assert copied.cell("preview").id == 37
+    assert copied.cells["preview"].id == 37
     copied.close()
     notebook.close()
 
@@ -186,13 +187,13 @@ def test_metadata_traits_publish_full_immutable_inspection_independently_of_capt
     result = browser.view.inspection
     assert result is not None
     assert [cell.key for cell in result.cells] == ["rows", "total"]
-    assert result.cells[0].cell is browser.view.notebook.cell("rows")
-    assert result.cells[1].cell is browser.view.notebook.cell("total")
+    assert result.cells[0].cell is browser.view.notebook.cells["rows"]
+    assert result.cells[1].cell is browser.view.notebook.cells["total"]
     assert result.cells[0].source == "rows = [{amount: 7}]"
     assert result.graph.cell("total").references == ("rows",)
     assert result.graph.edges[0].variable == "rows"
     assert result.attachments[0].url is None
-    assert result.attachments[0].cells == (browser.view.notebook.cell("rows"),)
+    assert result.attachments[0].cells == (browser.view.notebook.cells["rows"],)
     assert result.imports[0].source is None
     raw["cells"][0]["files"].append("later.csv")
     assert result.cells[0].files == ("numbers.csv",)
@@ -262,12 +263,12 @@ def test_dataset_descriptors_read_hidden_values_at_the_observed_revision(
         browser.ready()
         browser.catalog([dataset()])
         (info,) = browser.view.datasets
-        assert info.cell is browser.view.notebook.cell("rows")
+        assert info.cell is browser.view.notebook.cells["rows"]
         assert info.cell not in browser.view.cells
         assert info.columns == (obs.types.ColumnInfo("amount", "Int64", False),)
         assert info.row_count == 2 and info.generation == "first"
         reading = asyncio.create_task(
-            browser.view.read(info, columns=["amount"], offset=1, limit=1)
+            browser.view._read(info, columns=["amount"], offset=1, limit=1)
         )
         request = await browser.message()
         assert request["params"] == {
@@ -295,7 +296,7 @@ def test_dataset_descriptors_read_hidden_values_at_the_observed_revision(
         assert result.cell is info.cell and result.data == b"IPC payload"
         browser.ready("second")
         with pytest.raises(obs.errors.StaleViewError, match="expired"):
-            await browser.view.read(info)
+            await browser.view._read(info)
 
     asyncio.run(run())
 
@@ -304,8 +305,8 @@ def test_reads_keep_cells_variables_and_nested_paths_distinct(browser: Browser) 
     async def run() -> None:
         browser.ready()
         reading = asyncio.create_task(
-            browser.view.read(
-                browser.view.notebook.cell("rows"),
+            browser.view._read(
+                browser.view.notebook.cells["rows"],
                 name="rows",
                 path=(0, "amount"),
                 format="json",
@@ -319,14 +320,13 @@ def test_reads_keep_cells_variables_and_nested_paths_distinct(browser: Browser) 
         }
         browser.reply(request, read_result(7))
         assert (await reading).data == 7
-        reading = asyncio.create_task(browser.view.read("rows", format="rows"))
+        reading = asyncio.create_task(browser.view._read("rows", format="rows"))
         request = await browser.message()
         assert request["params"]["selector"] == {"name": "rows"}
         browser.reply(request, read_result([{"amount": 7}], format="rows"))
         result = await reading
-        assert result.data == ({"amount": 7},)
-        with pytest.raises(TypeError):
-            setitem(cast(Any, result.data)[0], "amount", 9)
+        assert result.data == [{"amount": 7}]
+        cast(Any, result.data)[0]["amount"] = 9
 
     asyncio.run(run())
 
@@ -336,9 +336,9 @@ def test_binary_reads_transfer_exact_bytes(browser: Browser, source: str) -> Non
     async def run() -> None:
         browser.ready()
         reading = asyncio.create_task(
-            browser.view.read_attachment("asset.bin")
+            browser.view._read_attachment("asset.bin")
             if source == "attachment"
-            else browser.view.read("rows", format="bytes")
+            else browser.view._read("rows", format="bytes")
         )
         request = await browser.message()
         expected = (
@@ -374,8 +374,8 @@ def test_concurrent_read_responses_are_correlated_and_browser_errors_propagate(
 ) -> None:
     async def run() -> None:
         browser.ready()
-        first = asyncio.create_task(browser.view.read("first", format="json"))
-        second = asyncio.create_task(browser.view.read("second", format="json"))
+        first = asyncio.create_task(browser.view._read("first", format="json"))
+        second = asyncio.create_task(browser.view._read("second", format="json"))
         request_one, request_two = await browser.message(), await browser.message()
         browser.reply(request_two, read_result(2))
         browser.deliver(
@@ -404,7 +404,7 @@ def test_concurrent_read_responses_are_correlated_and_browser_errors_propagate(
 def test_cancelled_and_timed_out_reads_cancel_browser_work(browser: Browser) -> None:
     async def run() -> None:
         browser.ready()
-        cancelled = asyncio.create_task(browser.view.read("rows"))
+        cancelled = asyncio.create_task(browser.view._read("rows"))
         request = await browser.message()
         cancelled.cancel()
         with pytest.raises(asyncio.CancelledError):
@@ -415,13 +415,13 @@ def test_cancelled_and_timed_out_reads_cancel_browser_work(browser: Browser) -> 
             request["id"],
             "first",
         )
-        timed = asyncio.create_task(browser.view.read("rows", timeout=0.01))
+        timed = asyncio.create_task(browser.view._read("rows", timeout=0.01))
         request = await browser.message()
         with pytest.raises(TimeoutError):
             await timed
         assert (await browser.message())["id"] == request["id"]
         browser.reply(request, read_result("late"))
-        fresh = asyncio.create_task(browser.view.read("rows", format="json"))
+        fresh = asyncio.create_task(browser.view._read("rows", format="json"))
         request = await browser.message()
         browser.reply(request, read_result("current"))
         assert (await fresh).data == "current"
@@ -431,7 +431,7 @@ def test_cancelled_and_timed_out_reads_cancel_browser_work(browser: Browser) -> 
 
 def test_read_waits_for_initial_metadata_before_sending(browser: Browser) -> None:
     async def run() -> None:
-        pending = asyncio.create_task(browser.view.read("rows", format="json"))
+        pending = asyncio.create_task(browser.view._read("rows", format="json"))
         asyncio.get_running_loop().call_soon(browser.ready)
         request = await browser.message()
         assert request["params"]["selector"] == {"name": "rows"}
@@ -446,9 +446,9 @@ def test_timeout_and_cancellation_before_metadata_keep_requests_local(
 ) -> None:
     async def run() -> None:
         with pytest.raises(obs.errors.NotebookTimeoutError) as timed:
-            await browser.view.read("rows", timeout=0.01)
+            await browser.view._read("rows", timeout=0.01)
         assert isinstance(timed.value, TimeoutError)
-        pending = asyncio.create_task(browser.view.read("rows"))
+        pending = asyncio.create_task(browser.view._read("rows"))
         asyncio.get_running_loop().call_soon(pending.cancel)
         with pytest.raises(asyncio.CancelledError):
             await pending
@@ -462,12 +462,12 @@ def test_remount_fails_pending_reads_and_ignores_late_responses(
 ) -> None:
     async def run() -> None:
         browser.ready()
-        old = asyncio.create_task(browser.view.read("rows"))
+        old = asyncio.create_task(browser.view._read("rows"))
         old_request = await browser.message()
         browser.ready("second")
         with pytest.raises(obs.errors.StaleViewError):
             await old
-        current = asyncio.create_task(browser.view.read("rows", format="json"))
+        current = asyncio.create_task(browser.view._read("rows", format="json"))
         request = await browser.message()
         browser.reply(old_request, read_result("obsolete"))
         browser.reply(request, read_result("current"))
@@ -480,12 +480,12 @@ def test_view_close_fails_readiness_waiters(
     browser: Browser,
 ) -> None:
     async def run() -> None:
-        waiting = asyncio.create_task(browser.view.read("rows"))
+        waiting = asyncio.create_task(browser.view._read("rows"))
         asyncio.get_running_loop().call_soon(browser.view.close)
         with pytest.raises(obs.errors.ViewClosedError):
             await waiting
         with pytest.raises(obs.errors.ViewClosedError):
-            await browser.view.read("rows")
+            await browser.view._read("rows")
 
     asyncio.run(run())
 
@@ -493,7 +493,7 @@ def test_view_close_fails_readiness_waiters(
 def test_view_close_cancels_pending_browser_work(browser: Browser) -> None:
     async def run() -> None:
         browser.ready()
-        pending = asyncio.create_task(browser.view.read("rows"))
+        pending = asyncio.create_task(browser.view._read("rows"))
         request = await browser.message()
         browser.view.close()
         with pytest.raises(obs.errors.ViewClosedError):
@@ -502,7 +502,7 @@ def test_view_close_cancels_pending_browser_work(browser: Browser) -> None:
         assert message["type"] == "cancel" and message["id"] == request["id"]
         browser.ready("second")
         with pytest.raises(obs.errors.ViewClosedError):
-            await browser.view.read("rows")
+            await browser.view._read("rows")
 
     asyncio.run(run())
 
@@ -510,12 +510,12 @@ def test_view_close_cancels_pending_browser_work(browser: Browser) -> None:
 def test_unmounted_view_requires_a_new_metadata_generation(browser: Browser) -> None:
     async def run() -> None:
         browser.ready()
-        pending = asyncio.create_task(browser.view.read("rows"))
+        pending = asyncio.create_task(browser.view._read("rows"))
         await browser.message()
         browser.view.set_trait("_inspection", {})
         with pytest.raises(obs.errors.ViewClosedError):
             await pending
-        fresh = asyncio.create_task(browser.view.read("rows", format="json"))
+        fresh = asyncio.create_task(browser.view._read("rows", format="json"))
         asyncio.get_running_loop().call_soon(browser.ready, "second", None)
         request = await browser.message()
         browser.reply(request, read_result(7))
@@ -527,7 +527,7 @@ def test_unmounted_view_requires_a_new_metadata_generation(browser: Browser) -> 
 def test_binary_read_requires_a_response_buffer(browser: Browser) -> None:
     async def run() -> None:
         browser.ready()
-        pending = asyncio.create_task(browser.view.read("rows"))
+        pending = asyncio.create_task(browser.view._read("rows"))
         request = await browser.message()
         browser.reply(
             request,
@@ -552,30 +552,16 @@ def test_read_selectors_reject_foreign_cells_and_descriptors(
         other_notebook = obs.Notebook(obs.ojs("other = 1", key="other"))
         try:
             with pytest.raises(ValueError, match="another Notebook"):
-                await browser.view.read(other_notebook.cell("other"))
+                await browser.view._read(other_notebook.cells["other"])
             other_view = browser.view.notebook.view()
             other = Browser(other_view, monkeypatch)
             other.ready()
             other.catalog([dataset()])
             (info,) = other.view.datasets
-            with pytest.raises(ValueError, match="another NotebookView"):
-                await browser.view.read(info)
+            with pytest.raises(ValueError, match="another notebook evaluation"):
+                await browser.view._read(info)
             other_view.close()
         finally:
             other_notebook.close()
 
     asyncio.run(run())
-
-
-def test_arrow_reads_decode_with_optional_pyarrow() -> None:
-    arrow = pytest.importorskip("pyarrow")
-    table = arrow.table({"amount": [7, None]})
-    sink = arrow.BufferOutputStream()
-    with arrow.ipc.new_stream(sink, table.schema) as writer:
-        writer.write_table(table)
-    result = obs.types.NotebookRead(
-        None, "rows", 1, "arrow", sink.getvalue().to_pybytes()
-    )
-    assert result.to_arrow().equals(table)
-    with pytest.raises(ValueError, match="Arrow read"):
-        obs.types.NotebookRead(None, "value", 1, "json", 7).to_arrow()

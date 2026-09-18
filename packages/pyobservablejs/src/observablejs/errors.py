@@ -8,7 +8,7 @@ from typing import Any, Literal, cast
 
 import traitlets
 
-Origin = Literal["notebook", "runtime", "widget"]
+Origin = Literal["notebook", "runtime", "widget", "server"]
 Phase = Literal["analysis", "evaluation", "rendering", "serialization", "transport"]
 
 
@@ -75,7 +75,7 @@ def _format_diagnostic(diagnostic: Diagnostic) -> str:
                 for index, line in enumerate(cell.source.splitlines(), 1)
             )
     if diagnostic.stack:
-        lines.extend(("Browser stack:", diagnostic.stack))
+        lines.extend(("JavaScript stack:", diagnostic.stack))
     cause = diagnostic.cause
     while cause is not None:
         lines.append(f"Caused by {cause.name}: {cause.message}")
@@ -87,6 +87,10 @@ def _format_diagnostic(diagnostic: Diagnostic) -> str:
 
 class NotebookError(ObservableError):
     """Authored notebook source failed analysis or evaluation."""
+
+
+class ServerError(ObservableError):
+    """The headless server could not complete an operation."""
 
 
 class WidgetError(ObservableError):
@@ -118,7 +122,7 @@ class NotebookTimeoutError(ObservableError, TimeoutError):
 
 
 def _is_fatal(diagnostic: Diagnostic) -> bool:
-    return diagnostic.origin in {"runtime", "widget"} or diagnostic.phase in {
+    return diagnostic.origin in {"runtime", "widget", "server"} or diagnostic.phase in {
         "serialization",
         "transport",
     }
@@ -146,6 +150,8 @@ def _exception_for(
         exception = SerializationError
     elif primary.phase == "transport" and primary.name in named:
         exception = named[primary.name]
+    elif primary.origin == "server":
+        exception = ServerError
     elif read:
         exception = ReadError
     else:
@@ -202,7 +208,7 @@ def _diagnostic_from_wire(value: object) -> Diagnostic:
         {"name", "message", "origin", "phase", "component", "operation"},
         {"stack", "cause", "variable", "cell"},
     )
-    if raw["origin"] not in {"notebook", "runtime", "widget"}:
+    if raw["origin"] not in {"notebook", "runtime", "widget", "server"}:
         raise ValueError("Invalid diagnostic origin")
     if raw["phase"] not in {
         "analysis",
@@ -236,6 +242,7 @@ __all__ = [
     "ProtocolError",
     "ReadError",
     "SerializationError",
+    "ServerError",
     "StaleViewError",
     "ViewClosedError",
     "WidgetError",

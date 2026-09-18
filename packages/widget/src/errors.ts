@@ -1,7 +1,7 @@
 import { createDiagnostic, errorDetails, type Diagnostic, type DiagnosticPhase } from "@pyobservablejs/runtime";
 import { isNumber } from "@pyobservablejs/runtime/values";
 import type { AnyWidgetModel, WireDiagnostics } from "./model";
-import { sameWireValue } from "./values";
+import { sameWireValue } from "@pyobservablejs/protocol";
 
 export type DiagnosticContext = {
 	phase: DiagnosticPhase;

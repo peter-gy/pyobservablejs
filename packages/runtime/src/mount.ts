@@ -1,3 +1,5 @@
+import { readyState } from "./ready";
+import { selectedIndexes } from "./selection";
 import type { NotebookOrigin, ResolveNotebook } from "./source";
 import type { Notebook, NotebookSpec } from "@observablehq/notebook-kit";
 import { normalizeNotebook } from "./source";
@@ -54,6 +56,9 @@ export type MountedNotebook = {
 	readonly inspection: NotebookInspection | null;
 	readonly datasets: readonly DatasetInfo[];
 	readonly diagnostics: readonly Diagnostic[];
+	discover(options?: {
+		signal?: AbortSignal;
+	}): Promise<{ datasets: readonly DatasetInfo[]; errors: readonly Diagnostic[]; pending: boolean }>;
 	ready(options?: { signal?: AbortSignal }): Promise<NotebookState>;
 	read(selector: ReadSelector, options?: ReadOptions): Promise<NotebookRead>;
 	updateVariables(patch: Variables): void;
@@ -321,43 +326,20 @@ export function mountNotebook(
 		get diagnostics() {
 			return diagnostics.errors;
 		},
-		async ready(readyOptions = {}) {
-			if (disposed) throw new Error("Notebook mount is disposed");
-			if (!state.captureState) throw new TypeError("Notebook ready requires captureState: true");
-			const readySignal = readyOptions.signal ? AbortSignal.any([signal, readyOptions.signal]) : signal;
-			return new Promise((resolve, reject) => {
-				let unsubscribeState = () => {};
-				let unsubscribeDiagnostics = () => {};
-				const cleanup = () => {
-					unsubscribeState();
-					unsubscribeDiagnostics();
-					readySignal.removeEventListener("abort", abort);
-				};
-				const abort = () => {
-					cleanup();
-					reject(new DOMException("Notebook ready cancelled", "AbortError"));
-				};
-				const check = () => {
-					if (readySignal.aborted) return abort();
-					const errors = diagnostics.errors;
-					const fatal = errors.filter(
-						(error) => error.origin !== "notebook" || error.phase === "serialization" || error.phase === "transport",
-					);
-					if (fatal.length) {
-						cleanup();
-						reject(new DiagnosticError(fatal));
-						return;
-					}
-					if (state.state.inputRevision === null || state.state.pending) return;
-					cleanup();
-					if (errors.length) reject(new DiagnosticError(errors));
-					else resolve(state.state);
-				};
-				unsubscribeState = state.subscribe(check);
-				unsubscribeDiagnostics = diagnostics.subscribe(check);
-				readySignal.addEventListener("abort", abort, { once: true });
-				check();
-			});
+		ready(readyOptions = {}) {
+			if (disposed) return Promise.reject(new Error("Notebook mount is disposed"));
+			if (!state.captureState) return Promise.reject(new TypeError("Notebook ready requires captureState: true"));
+			return readyState(
+				state,
+				diagnostics,
+				readyOptions.signal ? AbortSignal.any([signal, readyOptions.signal]) : signal,
+			);
+		},
+		async discover(discoveryOptions = {}) {
+			requireSession();
+			const active = discoveryOptions.signal ? AbortSignal.any([signal, discoveryOptions.signal]) : signal;
+			await values.settle(active);
+			return { datasets: values.datasets(), errors: diagnostics.errors, pending: values.isPending };
 		},
 		read(selector, readOptions = {}) {
 			try {
@@ -395,16 +377,4 @@ export function mountNotebook(
 		},
 		dispose,
 	};
-}
-
-function selectedIndexes(selection: readonly number[] | undefined, count: number): Set<number> {
-	if (selection === undefined) return new Set(Array.from({ length: count }, (_, index) => index));
-	const indexes = new Set<number>();
-	for (const index of selection) {
-		if (!Number.isSafeInteger(index) || index < 0 || index >= count)
-			throw new Error(`Notebook cell index ${index} is outside the notebook`);
-		if (indexes.has(index)) throw new Error("Notebook cell indexes must be unique");
-		indexes.add(index);
-	}
-	return indexes;
 }

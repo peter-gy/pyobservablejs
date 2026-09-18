@@ -684,30 +684,30 @@ def _(mo, obs):
 
     async def _read_initial():
         try:
-            _rows = await data_view.read(data_notebook.cell("rows"), format="rows")
+            _rows = await data_view.data["rows"].to_python()
             _inspection = data_view.inspection
             if _inspection is None:
                 raise ValueError("Notebook inspection is unavailable")
-            _row_data = _rows.data
-            if not isinstance(_row_data, tuple):
+            _row_data = _rows
+            if not isinstance(_row_data, list):
                 raise TypeError("Rows read must return detached rows")
-            _datasets = data_view.datasets
-            _dataset = next(item for item in _datasets if item.name == "rows")
-            _read = await data_view.read(_dataset, columns=["value"], offset=1, limit=2)
-            _arrow = _read.to_arrow()
+            _catalog = await data_view.data.discover(timeout=2)
+            _dataset = _catalog.datasets["rows"]
+            _description = await _dataset.describe()
+            _arrow = await _dataset.to_arrow(columns=["value"], offset=1, limit=2)
             _sum = sum(_arrow.column("value").to_pylist())
-            _bytes = await data_view.read_attachment("payload.bin")
+            _bytes = await data_view.files["payload.bin"].read_bytes()
             _timed_out = False
             try:
-                await data_view.read("waiting", format="json", timeout=0.05)
+                await data_view.data["waiting"].to_python(timeout=0.05)
             except TimeoutError:
                 _timed_out = True
-            _scalar = await data_view.read("total", format="json")
+            _scalar = await data_view.data["total"].to_python()
             _text = (
                 f"cells={len(_inspection.cells)} hidden={_inspection.cells[0].hidden} "
-                f"rows={len(_row_data)} source={_dataset.schema_source} "
+                f"rows={len(_row_data)} source={_description.schema_source} "
                 f"arrow={_arrow.num_rows} sum={_sum:g} "
-                f"total={_scalar.data} bytes={_bytes.hex()} timeout={_timed_out} "
+                f"total={_scalar} bytes={_bytes.hex()} timeout={_timed_out} "
                 f"capture={data_view.state.input_revision}"
             )
             _set_data_result({"text": _text, "dataset": _dataset})
@@ -725,17 +725,15 @@ def _(mo, obs):
     async def read_updated():
         try:
             _dataset = get_data_result().get("dataset")
-            if not isinstance(_dataset, obs.types.DatasetInfo):
+            if not isinstance(_dataset, obs.types.AsyncDataReference):
                 raise TypeError("Dataset is unavailable")
             _stale = False
             try:
-                await data_view.read(_dataset, format="rows")
+                await _dataset.to_python()
             except obs.errors.ReadError as _error:
                 _stale = "stale" in str(_error).lower()
-            _datasets = data_view.datasets
-            _current = next(item for item in _datasets if item.name == "rows")
-            _result = await data_view.read(_current, columns=["value"], limit=2)
-            _sum = sum(_result.to_arrow().column("value").to_pylist())
+            _result = await data_view.data["rows"].to_arrow(columns=["value"], limit=2)
+            _sum = sum(_result.column("value").to_pylist())
             _set_updated_data(f"stale={_stale} sum={_sum:g}")
         except (
             RuntimeError,

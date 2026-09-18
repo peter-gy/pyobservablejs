@@ -90,8 +90,8 @@ describe("notebook graph metadata", () => {
 		const graph = createNotebookGraph(notebook);
 
 		expect(graph.cells[0]?.defines).toEqual(["count"]);
-		expect(graph.cells[0]?.output).toBe("mutable count");
-		expectMembers(graph.cells[0]?.runtimeOutputs, ["mutable count", "mutable$count"]);
+		expect(graph.cells[0]?.output).toBe("initial count");
+		expectMembers(graph.cells[0]?.runtimeOutputs, ["initial count", "mutable$count"]);
 		expect(graph.cells[0]?.automutable).toBe(true);
 		expect(graph.edges).toHaveLength(2);
 		expect(graph.edges).toContainEqual({ from: 1, to: 2, variable: "count" });

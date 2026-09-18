@@ -6,7 +6,7 @@ description: Renderable views, cell handles, and observable browser state.
 # `NotebookView` and `NotebookCell`
 
 Call `Notebook.view(...)` to create a renderable view backed by a
-`NotebookView`. `Notebook.cell` and `Notebook.cells` return stable
+`NotebookView`. `Notebook.cells` provides stable
 `NotebookCell` handles.
 
 ## Standalone view factories
@@ -87,7 +87,7 @@ for guidance.
 ## `NotebookCell`
 
 ```python
-cell = notebook.cell("answer")
+cell = notebook.cells["answer"]
 print(cell.key, cell.index, cell.id)
 ```
 
@@ -118,12 +118,12 @@ that proxies the underlying `NotebookView`. Use the returned view directly in
 cell output and layouts. Other anywidget hosts receive the `NotebookView`
 model directly.
 
-| Member                                                  | Contract                                                |
-| ------------------------------------------------------- | ------------------------------------------------------- |
-| `notebook`                                              | The owning `Notebook` controller.                       |
-| `cells`                                                 | Selected `NotebookCell` handles in notebook order.      |
-| `state`                                                 | Current immutable `ViewState` browser snapshot.         |
-| `inspection`, `datasets`, `read()`, `read_attachment()` | [Explicit inspection and data access](data-access.mdx). |
+| Member                                             | Contract                                                |
+| -------------------------------------------------- | ------------------------------------------------------- |
+| `notebook`                                         | The owning `Notebook` controller.                       |
+| `cells`                                            | Selected `NotebookCell` handles in notebook order.      |
+| `state`                                            | Current immutable `ViewState` browser snapshot.         |
+| `data`, `files`, `graph`, `inspection`, `datasets` | [Explicit inspection and data access](data-access.mdx). |
 
 `await view.ready()` checks a settled evaluation after current Python updates.
 `view.raise_for_errors()` raises the latest received failure immediately.

@@ -3,26 +3,29 @@ import { expect, test } from "vite-plus/test";
 import { ReadbackPublisher } from "../src/readback";
 import { createView } from "./testing";
 
-test("shares the readback budget across cell values and restores available capacity", async () => {
+test("shares the readback budget across cached empty cells and restores capacity after updates", async () => {
 	const model = createView();
 	const controller = new AbortController();
 	const publish = new ReadbackPublisher(model, controller.signal).start();
+	const empty = { revision: 0, status: "pending" as const, values: {}, errors: [] };
+	publish(snapshot({ 0: empty, 1: empty, 2: empty }));
 	const text = "x".repeat(100_000);
 	const results: NotebookState["results"] = {
 		0: { revision: 0, status: "success", values: { first: text }, errors: [] },
-		1: { revision: 0, status: "success", values: { second: text, total: 42 }, errors: [] },
+		1: empty,
+		2: { revision: 0, status: "success", values: { second: text, total: 42 }, errors: [] },
 	};
 	publish(snapshot(results));
 	await Promise.resolve();
 	expect(model.get("_readback")?.results[0]?.values.first).toBe(text);
-	expect(model.get("_readback")?.results[1]?.values).toEqual({
+	expect(model.get("_readback")?.results[2]?.values).toEqual({
 		second: { __observablejs_type__: "summary", value: "String(100000)" },
 		total: 42,
 	});
 
 	publish(snapshot({ ...results, 0: { revision: 1, status: "success", values: { first: "small" }, errors: [] } }, 1));
 	await Promise.resolve();
-	expect(model.get("_readback")?.results[1]?.values.second).toBe(text);
+	expect(model.get("_readback")?.results[2]?.values.second).toBe(text);
 	controller.abort();
 });
 
@@ -57,7 +60,7 @@ function snapshot(results: NotebookState["results"], revision = 0): NotebookStat
 	};
 }
 
-test("publishes one complete snapshot per synchronous burst and captures values before mutations", async () => {
+test("coalesces synchronous snapshots while publishing asynchronous updates separately", async () => {
 	const model = createView();
 	const controller = new AbortController();
 	const publish = new ReadbackPublisher(model, controller.signal).start();
@@ -73,20 +76,14 @@ test("publishes one complete snapshot per synchronous burst and captures values 
 		pending: false,
 		results: { 0: { values: { value: { amount: 1 } } } },
 	});
-	controller.abort();
-});
-
-test("publishes asynchronous pending and settled states separately", async () => {
-	const model = createView();
-	const controller = new AbortController();
-	const publish = new ReadbackPublisher(model, controller.signal).start();
-	const pending = { revision: 0, status: "pending" as const, values: {}, errors: [] };
-	publish(snapshot({ 0: pending }));
+	const updating = { ...pending, revision: 1 };
+	publish(snapshot({ 0: updating }, 1));
 	await Promise.resolve();
 	expect(model.get("_readback")?.pending).toBe(true);
-	publish(snapshot({ 0: { ...pending, status: "success", values: { amount: 2 } } }));
+	publish(snapshot({ 0: { ...updating, status: "success", values: { amount: 2 } } }, 1));
 	await Promise.resolve();
-	expect(model.savedReadbacks().map((state) => state.pending)).toEqual([true, false]);
+	expect(model.savedReadbacks().map((state) => state.pending)).toEqual([false, true, false]);
+	expect(model.get("_readback")?.results[0]?.values).toEqual({ amount: 2 });
 	controller.abort();
 });
 

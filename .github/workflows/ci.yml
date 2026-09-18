@@ -48,8 +48,8 @@ jobs:
           uv lock --check
           uv run --frozen ruff format --check .
           uv run --frozen ruff check .
-          uv run --frozen ty check packages/pyobservablejs scripts apps/e2e
-          uv run --frozen pyrefly check --min-severity warn
+          uv run --frozen --all-packages --extra server --group dev ty check packages/pyobservablejs scripts apps/e2e
+          uv run --frozen --all-packages --extra server --group dev pyrefly check --min-severity warn
 
       - name: Check whitespace
         run: git diff --check
@@ -92,10 +92,13 @@ jobs:
           name: widget-assets
           path: packages/pyobservablejs/src/observablejs/static/
 
+      - name: Install Chromium for server tests
+        run: vp exec -F @pyobservablejs/e2e playwright install --with-deps chromium
+
       - name: Run Python tests
         env:
           UV_PYTHON: ${{ matrix.python-version }}
-        run: uv run --frozen pytest -q packages/pyobservablejs/tests
+        run: uv run --frozen --all-packages --extra server --group dev pytest -q packages/pyobservablejs/tests
 
   test-js:
     runs-on: ubuntu-latest

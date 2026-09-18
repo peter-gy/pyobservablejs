@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import traitlets
 
 from . import errors
-from ._variables import deserialize_value
-from .types import CellError, ErrorPhase, ViewError
+from ._graph import graph_from_raw
+from ._variables import deserialize_value, freeze_value
+from .types import CellError, CellResult, CellStatus, ErrorPhase, ViewError, ViewState
 
 _MAX_SAFE_REVISION = (1 << 53) - 1
 
@@ -332,3 +333,45 @@ def _wire_revision(value: object, field: str) -> int:
 
 def _optional_wire_revision(value: object, field: str) -> int | None:
     return None if value is None else _wire_revision(value, field)
+
+
+def state_from_readback(
+    notebook: Notebook, indexes: Sequence[int], value: Mapping[str, Any]
+) -> ViewState:
+    raw_results = cast(Mapping[str, Any], value["results"])
+    results: list[CellResult] = []
+    for index in indexes:
+        raw = raw_results.get(str(index))
+        if not isinstance(raw, Mapping):
+            continue
+        errors = tuple(
+            _cell_error_from_wire(item) for item in cast(Sequence[Any], raw["errors"])
+        )
+        decoded = {
+            name: deserialize_value(item)
+            for name, item in cast(Mapping[str, Any], raw["values"]).items()
+        }
+        results.append(
+            CellResult(
+                cell=notebook._cell_at(index),
+                revision=cast(int, raw["revision"]),
+                status=cast(CellStatus, raw["status"]),
+                values=cast(Mapping[str, object], freeze_value(decoded)),
+                errors=errors,
+            )
+        )
+    view_errors = tuple(
+        _view_error_from_wire(item) for item in cast(Sequence[Any], value["errors"])
+    )
+    return ViewState(
+        input_revision=cast(int | None, value["input_revision"]),
+        settled_revision=cast(int | None, value["settled_revision"]),
+        pending=cast(bool, value["pending"]),
+        results=tuple(results),
+        errors=view_errors,
+        graph=graph_from_raw(value["graph"]),
+    )
+
+
+if TYPE_CHECKING:
+    from ._notebook import Notebook

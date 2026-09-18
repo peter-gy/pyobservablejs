@@ -110,8 +110,8 @@ earlier in the notebook. `numbers` evaluates once as a hidden dependency.
 ```python
 notebook.view("chart")
 notebook.view(chart)
-notebook.view(notebook.cell("chart"))
-notebook.view(chart, notebook.cell("summary"))
+notebook.view(notebook.cells["chart"])
+notebook.view(chart, notebook.cells["summary"])
 ```
 
 Unknown keys raise `KeyError`. Each authored `Cell` selector needs a key, and

@@ -79,9 +79,11 @@ def test_notebook_state_is_detached_and_recursively_read_only() -> None:
         "raw": b"abc",
     }
     assert notebook.theme == {"light": "air", "dark": "ink"}
-    assert notebook.attachments["data.csv"]["url"] == ("https://example.test/data.csv")
+    assert notebook.state.attachments["data.csv"]["url"] == (
+        "https://example.test/data.csv"
+    )
     mutable_variables = cast(Any, notebook.variables)
-    mutable_attachments = cast(Any, notebook.attachments)
+    mutable_attachments = cast(Any, notebook.state.attachments)
     with pytest.raises(TypeError):
         mutable_variables["new"] = 1
     with pytest.raises(TypeError):

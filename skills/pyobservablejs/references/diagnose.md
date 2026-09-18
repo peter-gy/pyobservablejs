@@ -72,7 +72,7 @@ that operation's exception:
 
 ```python
 try:
-    result = await view.read("visible", format="rows", limit=10)
+    result = await view.data["visible"].to_python(limit=10)
 except obs.errors.ObservableError as error:
     operation_diagnostics = [asdict(diagnostic) for diagnostic in error.diagnostics]
     raise
@@ -103,7 +103,7 @@ the failed check.
 For the starter's `chart` key:
 
 ```python
-print(notebook.cell("chart").source)
+print(notebook.cells["chart"].source)
 inspection = view.inspection
 if inspection is not None:
     chart = inspection.graph.cell("chart")
@@ -137,9 +137,9 @@ import can have `source=None` and `resolved=None`.
 For the starter, `visible` is the transformed table consumed by the chart:
 
 ```python
-sample = await view.read("visible", format="rows", limit=10)
-count = await view.read("rowCount", format="json")
-print(sample.data, count.data)
+sample = await view.data["visible"].to_python(limit=10)
+count = await view.data["rowCount"].to_python()
+print(sample, count)
 ```
 
 Expect two rows and count `2` at `minimum=0`, then one row and count `1` at

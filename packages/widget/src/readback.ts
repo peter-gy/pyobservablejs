@@ -1,7 +1,13 @@
 import { isNumber } from "@pyobservablejs/runtime/values";
-import { createDiagnostic, errorDetails, type Diagnostic, type NotebookState } from "@pyobservablejs/runtime";
+import { errorDetails, type Diagnostic, type NotebookState } from "@pyobservablejs/runtime";
 import { readCaptureState, type AnyWidgetModel, type WidgetModel } from "./model";
-import { createWireBudget, sameWireValue, toWireValue, type WireBudget, type WireValues } from "./values";
+import {
+	createWireBudget,
+	sameWireValue,
+	encodeCellResult,
+	toWireGraph,
+	type WireBudget,
+} from "@pyobservablejs/protocol";
 
 type ReadbackState = NonNullable<WidgetModel["_readback"]>;
 type CellReadback = ReadbackState["results"][string];
@@ -147,15 +153,7 @@ export class ReadbackPublisher {
 	#serializeGraph(graph: NotebookState["graph"]): ReadbackState["graph"] {
 		if (graph !== this.#graph) {
 			this.#graph = graph;
-			this.#wireGraph = graph
-				? {
-						cells: graph.cells.map(({ runtimeOutputs, ...cell }) => ({
-							...cell,
-							runtime_outputs: runtimeOutputs,
-						})),
-						edges: graph.edges,
-					}
-				: {};
+			this.#wireGraph = toWireGraph(graph);
 		}
 		return this.#wireGraph;
 	}
@@ -180,57 +178,23 @@ export class ReadbackPublisher {
 	): CachedCell {
 		const cached = this.#cells.get(index);
 		// Runtime cells publish pending before replacing captured values.
-		// Budget equality also invalidates summaries when preceding cells change size.
+		// Budget-dependent summaries need the same capacity; empty cells consume none.
 		if (
 			cached?.revision === result.revision &&
 			cached.status === result.status &&
-			cached.available.nodes === budget.nodes &&
-			cached.available.bytes === budget.bytes
+			((cached.available.nodes === budget.nodes && cached.available.bytes === budget.bytes) ||
+				(cached.available.nodes === cached.remaining.nodes && cached.available.bytes === cached.remaining.bytes))
 		) {
-			Object.assign(budget, cached.remaining);
+			budget.nodes -= cached.available.nodes - cached.remaining.nodes;
+			budget.bytes -= cached.available.bytes - cached.remaining.bytes;
 			return cached;
 		}
 		const available = { ...budget };
-		const values: WireValues = {};
-		const errors: CellReadback["errors"] = [...result.errors];
-		const diagnostics: Diagnostic[] = [];
-		for (const [name, value] of Object.entries(result.values)) {
-			try {
-				Object.defineProperty(values, name, {
-					value: toWireValue(value, budget),
-					enumerable: true,
-					configurable: true,
-					writable: true,
-				});
-			} catch (cause) {
-				const inspected = this.#model.get("_inspection")?.value?.cells.find((cell) => cell.index === Number(index));
-				const cell = inspected
-					? {
-							index: inspected.index,
-							id: inspected.id,
-							key: inspected.key,
-							mode: inspected.mode,
-							source: inspected.source,
-						}
-					: undefined;
-				const diagnostic = createDiagnostic(cause, {
-					origin: "widget",
-					phase: "serialization",
-					component: "packages/widget/src/values.ts",
-					operation: "serialize cell value",
-					variable: name,
-					cell,
-				});
-				diagnostics.push(diagnostic);
-				errors.push({ ...errorDetails(cause), phase: "serialization", variable: name });
-			}
-		}
-		const value: CellReadback = {
-			revision: result.revision + offset,
-			status: errors.length ? "error" : result.status,
-			values,
-			errors,
-		};
+		const inspected = this.#model.get("_inspection")?.value?.cells[Number(index)];
+		const cell = inspected
+			? { index: inspected.index, id: inspected.id, key: inspected.key, mode: inspected.mode, source: inspected.source }
+			: undefined;
+		const { value, diagnostics } = encodeCellResult(result, budget, { offset, cell, origin: "widget" });
 		return {
 			revision: result.revision,
 			status: result.status,

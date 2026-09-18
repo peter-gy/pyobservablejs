@@ -18,7 +18,7 @@ def test_notebook_view_is_a_marimo_ui_element_in_marimo(
     assert isinstance(view, marimo.ui.anywidget)
     assert isinstance(view.widget, obs.NotebookView)
     assert view.notebook is notebook
-    assert view.cells == notebook.cells
+    assert tuple(view.cells) == tuple(notebook.cells)
     assert view.widget.get_state(["_capture_state"]) == {"_capture_state": False}
 
     view.close()

@@ -53,7 +53,7 @@ programmatic events so they do not become another interaction callback.
 The root entry point exposes the mount and its contract types.
 `@pyobservablejs/runtime/values` provides native value classification and
 comparison for adapters. Python value tags and serialization belong to the
-widget package.
+protocol package.
 
 ## Inspection and data access
 
@@ -66,8 +66,17 @@ DOM parser.
 Each mount retains a native value inventory for its evaluated cells. Named,
 anonymous, and hidden dependency values have independent revisions. This
 inventory powers dataset discovery and explicit reads, independently of preview
-capture. Reading a value preserves native identity by default. Dataset
-projection and Arrow encoding belong to `datasets.ts` and `arrow.ts`.
+capture. Pending reads subscribe to their selected value; discovery waits on a
+shared pending count instead of registering one reader per value. Reset and
+input epochs invalidate outstanding reads. Cell and name indexes keep lookup,
+invalidation, and failure settlement local to the matching values. Reading a value preserves native identity by default. Dataset
+projection and Arrow encoding belong to `datasets.ts` and `arrow.ts`. Row-backed
+Arrow exports capture projected columns directly before loading Arrow, avoiding
+an intermediate array of reconstructed row objects. Known column projections
+do not enumerate unrelated columns across the entire dataset.
+Row reads from native Arrow tables acquire each column vector once per read,
+including across record-batch boundaries. Stored row properties are read directly
+from their descriptors; only Arrow row proxies need protocol-based property access.
 
 The widget's `requests.ts` binds these operations to core anywidget custom
 messages for full reads. Static inspection and current dataset descriptors use
@@ -91,7 +100,7 @@ decodes Python values, and calls `mountNotebook`. Model changes either invoke a
 mount method or replace the mount when its source, selection, theme, attachments,
 or runtime options change.
 
-`widget/src/values.ts` owns the Python wire codec. `ReadbackPublisher` serializes
+`protocol/src/values.ts` owns the Python wire codec shared by widget and server. `ReadbackPublisher` serializes
 native runtime results, converts graph field names to the wire shape, and
 publishes one revisioned `_readback` mapping. It owns transport revisions and
 generation guards across remounts. Serialization failures become cell errors at
@@ -214,3 +223,69 @@ replies with complete readback and diagnostics. Python accepts both through
 the normal inbound state path before returning or raising. This checkpoint is
 independent of ipywidgets trait throttling. Fatal diagnostics reject
 pending operations. An accepted empty report clears previous failures.
+
+## Headless execution
+
+`@pyobservablejs/runtime/headless` exposes `evaluateNotebook`. It shares source
+normalization, Notebook Kit compilation and definitions, dependency selection,
+attachment scope, native value inventory, readiness, and diagnostics with browser
+mounts. A non-rendering observer replaces Notebook Kit's display inspector. The
+host supplies a DOM document. Neither a mounted view nor anywidget participates.
+`cell-evaluation.ts` owns named-value observers and cell diagnostic attribution
+for both hosts; display and input observers remain in their respective hosts.
+
+`@pyobservablejs/protocol` owns Python value encoding and read request validation.
+The widget and `@pyobservablejs/server` import it. Dependencies point from either
+adapter toward the protocol and runtime packages. The runtime never imports an
+adapter or Python wire types.
+
+The server adapter creates a Happy DOM realm, then loads Notebook Kit. It bundles
+its dependencies into the Python wheel and uses Deno's native module loader for
+notebook imports. Classic package references use native ESM module entries.
+Browser DOM resource loading and navigation are disabled. See
+[the server adapter](../packages/server/README.md) for process framing.
+
+Python `_controller.py` owns transport-independent definition and variable state.
+`_widget_session.py` creates the anywidget transport on the first `view()` call
+and mirrors coherent controller snapshots. `_view.py` owns the renderable widget
+and its correlated read and state-publication boundaries. `_execution.py` owns a
+private process resource with one immutable snapshot. It applies current controller
+bindings before preparing synchronous or asynchronous reads, including validation
+of discovered dataset generations. Headless I/O never runs inside controller observers. Public data, file,
+cell, and graph namespaces delegate to that backend or to the originating
+anywidget view. Core imports never require Deno. `_server_process.py` owns
+Deno discovery, framed I/O, pending requests, bounded stderr capture, and process
+termination. Python metadata and state decoding are shared with browser views.
+Static inspection is transferred at startup. Subsequent checkpoints carry
+monotonically revisioned state, dataset metadata, and diagnostics.
+
+The Chromium engine runs the same command service in an actual browser through
+Playwright hosted by Deno. It calls `mountNotebook` directly, without a widget.
+Deno serves browser modules through a virtual origin intercepted by Playwright,
+and relays framed responses to Python. Binary bytes cross this boundary without
+conversion into Python JSON arrays. The engine is explicit and fixed per server.
+The protocol package also owns shared cell readback encoding and graph wire
+mapping, while adapters own publication revisions and delivery.
+
+## Data namespaces
+
+`_data.py` owns synchronous headless references. `_async_data.py` owns awaitable
+view references and async headless access. Both use `_data_types.py` descriptions,
+static provenance, and discovery catalogs. `_file_access.py` owns file references
+and `_conversions.py` owns optional dataframe decoders. `_namespaces.py` owns cell
+collections, dependency traversal, and rendering. Every dataframe converter
+returns the target library's native object. The notebook and its canonical cell
+namespaces share an execution pool. Reads reuse an existing enclosing selection;
+discovery keeps its exact catalog scope. Distinct selections remain independent
+when no enclosing evaluation exists, preserving lazy evaluation of unrelated cells.
+`using(...)` creates an independent execution configuration. `_evaluation_pool.py`
+owns startup and cancellation before handing an open evaluation to a caller.
+
+The TypeScript protocol owns selection parsing, automatic Python-value read
+representation, exact read encoding, and metadata-only descriptions. Runtime
+value inventory settlement powers discovery independently of preview capture.
+Exact reads validate and encode values in one traversal with an explicit budget.
+Preview summarization is a separate contract and does not participate in full reads.
+Anywidget requests and Deno commands use these same contracts. Public namespace
+methods hide wire records and transport revisions while retaining snapshot-safe
+discovery references.

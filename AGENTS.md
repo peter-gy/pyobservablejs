@@ -2,7 +2,8 @@
 
 `pyobservablejs` is a browser-first Python interface to Observable Notebook Kit.
 Python owns notebook construction, serialization, attachments, and controller
-state. Browser TypeScript owns analysis, evaluation, rendering, browser input
+state. TypeScript owns analysis and evaluation in browser and optional Deno server hosts.
+Browser TypeScript owns rendering, browser input
 synchronization, and view readback. Keep the public controller, private session
 transport, and renderable view separate.
 
@@ -10,8 +11,10 @@ transport, and renderable view separate.
 
 - `Notebook` is the public traitlets controller. It owns the prepared notebook
   definition, canonical cell handles, Python variables, attachment records,
-  theme, lifecycle, and a detached `NotebookState` snapshot.
-- `_NotebookSession` is the private anywidget model. It carries the definition,
+  theme, lifecycle, and a detached `NotebookState` snapshot. Its `cells`, `files`,
+  `data`, and `graph` namespaces expose inspection and direct conversions.
+  `with_variables` creates an independent binding. Headless execution stays private.
+- `_NotebookSession` is the lazily created private anywidget model. It carries the definition,
   attachments, theme, options, Python variables, shared browser inputs, and cell
   keys to each view. Source HTML carries its runtime profile and origin. Browser
   results stay on the view model.
@@ -24,8 +27,10 @@ transport, and renderable view separate.
   Notebook Kit source normalization, analysis, dependency selection, execution,
   attachments, native variables, input controls, DOM, styles, evaluation state,
   and disposal. Keep its dependencies independent of Python and anywidget.
-- `packages/widget/` owns anywidget model resolution and subscriptions, Python
-  wire codecs, variable patch ordering, shared-input transport, and revisioned
+- `packages/protocol/` owns Python wire codecs and exact read contracts shared by adapters.
+- `packages/server/` owns the Deno process entry point, DOM and Chromium hosts, and framed transport.
+  It imports runtime and protocol, never widget or anywidget.
+- `packages/widget/` owns anywidget model resolution and subscriptions, variable patch ordering, shared-input transport, and revisioned
   readback publication. It calls the runtime mount API through `workspace:*`.
 - `packages/pyobservablejs/` owns the public Python API,
   `observablejs.types` input mappings and state types, private traitlets models,
@@ -68,8 +73,8 @@ browser checks.
 - Runtime evaluation state contains native values and camelCase fields.
   Snapshot records and graph collections are read-only, while captured native
   identities remain caller-owned. Preserve the prepared source and graph during
-  variable replacement. Keep Python value tags, snake_case wire mapping, and
-  transport revisions in the widget adapter.
+  variable replacement. Keep Python value tags and snake_case wire mapping in the protocol package.
+  Each adapter owns its transport revisions.
 - `NotebookView.inspection` and `NotebookView.datasets` are readonly metadata
   traits, independent of preview capture. TypeScript owns their analysis and
   dataset recognition. `_inspection` carries static metadata and the render
@@ -118,7 +123,8 @@ widget with npm `anywidget-bundle`. Keep the npm and PyPI `anywidget-bundle`
 versions aligned.
 
 The runtime root exports mounting, inspection, dataset utilities, and contract
-types. Its built `/inspect` entry supports Node source analysis, while `/values`
+types. Its built `/inspect` entry supports Node source analysis, `/headless` exposes
+non-rendering evaluation, `/diagnostics` exposes DOM-independent error contracts, and `/values`
 exposes native value utilities for adapters. Keep internal execution, observer,
 and rendering modules behind these package entry points.
 
@@ -134,8 +140,9 @@ shared Vite+ policy. Package manifests own dependencies, tests, and builds. Use
 the pnpm catalog for shared external versions.
 
 The root `pyproject.toml` is a virtual uv workspace. The publishable project and
-Hatch configuration live in `packages/pyobservablejs/pyproject.toml`. Scope uv
-commands with `--package pyobservablejs`.
+Hatch configuration live in `packages/pyobservablejs/pyproject.toml`. Scope package builds and metadata commands with `--package pyobservablejs`.
+Use `--all-packages --extra server` for shared Python checks so the root development
+group and the package server extra are both installed.
 
 Prefer dependency-provided types. The parser and classic standard-library
 packages do not publish types, so their declarations stay with the runtime

@@ -1,24 +1,17 @@
+import type { WireReadback } from "@pyobservablejs/protocol";
 import { isBoolean, isCallable, isObjectValue, isString } from "@pyobservablejs/runtime/values";
 import type { RenderProps } from "@anywidget/types";
 import {
 	NOTEBOOK_THEMES,
 	type AttachmentInfo,
-	type CellGraph,
-	type GraphEdge,
 	type NotebookInspection,
 	type Diagnostic,
-	type ErrorDetail,
 	type DatasetInfo,
 	type MountOptions,
 	type NotebookSpec,
 	type Variables,
 } from "@pyobservablejs/runtime";
-import { revivePythonValue, type WireRecord, type WireValue, type WireValues } from "./values";
-
-export type WireNotebookGraph = {
-	cells: Array<Omit<CellGraph, "runtimeOutputs"> & { runtime_outputs: readonly string[] }>;
-	edges: readonly GraphEdge[];
-};
+import { revivePythonValue, type WireRecord, type WireValue, type WireValues } from "@pyobservablejs/protocol";
 
 export type WireDiagnostics = { revision: number; sequence: number; errors: readonly Diagnostic[] };
 
@@ -42,36 +35,7 @@ export type WidgetModel = {
 		kind?: "set" | "replace";
 		values?: WireValues;
 	};
-	_readback?: {
-		revision: number;
-		input_revision: number | null;
-		settled_revision: number | null;
-		pending: boolean;
-		graph: WireNotebookGraph | Record<string, never>;
-		results: Record<
-			string,
-			{
-				revision: number;
-				status: "pending" | "success" | "error";
-				values: WireValues;
-				errors: Array<{
-					name: string;
-					message: string;
-					stack?: string;
-					cause?: ErrorDetail;
-					phase: "analysis" | "evaluation" | "rendering" | "serialization";
-					variable?: string;
-				}>;
-			}
-		>;
-		errors: Array<{
-			name: string;
-			message: string;
-			stack?: string;
-			cause?: ErrorDetail;
-			phase: "analysis" | "evaluation" | "rendering" | "serialization";
-		}>;
-	};
+	_readback?: WireReadback;
 	_options?: {
 		show_source?: boolean;
 	};
