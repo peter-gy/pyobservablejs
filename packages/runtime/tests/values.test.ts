@@ -1,5 +1,7 @@
-import { describe, expect, test } from "vite-plus/test";
+import { runInNewContext } from "node:vm";
+import { describe, expect, test, vi } from "vite-plus/test";
 import { createVariableBuiltins, sameValue } from "../src/values";
+import { isCallable } from "@pyobservablejs/runtime/values";
 import { writeViewValue } from "../src/views";
 
 interface CyclicValue {
@@ -12,6 +14,24 @@ interface NestedValue {
 }
 
 describe("native values", () => {
+	test("recognizes callables across realms and proxies without inspecting object properties", () => {
+		const foreignFunction = runInNewContext("() => 1");
+		expect(foreignFunction instanceof Function).toBe(false);
+		const callable = Proxy.revocable(() => 1, {});
+		const record = Proxy.revocable({}, {});
+		callable.revoke();
+		record.revoke();
+		for (const value of [foreignFunction, callable.proxy, Object.setPrototypeOf(() => 1, null)]) {
+			expect(isCallable(value)).toBe(true);
+		}
+		const getter = vi.fn(() => "Function");
+		const inaccessible = Object.defineProperty({}, Symbol.toStringTag, { get: getter });
+		for (const value of [null, undefined, false, 0, NaN, "text", 1n, Symbol(), [], inaccessible, record.proxy]) {
+			expect(isCallable(value)).toBe(false);
+		}
+		expect(getter).not.toHaveBeenCalled();
+	});
+
 	test("preserves native variable identities through Observable builtin definitions", () => {
 		const values = {
 			format: (value: number) => String(value),
