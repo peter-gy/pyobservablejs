@@ -1,0 +1,19 @@
+.gitignore
+  s_b3f1bb7cf5e2e8::t_8d6160cc3fb503 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "ba706b12d5024b45276d9a3e87d4a0be09edfef9",
+  "prompts": {},
+  "sessions": {
+    "s_b3f1bb7cf5e2e8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b2e9-f47e-7dd0-83b7-26961c9a2146",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Péter Ferenc Gyarmati <dev.petergy@gmail.com>"
+    }
+  }
+}
