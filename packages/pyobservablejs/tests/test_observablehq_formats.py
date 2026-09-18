@@ -97,6 +97,9 @@ def test_native_document_languages_are_independent_of_library(
         assert [cell.mode for cell in notebook.cells] == ["js", "ojs", "ts"]
         assert [cell.mode for cell in restored.cells] == ["js", "ojs", "ts"]
         assert len({cell.id for cell in notebook.cells}) == 3
+        assert notebook.cells.keys() == ("cell-3", "cell-1", "cell-2")
+        assert restored.cells.keys() == notebook.cells.keys()
+        assert notebook.cells["cell-3"] is notebook.cells[0]
         assert notebook.runtime_profile == profile
         assert restored.runtime_profile == profile
         assert (

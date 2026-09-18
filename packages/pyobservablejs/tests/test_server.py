@@ -160,7 +160,7 @@ def test_static_attachment_lineage_and_file_loading() -> None:
         assert notebook.files["data.json"].to_python() == {"items": [1, 2]}
 
 
-def test_source_imports_keep_classic_semantics() -> None:
+def test_classic_imports_preserve_keys_and_python_binding_lifecycle() -> None:
     with (
         obs.Notebook(obs.ojs("x = 7")) as dependency,
         obs.Notebook.from_observablehq_document(
@@ -183,8 +183,20 @@ def test_source_imports_keep_classic_semantics() -> None:
             sources.append(specifier)
             return dependency
 
-        assert notebook.data.using(resolve_notebook=resolve)["answer"].to_python() == 42
+        assert notebook.data.names() == ("x", "answer")
+        answer = notebook.cells["cell-2"]
+        assert notebook.data["answer"].cell is answer
+        assert notebook.graph.upstream(answer) == (notebook.cells["cell-1"],)
+        reference = answer.data.using(resolve_notebook=resolve)["answer"]
+        assert reference.to_python() == 42
         assert sources == ["@test/dependency"]
+        assert notebook.variables == {}
+        notebook.update_variables({"x": 3})
+        assert reference.to_python() == 18
+        assert notebook.variables == {"x": 3}
+        notebook.reset_variables("x")
+        assert reference.to_python() == 42
+        assert notebook.variables == {}
 
 
 def test_python_types_and_console_output() -> None:

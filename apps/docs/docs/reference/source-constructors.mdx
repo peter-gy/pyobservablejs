@@ -77,7 +77,20 @@ The specifier may be a notebook URL, slug, id, or document API URL. Append
 import observablejs as obs
 
 notebook = obs.Notebook.from_observablehq("@d3/bar-chart", timeout=10)
+notebook.view()
 ```
+
+Every imported cell has a public key. Classic node names become keys when
+provided. Other cells use `cell-<id>`, including anonymous cells and native
+cells defining several variables. Keys survive HTML export and reimport.
+Use `notebook.cells.keys()` to list them and `notebook.view(key)` to render a
+selection.
+
+`notebook.variables` contains Python overrides and starts empty by default.
+Use `notebook.data.names()` to list notebook-defined variables and
+`notebook.data[name].to_python()` to evaluate and read one through the
+[optional headless engine](data-access.mdx). `notebook.data[name].cell` returns
+the defining cell, which you can pass directly to `notebook.view()`.
 
 Remote uploaded files become URL-backed attachments. Explicit `files` replace
 records with the same file name. Notebook dependencies are fetched through
@@ -108,7 +121,7 @@ JavaScript. `ObservableNotebookModel` uses `cells`, while
 `js`, `ts`, and `ojs` as distinct languages. `stdlib` selects the library independently:
 `"1"` uses classic Observable builtins and `"2"` uses Notebook Kit builtins.
 The defaults are `"1"` for classic documents and `"2"` for native models.
-Classic node names become public cell keys.
+Cell keys follow the same rules as `from_observablehq()`.
 
 ```python
 import observablejs as obs

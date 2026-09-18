@@ -107,6 +107,36 @@ def test_notebook_from_observablehq_fetches_source_and_remote_attachments(
     }
     assert widget.runtime_profile == "observable"
     assert len(widget.cells) == 1
+    assert widget.cells.keys() == ("cell-1",)
+    assert widget.cells["cell-1"] is widget.cells[0]
+
+
+def test_imported_keys_cover_unnamed_cells_and_survive_binding_and_html() -> None:
+    with obs.Notebook.from_observablehq_document(
+        {
+            "nodes": [
+                {"id": 8, "mode": "js", "value": "chart = rows.length"},
+                {"id": 3, "mode": "js", "value": "rows = [{x: 1}]"},
+                {"id": 1, "mode": "md", "value": "# Report"},
+                {"id": 9, "mode": "md", "name": "caption", "value": "Results"},
+            ]
+        }
+    ) as notebook:
+        assert notebook.cells.keys() == ("cell-8", "cell-3", "cell-1", "caption")
+        with (
+            notebook.with_variables(rows=[{"x": 2}]) as bound,
+            obs.Notebook.from_html(notebook.to_notebook_html()) as restored,
+        ):
+            for candidate in (notebook, bound, restored):
+                assert candidate.cells.keys() == notebook.cells.keys()
+                assert candidate.cells["cell-8"] is candidate.cells[0]
+            view = restored.view("cell-1", "cell-8")
+            try:
+                assert tuple(view.cells) == (restored.cells[0], restored.cells[2])
+            finally:
+                view.close()
+            assert notebook.variables == {}
+            assert bound.variables == {"rows": ({"x": 2},)}
 
 
 def test_observablehq_preserves_source_profile_and_resolutions_across_html():
