@@ -282,34 +282,30 @@ def test_concurrent_reads_share_execution_across_namespaces_and_keep_bindings_is
     asyncio.run(run())
 
 
-def test_discovery_runtime_is_shared_with_direct_and_cell_scoped_reads() -> None:
+def test_discovery_reuses_enclosing_reads_and_isolates_exact_catalog_scopes() -> None:
     with obs.Notebook(
         obs.js("const rows = [{id: crypto.randomUUID()}]", key="rows"),
         obs.js("const other = [{value: 2}]", key="other"),
-    ) as notebook:
-        catalog = notebook.data.discover()
-        rows = catalog.datasets["rows"].to_python()
-        assert notebook.data["rows"].to_python() == rows
-        assert notebook.cells["rows"].data["rows"].to_python() == rows
-        assert asyncio.run(notebook.cells["rows"].data.aio["rows"].to_python()) == rows
-        repeated = notebook.data.discover(*notebook.cells)
-        assert repeated.datasets["rows"].to_python() == rows
-        scoped = notebook.cells["rows"].data.discover()
-        assert scoped.datasets.keys() == ("rows",)
-
-
-def test_enclosing_selection_reuse_does_not_execute_unrelated_cells() -> None:
-    with obs.Notebook(
-        obs.js("const rows = [{id: crypto.randomUUID()}]", key="rows"),
-        obs.js("const other = [{value: 2}]", key="other"),
-        obs.js('throw new Error("must not execute")', key="unrelated"),
+        obs.js('throw new Error("unrelated chart")', key="unrelated"),
     ) as notebook:
         catalog = notebook.data.discover("rows", "other")
         assert not catalog.errors
         rows = catalog.datasets["rows"].to_python()
         assert notebook.data["rows"].to_python() == rows
         assert notebook.cells["rows"].data["rows"].to_python() == rows
-        assert notebook._session is None
+        assert asyncio.run(notebook.cells["rows"].data.aio["rows"].to_python()) == rows
+        repeated = notebook.data.discover("other", "rows")
+        assert repeated.datasets["rows"].to_python() == rows
+        scoped = notebook.cells["rows"].data.discover()
+        assert scoped.datasets.keys() == ("rows",)
+        assert scoped.datasets["rows"].to_python() != rows
+        full = notebook.data.discover()
+        assert full.errors[0].message == "unrelated chart"
+        assert full.datasets.keys() == ("rows", "other")
+        assert (
+            notebook.data.discover(*notebook.cells).datasets["rows"].to_python()
+            == full.datasets["rows"].to_python()
+        )
 
 
 def test_python_owned_inputs_bypass_browser_controls() -> None:
