@@ -1,0 +1,19 @@
+packages/pyobservablejs/tests/test_server.py
+  s_b3f1bb7cf5e2e8::t_33c1277e2367ed 285,289,291-292,297,301-308
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "3b9c2b1b7828b60afea00ea8ee0ecf8735117329",
+  "prompts": {},
+  "sessions": {
+    "s_b3f1bb7cf5e2e8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b2e9-f47e-7dd0-83b7-26961c9a2146",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Péter Ferenc Gyarmati <dev.petergy@gmail.com>"
+    }
+  }
+}
