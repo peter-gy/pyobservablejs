@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterator, Sequence
 from typing import TYPE_CHECKING, overload
 
@@ -23,6 +24,11 @@ class Cells(Sequence["NotebookCell"]):
         self._indexes = (
             tuple(range(len(notebook._nodes))) if indexes is None else tuple(indexes)
         )
+        self._by_key = {
+            key: index
+            for index in self._indexes
+            if (key := notebook._nodes[index].key) is not None
+        }
 
     @overload
     def __getitem__(self, key: str | int) -> NotebookCell: ...
@@ -32,16 +38,9 @@ class Cells(Sequence["NotebookCell"]):
         self, key: str | int | slice
     ) -> NotebookCell | tuple[NotebookCell, ...]:
         if isinstance(key, str):
-            matches = [
-                index
-                for index in self._indexes
-                if self._notebook._controller._cell_keys[index] == key and key
-            ]
-            if len(matches) != 1:
-                raise KeyError(
-                    f"{'Ambiguous' if matches else 'Unknown'} Observable cell key: {key!r}"
-                )
-            return self._notebook._cell_at(matches[0])
+            if key not in self._by_key:
+                raise KeyError(f"Unknown Observable cell key: {key!r}")
+            return self._notebook._cell_at(self._by_key[key])
         if isinstance(key, slice):
             return tuple(self._notebook._cell_at(index) for index in self._indexes[key])
         if type(key) is not int:
@@ -55,7 +54,7 @@ class Cells(Sequence["NotebookCell"]):
         return (self._notebook._cell_at(index) for index in self._indexes)
 
     def keys(self) -> tuple[str, ...]:
-        return tuple(cell.key for cell in self if cell.key is not None)
+        return tuple(self._by_key)
 
 
 class Graph:
@@ -103,15 +102,26 @@ class Render:
     def png(
         self,
         *selectors: CellSelector,
+        scale: float = 1.0,
         network: bool | Sequence[str] = True,
         timeout: float | None = 30,
     ) -> bytes:
+        """Render PNG bytes at ``scale`` pixels per CSS pixel.
+
+        ``scale`` must be a positive finite number. Layout dimensions remain
+        unchanged, while ``scale=2`` doubles the PNG width and height.
+        """
         from ._execution import Evaluation
 
+        if isinstance(scale, bool) or not isinstance(scale, int | float):
+            raise TypeError("scale must be a positive finite number")
+        if not math.isfinite(scale) or scale <= 0:
+            raise ValueError("scale must be a positive finite number")
         with Evaluation(
             self._notebook,
             selectors,
             engine="chromium",
+            scale=scale,
             network=network,
             timeout=timeout,
         ) as evaluation:

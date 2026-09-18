@@ -258,6 +258,10 @@ class Notebook(traitlets.HasTraits):
     def variables(self) -> Mapping[str, object]:
         """Detached read-only snapshot of Python-owned variables.
 
+        Initially empty unless ``variables`` were supplied. Use
+        ``data.names()`` to list notebook definitions and ``data[name]`` to
+        read their evaluated values.
+
         Mutating construction inputs does not change the session. The snapshot
         cannot update the notebook. Use ``update_variables``,
         ``replace_variables``, or ``reset_variables`` for writes and observe

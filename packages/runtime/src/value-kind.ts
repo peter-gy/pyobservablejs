@@ -37,6 +37,8 @@ export function isSymbol<Value>(value: Value): value is Value & symbol {
 }
 
 export function isCallable<Value>(value: Value): value is Value & CallableFunction {
+	// Table reads encounter mostly scalars; reject them without allocating exceptions.
+	if (!isObjectValue(value)) return false;
 	try {
 		// Function.prototype.toString recognizes callable proxies and functions from other realms.
 		functionToString.call(value);

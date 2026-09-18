@@ -100,8 +100,12 @@ Use Chromium for canvas, layout, and browser APIs:
 ```python
 data = notebook.data.using(engine="chromium")
 frame = data["sales"].to_polars()
-png = notebook.render.png("chart", timeout=120)
+png = notebook.render.png("chart", scale=2, timeout=120)
 ```
+
+`scale` defaults to `1.0` and accepts positive finite numbers. A scale of `2`
+doubles the PNG width and height while preserving the notebook's CSS layout.
+Fractional scales such as `1.5` are supported.
 
 Deno runs the bundled, pinned Playwright driver. The driver installs matching
 Chromium on first use. Engine preparation has a separate three-minute deadline,

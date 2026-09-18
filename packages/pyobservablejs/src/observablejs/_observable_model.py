@@ -66,6 +66,10 @@ def notebook_model_from_observablehq_document(
     else:
         cells = _native_cells(body.get("cells"))
         discovered = _native_attachments(body.get("files", []))
+    # Observable often omits name metadata, including for named JS definitions.
+    # Cell identity must also cover anonymous and multi-definition cells.
+    for cell in cells:
+        cell.setdefault("key", f"cell-{cell['id']}")
     resolved_title = title or body.get("title") or document.get("title") or "Untitled"
     if not isinstance(resolved_title, str):
         raise TypeError("Observable notebook title must be a string")

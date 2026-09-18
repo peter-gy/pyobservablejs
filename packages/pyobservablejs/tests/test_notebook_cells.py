@@ -17,6 +17,20 @@ from helpers import (
 from IPython.core.formatters import DisplayFormatter
 
 
+@pytest.mark.parametrize("scale", [True, "2", 0, -1, float("nan"), float("inf")])
+def test_png_rejects_invalid_scale_before_starting_browser(
+    scale: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def unexpected_process(*args: Any, **kwargs: Any) -> None:
+        pytest.fail("Invalid scale must be rejected before starting a browser")
+
+    monkeypatch.setattr("subprocess.Popen", unexpected_process)
+    with obs.Notebook(obs.md("# Chart")) as notebook:
+        expected = TypeError if isinstance(scale, bool | str) else ValueError
+        with pytest.raises(expected, match="scale must be a positive finite number"):
+            notebook.render.png(scale=scale)
+
+
 def test_cell_defaults_to_observable_js_and_dedents(script_tags: ScriptTags) -> None:
     item = obs.ojs(
         """
@@ -64,6 +78,23 @@ def test_notebook_cell_lookup_accepts_keys_and_rejects_metadata_selectors() -> N
     for selector in (True, None, 1.5):
         with pytest.raises(TypeError, match="cell selection"):
             cast(Any, notebook.cells)[selector]
+
+
+def test_selected_view_keys_preserve_order_and_exclude_other_cells() -> None:
+    with obs.Notebook(
+        obs.ojs("first = 1", key="first"),
+        obs.md("Anonymous"),
+        obs.ojs("last = 2", key="last"),
+    ) as notebook:
+        view = notebook.view("last", notebook.cells[1])
+        try:
+            assert view.cells.keys() == ("last",)
+            assert view.cells["last"] is notebook.cells["last"]
+            assert view.cells[0] is notebook.cells[1]
+            with pytest.raises(KeyError, match="Unknown Observable cell key"):
+                view.cells["first"]
+        finally:
+            view.close()
 
 
 def test_notebook_view_calls_create_distinct_stable_display_models() -> None:

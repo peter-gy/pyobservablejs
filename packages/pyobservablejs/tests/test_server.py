@@ -5,6 +5,7 @@ import datetime
 import gc
 import gzip
 import math
+import struct
 import subprocess
 import threading
 import weakref
@@ -49,6 +50,30 @@ def test_names_and_graph_do_not_execute_cells_or_open_widgets() -> None:
         assert notebook.graph.upstream("result") == (notebook.cells["input"],)
         assert notebook.graph.downstream("input") == (notebook.cells["result"],)
         assert notebook._session is None
+
+
+def test_graph_traversals_preserve_direction_scope_and_cycles() -> None:
+    with obs.Notebook(
+        obs.ojs("a = b", key="a", id=10),
+        obs.ojs("b = a", key="b", id=30),
+        obs.ojs("c = a + b", key="c", id=20),
+        obs.ojs("d = c", key="d", id=40),
+    ) as notebook:
+        assert notebook.graph.upstream("d", transitive=False) == (notebook.cells["c"],)
+        assert notebook.graph.upstream("d") == notebook.cells[:3]
+        assert notebook.graph.upstream("a") == (notebook.cells["b"],)
+        assert notebook.graph.downstream("b") == (
+            notebook.cells["a"],
+            notebook.cells["c"],
+            notebook.cells["d"],
+        )
+        assert notebook.graph.downstream("b", transitive=False) == (
+            notebook.cells["a"],
+            notebook.cells["c"],
+        )
+        with notebook.with_variables(a=1) as bound:
+            assert bound.graph.upstream("d") == bound.cells[:3]
+            assert bound.graph.upstream("a") == (bound.cells["b"],)
 
 
 def test_selected_reads_bindings_and_detached_python_values() -> None:
@@ -160,7 +185,7 @@ def test_static_attachment_lineage_and_file_loading() -> None:
         assert notebook.files["data.json"].to_python() == {"items": [1, 2]}
 
 
-def test_source_imports_keep_classic_semantics() -> None:
+def test_classic_imports_preserve_keys_and_python_binding_lifecycle() -> None:
     with (
         obs.Notebook(obs.ojs("x = 7")) as dependency,
         obs.Notebook.from_observablehq_document(
@@ -183,8 +208,20 @@ def test_source_imports_keep_classic_semantics() -> None:
             sources.append(specifier)
             return dependency
 
-        assert notebook.data.using(resolve_notebook=resolve)["answer"].to_python() == 42
+        assert notebook.data.names() == ("x", "answer")
+        answer = notebook.cells["cell-2"]
+        assert notebook.data["answer"].cell is answer
+        assert notebook.graph.upstream(answer) == (notebook.cells["cell-1"],)
+        reference = answer.data.using(resolve_notebook=resolve)["answer"]
+        assert reference.to_python() == 42
         assert sources == ["@test/dependency"]
+        assert notebook.variables == {}
+        notebook.update_variables({"x": 3})
+        assert reference.to_python() == 18
+        assert notebook.variables == {"x": 3}
+        notebook.reset_variables("x")
+        assert reference.to_python() == 42
+        assert notebook.variables == {}
 
 
 def test_python_types_and_console_output() -> None:
@@ -245,34 +282,30 @@ def test_concurrent_reads_share_execution_across_namespaces_and_keep_bindings_is
     asyncio.run(run())
 
 
-def test_discovery_runtime_is_shared_with_direct_and_cell_scoped_reads() -> None:
+def test_discovery_reuses_enclosing_reads_and_isolates_exact_catalog_scopes() -> None:
     with obs.Notebook(
         obs.js("const rows = [{id: crypto.randomUUID()}]", key="rows"),
         obs.js("const other = [{value: 2}]", key="other"),
-    ) as notebook:
-        catalog = notebook.data.discover()
-        rows = catalog.datasets["rows"].to_python()
-        assert notebook.data["rows"].to_python() == rows
-        assert notebook.cells["rows"].data["rows"].to_python() == rows
-        assert asyncio.run(notebook.cells["rows"].data.aio["rows"].to_python()) == rows
-        repeated = notebook.data.discover(*notebook.cells)
-        assert repeated.datasets["rows"].to_python() == rows
-        scoped = notebook.cells["rows"].data.discover()
-        assert scoped.datasets.keys() == ("rows",)
-
-
-def test_enclosing_selection_reuse_does_not_execute_unrelated_cells() -> None:
-    with obs.Notebook(
-        obs.js("const rows = [{id: crypto.randomUUID()}]", key="rows"),
-        obs.js("const other = [{value: 2}]", key="other"),
-        obs.js('throw new Error("must not execute")', key="unrelated"),
+        obs.js('throw new Error("unrelated chart")', key="unrelated"),
     ) as notebook:
         catalog = notebook.data.discover("rows", "other")
         assert not catalog.errors
         rows = catalog.datasets["rows"].to_python()
         assert notebook.data["rows"].to_python() == rows
         assert notebook.cells["rows"].data["rows"].to_python() == rows
-        assert notebook._session is None
+        assert asyncio.run(notebook.cells["rows"].data.aio["rows"].to_python()) == rows
+        repeated = notebook.data.discover("other", "rows")
+        assert repeated.datasets["rows"].to_python() == rows
+        scoped = notebook.cells["rows"].data.discover()
+        assert scoped.datasets.keys() == ("rows",)
+        assert scoped.datasets["rows"].to_python() != rows
+        full = notebook.data.discover()
+        assert full.errors[0].message == "unrelated chart"
+        assert full.datasets.keys() == ("rows", "other")
+        assert (
+            notebook.data.discover(*notebook.cells).datasets["rows"].to_python()
+            == full.datasets["rows"].to_python()
+        )
 
 
 def test_python_owned_inputs_bypass_browser_controls() -> None:
@@ -387,12 +420,27 @@ data.forEach((row, i) => data[i] = ({{state: row.State, total: +row.Value * fact
         worker.join()
 
 
-def test_chromium_canvas_rendering() -> None:
+def test_chromium_canvas_reads_and_png_pixel_density() -> None:
     with obs.Notebook(
         obs.js(
-            'const canvas = document.createElement("canvas"); canvas.width=24; canvas.height=16; const ctx=canvas.getContext("2d"); ctx.fillStyle="red";ctx.fillRect(0,0,24,16);display(canvas);const pixels=Array.from(ctx.getImageData(0,0,1,1).data)',
+            """
+            if (devicePixelRatio !== expectedScale) {
+                throw new Error("Pixel density must be set before evaluation");
+            }
+            const canvas = document.createElement("canvas");
+            canvas.width = 24 * devicePixelRatio;
+            canvas.height = 16 * devicePixelRatio;
+            canvas.style.width = "24px";
+            canvas.style.height = "16px";
+            const ctx = canvas.getContext("2d");
+            ctx.fillStyle = "red";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            display(canvas);
+            const pixels = Array.from(ctx.getImageData(0, 0, 1, 1).data);
+            """,
             key="chart",
-        )
+        ),
+        variables={"expectedScale": 1},
     ) as notebook:
         assert notebook.data.using(engine="chromium")["pixels"].to_python() == [
             255,
@@ -400,7 +448,16 @@ def test_chromium_canvas_rendering() -> None:
             0,
             255,
         ]
-        assert notebook.render.png("chart").startswith(b"\x89PNG")
+        png = notebook.render.png("chart")
+        assert png.startswith(b"\x89PNG")
+        width, height = struct.unpack(">II", png[16:24])
+        for scale in (0.5, 2):
+            notebook.update_variables({"expectedScale": scale})
+            scaled = notebook.render.png("chart", scale=scale)
+            assert struct.unpack(">II", scaled[16:24]) == (
+                width * scale,
+                height * scale,
+            )
 
 
 def test_collecting_a_notebook_releases_its_child_processes(

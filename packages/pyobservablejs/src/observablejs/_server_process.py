@@ -36,6 +36,7 @@ class ServerProcess:
         self,
         *,
         engine: Literal["deno", "chromium"] = "deno",
+        scale: float = 1.0,
         network: bool | Sequence[str],
         source: Callable[[str], dict[str, Any]],
     ) -> None:
@@ -81,7 +82,7 @@ class ServerProcess:
             args.append("--deny-import")
         if engine == "deno":
             args.append(f"--allow-read={script.parent}")
-        args.extend([str(script), engine, json.dumps(network)])
+        args.extend([str(script), engine, json.dumps(network), str(scale)])
         self._source: Callable[[str], dict[str, Any]]
         if inspect.ismethod(source):
             reference: weakref.WeakMethod[Callable[[str], dict[str, Any]]] = (

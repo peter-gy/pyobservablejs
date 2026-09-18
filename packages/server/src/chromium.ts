@@ -9,6 +9,8 @@ import { receive, send } from "./transport";
 
 const origin = "https://observablejs.invalid";
 const network: WireValue = JSON.parse(process.argv[3] ?? "false");
+const scale = Number(process.argv[4] ?? "1");
+if (!Number.isFinite(scale) || scale <= 0) throw new TypeError("scale must be a positive finite number");
 if (network !== true && network !== false && (!Array.isArray(network) || !network.every(isString)))
 	throw new TypeError("Invalid browser network policy");
 const allowed = (url: URL) =>
@@ -115,6 +117,7 @@ const browser = await chromium.launch({ headless: true, channel: "chromium" });
 try {
 	const context = await browser.newContext({
 		viewport: { width: 640, height: 480 },
+		deviceScaleFactor: scale,
 		serviceWorkers: "block",
 		// Request routes still enforce the selected host policy for private networks.
 		permissions: ["local-network-access"],
