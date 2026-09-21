@@ -137,17 +137,27 @@ Discovery and full reads work with `capture_state=False`.
 ## Files
 
 ```python
+names = tuple(notebook.files)
 file = notebook.files["sales.csv"]
 print(file.url, file.mime_type, file.size)
 raw = file.read_bytes()
 frame = file.to_polars()
+legacy = notebook.files["legacy.csv"].to_polars(encoding="mac_roman")
 config = notebook.files["config.json"].to_python()
 ```
+
+`notebook.files` and `view.files` are mappings. Iterate over them or call
+`.keys()` to list attachment names. Their representations include the available
+names.
 
 Files expose `read_bytes()`, `to_python()`, `to_polars()`, `to_pandas()`, and
 `to_arrow()`. Format inference uses filename, declared content type, and content
 signatures. For an ambiguous file, pass `format="csv"`, `"tsv"`, `"json"`,
 `"ndjson"`, `"arrow"`, `"parquet"`, or `"text"`. Text is not tabular.
+Converters assume UTF-8 for text formats. Pass a Python codec name through
+`encoding=`, such as `encoding="mac_roman"`, when the attachment uses another
+encoding. If format inference is also ambiguous, pass both `format=` and
+`encoding=`. Binary Arrow and Parquet formats do not accept `encoding=`.
 
 JSON objects become one dataframe row with nested fields preserved. Arrays of
 objects become rows, and scalar arrays become a `value` column. `to_python()`

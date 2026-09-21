@@ -127,6 +127,10 @@ def test_files_are_synchronous_and_have_optional_async_access(
         }
     ) as notebook:
         assert tuple(notebook.files) == ("sales.csv", "config.json", "download")
+        for namespace in (notebook.files, notebook.files.aio):
+            representation = repr(namespace)
+            assert type(namespace).__name__ in representation
+            assert all(name in representation for name in notebook.files)
         assert notebook.files["sales.csv"].to_polars().to_dicts() == [
             {"year": 2026, "amount": 7}
         ]
@@ -144,8 +148,56 @@ def test_files_are_synchronous_and_have_optional_async_access(
         assert notebook._session is None
 
 
-def test_widget_attachment_bytes_use_its_own_view(widget_only: Browser) -> None:
+def test_file_converters_accept_explicit_text_encoding() -> None:
+    import base64
+
+    payload = b"name\nGlobal \xd0 Index\n"
+    json_payload = '{"name":"Global – Index"}'.encode("mac_roman")
+    with obs.Notebook(
+        files={
+            "data.csv": "data:text/csv;base64," + base64.b64encode(payload).decode(),
+            "download": "data:application/octet-stream;base64,"
+            + base64.b64encode(json_payload).decode(),
+        }
+    ) as notebook:
+        file = notebook.files["data.csv"]
+        expected = [{"name": "Global – Index"}]
+        with pytest.raises(UnicodeDecodeError):
+            file.to_polars()
+        assert file.to_python(encoding="mac_roman") == expected
+        assert file.to_polars(encoding="mac_roman").to_dicts() == expected
+        assert file.to_arrow(encoding="mac_roman").to_pylist() == expected
+        assert file.to_pandas(encoding="mac_roman").to_dict("records") == expected
+        assert (
+            asyncio.run(notebook.files.aio["data.csv"].to_python(encoding="mac_roman"))
+            == expected
+        )
+        ambiguous = notebook.files["download"]
+        with pytest.raises(ValueError, match="format="):
+            ambiguous.to_python(encoding="mac_roman")
+        assert ambiguous.to_python(format="json", encoding="mac_roman") == expected[0]
+
+
+def test_file_encoding_is_rejected_for_binary_formats() -> None:
+    import base64
+
+    with (
+        obs.Notebook(
+            files={
+                "data.arrow": "data:application/octet-stream;base64,"
+                + base64.b64encode(b"ARROW1invalidARROW1").decode()
+            }
+        ) as notebook,
+        pytest.raises(ValueError, match="encoding is available for"),
+    ):
+        notebook.files["data.arrow"].to_arrow(encoding="mac_roman")
+
+
+def test_widget_attachment_reads_and_converts_through_its_own_view(
+    widget_only: Browser,
+) -> None:
     async def run() -> None:
+        payload = b"name\nGlobal \xd0 Index\n"
         reading = asyncio.create_task(
             widget_only.view.files["numbers.csv"].read_bytes()
         )
@@ -160,9 +212,26 @@ def test_widget_attachment_bytes_use_its_own_view(widget_only: Browser) -> None:
                 "format": "bytes",
                 "binary": True,
             },
-            buffers=(b"amount\n9\n",),
+            buffers=(payload,),
         )
-        assert await reading == b"amount\n9\n"
+        assert await reading == payload
+
+        converting = asyncio.create_task(
+            widget_only.view.files["numbers.csv"].to_polars(encoding="mac_roman")
+        )
+        request = await widget_only.message()
+        widget_only.reply(
+            request,
+            {
+                "cell": None,
+                "name": "numbers.csv",
+                "revision": 0,
+                "format": "bytes",
+                "binary": True,
+            },
+            buffers=(payload,),
+        )
+        assert (await converting).to_dicts() == [{"name": "Global – Index"}]
 
     asyncio.run(run())
 

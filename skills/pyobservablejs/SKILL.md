@@ -133,6 +133,7 @@ still produce an empty or misleading chart. Follow
 | Check or raise browser failures                   | `view.diagnostics`, `view.raise_for_errors()`, `await view.ready()`                 |
 | Read a selected cell's preview                    | `state.result("chart").values`                                                      |
 | Find source, dependencies, and imports            | `view.inspection`, `notebook.cells`                                                 |
+| List notebook attachments                         | `tuple(notebook.files)` or `notebook.files.keys()`                                  |
 | List tables or read exact data                    | `view.datasets`, `await view.data[name].to_python()`, [data.md](references/data.md) |
 | Configure hosts or live code-mode editing         | [hosts.md](references/hosts.md)                                                     |
 | Compose views, use files, import or export source | [workflows.md](references/workflows.md)                                             |

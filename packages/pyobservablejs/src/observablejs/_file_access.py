@@ -76,32 +76,54 @@ class FileReference:
                         )
             return data
 
-    def _load(self, format: str | None, timeout: float | None) -> tuple[bytes, str]:
+    def _load(
+        self, format: str | None, encoding: str | None, timeout: float | None
+    ) -> tuple[bytes, str]:
         data = self.read_bytes(timeout=timeout)
-        return data, convert.file_format(self.name, self.mime_type, data, format)
+        resolved_format = convert.file_format(self.name, self.mime_type, data, format)
+        return (
+            convert.file_text_encoding(data, resolved_format, encoding),
+            resolved_format,
+        )
 
     def to_python(
-        self, *, format: str | None = None, timeout: float | None = 30
+        self,
+        *,
+        format: str | None = None,
+        encoding: str | None = None,
+        timeout: float | None = 30,
     ) -> object:
-        return convert.file_python(*self._load(format, timeout))
+        return convert.file_python(*self._load(format, encoding, timeout))
 
     def to_polars(
-        self, *, format: str | None = None, timeout: float | None = 30
+        self,
+        *,
+        format: str | None = None,
+        encoding: str | None = None,
+        timeout: float | None = 30,
     ) -> polars.DataFrame:
         convert.require_library("polars")
-        return convert.file_polars(*self._load(format, timeout))
+        return convert.file_polars(*self._load(format, encoding, timeout))
 
     def to_pandas(
-        self, *, format: str | None = None, timeout: float | None = 30
+        self,
+        *,
+        format: str | None = None,
+        encoding: str | None = None,
+        timeout: float | None = 30,
     ) -> pandas.DataFrame:
         convert.require_library("pandas", "pyarrow")
-        return convert.file_pandas(*self._load(format, timeout))
+        return convert.file_pandas(*self._load(format, encoding, timeout))
 
     def to_arrow(
-        self, *, format: str | None = None, timeout: float | None = 30
+        self,
+        *,
+        format: str | None = None,
+        encoding: str | None = None,
+        timeout: float | None = 30,
     ) -> pyarrow.Table:
         convert.require_library("pyarrow")
-        return convert.file_arrow(*self._load(format, timeout))
+        return convert.file_arrow(*self._load(format, encoding, timeout))
 
     def __repr__(self) -> str:
         return f"FileReference({self.name!r})"
@@ -141,6 +163,9 @@ class Files(Mapping[str, FileReference]):
     def __len__(self) -> int:
         return sum(1 for _ in self)
 
+    def __repr__(self) -> str:
+        return f"Files({list(self)!r})"
+
 
 class AsyncFileReference:
     def __init__(self, file: FileReference, view: NotebookView | None = None) -> None:
@@ -166,39 +191,58 @@ class AsyncFileReference:
         return await asyncio.to_thread(self._file.read_bytes, timeout=timeout)
 
     async def _load(
-        self, format: str | None, timeout: float | None
+        self, format: str | None, encoding: str | None, timeout: float | None
     ) -> tuple[bytes, str]:
         data = await self.read_bytes(timeout=timeout)
         resolved_format = await asyncio.to_thread(
             convert.file_format, self.name, self.mime_type, data, format
         )
-        return data, resolved_format
+        normalized = await asyncio.to_thread(
+            convert.file_text_encoding, data, resolved_format, encoding
+        )
+        return normalized, resolved_format
 
     async def to_python(
-        self, *, format: str | None = None, timeout: float | None = 30
+        self,
+        *,
+        format: str | None = None,
+        encoding: str | None = None,
+        timeout: float | None = 30,
     ) -> object:
-        data, resolved_format = await self._load(format, timeout)
+        data, resolved_format = await self._load(format, encoding, timeout)
         return await asyncio.to_thread(convert.file_python, data, resolved_format)
 
     async def to_polars(
-        self, *, format: str | None = None, timeout: float | None = 30
+        self,
+        *,
+        format: str | None = None,
+        encoding: str | None = None,
+        timeout: float | None = 30,
     ) -> polars.DataFrame:
         convert.require_library("polars")
-        data, resolved_format = await self._load(format, timeout)
+        data, resolved_format = await self._load(format, encoding, timeout)
         return await asyncio.to_thread(convert.file_polars, data, resolved_format)
 
     async def to_pandas(
-        self, *, format: str | None = None, timeout: float | None = 30
+        self,
+        *,
+        format: str | None = None,
+        encoding: str | None = None,
+        timeout: float | None = 30,
     ) -> pandas.DataFrame:
         convert.require_library("pandas", "pyarrow")
-        data, resolved_format = await self._load(format, timeout)
+        data, resolved_format = await self._load(format, encoding, timeout)
         return await asyncio.to_thread(convert.file_pandas, data, resolved_format)
 
     async def to_arrow(
-        self, *, format: str | None = None, timeout: float | None = 30
+        self,
+        *,
+        format: str | None = None,
+        encoding: str | None = None,
+        timeout: float | None = 30,
     ) -> pyarrow.Table:
         convert.require_library("pyarrow")
-        data, resolved_format = await self._load(format, timeout)
+        data, resolved_format = await self._load(format, encoding, timeout)
         return await asyncio.to_thread(convert.file_arrow, data, resolved_format)
 
     def __repr__(self) -> str:
@@ -220,3 +264,6 @@ class AsyncFiles(Mapping[str, AsyncFileReference]):
 
     def __len__(self) -> int:
         return len(self._notebook.files)
+
+    def __repr__(self) -> str:
+        return f"AsyncFiles({list(self)!r})"

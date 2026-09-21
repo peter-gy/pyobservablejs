@@ -117,6 +117,14 @@ def file_format(
     raise ValueError(f"Cannot infer the format of {name!r}. Pass format= explicitly")
 
 
+def file_text_encoding(data: bytes, format: str, encoding: str | None) -> bytes:
+    if encoding is None:
+        return data
+    if format not in {"csv", "tsv", "json", "ndjson", "text"}:
+        raise ValueError("encoding is available for CSV, TSV, JSON, NDJSON, and text")
+    return data.decode(encoding).encode("utf-8")
+
+
 def file_python(data: bytes, format: str) -> object:
     if format == "json":
         return json.loads(data)
