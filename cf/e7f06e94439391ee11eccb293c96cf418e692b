@@ -1,0 +1,38 @@
+skills/pyobservablejs/SKILL.md
+  s_a4fda87f5c7c97::t_202f9299f5811b 136
+packages/pyobservablejs/tests/test_data_namespaces.py
+  s_a4fda87f5c7c97::t_b88a96b5cfc07f 172
+  s_a4fda87f5c7c97::t_a9249b7fe1a700 158
+  s_a4fda87f5c7c97::t_93c2d93f50b46e 193
+  s_a4fda87f5c7c97::t_f70f6dd2be1f87 130-133,155,157,159-161,175-178,200,215-232,234
+  s_a4fda87f5c7c97::t_8613dcc0766579 184-192
+  s_a4fda87f5c7c97::t_1e43673f3f7b08 171,173-174
+  s_a4fda87f5c7c97::t_01b94f6fd68f36 196-198
+  s_a4fda87f5c7c97::t_202f9299f5811b 151-154,156,162-170,179-183
+packages/pyobservablejs/src/observablejs/_conversions.py
+  s_a4fda87f5c7c97::t_202f9299f5811b 120-127
+skills/pyobservablejs/references/data.md
+  s_a4fda87f5c7c97::t_202f9299f5811b 9,68,71,78-79
+  s_a4fda87f5c7c97::t_f70f6dd2be1f87 80-82
+packages/pyobservablejs/src/observablejs/_file_access.py
+  s_a4fda87f5c7c97::t_202f9299f5811b 79-81,83-87,90-94,96,99-103,106,109-113,116,119-123,126,166-168,194,200-203,206-210,212,216-220,223,227-231,234,238-242,245,267-269
+apps/docs/docs/reference/data-access.mdx
+  s_a4fda87f5c7c97::t_202f9299f5811b 140,145,149-152,157-158
+  s_a4fda87f5c7c97::t_f70f6dd2be1f87 159-160
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "cfe7f06e94439391ee11eccb293c96cf418e692b",
+  "prompts": {},
+  "sessions": {
+    "s_a4fda87f5c7c97": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c597-c31b-7a82-8538-b3cfbeeb9552",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Péter Ferenc Gyarmati <dev.petergy@gmail.com>"
+    }
+  }
+}
