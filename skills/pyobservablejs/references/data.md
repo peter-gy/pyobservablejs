@@ -6,6 +6,7 @@ Conversions return Python objects and dataframes directly.
 
 ```python
 notebook.cells["chart"].source
+tuple(notebook.files)
 notebook.files["sales.csv"].url
 notebook.data.names()
 notebook.graph.upstream("chart")
@@ -64,16 +65,21 @@ directly. Use `columns`, `offset`, `limit`, and `path` to bound reads. A convers
 returns one coherent detached value or raises, rather than silently truncating.
 
 ```python
+names = tuple(notebook.files)
 raw = notebook.files["sales.csv"].read_bytes()
 frame = notebook.files["sales.csv"].to_polars()
+legacy = notebook.files["legacy.csv"].to_polars(encoding="mac_roman")
 config = notebook.files["config.json"].to_python()
 raw_from_browser = await view.files["sales.csv"].read_bytes()
 ```
 
 Notebook file operations use Python I/O and need no Deno. View file operations use
 the originating browser. Pass `format=` when filename, content type, and content
-signatures cannot establish the parser. For advanced parsing, pass `read_bytes()`
-to the dataframe library's own reader.
+signatures cannot establish the parser. File namespaces are mappings, so iterate
+over them or call `.keys()` to list attachment names. Text attachment converters
+assume UTF-8 unless `encoding=` names another Python codec. Pass both options when
+a non-UTF-8 attachment also needs an explicit format. For advanced parsing, pass
+`read_bytes()` to the dataframe library's own reader.
 
 Headless data and Python files are synchronous by default. Their explicit async
 accessors are `notebook.data.aio` and `notebook.files.aio`.
