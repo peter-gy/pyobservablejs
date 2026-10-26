@@ -45,9 +45,10 @@ declare module "@observablehq/runtime" {
 
 	export class Module {
 		_runtime: Runtime;
-		_builtins: Map<string, RuntimeValue>;
 		_scope: Map<string, Variable>;
 		_resolve(name: string): Variable;
+		builtin(name: string, value: RuntimeValue): void;
+		builtin(name: string, inputs: readonly string[], definition: VariableDefinition): void;
 		variable(observer?: ObserverOption, options?: VariableOptions): Variable;
 		define(inputs: string[], definition: VariableDefinition): Variable;
 		define(name: string | null, inputs: string[], definition: VariableDefinition): Variable;

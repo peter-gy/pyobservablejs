@@ -154,7 +154,7 @@ public `Notebook` API.
 Python interpreters, `cargo-deny`, `cargo-shear`, and `actionlint`, locked in
 `pixi.lock`. `pixi.toml` defines every repository task. Language package
 managers own their graphs in `pnpm-lock.yaml`, `uv.lock`, and `Cargo.lock`.
-Every resolver accepts releases at least three days old.
+Every resolver accepts releases at least two days old.
 
 The root `package.json` and `vite.config.ts` own JavaScript orchestration and
 shared Vite+ policy. Package manifests own dependencies, tests, and builds. Use

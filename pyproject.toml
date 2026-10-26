@@ -1,5 +1,5 @@
 [tool.uv]
-exclude-newer = "3 days"
+exclude-newer = "2 days"
 
 [tool.uv.workspace]
 members = ["packages/pyobservablejs"]

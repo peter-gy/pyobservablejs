@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import json
+import urllib.error
+import urllib.request
+from email.message import Message
 from html.parser import HTMLParser
+from typing import NoReturn
 
 import observablejs as obs
 import pytest
@@ -14,51 +18,93 @@ from helpers import (
 
 
 @pytest.mark.parametrize(
-    ("specifier", "source_url"),
+    ("specifier", "document_url"),
     [
         (
             "https://observablehq.com/@d3/bar-chart",
-            "https://observablehq.com/@d3/bar-chart",
+            "https://api.observablehq.com/document/@d3/bar-chart",
         ),
         (
             "https://observablehq.com/@d3/bar-chart/2",
-            "https://observablehq.com/@d3/bar-chart/2",
+            "https://api.observablehq.com/document/@d3/bar-chart/2",
         ),
         (
             "https://observablehq.com/@d3/bar-chart@latest",
-            "https://observablehq.com/@d3/bar-chart@latest",
+            "https://api.observablehq.com/document/@d3/bar-chart@latest",
         ),
         (
             "https://observablehq.com/d/1234567890abcdef",
-            "https://observablehq.com/d/1234567890abcdef",
+            "https://api.observablehq.com/document/1234567890abcdef",
         ),
         (
             "https://api.observablehq.com/document/@d3/bar-chart",
-            "https://observablehq.com/@d3/bar-chart",
+            "https://api.observablehq.com/document/@d3/bar-chart",
         ),
         (
             "https://api.observablehq.com/document/1234567890abcdef",
-            "https://observablehq.com/d/1234567890abcdef",
+            "https://api.observablehq.com/document/1234567890abcdef",
         ),
-        ("@d3/bar-chart", "https://observablehq.com/@d3/bar-chart"),
+        (
+            "@d3/bar-chart",
+            "https://api.observablehq.com/document/@d3/bar-chart",
+        ),
         (
             "1234567890abcdef",
-            "https://observablehq.com/d/1234567890abcdef",
+            "https://api.observablehq.com/document/1234567890abcdef",
+        ),
+        (
+            "observable:@d3/bar-chart@12",
+            "https://api.observablehq.com/document/@d3/bar-chart@12",
         ),
     ],
 )
-def test_observablehq_specifier_resolution_fetches_public_source(
+def test_observablehq_specifier_fetches_the_document_api(
     observablehq_response: ObservableHQResponseInstaller,
     specifier: str,
-    source_url: str,
+    document_url: str,
 ) -> None:
     requests = observablehq_response(
-        {"id": "1234567890abcdef", "title": "Remote", "nodes": []}
+        {"id": "1234567890abcdef", "version": 12, "title": "Remote", "nodes": []}
     )
 
-    obs.Notebook.from_observablehq(specifier, timeout=1)
+    obs.Notebook.from_observablehq(specifier, timeout=1).close()
 
-    assert requests == [(source_url, 1)]
+    assert requests == [(document_url, 1)]
+
+
+@pytest.mark.parametrize(
+    ("specifier", "message"),
+    [
+        ("@d3/bar-chart@8", "different notebook revision"),
+        ("fedcba9876543210", "different notebook for"),
+    ],
+)
+def test_observablehq_rejects_a_document_for_another_pin(
+    observablehq_response: ObservableHQResponseInstaller,
+    specifier: str,
+    message: str,
+) -> None:
+    observablehq_response({"id": "1234567890abcdef", "version": 7, "nodes": []})
+
+    with pytest.raises(ValueError, match=message):
+        obs.Notebook.from_observablehq(specifier, timeout=1)
+
+
+def test_observablehq_http_failure_names_the_document_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def refuse(request: urllib.request.Request, **_kwargs: object) -> NoReturn:
+        raise urllib.error.HTTPError(
+            request.full_url, 404, "Not Found", Message(), None
+        )
+
+    monkeypatch.setattr("urllib.request.urlopen", refuse)
+
+    with pytest.raises(
+        OSError,
+        match="https://api.observablehq.com/document/@example/private: HTTP 404",
+    ):
+        obs.Notebook.from_observablehq("@example/private", timeout=1)
 
 
 def test_observablehq_rejects_non_observable_specifier() -> None:

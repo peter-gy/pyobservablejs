@@ -74,7 +74,7 @@ off uv's own Python downloads. The platform C/C++ toolchain links the native
 extension.
 
 Pixi `exclude-newer`, pnpm `minimumReleaseAge`, and uv `exclude-newer` accept
-releases at least three days old. `minimumReleaseAgeExclude` in
+releases at least two days old. `minimumReleaseAgeExclude` in
 `pnpm-workspace.yaml` lists security patches published inside that window.
 
 `pixi task list` shows every task. The main tasks:

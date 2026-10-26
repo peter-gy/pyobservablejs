@@ -57,6 +57,37 @@ test("shares concurrent DuckDB blob URL creation", async () => {
 });
 
 describe("runtime attachments", () => {
+	test("db opens a DuckDB client over its own runtime's attachments", async () => {
+		const createObjectURL = vi
+			.spyOn(URL, "createObjectURL")
+			.mockImplementation((blob) => (blob instanceof Blob ? `blob:${blob.size}` : "blob:media"));
+		const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+		const terminate = vi.fn(async () => {});
+		const DuckDBClient = {
+			from: vi.fn(async (files: { name: string; href: string }[]) => ({ files, terminate })),
+		};
+		const first = registerAttachments({ "sales.csv": { url: "data:text/csv,a%0A1" } });
+		const second = registerAttachments({ "other.csv": { url: "data:text/csv,b%0A22" } });
+		const runtime = createRuntime(document.createElement("div"), baseOptions, first);
+		createRuntime(document.createElement("div"), baseOptions, second).runtime.dispose();
+		const dispose = createRuntimeCleanup(runtime, first);
+		runtime.main.define("DuckDBClient", [], () => DuckDBClient);
+		runtime.main.define("tables", ["db"], (db: RuntimeValue) => db);
+
+		try {
+			await expect(runtime.main.value("tables")).resolves.toEqual({
+				files: [{ name: "sales.csv", href: "blob:3" }],
+				terminate,
+			});
+		} finally {
+			dispose();
+			second.cleanup();
+			createObjectURL.mockRestore();
+			revokeObjectURL.mockRestore();
+		}
+		await vi.waitFor(() => expect(terminate).toHaveBeenCalledOnce());
+	});
+
 	test("resolves percent-encoded FileAttachment names to registered raw names", async () => {
 		const registry = registerAttachments({
 			"100% complete.csv": {

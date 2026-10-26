@@ -143,7 +143,7 @@ The source path has one owner for each transition:
 
 | Transition                                                          | Owner                                              |
 | ------------------------------------------------------------------- | -------------------------------------------------- |
-| Fetch a public page and decode its data records                     | Python Observable adapter                          |
+| Fetch a public notebook record from the ObservableHQ document API   | Python `_observable_fetch.py`                      |
 | Convert classic nodes or native cells into Notebook Kit HTML        | Python `_observable_model.py` adapter              |
 | Read profile, source identity, and dependency resolutions from HTML | Runtime `source.ts`                                |
 | Parse and compile cell languages                                    | Observable Notebook Kit through runtime `graph.ts` |
@@ -161,9 +161,12 @@ Python `from_html` retains Notebook Kit HTML. Optional attachment embedding
 registers local files as data URL records. Optional import rewriting embeds
 local JavaScript modules before the source reaches the browser.
 
-`from_observablehq` fetches the original model embedded in the public notebook
-page. `_observable_fetch.py` decodes the page's data records without executing
-scripts. It preserves explicit cell languages and verifies requested revisions.
+`from_observablehq` reads `https://api.observablehq.com/document/<notebook>`,
+the record Notebook Kit's `notebooks download` command converts. Notebook pages
+on observablehq.com sit behind a browser challenge. `_observable_fetch.py`
+verifies the requested notebook id and revision. A record whose `resolutions`
+mark a cell `unsupported_mode` has lost that cell's language, and the model
+adapter rejects it.
 The controller model distinguishes classic `nodes` from native `cells` or
 `body.cells`. `_observable_legacy.py` lowers classic table, chart, SQL, and code
 nodes. Classic `js` becomes `ojs`. Native modes remain unchanged. Library

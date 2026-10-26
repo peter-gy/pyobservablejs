@@ -4,7 +4,7 @@ description = "Observable notebooks as Python widgets and headless computations"
 channels = ["https://prefix.dev/conda-forge"]
 platforms = ["linux-64", "linux-aarch64", "osx-64", "osx-arm64", "win-64"]
 requires-pixi = ">=0.82"
-exclude-newer = "3d"
+exclude-newer = "2d"
 
 # Pixi owns interpreters and system tools. uv.lock, pnpm-lock.yaml, and
 # Cargo.lock own the Python, JavaScript, and Rust dependency graphs.

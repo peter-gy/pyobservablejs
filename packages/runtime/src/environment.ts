@@ -6,6 +6,7 @@ import {
 	createDuckDBClient,
 	createFileAttachment,
 	extendRuntimeFileAttachments,
+	fileDatabase,
 	loadSQLiteModule,
 	SQLiteDatabaseClient,
 	type AttachmentRegistry,
@@ -42,12 +43,14 @@ export function createRuntime(
 	const { builtins, scope } = createRuntimeBuiltins(root, options, attachmentRegistry);
 	const builtinNames = new Set([...RUNTIME_CORE_NAMES, ...Object.keys(builtins)]);
 	assertNoBuiltinCollisions(options.variables, builtinNames);
-	const runtime = new NotebookRuntime(
-		toNotebookRuntimeBuiltins({
-			...builtins,
-			...createVariableBuiltins(options.variables),
-		}),
-	);
+	const variableBuiltins = createVariableBuiltins(options.variables);
+	const runtime = new NotebookRuntime(toNotebookRuntimeBuiltins({ ...builtins, ...variableBuiltins }));
+	// NotebookRuntime defines `db` on its main module over every file registered
+	// on the page, and main-module builtins shadow runtime builtins. A `db`
+	// variable keeps precedence. Otherwise `db` reads this runtime's attachments.
+	const db = variableBuiltins.db;
+	if (db) runtime.main.builtin("db", [], db);
+	else runtime.main.builtin("db", ...fileDatabase(attachmentRegistry));
 	builtinNamesByRuntime.set(runtime, builtinNames);
 	extendRuntimeFileAttachments(runtime);
 	bindRuntimeScope(runtime, scope);
