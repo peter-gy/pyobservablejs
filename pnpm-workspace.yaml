@@ -10,9 +10,9 @@ catalog:
   "@docusaurus/theme-mermaid": 3.10.2
   "@marimo-team/mdx-marimo": 0.0.5
   "@mermaid-js/layout-elk": 0.1.9
-  "@observablehq/notebook-kit": 2.7.1
+  "@observablehq/notebook-kit": 2.8.0
   "@observablehq/parser": ^6.1.0
-  "@observablehq/runtime": 6.0.1
+  "@observablehq/runtime": 6.1.0
   "@observablehq/stdlib": ^5.8.8
   "@orama/plugin-docusaurus-v3": 3.1.18
   "@playwright/test": 1.64.1
@@ -43,7 +43,7 @@ catalog:
   react-dom: ^19.3.1
   anywidget-bundle: 0.1.1
 
-minimumReleaseAge: 4320
+minimumReleaseAge: 2880
 minimumReleaseAgeStrict: true
 # Security patches newer than the release-age window.
 minimumReleaseAgeExclude:

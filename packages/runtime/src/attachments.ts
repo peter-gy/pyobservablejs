@@ -1,4 +1,4 @@
-import { FileAttachment, type NotebookRuntime, registerFile } from "@observablehq/notebook-kit/runtime";
+import { FileAttachment, type NotebookRuntime, type library, registerFile } from "@observablehq/notebook-kit/runtime";
 import type { RuntimeValue } from "@observablehq/runtime";
 import { Library } from "@observablehq/stdlib";
 import { isCallable, isObjectValue, isString } from "./value-kind";
@@ -36,6 +36,7 @@ export type SQLiteGlobalConfig = {
 };
 type RuntimeRecord = Record<string, RuntimeValue>;
 type DuckDBMethod<Receiver extends object> = (this: Receiver, ...args: RuntimeValue[]) => RuntimeValue;
+type DuckDBClientClass = Awaited<ReturnType<(typeof library)["DuckDBClient"]>>;
 type DuckDBFileAttachment = {
 	name: string;
 	href?: string;
@@ -130,6 +131,29 @@ export function createDuckDBClient<T extends object>(DuckDBClient: T, registry: 
 			return value;
 		},
 	});
+}
+
+type FileDatabaseDefinition = readonly [
+	readonly ["DuckDBClient", "invalidation"],
+	(DuckDBClient: DuckDBClientClass, invalidation: Promise<void>) => Promise<InstanceType<DuckDBClientClass>>,
+];
+
+/** Defines `db` over this runtime's attachments, served like `DuckDBClient.of` sources. */
+export function fileDatabase(registry: AttachmentRegistry): FileDatabaseDefinition {
+	return [
+		["DuckDBClient", "invalidation"],
+		async (DuckDBClient: DuckDBClientClass, invalidation: Promise<void>) => {
+			const files = await Promise.all(
+				Array.from(registry.names, async (name) => ({
+					name,
+					href: await registeredBlobUrl(FileAttachment(name, registry.baseUrl), registry),
+				})),
+			);
+			const db = await DuckDBClient.from(files, undefined);
+			void invalidation.then(() => db.terminate());
+			return db;
+		},
+	] as const;
 }
 
 function callDuckDBMethod<Receiver extends object>(
