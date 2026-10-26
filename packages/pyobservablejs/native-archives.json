@@ -1,0 +1,67 @@
+{
+	"v8Version": "150.4.0",
+	"features": ["simdutf", "use_custom_libcxx"],
+	"macosDeploymentTarget": "12.0",
+	"targets": {
+		"x86_64-unknown-linux-gnu": {
+			"archive": {
+				"url": "https://github.com/denoland/rusty_v8/releases/download/v150.4.0/librusty_v8_simdutf_release_x86_64-unknown-linux-gnu.a.gz",
+				"sha256": "f48762ca10d1f1fc605a441c5ae430ec8ce1e9e80f14d78fbc42cb878c30b476",
+				"size": 38799023
+			},
+			"binding": {
+				"url": "https://github.com/denoland/rusty_v8/releases/download/v150.4.0/src_binding_simdutf_release_x86_64-unknown-linux-gnu.rs",
+				"sha256": "7727826ae479bdb645e807239fb12d1f8e2e23de7a6cf16f5ee592690d1d8506",
+				"size": 39884
+			}
+		},
+		"aarch64-unknown-linux-gnu": {
+			"archive": {
+				"url": "https://github.com/denoland/rusty_v8/releases/download/v150.4.0/librusty_v8_simdutf_release_aarch64-unknown-linux-gnu.a.gz",
+				"sha256": "539e283815a396a5796f32858b42e517b858ebaaeaaad05d03290ee8c864a527",
+				"size": 37577326
+			},
+			"binding": {
+				"url": "https://github.com/denoland/rusty_v8/releases/download/v150.4.0/src_binding_simdutf_release_aarch64-unknown-linux-gnu.rs",
+				"sha256": "7727826ae479bdb645e807239fb12d1f8e2e23de7a6cf16f5ee592690d1d8506",
+				"size": 39884
+			}
+		},
+		"x86_64-apple-darwin": {
+			"archive": {
+				"url": "https://github.com/denoland/rusty_v8/releases/download/v150.4.0/librusty_v8_simdutf_release_x86_64-apple-darwin.a.gz",
+				"sha256": "a750271fec6b211457ed0a5cf7d2eab1924b265621a82da86ab959d6ff0823e4",
+				"size": 39073447
+			},
+			"binding": {
+				"url": "https://github.com/denoland/rusty_v8/releases/download/v150.4.0/src_binding_simdutf_release_x86_64-apple-darwin.rs",
+				"sha256": "ca5adf0cf89c9a70ad460ae73648b2fe89b74aa113b3cb7f757b6a02b758394f",
+				"size": 39895
+			}
+		},
+		"aarch64-apple-darwin": {
+			"archive": {
+				"url": "https://github.com/denoland/rusty_v8/releases/download/v150.4.0/librusty_v8_simdutf_release_aarch64-apple-darwin.a.gz",
+				"sha256": "5aeffd8d5a0c1b79ac1d70af83d5b19099655fd9c645a794dc43f101f779838c",
+				"size": 39039034
+			},
+			"binding": {
+				"url": "https://github.com/denoland/rusty_v8/releases/download/v150.4.0/src_binding_simdutf_release_aarch64-apple-darwin.rs",
+				"sha256": "ca5adf0cf89c9a70ad460ae73648b2fe89b74aa113b3cb7f757b6a02b758394f",
+				"size": 39895
+			}
+		},
+		"x86_64-pc-windows-msvc": {
+			"archive": {
+				"url": "https://github.com/denoland/rusty_v8/releases/download/v150.4.0/rusty_v8_simdutf_release_x86_64-pc-windows-msvc.lib.gz",
+				"sha256": "f231f82cbacb9aefe6d9af57e6df2e8959a40e001f79306485133e3c075b98f0",
+				"size": 39225458
+			},
+			"binding": {
+				"url": "https://github.com/denoland/rusty_v8/releases/download/v150.4.0/src_binding_simdutf_release_x86_64-pc-windows-msvc.rs",
+				"sha256": "574c7abef53a0f065f615cb0c9e2f4041d22f21da3b7d94bca45ca3147750e58",
+				"size": 40865
+			}
+		}
+	}
+}

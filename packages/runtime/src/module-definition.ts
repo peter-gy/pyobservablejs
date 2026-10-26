@@ -58,7 +58,7 @@ export function createNotebookModule(
 		}
 		const defineCell = (cell: (typeof analysis.cells)[number]) => {
 			if (!cell.definition) return;
-			for (const imported of cell.definition.imports ?? [])
+			for (const imported of cell.definition.importDefinitions ?? [])
 				defineCell({ ...cell, cell: { ...cell.cell, id: nextModuleCellId(main) }, definition: imported });
 			const outputRoot = root.ownerDocument.createElement("div");
 			const definition = createRuntimeDefinition(cell.cell, cell.definition, {

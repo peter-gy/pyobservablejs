@@ -5,40 +5,37 @@ import datetime
 import gc
 import gzip
 import math
+import os
+import pathlib
 import struct
 import subprocess
+import sys
 import threading
 import weakref
-from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Literal, cast
 
 import observablejs as obs
 import pytest
+from observablejs._host import EngineHost
 
-pytest.importorskip("deno")
+pytest.importorskip("observablejs._engine")
 
 
 @pytest.fixture
-def server_processes(
-    monkeypatch: pytest.MonkeyPatch,
-) -> Iterator[list[subprocess.Popen[Any]]]:
-    processes: list[subprocess.Popen[Any]] = []
-    start = subprocess.Popen
+def evaluation_engines(monkeypatch: pytest.MonkeyPatch) -> list[EngineHost]:
+    from observablejs import _execution
 
-    def track(*args: Any, **kwargs: Any) -> subprocess.Popen[Any]:
-        process = start(*args, **kwargs)
-        processes.append(process)
-        return process
+    engines: list[EngineHost] = []
+    start = _execution._start_engine
 
-    monkeypatch.setattr(subprocess, "Popen", track)
-    try:
-        yield processes
-    finally:
-        for process in processes:
-            if process.poll() is None:
-                process.kill()
-                process.wait()
+    def track(*args: Any) -> EngineHost:
+        engine = start(*args)
+        engines.append(engine)
+        return engine
+
+    monkeypatch.setattr(_execution, "_start_engine", track)
+    return engines
 
 
 def test_names_and_graph_do_not_execute_cells_or_open_widgets() -> None:
@@ -99,9 +96,9 @@ def test_selected_reads_bindings_and_detached_python_values() -> None:
         assert reference.to_python() == [{"value": 6}]
 
 
-@pytest.mark.parametrize("engine", ["deno", "chromium"])
+@pytest.mark.parametrize("engine", ["embedded", "chromium"])
 def test_dataframes_preserve_nested_values_projection_and_binary_reads(
-    engine: Literal["deno", "chromium"],
+    engine: Literal["embedded", "chromium"],
 ) -> None:
     import pandas as pd
     import polars as pl
@@ -225,7 +222,7 @@ def test_classic_imports_preserve_keys_and_python_binding_lifecycle() -> None:
 
 
 def test_python_types_and_console_output() -> None:
-    date = datetime.datetime(2026, 1, 2, tzinfo=datetime.timezone.utc)
+    date = datetime.datetime(2026, 1, 2, tzinfo=datetime.UTC)
     with obs.Notebook(
         obs.js(
             'console.log("keep stdout framed"); const result = {number, date, infinity, bytes: Array.from(bytes)}'
@@ -344,19 +341,23 @@ def test_timeout_ends_noncooperative_execution() -> None:
         notebook.data["result"].to_python(timeout=0.2)
 
 
-def test_filesystem_access_stays_restricted() -> None:
-    with (
-        obs.Notebook(
-            obs.js('const data = Deno.readTextFileSync("/etc/hosts")')
-        ) as notebook,
-        pytest.raises(obs.errors.NotebookError, match="Requires"),
-    ):
-        notebook.data["data"].to_python(timeout=5)
+def test_notebook_code_has_no_host_runtime_access() -> None:
+    with obs.Notebook(
+        obs.js(
+            "const globals = ['Deno', 'process', '__pyobservablejsHost']"
+            ".map((name) => typeof globalThis[name])"
+        )
+    ) as notebook:
+        assert notebook.data["globals"].to_python() == [
+            "undefined",
+            "undefined",
+            "undefined",
+        ]
 
 
-@pytest.mark.parametrize("engine", ["deno", "chromium"])
+@pytest.mark.parametrize("engine", ["embedded", "chromium"])
 def test_remote_attachments_and_modules_work_by_default(
-    engine: Literal["deno", "chromium"],
+    engine: Literal["embedded", "chromium"],
 ) -> None:
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:
@@ -397,7 +398,7 @@ data.forEach((row, i) => data[i] = ({{state: row.State, total: +row.Value * fact
         ) as notebook:
             data = (
                 notebook.data
-                if engine == "deno"
+                if engine == "embedded"
                 else notebook.data.using(engine=engine)
             )
             expected = [{"state": "CA", "total": 14}, {"state": "NY", "total": 6}]
@@ -418,6 +419,50 @@ data.forEach((row, i) => data[i] = ({{state: row.State, total: +row.Value * fact
         server.shutdown()
         server.server_close()
         worker.join()
+
+
+@pytest.mark.parametrize(
+    ("cache_control", "requests"), [("max-age=600", 1), ("no-store", 2)]
+)
+def test_processes_reuse_remote_modules_within_their_cache_lifetime(
+    tmp_path: pathlib.Path, cache_control: str, requests: int
+) -> None:
+    served: list[str] = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            served.append(self.path)
+            payload = b"export const answer = 42;"
+            self.send_response(200)
+            self.send_header("Content-Type", "text/javascript")
+            self.send_header("Cache-Control", cache_control)
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def log_message(self, format: str, *args: object) -> None:
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    script = f"""
+import observablejs as obs
+source = 'const {{answer}} = await import("http://127.0.0.1:{server.server_port}/answer.js")'
+with obs.Notebook(obs.js(source)) as notebook:
+    assert notebook.data["answer"].to_python() == 42
+"""
+    environment = {**os.environ, "PYOBSERVABLEJS_CACHE_DIR": str(tmp_path)}
+    try:
+        for _ in range(2):
+            subprocess.run(
+                [sys.executable, "-c", script], env=environment, check=True, timeout=60
+            )
+    finally:
+        server.shutdown()
+        server.server_close()
+        worker.join()
+    assert served == ["/answer.js"] * requests
 
 
 def test_chromium_canvas_reads_and_png_pixel_density() -> None:
@@ -460,8 +505,8 @@ def test_chromium_canvas_reads_and_png_pixel_density() -> None:
             )
 
 
-def test_collecting_a_notebook_releases_its_child_processes(
-    server_processes: list[subprocess.Popen[Any]],
+def test_collecting_a_notebook_closes_its_engines(
+    evaluation_engines: list[EngineHost],
 ) -> None:
     notebook = obs.Notebook(obs.js("const x=1"))
     assert notebook.data["x"].to_python() == 1
@@ -469,8 +514,8 @@ def test_collecting_a_notebook_releases_its_child_processes(
     del notebook
     gc.collect()
     assert reference() is None
-    assert server_processes
-    assert all(process.poll() is not None for process in server_processes)
+    assert evaluation_engines
+    assert all(engine.closed for engine in evaluation_engines)
 
 
 def test_chromium_layout_notifications_do_not_fail_data_reads() -> None:
@@ -587,7 +632,7 @@ def test_async_discovered_references_expire_before_read_and_describe() -> None:
 
 
 def test_cancelled_noncooperative_read_stops_execution_and_can_recover(
-    server_processes: list[subprocess.Popen[Any]],
+    evaluation_engines: list[EngineHost],
 ) -> None:
     entered = threading.Event()
 
@@ -616,8 +661,8 @@ def test_cancelled_noncooperative_read_stops_execution_and_can_recover(
             task.cancel()
             with pytest.raises(asyncio.CancelledError):
                 await task
-            assert server_processes
-            assert all(process.poll() is not None for process in server_processes)
+            assert evaluation_engines
+            assert all(engine.closed for engine in evaluation_engines)
             notebook.update_variables({"spin": False})
             assert await data["result"].to_python() == 1
 
@@ -633,25 +678,25 @@ def test_cancelled_noncooperative_read_stops_execution_and_can_recover(
     "prepared_analysis", [False, True], ids=["inspection", "evaluation"]
 )
 def test_cancelled_cold_acquisition_closes_engine_before_returning(
-    monkeypatch: pytest.MonkeyPatch, prepared_analysis: bool
+    monkeypatch: pytest.MonkeyPatch,
+    evaluation_engines: list[EngineHost],
+    prepared_analysis: bool,
 ) -> None:
-    from observablejs._server_process import ServerProcess
-
     entered = threading.Event()
     released = threading.Event()
-    created: list[ServerProcess] = []
-    original_wait = ServerProcess._wait_ready
-    original_close = ServerProcess.close
+    created: list[EngineHost] = []
+    original_wait = EngineHost._wait_ready
+    original_close = EngineHost.close
 
-    def pause_startup(process: ServerProcess) -> None:
-        if not created:
-            created.append(process)
+    def pause_startup(engine: EngineHost) -> None:
+        if not created and engine in evaluation_engines:
+            created.append(engine)
             entered.set()
             assert released.wait(5)
-        original_wait(process)
+        original_wait(engine)
 
-    def close(process: ServerProcess) -> None:
-        original_close(process)
+    def close(engine: EngineHost) -> None:
+        original_close(engine)
         released.set()
 
     async def run(notebook: obs.Notebook) -> None:
@@ -660,12 +705,12 @@ def test_cancelled_cold_acquisition_closes_engine_before_returning(
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
             await task
-        assert created[0]._process.poll() is not None
+        assert created[0].closed
         assert await notebook.data.aio["result"].to_python() == 42
 
     with obs.Notebook(obs.js("const result = 42")) as notebook:
         if prepared_analysis:
             assert notebook.data.names() == ("result",)
-        monkeypatch.setattr(ServerProcess, "_wait_ready", pause_startup)
-        monkeypatch.setattr(ServerProcess, "close", close)
+        monkeypatch.setattr(EngineHost, "_wait_ready", pause_startup)
+        monkeypatch.setattr(EngineHost, "close", close)
         asyncio.run(run(notebook))

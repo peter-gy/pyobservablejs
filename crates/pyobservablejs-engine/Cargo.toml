@@ -1,0 +1,32 @@
+[package]
+name = "pyobservablejs-engine"
+description = "Notebook engine that hosts the pyobservablejs JavaScript bundle in V8 isolates"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+include = ["/Cargo.toml", "/build.rs", "/src/**", "/bundle/*.js", "/tests/**"]
+
+[dependencies]
+base64.workspace = true
+deno_core.workspace = true
+deno_error.workspace = true
+deno_web.workspace = true
+deno_webidl.workspace = true
+getrandom.workspace = true
+percent-encoding.workspace = true
+serde.workspace = true
+sha2.workspace = true
+tokio.workspace = true
+ureq.workspace = true
+
+[build-dependencies]
+serde_json.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true

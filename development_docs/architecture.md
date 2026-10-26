@@ -100,7 +100,7 @@ decodes Python values, and calls `mountNotebook`. Model changes either invoke a
 mount method or replace the mount when its source, selection, theme, attachments,
 or runtime options change.
 
-`protocol/src/values.ts` owns the Python wire codec shared by widget and server. `ReadbackPublisher` serializes
+`protocol/src/values.ts` owns the Python wire codec shared by the widget and engine. `ReadbackPublisher` serializes
 native runtime results, converts graph field names to the wire shape, and
 publishes one revisioned `_readback` mapping. It owns transport revisions and
 generation guards across remounts. Serialization failures become cell errors at
@@ -235,37 +235,75 @@ host supplies a DOM document. Neither a mounted view nor anywidget participates.
 for both hosts; display and input observers remain in their respective hosts.
 
 `@pyobservablejs/protocol` owns Python value encoding and read request validation.
-The widget and `@pyobservablejs/server` import it. Dependencies point from either
+The widget and `@pyobservablejs/engine` import it. Dependencies point from either
 adapter toward the protocol and runtime packages. The runtime never imports an
 adapter or Python wire types.
 
-The server adapter creates a Happy DOM realm, then loads Notebook Kit. It bundles
-its dependencies into the Python wheel and uses Deno's native module loader for
-notebook imports. Classic package references use native ESM module entries.
-Browser DOM resource loading and navigation are disabled. See
-[the server adapter](../packages/server/README.md) for process framing.
+### Embedded engine
+
+Native wheels contain `observablejs._engine`, a [PyO3](https://pyo3.rs/)
+extension built from `crates/pyobservablejs-python`. It wraps the
+`pyobservablejs-engine` crate, which embeds [V8](https://v8.dev/) through
+[deno_core](https://docs.rs/deno_core/) and has no Python dependency. Each
+`Engine` owns one isolate on its own thread, spawned from a single V8 platform
+thread. The isolate loads the `deno_web` extension sources embedded at build
+time, runs `src/bootstrap.js`, then evaluates the `@pyobservablejs/engine`
+bundle. See [the engine package](../packages/engine/README.md) for module order
+inside the bundle.
+
+| Module                                 | Owns                                                                      |
+| -------------------------------------- | ------------------------------------------------------------------------- |
+| `pyobservablejs-python/src/lib.rs`     | The Python `Engine` class, error mapping, and GIL release while waiting   |
+| `pyobservablejs-engine/src/worker.rs`  | `Engine`, platform and isolate threads, message channels, and fork checks |
+| `pyobservablejs-engine/src/isolate.rs` | `JsRuntime` construction, the heap limit, bootstrap, and the event loop   |
+| `pyobservablejs-engine/src/host.rs`    | Host operations: send, receive, fetch, random bytes, and console capture  |
+| `pyobservablejs-engine/src/loader.rs`  | Embedded bundle chunks and remote ES module loading                       |
+| `pyobservablejs-engine/src/network.rs` | Network policy, `data:` URLs, and HTTP with policy-checked redirects      |
+| `pyobservablejs-engine/src/cache.rs`   | Process and disk module caches with `Cache-Control` freshness             |
+
+The engine crate's integration tests in `tests/engine.rs` drive real isolates
+through the public `Engine` API.
+
+Python sends JSON requests through an unbounded channel. JavaScript replies with
+a JSON header and binary buffers, which Python receives as `bytes` without JSON
+array conversion. `stop()` terminates running JavaScript and ends the event
+loop, which bounds synchronous loops. The near-heap-limit callback terminates
+execution and reports `MemoryError`, so heap exhaustion stops one isolate and
+leaves the Python process running. Engines check their creator process ID and
+refuse use after `fork`.
+
+The network policy applies to the requested URL, every redirect target, and the
+final URL of cached modules. Remote module source is cached per process and, with
+a lifetime from `Cache-Control: max-age`, in the user cache directory that
+`_host.module_cache_dir()` selects.
+
+### Python hosts
 
 Python `_controller.py` owns transport-independent definition and variable state.
 `_widget_session.py` creates the anywidget transport on the first `view()` call
 and mirrors coherent controller snapshots. `_view.py` owns the renderable widget
 and its correlated read and state-publication boundaries. `_execution.py` owns a
-private process resource with one immutable snapshot. It applies current controller
+private engine resource with one immutable snapshot. It applies current controller
 bindings before preparing synchronous or asynchronous reads, including validation
 of discovered dataset generations. Headless I/O never runs inside controller observers. Public data, file,
 cell, and graph namespaces delegate to that backend or to the originating
-anywidget view. Core imports never require Deno. `_server_process.py` owns
-Deno discovery, framed I/O, pending requests, bounded stderr capture, and process
-termination. Python metadata and state decoding are shared with browser views.
-Static inspection is transferred at startup. Subsequent checkpoints carry
-monotonically revisioned state, dataset metadata, and diagnostics.
+anywidget view. Importing `observablejs` loads neither the native extension nor
+Playwright.
 
-The Chromium engine runs the same command service in an actual browser through
-Playwright hosted by Deno. It calls `mountNotebook` directly, without a widget.
-Deno serves browser modules through a virtual origin intercepted by Playwright,
-and relays framed responses to Python. Binary bytes cross this boundary without
-conversion into Python JSON arrays. The engine is explicit and fixed per server.
-The protocol package also owns shared cell readback encoding and graph wire
-mapping, while adapters own publication revisions and delivery.
+`_host.py` owns request correlation, readiness, timeouts, and notebook source
+callbacks for both engines, plus the embedded transport. Static inspection shares
+one offline embedded engine that closes after 30 idle seconds. Python metadata
+and state decoding are shared with browser views. Static inspection is
+transferred at startup. Subsequent checkpoints carry monotonically revisioned
+state, dataset metadata, and diagnostics.
+
+`_chromium.py` runs the same command service in headless Chromium through
+[Playwright for Python](https://playwright.dev/python/) on a private event loop
+thread. The page calls `mountNotebook` directly, without a widget. A routed
+virtual origin serves the packaged browser modules and receives framed responses.
+The engine is explicit and fixed per execution. The protocol package also owns
+shared cell readback encoding and graph wire mapping, while adapters own
+publication revisions and delivery.
 
 ## Data namespaces
 
@@ -286,6 +324,6 @@ representation, exact read encoding, and metadata-only descriptions. Runtime
 value inventory settlement powers discovery independently of preview capture.
 Exact reads validate and encode values in one traversal with an explicit budget.
 Preview summarization is a separate contract and does not participate in full reads.
-Anywidget requests and Deno commands use these same contracts. Public namespace
+Anywidget requests and engine commands use these same contracts. Public namespace
 methods hide wire records and transport revisions while retaining snapshot-safe
 discovery references.

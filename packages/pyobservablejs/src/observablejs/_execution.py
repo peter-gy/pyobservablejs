@@ -1,4 +1,4 @@
-"""Headless notebook inspection and evaluation using the optional Deno runtime."""
+"""Headless notebook inspection and evaluation in the embedded engine or Chromium."""
 
 from __future__ import annotations
 
@@ -8,9 +8,16 @@ import weakref
 from collections.abc import AsyncGenerator, Callable, Generator, Sequence
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
-from typing import Any, Literal, Self, TypedDict, Unpack
+from typing import Any, Self, TypedDict, Unpack
 
 from . import errors
+from ._host import (
+    EmbeddedEngine,
+    EngineHost,
+    EngineName,
+    EngineReply,
+    validate_network,
+)
 from ._inspection import (
     DatasetInfo,
     NotebookInspection,
@@ -25,12 +32,11 @@ from ._notebook import Notebook, NotebookCell
 from ._observable_fetch import fetch_observablehq_document
 from ._observable_model import notebook_model_from_observablehq_document
 from ._readback import state_from_readback, validate_readback_wire
-from ._server_process import ServerProcess, ServerReply
 from .types import CellSelector, ViewState
 
 
 class ExecutionOptions(TypedDict, total=False):
-    engine: Literal["deno", "chromium"]
+    engine: EngineName
     network: bool | Sequence[str]
     resolve_notebook: Callable[[str], Notebook]
     timeout: float | None
@@ -70,15 +76,16 @@ class Evaluation:
         notebook: Notebook,
         selectors: Sequence[CellSelector] = (),
         *,
-        engine: Literal["deno", "chromium"] = "deno",
+        engine: EngineName = "embedded",
         scale: float = 1.0,
         network: bool | Sequence[str] = True,
         resolve_notebook: Callable[[str], Notebook] | None = None,
         timeout: float | None = 30,
     ) -> None:
-        if engine not in {"deno", "chromium"}:
-            raise ValueError("engine must be deno or chromium")
-        self._engine: Literal["deno", "chromium"] = engine
+        if engine not in {"embedded", "chromium"}:
+            raise ValueError("engine must be embedded or chromium")
+        network = validate_network(network)
+        self._engine: EngineName = engine
         controller = notebook._controller
         controller._require_open()
         self._notebook = notebook
@@ -98,10 +105,8 @@ class Evaluation:
         self._timeout = timeout
         self._network = network
         self._resolve_notebook = resolve_notebook
-        self._process = ServerProcess(
-            engine=engine, scale=scale, network=network, source=self._resolve_source
-        )
-        self._finalizer = weakref.finalize(self, self._process.close)
+        self._host = _start_engine(engine, scale, network, self._resolve_source)
+        self._finalizer = weakref.finalize(self, self._host.close)
         controller._resources.add(self)
 
     def open(self) -> Self:
@@ -170,7 +175,7 @@ class Evaluation:
             else:
                 operation, values = "replace", wire
             self._accept(
-                self._process.request(operation, timeout=timeout, variables=values)
+                self._host.request(operation, timeout=timeout, variables=values)
             )
             self._sequence, self._variable_wire = sequence, wire
 
@@ -229,10 +234,10 @@ class Evaluation:
         operation: str,
         selector: str | NotebookCell | DatasetInfo,
         **options: Unpack[ReadParameters],
-    ) -> ServerReply:
+    ) -> EngineReply:
         parameters = self._prepare_read(selector, **options)
         with self._transport_guard():
-            reply = self._process.request(
+            reply = self._host.request(
                 operation, timeout=options.get("timeout", 30), **parameters
             )
             self._check_reply(reply)
@@ -243,7 +248,7 @@ class Evaluation:
         operation: str,
         selector: str | NotebookCell | DatasetInfo,
         **options: Unpack[ReadParameters],
-    ) -> ServerReply:
+    ) -> EngineReply:
         async with self._async_transport_guard():
             parameters = await asyncio.to_thread(
                 self._prepare_read, selector, **options
@@ -268,7 +273,7 @@ class Evaluation:
         reply = await self._read_value_async("read", selector, **options)
         return self._decode_read(reply)
 
-    def _decode_read(self, reply: ServerReply) -> ReadResult:
+    def _decode_read(self, reply: EngineReply) -> ReadResult:
         with self._transport_guard():
             return decode_read(reply.message["result"], self._notebook, reply.buffers)
 
@@ -310,11 +315,11 @@ class Evaluation:
             self.close()
             raise
 
-    def _request(self, operation: str, **params: Any) -> ServerReply:
+    def _request(self, operation: str, **params: Any) -> EngineReply:
         with self._transport_guard():
             if operation != "open":
                 self._sync_variables(params.get("timeout", self._timeout))
-            return self._process.request(operation, **params)
+            return self._host.request(operation, **params)
 
     @asynccontextmanager
     async def _async_transport_guard(self) -> AsyncGenerator[None]:
@@ -331,19 +336,19 @@ class Evaluation:
 
     async def request_async(
         self, operation: str, *, timeout: float | None = 30, **params: object
-    ) -> ServerReply:
+    ) -> EngineReply:
         async with self._async_transport_guard():
             await asyncio.to_thread(self._sync_variables, timeout)
             return await self._send_async(operation, timeout=timeout, **params)
 
     async def _send_async(
         self, operation: str, *, timeout: float | None = 30, **params: object
-    ) -> ServerReply:
-        reply = await self._process.request_async(operation, timeout=timeout, **params)
+    ) -> EngineReply:
+        reply = await self._host.request_async(operation, timeout=timeout, **params)
         self._check_reply(reply)
         return reply
 
-    def _accept(self, reply: ServerReply) -> None:
+    def _accept(self, reply: EngineReply) -> None:
         with self._transport_guard():
             self._check_reply(reply)
             self._accept_snapshot(reply.message["result"])
@@ -386,7 +391,7 @@ class Evaluation:
             if previous is None or snapshot.revision > previous.revision:
                 self._snapshot = snapshot
 
-    def _check_reply(self, reply: ServerReply) -> None:
+    def _check_reply(self, reply: EngineReply) -> None:
         if "error" in reply.message:
             if "snapshot" in reply.message:
                 self._accept_snapshot(reply.message["snapshot"])
@@ -420,7 +425,7 @@ class Evaluation:
         }
 
     def close(self) -> None:
-        """Stop Deno and release all pending reads and reactive resources."""
+        """Stop the engine and release all pending reads and reactive resources."""
         if self._closed:
             return
         self._closed = True
@@ -432,6 +437,70 @@ class Evaluation:
 
     def __exit__(self, *_exc: object) -> None:
         self.close()
+
+
+def _start_engine(
+    engine: EngineName,
+    scale: float,
+    network: bool | Sequence[str],
+    source: Callable[[str], dict[str, Any]],
+) -> EngineHost:
+    if engine == "chromium":
+        from ._chromium import ChromiumEngine
+
+        return ChromiumEngine(scale=scale, network=network, source=source)
+    return EmbeddedEngine(network=network, source=source)
+
+
+def _inspection_source(specifier: str) -> dict[str, Any]:
+    raise RuntimeError(f"Static inspection cannot fetch {specifier}")
+
+
+class _Inspector:
+    """One offline engine shared by static inspection.
+
+    Callers lease the engine. It closes after idling for `_IDLE` seconds with no
+    lease. A timed-out or cancelled inspection closes it, and the next lease
+    starts a fresh one.
+    """
+
+    _IDLE = 30.0
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._engine: EmbeddedEngine | None = None
+        self._leases = 0
+        self._timer: threading.Timer | None = None
+
+    def acquire(self) -> EmbeddedEngine:
+        with self._lock:
+            if self._timer is not None:
+                self._timer.cancel()
+                self._timer = None
+            if self._engine is None or self._engine.closed:
+                self._engine = EmbeddedEngine(network=False, source=_inspection_source)
+            self._leases += 1
+            return self._engine
+
+    def release(self, engine: EmbeddedEngine) -> None:
+        with self._lock:
+            self._leases -= 1
+            if self._leases or self._engine is not engine or engine.closed:
+                return
+            self._timer = threading.Timer(self._IDLE, self._expire, (engine,))
+            self._timer.daemon = True
+            self._timer.start()
+
+    def _expire(self, engine: EmbeddedEngine) -> None:
+        with self._lock:
+            # A lease taken after the timer fired keeps the engine.
+            if self._leases or self._engine is not engine:
+                return
+            self._engine = None
+        engine.close()
+
+
+_inspector = _Inspector()
 
 
 def _inspection_parameters(notebook: Notebook) -> dict[str, object]:
@@ -446,11 +515,7 @@ def _inspection_parameters(notebook: Notebook) -> dict[str, object]:
     }
 
 
-def _inspection_source(specifier: str) -> dict[str, Any]:
-    raise RuntimeError(f"Static inspection cannot fetch {specifier}")
-
-
-def _inspection_result(reply: ServerReply, notebook: Notebook) -> NotebookInspection:
+def _inspection_result(reply: EngineReply, notebook: Notebook) -> NotebookInspection:
     if "error" in reply.message:
         raise errors._exception_for(
             tuple(errors._diagnostic_from_wire(item) for item in reply.message["error"])
@@ -465,22 +530,22 @@ def inspect_definition(
 ) -> NotebookInspection:
     """Analyze source with Notebook Kit without executing any cell."""
     parameters = _inspection_parameters(notebook)
-    process = ServerProcess(network=False, source=_inspection_source)
+    engine = _inspector.acquire()
     try:
-        reply = process.request("inspect", timeout=timeout, **parameters)
-        return _inspection_result(reply, notebook)
+        reply = engine.request("inspect", timeout=timeout, **parameters)
     finally:
-        process.close()
+        _inspector.release(engine)
+    return _inspection_result(reply, notebook)
 
 
 async def inspect_definition_async(
     notebook: Notebook, *, timeout: float | None = 30
 ) -> NotebookInspection:
-    """Own inspection startup and transport through asynchronous cancellation."""
+    """Inspect through the shared engine. Cancellation closes that engine."""
     parameters = _inspection_parameters(notebook)
-    process = ServerProcess(network=False, source=_inspection_source)
+    engine = await asyncio.to_thread(_inspector.acquire)
     try:
-        reply = await process.request_async("inspect", timeout=timeout, **parameters)
-        return _inspection_result(reply, notebook)
+        reply = await engine.request_async("inspect", timeout=timeout, **parameters)
     finally:
-        await asyncio.to_thread(process.close)
+        _inspector.release(engine)
+    return _inspection_result(reply, notebook)

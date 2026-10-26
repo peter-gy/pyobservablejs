@@ -1,4 +1,4 @@
-import type { ESTree, Reference, Scope, SourceCode, Variable } from "@oxlint/plugins";
+import type { ESTree, Reference, Scope, SourceCode, Variable } from "vite-plus/lint/plugins";
 
 const functionInvocationMethods = new Set(["apply", "call"]);
 const functionBindingMethods = new Set(["bind"]);

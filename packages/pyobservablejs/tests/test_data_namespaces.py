@@ -12,7 +12,7 @@ from test_notebook_access import dataset, inspection, read_result
 
 @pytest.fixture
 def widget_only(monkeypatch: pytest.MonkeyPatch) -> Iterator[Browser]:
-    monkeypatch.setitem(sys.modules, "deno", None)
+    monkeypatch.setitem(sys.modules, "observablejs._engine", None)
     monkeypatch.setitem(sys.modules, "observablejs._execution", None)
     with obs.Notebook(
         obs.ojs("rows = [{amount: 7}]", key="rows"),
@@ -24,7 +24,9 @@ def widget_only(monkeypatch: pytest.MonkeyPatch) -> Iterator[Browser]:
         yield browser
 
 
-def test_widget_names_graph_and_python_reads_need_no_deno(widget_only: Browser) -> None:
+def test_widget_names_graph_and_python_reads_need_no_native_engine(
+    widget_only: Browser,
+) -> None:
     async def run() -> None:
         names = asyncio.create_task(widget_only.view.data.names())
         request = await widget_only.message()
@@ -115,10 +117,21 @@ def test_widget_dataframes_and_discovered_references(widget_only: Browser) -> No
     asyncio.run(run())
 
 
+def test_headless_access_without_the_native_engine_names_the_wheel(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setitem(sys.modules, "observablejs._engine", None)
+    with (
+        obs.Notebook(obs.js("const answer = 42")) as notebook,
+        pytest.raises(ImportError, match="native pyobservablejs wheel"),
+    ):
+        notebook.data["answer"].to_python()
+
+
 def test_files_are_synchronous_and_have_optional_async_access(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setitem(sys.modules, "deno", None)
+    monkeypatch.setitem(sys.modules, "observablejs._engine", None)
     with obs.Notebook(
         files={
             "sales.csv": "data:text/csv,year,amount%0A2026,7%0A",
@@ -256,7 +269,7 @@ def test_file_reads_decode_http_content_encoding(
             self.headers = {"Content-Encoding": encoding}
 
     monkeypatch.setattr(urllib.request, "urlopen", lambda *args, **kwargs: Response())
-    monkeypatch.setitem(sys.modules, "deno", None)
+    monkeypatch.setitem(sys.modules, "observablejs._engine", None)
     with obs.Notebook(
         files={"data.json": "https://example.test/data.json"}
     ) as notebook:

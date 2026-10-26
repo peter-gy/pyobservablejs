@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any
 
 from . import _conversions as convert
 from ._data_types import (
@@ -25,6 +25,7 @@ if TYPE_CHECKING:
 
     from ._async_data import AsyncNotebookData
     from ._execution import Evaluation
+    from ._host import EngineName
     from ._notebook import Notebook, NotebookCell
     from .types import CellSelector
 
@@ -35,7 +36,7 @@ class NotebookData:
         notebook: Notebook,
         *,
         scope: int | None = None,
-        engine: Literal["deno", "chromium"] = "deno",
+        engine: EngineName = "embedded",
         network: bool | Sequence[str] = True,
         resolve_notebook: Callable[[str], Notebook] | None = None,
         _pool: _EvaluationPool | None = None,
@@ -58,12 +59,12 @@ class NotebookData:
     def using(
         self,
         *,
-        engine: Literal["deno", "chromium"] = "deno",
+        engine: EngineName = "embedded",
         network: bool | Sequence[str] = True,
         resolve_notebook: Callable[[str], Notebook] | None = None,
     ) -> NotebookData:
-        if engine not in {"deno", "chromium"}:
-            raise ValueError("engine must be deno or chromium")
+        if engine not in {"embedded", "chromium"}:
+            raise ValueError("engine must be embedded or chromium")
         return NotebookData(
             self._notebook,
             scope=self._scope,

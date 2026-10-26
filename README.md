@@ -61,8 +61,8 @@ trust, since their JavaScript runs in the host page.
 
 ## Run headlessly
 
-Install `pyobservablejs[server]` to inspect and evaluate notebooks in Python
-scripts and services:
+Read notebook values in Python scripts and services. Native wheels for Linux,
+macOS, and Windows evaluate cells in a V8 engine inside the Python process:
 
 ```python
 print(notebook.with_variables(threshold=0.5).data["doubled"].to_python())

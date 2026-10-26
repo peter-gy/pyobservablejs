@@ -6,7 +6,7 @@ landing page lives in `src/pages`, the guide and reference pages live in
 registration.
 
 ```sh
-make docs
+pixi run docs
 ```
 
 The command runs the Docusaurus production build and writes the site to
@@ -32,7 +32,7 @@ index. Exercise worktree widget changes through the JupyterLab workflow in
 Build and preview the site locally:
 
 ```sh
-make docs-serve
+pixi run docs-serve
 ```
 
 Open `http://127.0.0.1:27331/`.

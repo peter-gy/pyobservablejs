@@ -6,12 +6,13 @@ import asyncio
 import threading
 from collections.abc import Callable, Sequence
 from contextlib import suppress
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 
 from . import errors
 
 if TYPE_CHECKING:
     from ._execution import Evaluation
+    from ._host import EngineName
     from ._notebook import Notebook
 
 
@@ -43,7 +44,7 @@ class _EvaluationPool:
     def __init__(
         self,
         notebook: Notebook,
-        engine: Literal["deno", "chromium"],
+        engine: EngineName,
         network: bool | Sequence[str],
         resolve_notebook: Callable[[str], Notebook] | None,
     ) -> None:

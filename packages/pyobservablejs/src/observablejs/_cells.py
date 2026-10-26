@@ -41,7 +41,7 @@ class Cell:
     pinned: bool = False
     output: str | None = None
     notebookkit_attrs: NotebookKitCellMetadata = dataclasses.field(
-        default_factory=lambda: cast(NotebookKitCellMetadata, {})
+        default_factory=NotebookKitCellMetadata
     )
 
     def __post_init__(self) -> None:

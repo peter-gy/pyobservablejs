@@ -82,16 +82,17 @@ The exception text is already formatted for agent execution output. Inspect
 selected structured fields in a subsequent call instead of repeatedly dumping
 full stacks and notebook source.
 
-| Exception              | Repair direction                                                                                                                                                                        |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `NotebookError`        | Inspect the producing cell, referenced variables, imports, and input data. Fix authored source or inputs.                                                                               |
-| `WidgetError`          | Inspect the named component, operation, stack, and cause against the installed package source. The component is a handling boundary, not proof that the defect is in that file.         |
-| `SerializationError`   | Distinguish a preview conversion failure from an evaluation failure. Read tables as Arrow/rows and supported scalar structures as JSON. Inspect DOM nodes and functions in the browser. |
-| `ReadError`            | Check the variable selector, data format, projection, path, attachment, and dataset revision.                                                                                           |
-| `ProtocolError`        | Preserve the traceback and installed package versions. Investigate incompatible browser assets or malformed messages rather than changing chart encodings.                              |
-| `StaleViewError`       | Obtain the current view and fresh dataset descriptors, then repeat the intended operation if it still applies.                                                                          |
-| `ViewClosedError`      | Use a live view. Create and display another when the session is still open.                                                                                                             |
-| `NotebookTimeoutError` | Confirm browser mounting and command-loop progress, then inspect unresolved imports or long-running work. A longer timeout will not repair a blocked host loop.                         |
+| Exception              | Repair direction                                                                                                                                                                                       |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `NotebookError`        | Inspect the producing cell, referenced variables, imports, and input data. Fix authored source or inputs.                                                                                              |
+| `WidgetError`          | Inspect the named component, operation, stack, and cause against the installed package source. The component is a handling boundary, not proof that the defect is in that file.                        |
+| `SerializationError`   | Distinguish a preview conversion failure from an evaluation failure. Read tables as Arrow/rows and supported scalar structures as JSON. Inspect DOM nodes and functions in the browser.                |
+| `ReadError`            | Check the variable selector, data format, projection, path, attachment, and dataset revision.                                                                                                          |
+| `EngineError`          | Read the message: a JavaScript heap limit, a stopped Chromium browser, or engine use after `fork`. Read less data per call, or start the process with `spawn`, then retry the read in a new execution. |
+| `ProtocolError`        | Preserve the traceback and installed package versions. Investigate incompatible browser assets or malformed messages rather than changing chart encodings.                                             |
+| `StaleViewError`       | Obtain the current view and fresh dataset descriptors, then repeat the intended operation if it still applies.                                                                                         |
+| `ViewClosedError`      | Use a live view. Create and display another when the session is still open.                                                                                                                            |
+| `NotebookTimeoutError` | Confirm browser mounting and command-loop progress, then inspect unresolved imports or long-running work. A longer timeout will not repair a blocked host loop.                                        |
 
 Local `TypeError` and `ValueError` usually identify invalid Python arguments.
 Do not turn a caught exception into a successful agent response that says the

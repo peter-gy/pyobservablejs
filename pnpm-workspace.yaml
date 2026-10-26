@@ -10,67 +10,70 @@ catalog:
   "@docusaurus/theme-mermaid": 3.10.2
   "@marimo-team/mdx-marimo": 0.0.5
   "@mermaid-js/layout-elk": 0.1.9
-  "@observablehq/notebook-kit": 2.6.4
+  "@observablehq/notebook-kit": 2.7.1
   "@observablehq/parser": ^6.1.0
   "@observablehq/runtime": 6.0.1
   "@observablehq/stdlib": ^5.8.8
   "@orama/plugin-docusaurus-v3": 3.1.18
-  "@oxlint/plugins": 1.76.0
-  "@playwright/test": 1.63.0
-  "@shikijs/core": ^4.3.1
-  "@shikijs/engine-javascript": ^4.3.1
-  "@shikijs/langs": ^4.3.1
-  "@shikijs/themes": ^4.3.1
-  "@types/node": ^22.20.1
-  "@uwdata/flechette": 2.5.0
-  acorn: 8.16.0
+  "@playwright/test": 1.64.1
+  "@shikijs/core": ^4.5.0
+  "@shikijs/engine-javascript": ^4.5.0
+  "@shikijs/langs": ^4.5.0
+  "@shikijs/themes": ^4.5.0
+  "@types/node": ^22.20.5
+  "@uwdata/flechette": 2.7.0
+  acorn: 8.19.0
   acorn-walk: 8.3.5
   apache-arrow: 21.2.0
   apache-arrow-17: npm:apache-arrow@17.0.0
-  docusaurus-plugin-llms: 0.5.1
-  jsdom: 29.1.1
-  happy-dom: 20.13.2
-  playwright-core: 1.63.0
-  knip: 6.32.2
-  oxlint: 1.76.0
-  oxlint-tsgolint: 7.0.2001
-  typescript: ^6.0.3
-  vite: npm:@voidzero-dev/vite-plus-core@0.2.4
-  vite-plus: 0.2.4
+  buffer: 6.0.3
+  docusaurus-plugin-llms: 0.6.1
+  jsdom: 30.1.3
+  happy-dom: 21.0.4
+  knip: 6.42.1
+  pyodide: 314.0.7
+  typescript: ^7.0.2
+  vite: npm:@voidzero-dev/vite-plus-core@1.4.0
+  vite-plus: 1.4.0
+  "@docusaurus/types": 3.10.2
+  "@docusaurus/core": 3.10.2
+  "@docusaurus/preset-classic": 3.10.2
+  "@mdx-js/react": ^3.1.1
+  react: ^19.3.1
+  react-dom: ^19.3.1
+  anywidget-bundle: 0.1.1
 
-minimumReleaseAge: 20160
+minimumReleaseAge: 4320
 minimumReleaseAgeStrict: true
+# Security patches newer than the release-age window.
 minimumReleaseAgeExclude:
-  - "@marimo-team/mdx-marimo@0.0.5"
-  - anywidget-bundle@0.1.1
-  - serialize-javascript@7.0.5
-  - uuid@11.1.1
-  - brace-expansion@1.1.18 || 2.1.4
-  - undici@7.29.0
-  - mermaid@11.16.1
-  - js-yaml@3.15.1 || 4.3.1
-  - dompurify@3.4.13
-  - nanoid@3.3.18
-  - "@observablehq/notebook-kit@2.6.4"
-  - "@observablehq/runtime@6.0.1"
-  - fast-uri@3.1.7
-  - qs@6.16.0
-  - "@playwright/test@1.63.0"
-  - playwright@1.63.0
-  - playwright-core@1.63.0
+  - colord@2.9.4
+  - dompurify@3.4.17
+  - fast-uri@3.1.9
+  - js-yaml@4.3.2
+  - katex@0.18.2
+  - postcss-selector-parser@7.1.6
+  - serialize-javascript@7.1.3
+  - tinypool@2.1.2
+  - zod@4.6.6
 
 overrides:
-  dompurify@<=3.4.12: 3.4.13
-  js-yaml@>=4.0.0 <4.3.1: 4.3.1
+  colord@<2.9.4: 2.9.4
+  dompurify@<3.4.17: 3.4.17
+  fast-uri@>=3.0.0 <3.1.9: 3.1.9
+  js-yaml@>=4.0.0 <4.3.2: 4.3.2
+  katex@>=0.11.0 <0.18.2: 0.18.2
   minimatch@>=9.0.0 <9.0.7: 9.0.9
   nanoid@<3.3.18: 3.3.18
-  serialize-javascript@<=7.0.4: 7.0.5
+  postcss-selector-parser@<7.1.6: 7.1.6
+  qs@<6.16.0: 6.16.0
+  serialize-javascript@<7.1.3: 7.1.3
+  tinypool@<2.1.2: 2.1.2
   undici@>=7.0.0 <7.29.0: 7.29.0
   uuid@<11.1.1: 11.1.1
-  vite: "catalog:"
-  fast-uri@>=3.0.0 <3.1.7: 3.1.7
-  qs@<6.16.0: 6.16.0
   yaml@>=2.0.0 <2.8.3: 2.8.3
+  zod@<4.6.6: 4.6.6
+  vite@*: "catalog:"
 
 peerDependencyRules:
   allowAny:

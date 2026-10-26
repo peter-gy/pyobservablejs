@@ -3,24 +3,21 @@
 	"private": true,
 	"scripts": {
 		"build": "vp run -F './packages/*' build",
-		"check": "vp check --no-error-on-unmatched-pattern .github apps development_docs packages scripts skills AGENTS.md README.md example.ipynb knip.jsonc package.json plugin.json pnpm-lock.yaml pnpm-workspace.yaml pyproject.toml tsconfig.json vite.config.ts && pnpm check:anti-slop && pnpm check:knip",
+		"check": "vp check --no-error-on-unmatched-pattern .github apps crates development_docs packages scripts skills AGENTS.md Cargo.toml clippy.toml deny.toml pixi.toml rustfmt.toml README.md example.ipynb knip.jsonc package.json plugin.json pnpm-lock.yaml pnpm-workspace.yaml pyproject.toml tsconfig.json vite.config.ts && pnpm check:anti-slop && pnpm check:knip",
 		"check:anti-slop": "node --test --test-concurrency=1 tools/oxlint/anti-slop/test/*.test.ts tools/oxlint/anti-slop/test/compatibility/*.test.ts && tsc -p tools/oxlint/anti-slop/tsconfig.json --noEmit",
 		"dev": "vp run @pyobservablejs/python#dev",
 		"test": "vp run -r test",
 		"check:knip": "knip --treat-config-hints-as-errors"
 	},
 	"devDependencies": {
-		"@oxlint/plugins": "catalog:",
 		"@types/node": "catalog:",
 		"knip": "catalog:",
-		"oxlint": "catalog:",
-		"oxlint-tsgolint": "catalog:",
 		"typescript": "catalog:",
-		"vite": "npm:@voidzero-dev/vite-plus-core@0.2.4",
+		"vite": "catalog:",
 		"vite-plus": "catalog:"
 	},
 	"engines": {
 		"node": ">=22.18.0"
 	},
-	"packageManager": "pnpm@11.17.0+sha512.cca3cea332ad254bb84145f966d19f4879615210346fc92c79a047f23a0d7b3cca3c3792f0076ba1f1831d277efbcf0a9119b31a9a60eca7fb3d6231f331ef72"
+	"packageManager": "pnpm@12.4.1"
 }

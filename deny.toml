@@ -1,0 +1,30 @@
+# Dependency policy for the Rust workspace, checked with `cargo deny check`.
+
+[graph]
+all-features = true
+
+[advisories]
+unmaintained = "workspace"
+
+[licenses]
+allow = [
+	"Apache-2.0",
+	"Apache-2.0 WITH LLVM-exception",
+	"BSD-3-Clause",
+	"CDLA-Permissive-2.0",
+	"ISC",
+	"MIT",
+	"MPL-2.0",
+	"Unicode-3.0",
+	"Zlib",
+]
+
+[bans]
+multiple-versions = "allow"
+wildcards = "deny"
+# Workspace crates are private path dependencies.
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

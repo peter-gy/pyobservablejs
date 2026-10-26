@@ -2,7 +2,8 @@
 
 `pyobservablejs` is a browser-first Python interface to Observable Notebook Kit.
 Python owns notebook construction, serialization, attachments, and controller
-state. TypeScript owns analysis and evaluation in browser and optional Deno server hosts.
+state. TypeScript owns analysis and evaluation in browsers, headless Chromium,
+and the V8 isolate embedded in native wheels.
 Browser TypeScript owns rendering, browser input
 synchronization, and view readback. Keep the public controller, private session
 transport, and renderable view separate.
@@ -28,13 +29,21 @@ transport, and renderable view separate.
   attachments, native variables, input controls, DOM, styles, evaluation state,
   and disposal. Keep its dependencies independent of Python and anywidget.
 - `packages/protocol/` owns Python wire codecs and exact read contracts shared by adapters.
-- `packages/server/` owns the Deno process entry point, DOM and Chromium hosts, and framed transport.
-  It imports runtime and protocol, never widget or anywidget.
+- `packages/engine/` owns the headless command service and its two entries: the
+  embedded V8 bundle with Happy DOM, Node built-in shims, and `fetch` over host
+  operations, and the Chromium page. It imports runtime and protocol, never
+  widget or anywidget.
+- `crates/pyobservablejs-engine/` owns the Rust `Engine`: V8 platform and
+  isolate threads, host operations, module loading, network policy, the module
+  cache, heap limits, and teardown. It has no Python dependency.
+- `crates/pyobservablejs-python/` owns the private PyO3 extension
+  `observablejs._engine` over that crate. `_host.py` and `_chromium.py` own the
+  Python side of each engine.
 - `packages/widget/` owns anywidget model resolution and subscriptions, variable patch ordering, shared-input transport, and revisioned
   readback publication. It calls the runtime mount API through `workspace:*`.
 - `packages/pyobservablejs/` owns the public Python API,
   `observablejs.types` input mappings and state types, private traitlets models,
-  final browser bundle, wheel, and sdist.
+  final browser bundle, native and pure wheels, and sdist.
 - The npm `anywidget-bundle` package owns the Vite plugin, browser module
   transport, manifest, and lifecycle protocol. The Python `anywidget-bundle`
   distribution owns the matching manifest and custom-message response APIs.
@@ -99,6 +108,12 @@ browser checks.
   Notebook Kit theme variables to `.pyobservablejs-notebook` and installs styles
   in the owning document or shadow root. Keep selectors scoped to pyobservablejs
   root classes so standalone and widget mounts share the same rendering path.
+- Each headless execution owns one engine. A timeout or cancelled asynchronous
+  read closes it, which bounds synchronous JavaScript. The embedded engine stops
+  one isolate on heap exhaustion and refuses use after `fork`. Both engines apply
+  the notebook network policy to fetches and imports. The embedded engine also
+  checks every redirect target and cached module. Static inspection shares one
+  offline embedded engine.
 
 ## Diagnostics
 
@@ -119,8 +134,8 @@ clear failures. Fatal diagnostics and protocol failures reject pending requests.
 Cross-package TypeScript imports use package names. The widget may import the
 runtime. The runtime must stay independent of the widget, anywidget, and Python
 packaging. The private `@pyobservablejs/python` workspace package composes the
-widget with npm `anywidget-bundle`. Keep the npm and PyPI `anywidget-bundle`
-versions aligned.
+widget with npm `anywidget-bundle`. The PyPI `anywidget-bundle` requirement is a
+floor at the release matching the npm package. Raise both together.
 
 The runtime root exports mounting, inspection, dataset utilities, and contract
 types. Its built `/inspect` entry supports Node source analysis, `/headless` exposes
@@ -135,14 +150,31 @@ public `Notebook` API.
 
 ## Tooling and generated files
 
+[Pixi](https://pixi.prefix.dev/) owns system tools: Node, pnpm, uv, Rust,
+Python interpreters, `cargo-deny`, `cargo-shear`, and `actionlint`, locked in
+`pixi.lock`. `pixi.toml` defines every repository task. Language package
+managers own their graphs in `pnpm-lock.yaml`, `uv.lock`, and `Cargo.lock`.
+Every resolver accepts releases at least three days old.
+
 The root `package.json` and `vite.config.ts` own JavaScript orchestration and
 shared Vite+ policy. Package manifests own dependencies, tests, and builds. Use
 the pnpm catalog for shared external versions.
 
-The root `pyproject.toml` is a virtual uv workspace. The publishable project and
-Hatch configuration live in `packages/pyobservablejs/pyproject.toml`. Scope package builds and metadata commands with `--package pyobservablejs`.
-Use `--all-packages --extra server` for shared Python checks so the root development
-group and the package server extra are both installed.
+The root `pyproject.toml` is a virtual uv workspace. The publishable project,
+Maturin configuration for native wheels, and Hatch configuration for the pure
+wheel live in `packages/pyobservablejs/pyproject.toml`. Scope package builds and
+metadata commands with `--package pyobservablejs`. Use
+`--all-packages --extra chromium` for shared Python checks so the root
+development group and the package Chromium extra are both installed.
+
+The root `Cargo.toml` is a virtual Cargo workspace. It owns shared dependency
+versions, lints, and the release profile. `rustfmt.toml`, `clippy.toml`, and
+`deny.toml` own Rust formatting, Clippy test allowances, and dependency policy.
+`packages/pyobservablejs/native_build.py` verifies the V8 archives pinned in
+`native-archives.json` for every Cargo and Maturin build.
+
+Runtime Python requirements are plain lower bounds that `pixi run test-floors`
+tests.
 
 Prefer dependency-provided types. The parser and classic standard-library
 packages do not publish types, so their declarations stay with the runtime
@@ -152,6 +184,8 @@ These paths are generated:
 
 - `packages/*/dist/`
 - `packages/pyobservablejs/src/observablejs/static/`
+- `crates/pyobservablejs-engine/bundle/`
+- `target/`
 - `dist/`
 - `apps/docs/.docusaurus/`
 - `apps/docs/build/`
@@ -163,11 +197,12 @@ Change source and rebuild. Do not hand-edit generated output.
 Run the complete local gate before handing off a repository change:
 
 ```sh
-make check
+pixi run check
 ```
 
 Vite+ owns JavaScript formatting, linting, type checks, tests, and package
 builds. uv owns Python formatting, linting, type checks, tests, and packaging.
+Cargo owns Rust formatting, Clippy, tests, and dependency audits.
 Fix underlying failures. Do not suppress checks. Inspect the final diff for
 unrelated edits, stale generated files, listener cleanup, cross-language drift,
 and package-boundary violations.
@@ -178,15 +213,16 @@ and package-boundary violations.
   session and view traits when the cross-language wire contract is the subject.
 - Test TypeScript behavior through runtime, widget, Vite, DOM, and generated
   artifact contracts. Wait on observable state, not elapsed time.
-- Validate Docusaurus MDX source with `make docs`. Serve the generated site with
-  `make docs-serve` when browser inspection is required. The GitHub Pages
+- Validate Docusaurus MDX source with `pixi run docs`. Serve the generated site
+  with `pixi run docs-serve` when browser inspection is required. The GitHub Pages
   workflow owns pull-request docs validation and `main` deployment.
 - Validate frontend, notebook, and docs behavior with `$agent-browser`. Exercise
   JupyterLab, mdx-marimo pages, and Python variable synchronization as relevant.
   Check console and page errors, then stop every browser session and local
   server.
-- Build the wheel from the produced sdist when packaging changes. The sdist
-  carries browser assets and must build outside the TypeScript workspace.
+- Build the native wheel from the produced sdist when packaging changes. The
+  sdist carries browser assets and the engine bundle and must build outside the
+  TypeScript workspace. Check the pure wheel with `pixi run test-pyodide`.
 
 Published docs explain notebook authoring, frontend use, synchronized values,
 and source imports. Keep package layout, release mechanics, generated artifacts,

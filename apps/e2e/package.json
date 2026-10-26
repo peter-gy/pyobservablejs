@@ -6,12 +6,14 @@
 	"scripts": {
 		"test:e2e": "tsc -p standalone/tsconfig.build.json && playwright test",
 		"install-browser": "playwright install --with-deps chromium",
-		"check": "vp check"
+		"check": "vp check",
+		"test:pyodide": "node --test pyodide/*.test.ts"
 	},
 	"devDependencies": {
 		"@playwright/test": "catalog:",
 		"@pyobservablejs/runtime": "workspace:*",
 		"@types/node": "catalog:",
+		"pyodide": "catalog:",
 		"typescript": "catalog:",
 		"vite": "catalog:",
 		"vite-plus": "catalog:"

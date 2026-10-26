@@ -3,7 +3,7 @@
 #     "marimo",
 #     "pyobservablejs",
 # ]
-# requires-python = ">=3.11,<3.15"
+# requires-python = ">=3.11"
 # ///
 
 import marimo

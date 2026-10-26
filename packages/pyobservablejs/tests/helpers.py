@@ -150,8 +150,10 @@ def decode_data_url(url: str) -> tuple[str, bytes]:
 
 
 def javascript_imports(source: str) -> list[JavaScriptImport]:
+    # The runtime package supplies acorn, the parser Notebook Kit also uses.
     result = subprocess.run(
         ["node", "-e", _JAVASCRIPT_IMPORT_SPECIFIER_SCRIPT],
+        cwd=pathlib.Path(__file__).parents[2] / "runtime",
         input=source,
         text=True,
         capture_output=True,
@@ -188,7 +190,8 @@ def javascript_import_specifiers(source: str) -> list[str]:
 
 
 _JAVASCRIPT_IMPORT_SPECIFIER_SCRIPT = r"""
-const ts = require("typescript");
+const acorn = require("acorn");
+const walk = require("acorn-walk");
 
 let source = "";
 process.stdin.setEncoding("utf8");
@@ -196,48 +199,46 @@ process.stdin.on("data", (chunk) => {
   source += chunk;
 });
 process.stdin.on("end", () => {
-  const file = ts.createSourceFile("cell.js", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
-  if (file.parseDiagnostics.length > 0) {
-    console.error(file.parseDiagnostics.map((item) => item.messageText).join("\n"));
+  let program;
+  try {
+    // Cell bodies may use top-level await and private names outside a class.
+    program = acorn.parse(source, {
+      ecmaVersion: "latest",
+      sourceType: "module",
+      allowAwaitOutsideFunction: true,
+      checkPrivateFields: false,
+    });
+  } catch (error) {
+    console.error(error.message);
     process.exit(1);
   }
-
   const records = [];
-  const namedImports = (importClause) => {
-    if (!importClause) return [];
-    const names = [];
-    if (importClause.name) names.push("default");
-    const bindings = importClause.namedBindings;
-    if (!bindings) return names;
-    if (ts.isNamespaceImport(bindings)) return [...names, "*"];
-    return [...names, ...bindings.elements.map((item) => (item.propertyName ?? item.name).text)];
+  const name = (node) => (node.type === "Literal" ? String(node.value) : node.name);
+  const text = (node) => {
+    if (node.type === "Literal" && typeof node.value === "string") return node.value;
+    if (node.type === "TemplateLiteral" && node.expressions.length === 0) return node.quasis[0].value.cooked;
+    return null;
   };
-  const namedExports = (exportClause) => {
-    if (!exportClause || !ts.isNamedExports(exportClause)) return [];
-    return exportClause.elements.map((item) => (item.propertyName ?? item.name).text);
+  const add = (kind, node, imported = [], exported = []) => {
+    const specifier = text(node);
+    if (specifier !== null) records.push({ start: node.start, kind, specifier, imported, exported });
   };
-  const addLiteral = (kind, node, imported = [], exported = []) => {
-    if (node && typeof node.text === "string") {
-      records.push({kind, specifier: node.text, imported, exported});
+  walk.full(program, (node) => {
+    if (node.type === "ImportDeclaration") {
+      const imported = node.specifiers.map((item) =>
+        item.type === "ImportDefaultSpecifier" ? "default" : item.type === "ImportNamespaceSpecifier" ? "*" : name(item.imported),
+      );
+      add("import", node.source, imported);
+    } else if (node.type === "ExportNamedDeclaration" && node.source) {
+      add("export", node.source, [], node.specifiers.map((item) => name(item.local)));
+    } else if (node.type === "ExportAllDeclaration") {
+      add("export", node.source);
+    } else if (node.type === "ImportExpression") {
+      add("dynamic-import", node.source);
     }
-  };
-  const visit = (node) => {
-    if (ts.isImportDeclaration(node)) {
-      addLiteral("import", node.moduleSpecifier, namedImports(node.importClause));
-    } else if (ts.isExportDeclaration(node)) {
-      addLiteral("export", node.moduleSpecifier, [], namedExports(node.exportClause));
-    } else if (
-      ts.isCallExpression(node) &&
-      node.expression.kind === ts.SyntaxKind.ImportKeyword &&
-      node.arguments.length > 0
-    ) {
-      addLiteral("dynamic-import", node.arguments[0]);
-    }
-    ts.forEachChild(node, visit);
-  };
-
-  visit(file);
-  process.stdout.write(JSON.stringify(records));
+  });
+  records.sort((left, right) => left.start - right.start);
+  process.stdout.write(JSON.stringify(records.map(({ start, ...record }) => record)));
 });
 """
 

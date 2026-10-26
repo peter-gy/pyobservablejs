@@ -1,0 +1,204 @@
+name: Build distributions
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  assets:
+    name: Build browser and engine assets
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/setup
+
+      - name: Build JavaScript packages
+        run: pixi run build-js
+
+      - name: Upload package assets
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: package-assets
+          path: |
+            packages/pyobservablejs/src/observablejs/static/
+            crates/pyobservablejs-engine/bundle/
+          include-hidden-files: true
+          retention-days: 1
+          if-no-files-found: error
+
+  native:
+    name: Native wheel (${{ matrix.target }})
+    needs: assets
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy: &targets
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+          - runner: macos-15
+            target: aarch64-apple-darwin
+          - runner: windows-2022
+            target: x86_64-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/setup
+        with:
+          rust: "true"
+
+      - name: Download package assets
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: package-assets
+          path: .
+
+      # The manylinux container installs the Rust release locked in pixi.lock.
+      - name: Read the locked Rust version
+        if: runner.os == 'Linux'
+        id: rust
+        run: echo "version=$(pixi list rust --json | jq -r '.[0].version')" >> "$GITHUB_OUTPUT"
+
+      - name: Build manylinux wheel
+        if: runner.os == 'Linux'
+        uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
+        with:
+          maturin-version: v1.15.0
+          rust-toolchain: ${{ steps.rust.outputs.version }}
+          working-directory: packages/pyobservablejs
+          target: ${{ matrix.target }}
+          manylinux: "2_28"
+          args: --release --locked --compatibility pypi --interpreter python3.12 --out ../../dist/native
+          before-script-linux: |
+            python3.12 native_build.py env --target ${{ matrix.target }} --shell-env /tmp/pyobservablejs-v8-env
+            source /tmp/pyobservablejs-v8-env
+
+      # maturin-action calls Maturin directly; the PEP 517 backend attaches the
+      # Agent Plugin on every other build path.
+      - name: Attach the Agent Plugin
+        if: runner.os == 'Linux'
+        run: |
+          pixi run uv --directory packages/pyobservablejs run --frozen --isolated --only-group release \
+            python -m agent_plugins attach-wheel "$GITHUB_WORKSPACE"/dist/native/pyobservablejs-*.whl
+
+      - name: Build native wheel
+        if: runner.os != 'Linux'
+        shell: bash
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "12.0"
+        run: pixi run uv build --package pyobservablejs --no-sources --wheel --out-dir dist/native
+
+      - name: Upload native wheel
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-${{ matrix.target }}
+          path: dist/native/pyobservablejs-*-cp311-abi3-*.whl
+          retention-days: 1
+          if-no-files-found: error
+
+  test-native:
+    name: Installed native wheel (${{ matrix.target }})
+    needs: native
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy: *targets
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: scripts/verify_release.py
+          sparse-checkout-cone-mode: false
+
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+
+      - name: Download native wheel
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: native-${{ matrix.target }}
+          path: dist/native
+
+      - name: Verify the installed wheel
+        shell: bash
+        run: |
+          wheels=("$GITHUB_WORKSPACE"/dist/native/pyobservablejs-*-cp311-abi3-*.whl)
+          test "${#wheels[@]}" -eq 1
+          version="$(basename "${wheels[0]}" | cut -d- -f2)"
+          cd "$RUNNER_TEMP"
+          for python in 3.11 3.14; do
+            uv run --no-project --isolated --python "$python" --with "${wheels[0]}" \
+              python "$GITHUB_WORKSPACE/scripts/verify_release.py" "$version" --wheel native
+          done
+
+  pure-source:
+    name: Pure wheel and source archive
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/setup
+        with:
+          rust: "true"
+
+      - name: Build the source archive and a native wheel from it
+        run: pixi run build
+
+      - name: Build the pure wheel and install it in Pyodide
+        run: pixi run test-pyodide
+
+      - name: Verify installed distributions
+        run: |
+          version="$(pixi run uv version --package pyobservablejs --short)"
+          pixi run uv run --no-project --isolated --with dist/pyobservablejs-*-abi3-*.whl \
+            python scripts/verify_release.py "$version" --wheel native
+          pixi run uv run --no-project --isolated --with dist/pure/pyobservablejs-*-py3-none-any.whl \
+            python scripts/verify_release.py "$version" --wheel pure
+
+      - name: Upload source archive
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: source
+          path: dist/pyobservablejs-*.tar.gz
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Upload pure wheel
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pure
+          path: dist/pure/pyobservablejs-*-py3-none-any.whl
+          retention-days: 1
+          if-no-files-found: error
+
+  check:
+    name: Distribution metadata
+    needs: [test-native, pure-source]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+
+      - name: Download distributions
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: "{native-*,pure,source}"
+          merge-multiple: true
+          path: dist
+
+      - name: Check distribution metadata
+        shell: bash
+        run: |
+          native=(dist/pyobservablejs-*-cp311-abi3-*.whl)
+          pure=(dist/pyobservablejs-*-py3-none-any.whl)
+          source=(dist/pyobservablejs-*.tar.gz)
+          printf '%s\n' "${native[@]}" "${pure[@]}" "${source[@]}"
+          test "${#native[@]}" -eq 5 && test "${#pure[@]}" -eq 1 && test "${#source[@]}" -eq 1
+          uvx twine check --strict dist/pyobservablejs-*

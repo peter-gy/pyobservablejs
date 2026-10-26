@@ -258,7 +258,7 @@ def deserialize_value(value: Any) -> Any:
     if tag == "datetime":
         raw = str(value.get("value"))
         try:
-            return _dt.datetime.fromisoformat(raw.replace("Z", "+00:00"))
+            return _dt.datetime.fromisoformat(raw)
         except ValueError:
             return raw
     if tag == "bytes" or tag == "arraybuffer":

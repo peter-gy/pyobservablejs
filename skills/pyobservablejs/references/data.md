@@ -13,15 +13,17 @@ notebook.graph.upstream("chart")
 frame = notebook.data["sales"].to_polars(columns=["category", "value"], limit=1000)
 ```
 
-Notebook data and graph inspection use the optional server extra. The default
-engine is Deno. Network access is enabled by default; use
-`notebook.data.using(network=False)` for offline execution. Use `notebook.data.using(engine="chromium")` for
-actual browser capabilities. A notebook owns its lazy executions and closes
+Notebook data and graph inspection run in the embedded V8 engine of the native
+wheels. The pure wheel, which Pyodide installs, raises `ImportError` for these
+calls. Use the widget route there. Network access is enabled by default. Use
+`notebook.data.using(network=False)` for offline execution. Install
+`pyobservablejs[chromium]` and use `notebook.data.using(engine="chromium")` for
+browser layout, canvas, and rendering. A notebook owns its lazy executions and closes
 them through `close()` or its context manager.
 
 ## Widget route
 
-A displayed view uses anywidget and needs no Deno:
+A displayed view reads values from its browser through anywidget with every wheel:
 
 ```python
 names = await view.data.names()
@@ -73,7 +75,7 @@ config = notebook.files["config.json"].to_python()
 raw_from_browser = await view.files["sales.csv"].read_bytes()
 ```
 
-Notebook file operations use Python I/O and need no Deno. View file operations use
+Notebook file operations use Python I/O with every wheel. View file operations use
 the originating browser. Pass `format=` when filename, content type, and content
 signatures cannot establish the parser. File namespaces are mappings, so iterate
 over them or call `.keys()` to list attachment names. Text attachment converters

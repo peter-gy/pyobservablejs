@@ -82,6 +82,7 @@ Import exceptions through `observablejs.errors`. Each derives from
 | `WidgetError`          | Runtime or widget infrastructure failed. Inspect the component, operation, and browser stack.                           |
 | `SerializationError`   | A browser result could not be represented in the Python preview.                                                        |
 | `ReadError`            | An explicit data read failed, such as a missing value or attachment fetch.                                              |
+| `EngineError`          | The headless engine stopped or could not complete an operation, for example after exceeding its JavaScript heap.        |
 | `ProtocolError`        | A browser message violated the widget contract. It also derives from traitlets' `TraitError` and Python's `ValueError`. |
 | `ViewClosedError`      | The view closed during the operation.                                                                                   |
 | `StaleViewError`       | A newer update or replacement superseded the pending operation.                                                         |
@@ -138,9 +139,9 @@ upstream asynchronous generator cleanup can remain in the browser console.
 `view.close()` closes the Python model synchronously. It does not await browser
 teardown, so failures after the comm closes cannot be raised from that call.
 
-## Server errors
+## Engine errors
 
-Headless checkpoints use the same structured diagnostics. `ServerError` identifies
-failures in the Deno host. Background notebook exceptions remain notebook diagnostics, so independent data stays readable. A
-`NotebookTimeoutError` closes the affected server. See
+Headless checkpoints use the same structured diagnostics. `EngineError` identifies
+failures in the embedded or Chromium engine. Background notebook exceptions remain notebook diagnostics, so independent data stays readable. A
+`NotebookTimeoutError` closes the affected engine. See
 [Headless Python](../guide/server.mdx) for synchronous checkpoints and lifecycle.

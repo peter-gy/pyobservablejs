@@ -1,6 +1,6 @@
 node_modules
 nogit/
-.venv
+.venv*
 dist
 apps/docs/.docusaurus
 apps/docs/build
@@ -14,3 +14,9 @@ packages/pyobservablejs/src/observablejs/static
 
 apps/e2e/test-results
 apps/e2e/playwright-report
+
+/target
+crates/pyobservablejs-engine/bundle
+packages/pyobservablejs/src/observablejs/_engine*.so
+packages/pyobservablejs/src/observablejs/_engine*.pyd
+.vitest/

@@ -54,7 +54,7 @@ def _wrap_marimo(instance: Any) -> Any:
 
         if marimo.running_in_notebook():
             return marimo.ui.anywidget(instance)
-    except (ImportError, ModuleNotFoundError):
+    except ImportError:
         pass
     return instance
 

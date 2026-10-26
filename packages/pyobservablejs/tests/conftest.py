@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from html.parser import HTMLParser
 from typing import Any, Self, cast
 
@@ -17,6 +17,16 @@ from helpers import (
     ObservableHQResponseInstaller,
     ScriptTags,
 )
+
+
+@pytest.fixture(autouse=True, scope="session")
+def module_cache(tmp_path_factory: pytest.TempPathFactory) -> Iterator[None]:
+    # Remote modules persist across processes. Tests keep them out of the user cache.
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setenv(
+            "PYOBSERVABLEJS_CACHE_DIR", str(tmp_path_factory.mktemp("module-cache"))
+        )
+        yield
 
 
 class _ScriptParser(HTMLParser):

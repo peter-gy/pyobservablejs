@@ -1,0 +1,32 @@
+name: Set up workspace
+description: Install the locked Pixi environment and restore Rust build inputs.
+inputs:
+  environment:
+    description: Pixi environment to install.
+    required: false
+    default: default
+  rust:
+    description: Restore Cargo dependencies, verified V8 archives, and build output.
+    required: false
+    default: "false"
+runs:
+  using: composite
+  steps:
+    - uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94 # v0.11.2
+      with:
+        pixi-version: v0.82.0
+        environments: ${{ inputs.environment }}
+        locked: true
+        cache: true
+        cache-write: ${{ github.ref == 'refs/heads/main' }}
+
+    - name: Restore Rust build inputs
+      if: inputs.rust == 'true'
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          ~/.cargo/pyobservablejs-v8
+          target
+        key: rust-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock', 'pixi.lock', 'packages/pyobservablejs/native-archives.json') }}

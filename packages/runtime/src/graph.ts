@@ -239,7 +239,7 @@ function cellGraphFromDefinition(
 		mode: notebookCell.mode,
 		defines: exposedVariableNames(definition),
 		references: (definition.inputs ?? []).filter(
-			(name) => !definition.imports?.some((imported) => imported.outputs?.includes(name)),
+			(name) => !definition.importDefinitions?.some((imported) => imported.outputs?.includes(name)),
 		),
 		output: definition.output ?? null,
 		outputs: definition.outputs ?? [],
