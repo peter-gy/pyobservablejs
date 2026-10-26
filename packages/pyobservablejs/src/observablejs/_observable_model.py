@@ -10,7 +10,6 @@ from ._cell_ids import _CellIdAllocator, _is_safe_cell_id
 from ._cells import NotebookCellSpec
 from ._files import FileAttachment, normalize_files
 from ._model import NotebookModel, NotebookNode, _int_cell_id, _validate_nodes
-from ._observable_fetch import unwrap_observable_document
 from ._observable_legacy import (
     ObservableFileInput,
     ObservableNodeInput,
@@ -30,7 +29,6 @@ def notebook_model_from_observablehq_document(
 ) -> NotebookModel:
     if not isinstance(document, Mapping):
         raise TypeError("ObservableHQ document must be a mapping")
-    document = cast(ObservableDocument, unwrap_observable_document(document))
     body = document.get("body", document)
     if not isinstance(body, Mapping):
         raise TypeError("ObservableHQ notebook body must be a mapping")
@@ -38,10 +36,14 @@ def notebook_model_from_observablehq_document(
     if ("nodes" in body) == ("cells" in body):
         raise ValueError("ObservableHQ document must contain either nodes or cells")
     resolutions = _observable_resolutions(document.get("resolutions", []))
-    if any(record["type"] == "unsupported_mode" for record in resolutions):
+    lost = sorted(
+        {r["specifier"] for r in resolutions if r["type"] == "unsupported_mode"}
+    )
+    if lost:
         raise ValueError(
-            "ObservableHQ document has lost its original cell languages. "
-            "Use from_observablehq() to fetch the original notebook source."
+            "ObservableHQ document has lost its original cell languages: "
+            f"{', '.join(lost)}. Load the notebook's Notebook Kit HTML with "
+            "Notebook.from_html()."
         )
     classic = "nodes" in body
     library_version = body.get(

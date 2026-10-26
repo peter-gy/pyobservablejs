@@ -475,7 +475,7 @@ class Notebook(traitlets.HasTraits):
         show_pinned_source: bool = False,
         timeout: float | None = 30,
     ) -> Notebook:
-        """Fetch a public Observable notebook with its original cell languages."""
+        """Fetch a public notebook from the ObservableHQ document API."""
 
         document = fetch_observablehq_document(specifier, timeout=timeout)
         return cls.from_observablehq_document(

@@ -69,9 +69,10 @@ Notebook.from_observablehq(
 ) -> Notebook
 ```
 
-Fetches the original source model from a public Observable notebook page.
-The specifier may be a notebook URL, slug, id, or document API URL. Append
-`@version` to request an exact revision.
+Fetches the notebook record from the ObservableHQ document API,
+`https://api.observablehq.com/document/<notebook>`. The specifier may be a
+notebook URL, slug, id, or document API URL. Append `@version` to request an
+exact revision.
 
 ```python
 import observablejs as obs
@@ -98,8 +99,9 @@ Python when the browser requests them and evaluated in the same Observable
 Runtime. Each dependency retains its own library and attachment scope.
 `timeout=None` disables the constructor fetch timeout.
 
-Invalid specifiers and document shapes raise `ValueError`. Network failures
-raise `OSError`. Response decoding may raise `UnicodeError`.
+Invalid specifiers, responses, and document shapes raise `ValueError`,
+including a response for another notebook id or revision. Network and HTTP
+failures raise `OSError` with the document API URL.
 
 ## `Notebook.from_observablehq_document`
 
@@ -145,9 +147,9 @@ Explicit import revisions and declared notebook resolutions are retained
 through HTML export and reimport. Unpinned dependencies resolve when loaded.
 
 A document must contain exactly one cell collection, `nodes` or `cells`.
-A supplied legacy API response marked `unsupported_mode` has already lost
-its cell languages. Fetch its original source with `from_observablehq()`.
-Unsupported cell modes,
+A document whose `resolutions` mark a cell `unsupported_mode` has lost that
+cell's language and raises `ValueError`. Load the notebook's Notebook Kit HTML
+with `Notebook.from_html()`. Unsupported cell modes,
 unsafe or duplicate ids, duplicate public keys, and malformed node records
 raise `TypeError` or `ValueError`.
 

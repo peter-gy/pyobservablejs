@@ -5,10 +5,12 @@ description: Fetch public observablehq.com notebooks and render them from Python
 
 # Import ObservableHQ notebooks
 
-`Notebook.from_observablehq` fetches the original source of a public Observable
-notebook and returns a `Notebook` definition. Call `view()` to render it.
-Cell languages and the notebook's standard-library version are preserved,
-including classic OJS and modern JavaScript or TypeScript.
+`Notebook.from_observablehq` reads a public notebook from the ObservableHQ
+document API at `https://api.observablehq.com/document/<notebook>` and returns a
+`Notebook` definition. Call `view()` to render it. The notebook keeps its cell
+languages and standard-library version. [Notebook
+Kit](https://github.com/observablehq/notebook-kit)'s `notebooks download`
+command reads the same record.
 
 Imported notebooks and remote modules run with the host page's browser
 privileges. Review the trust boundary in [Browser
@@ -46,6 +48,9 @@ Unpinned imports resolve when the view loads them.
 
 For an archived node collection, pass `{"nodes": nodes}`. Native Notebook Kit
 models use `{"cells": cells, "stdlib": "2"}` and retain each cell's language.
+When a record's `resolutions` mark a cell `unsupported_mode`, the API has
+replaced that cell's language and the constructor raises `ValueError`. Load the
+notebook's Notebook Kit HTML with `Notebook.from_html()` instead.
 Notebook imports load through Python, so the kernel must remain connected.
 
 ## Override variables
