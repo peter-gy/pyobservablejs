@@ -16,7 +16,7 @@ apps/e2e/test-results
 apps/e2e/playwright-report
 
 /target
-crates/pyobservablejs-engine/bundle
+packages/engine-rust/bundle
 packages/pyobservablejs/src/observablejs/_engine*.so
 packages/pyobservablejs/src/observablejs/_engine*.pyd
 .vitest/

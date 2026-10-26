@@ -235,33 +235,33 @@ host supplies a DOM document. Neither a mounted view nor anywidget participates.
 for both hosts; display and input observers remain in their respective hosts.
 
 `@pyobservablejs/protocol` owns Python value encoding and read request validation.
-The widget and `@pyobservablejs/engine` import it. Dependencies point from either
+The widget and `@pyobservablejs/engine-ts` import it. Dependencies point from either
 adapter toward the protocol and runtime packages. The runtime never imports an
 adapter or Python wire types.
 
 ### Embedded engine
 
 Native wheels contain `observablejs._engine`, a [PyO3](https://pyo3.rs/)
-extension built from `crates/pyobservablejs-python`. It wraps the
-`pyobservablejs-engine` crate, which embeds [V8](https://v8.dev/) through
+extension built from `packages/engine-python`. It wraps the
+`pyobservablejs-engine-rust` crate, which embeds [V8](https://v8.dev/) through
 [deno_core](https://docs.rs/deno_core/) and has no Python dependency. Each
 `Engine` owns one isolate on its own thread, spawned from a single V8 platform
 thread. The isolate loads the `deno_web` extension sources embedded at build
-time, runs `src/bootstrap.js`, then evaluates the `@pyobservablejs/engine`
-bundle. See [the engine package](../packages/engine/README.md) for module order
+time, runs `src/bootstrap.js`, then evaluates the `@pyobservablejs/engine-ts`
+bundle. See [the engine package](../packages/engine-ts/README.md) for module order
 inside the bundle.
 
-| Module                                 | Owns                                                                      |
-| -------------------------------------- | ------------------------------------------------------------------------- |
-| `pyobservablejs-python/src/lib.rs`     | The Python `Engine` class, error mapping, and GIL release while waiting   |
-| `pyobservablejs-engine/src/worker.rs`  | `Engine`, platform and isolate threads, message channels, and fork checks |
-| `pyobservablejs-engine/src/isolate.rs` | `JsRuntime` construction, the heap limit, bootstrap, and the event loop   |
-| `pyobservablejs-engine/src/host.rs`    | Host operations: send, receive, fetch, random bytes, and console capture  |
-| `pyobservablejs-engine/src/loader.rs`  | Embedded bundle chunks and remote ES module loading                       |
-| `pyobservablejs-engine/src/network.rs` | Network policy, `data:` URLs, and HTTP with policy-checked redirects      |
-| `pyobservablejs-engine/src/cache.rs`   | Process and disk module caches with `Cache-Control` freshness             |
+| Module                                | Owns                                                                      |
+| ------------------------------------- | ------------------------------------------------------------------------- |
+| `packages/engine-python/src/lib.rs`   | The Python `Engine` class, error mapping, and GIL release while waiting   |
+| `packages/engine-rust/src/worker.rs`  | `Engine`, platform and isolate threads, message channels, and fork checks |
+| `packages/engine-rust/src/isolate.rs` | `JsRuntime` construction, the heap limit, bootstrap, and the event loop   |
+| `packages/engine-rust/src/host.rs`    | Host operations: send, receive, fetch, random bytes, and console capture  |
+| `packages/engine-rust/src/loader.rs`  | Embedded bundle chunks and remote ES module loading                       |
+| `packages/engine-rust/src/network.rs` | Network policy, `data:` URLs, and HTTP with policy-checked redirects      |
+| `packages/engine-rust/src/cache.rs`   | Process and disk module caches with `Cache-Control` freshness             |
 
-The engine crate's integration tests in `tests/engine.rs` drive real isolates
+The integration tests in `packages/engine-rust/tests/engine.rs` drive real isolates
 through the public `Engine` API.
 
 Python sends JSON requests through an unbounded channel. JavaScript replies with

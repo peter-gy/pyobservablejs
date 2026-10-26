@@ -274,7 +274,7 @@ requests and disposes dependency generators and attachment registries.
 
 `@pyobservablejs/runtime/headless` exposes `evaluateNotebook` for a host-provided
 DOM. Establish the DOM before importing the entry point: Notebook Kit reads
-`document` during module initialization. `@pyobservablejs/engine` supplies a
+`document` during module initialization. `@pyobservablejs/engine-ts` supplies a
 Happy DOM document in an embedded V8 isolate. Its Chromium entry uses
 `mountNotebook` in a real browser.
 

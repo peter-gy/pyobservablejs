@@ -96,7 +96,7 @@ lint-rust = { cmd = """\
 	"build-js",
 ], description = "Check Rust formatting and Clippy lints" }
 audit-rust = { cmd = "cargo deny --locked check && cargo shear --deny-warnings", description = "Check Rust advisories, licenses, sources, and unused dependencies" }
-test-rust = { cmd = "python packages/pyobservablejs/native_build.py cargo test --workspace --locked --exclude pyobservablejs-python", depends-on = [
+test-rust = { cmd = "python packages/pyobservablejs/native_build.py cargo test --workspace --locked --exclude pyobservablejs-engine-python", depends-on = [
 	"build-js",
 ], description = "Run the Rust tests" }
 check-rust = { depends-on = [

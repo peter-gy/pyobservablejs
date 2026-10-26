@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/*"]
+members = ["packages/engine-python", "packages/engine-rust"]
 
 [workspace.package]
 version = "0.0.0"
@@ -11,7 +11,7 @@ repository = "https://github.com/peter-gy/pyobservablejs"
 publish = false
 
 [workspace.dependencies]
-pyobservablejs-engine = { path = "crates/pyobservablejs-engine" }
+pyobservablejs-engine-rust = { path = "packages/engine-rust" }
 
 # deno_core, deno_web, deno_webidl, and deno_error move together with the V8
 # archives pinned in packages/pyobservablejs/native-archives.json.

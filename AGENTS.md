@@ -29,14 +29,14 @@ transport, and renderable view separate.
   attachments, native variables, input controls, DOM, styles, evaluation state,
   and disposal. Keep its dependencies independent of Python and anywidget.
 - `packages/protocol/` owns Python wire codecs and exact read contracts shared by adapters.
-- `packages/engine/` owns the headless command service and its two entries: the
+- `packages/engine-ts/` owns the headless command service and its two entries: the
   embedded V8 bundle with Happy DOM, Node built-in shims, and `fetch` over host
   operations, and the Chromium page. It imports runtime and protocol, never
   widget or anywidget.
-- `crates/pyobservablejs-engine/` owns the Rust `Engine`: V8 platform and
+- `packages/engine-rust/` owns the Rust `Engine`: V8 platform and
   isolate threads, host operations, module loading, network policy, the module
   cache, heap limits, and teardown. It has no Python dependency.
-- `crates/pyobservablejs-python/` owns the private PyO3 extension
+- `packages/engine-python/` owns the private PyO3 extension
   `observablejs._engine` over that crate. `_host.py` and `_chromium.py` own the
   Python side of each engine.
 - `packages/widget/` owns anywidget model resolution and subscriptions, variable patch ordering, shared-input transport, and revisioned
@@ -184,7 +184,7 @@ These paths are generated:
 
 - `packages/*/dist/`
 - `packages/pyobservablejs/src/observablejs/static/`
-- `crates/pyobservablejs-engine/bundle/`
+- `packages/engine-rust/bundle/`
 - `target/`
 - `dist/`
 - `apps/docs/.docusaurus/`

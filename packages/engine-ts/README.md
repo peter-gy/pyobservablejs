@@ -1,11 +1,11 @@
 # Notebook engine
 
-`@pyobservablejs/engine` builds the headless notebook service for two hosts:
+`@pyobservablejs/engine-ts` builds the headless notebook service for two hosts:
 
-| Output                                     | Host                                                 | Python owner                        |
-| ------------------------------------------ | ---------------------------------------------------- | ----------------------------------- |
-| `crates/pyobservablejs-engine/bundle/*.js` | V8 isolate in the `pyobservablejs-engine` Rust crate | `observablejs._host.EmbeddedEngine` |
-| `dist/browser/*.js`                        | Headless Chromium page driven by Playwright          | `observablejs._chromium`            |
+| Output                             | Host                                                      | Python owner                        |
+| ---------------------------------- | --------------------------------------------------------- | ----------------------------------- |
+| `packages/engine-rust/bundle/*.js` | V8 isolate in the `pyobservablejs-engine-rust` Rust crate | `observablejs._host.EmbeddedEngine` |
+| `dist/browser/*.js`                | Headless Chromium page driven by Playwright               | `observablejs._chromium`            |
 
 Both hosts run `createService` from `service.ts`. It owns commands, notebook
 source requests, snapshots, and diagnostics. The package imports runtime
@@ -49,9 +49,9 @@ writes that frame.
 ## Build
 
 ```sh
-pixi run pnpm --filter @pyobservablejs/engine build
+pixi run pnpm --filter @pyobservablejs/engine-ts build
 ```
 
-The V8 bundle goes to `crates/pyobservablejs-engine/bundle/`, where the Rust
+The V8 bundle goes to `packages/engine-rust/bundle/`, where the Rust
 engine crate embeds it. The Chromium page goes to `dist/browser/`, and the
 Python package build copies it into `observablejs/static/chromium/`.

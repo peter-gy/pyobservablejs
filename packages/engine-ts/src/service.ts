@@ -194,7 +194,7 @@ export function createService(send: Send, createNotebook: CreateNotebook) {
 							createDiagnostic(failure, {
 								origin: "engine",
 								phase,
-								component: "packages/engine/src/service.ts",
+								component: "packages/engine-ts/src/service.ts",
 								operation,
 							}),
 						];
@@ -209,7 +209,7 @@ export function createService(send: Send, createNotebook: CreateNotebook) {
 		const diagnostic = createDiagnostic(cause, {
 			origin: "notebook",
 			phase: "evaluation",
-			component: "packages/engine/src/service.ts",
+			component: "packages/engine-ts/src/service.ts",
 			operation,
 		});
 		if (backgroundErrors.length < 32) backgroundErrors.push(diagnostic);

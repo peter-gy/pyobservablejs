@@ -1,4 +1,4 @@
-//! CPython extension `observablejs._engine` over [`pyobservablejs_engine`].
+//! CPython extension `observablejs._engine` over [`pyobservablejs_engine_rust`].
 
 use pyo3::{
     create_exception,
@@ -6,7 +6,7 @@ use pyo3::{
     prelude::*,
     types::PyBytes,
 };
-use pyobservablejs_engine::{EngineOptions, Error, Network};
+use pyobservablejs_engine_rust::{EngineOptions, Error, Network};
 use std::{path::PathBuf, time::Duration};
 
 create_exception!(
@@ -38,7 +38,7 @@ type Message<'py> = (Bound<'py, PyBytes>, Vec<Bound<'py, PyBytes>>);
 /// One V8 isolate that runs the notebook engine bundle on its own thread.
 #[pyclass(module = "observablejs._engine", frozen)]
 struct Engine {
-    engine: pyobservablejs_engine::Engine,
+    engine: pyobservablejs_engine_rust::Engine,
 }
 
 #[pymethods]
@@ -59,7 +59,7 @@ impl Engine {
             cache_dir,
             memory_bytes,
         };
-        let engine = pyobservablejs_engine::Engine::start(options).map_err(python_error)?;
+        let engine = pyobservablejs_engine_rust::Engine::start(options).map_err(python_error)?;
         Ok(Self { engine })
     }
 

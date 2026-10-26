@@ -7,7 +7,7 @@
 		"dev": "vp dev"
 	},
 	"dependencies": {
-		"@pyobservablejs/engine": "workspace:*",
+		"@pyobservablejs/engine-ts": "workspace:*",
 		"@pyobservablejs/widget": "workspace:*"
 	},
 	"devDependencies": {
