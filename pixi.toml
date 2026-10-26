@@ -132,7 +132,7 @@ test-pyodide = { cmd = "pnpm --filter @pyobservablejs/e2e run test:pyodide", dep
 ], description = "Install the pure wheel in Pyodide" }
 
 docs = { cmd = "pnpm exec vp run -w docs-build && pnpm --filter @pyobservablejs/docs run check:build", env = { UV_NO_DEFAULT_GROUPS = "1" }, depends-on = [
-	"install-js",
+	"build-js",
 ], description = "Build and check the documentation site" }
 docs-serve = { cmd = "pnpm --filter @pyobservablejs/docs run serve", depends-on = [
 	"docs",

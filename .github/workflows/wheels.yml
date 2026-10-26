@@ -87,6 +87,8 @@ jobs:
       - name: Attach the Agent Plugin
         if: runner.os == 'Linux'
         run: |
+          # The manylinux container writes dist/ as root.
+          sudo chown -R "$(id -u):$(id -g)" dist
           pixi run uv --directory packages/pyobservablejs run --frozen --isolated --only-group release \
             python -m agent_plugins attach-wheel "$GITHUB_WORKSPACE"/dist/native/pyobservablejs-*.whl
 
