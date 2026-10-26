@@ -61,7 +61,7 @@ fn web_sources(out_dir: &Path) -> Result<(), Box<dyn Error>> {
 }
 
 /// Embed the engine bundle's entry and lazy chunks under their file names.
-/// `@pyobservablejs/engine` writes them to `bundle/`.
+/// `@pyobservablejs/engine-ts` writes them to `bundle/`.
 fn engine_modules(out_dir: &Path) -> Result<(), Box<dyn Error>> {
     let root = Path::new("bundle");
     writeln!(

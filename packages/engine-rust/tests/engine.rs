@@ -4,7 +4,7 @@
     reason = "test helpers fail the test on an unexpected engine reply"
 )]
 
-use pyobservablejs_engine::{Engine, EngineOptions, Error, Network};
+use pyobservablejs_engine_rust::{Engine, EngineOptions, Error, Network};
 use serde_json::{Value, json};
 use std::time::{Duration, Instant};
 

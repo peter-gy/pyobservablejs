@@ -5,7 +5,7 @@
 	"workspaces": {
 		".": {
 			// The Rust engine crate embeds the isolate bootstrap with include_str!.
-			"entry": ["crates/pyobservablejs-engine/src/bootstrap.js"],
+			"entry": ["packages/engine-rust/src/bootstrap.js"],
 		},
 		"apps/docs": {
 			// Docusaurus discovers MDX pages and theme overrides by directory.
@@ -18,7 +18,7 @@
 			// anywidget-bundle resolves its app option as the browser entry point.
 			"ignoreDependencies": ["@pyobservablejs/widget"],
 		},
-		"packages/engine": {
+		"packages/engine-ts": {
 			// The V8 bundle resolves Node built-ins to these shims through Vite aliases.
 			"entry": ["src/node/*.ts"],
 			"vite": { "config": ["vite.config.ts", "vite.browser.config.ts"] },

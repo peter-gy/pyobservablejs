@@ -42,7 +42,7 @@ dev = ["hatchling==1.31.0", "maturin>=1.15,<2", "watchfiles"]
 release = ["agent-plugins>=0.2", "hatchling==1.31.0"]
 
 [tool.maturin]
-manifest-path = "../../crates/pyobservablejs-python/Cargo.toml"
+manifest-path = "../engine-python/Cargo.toml"
 python-source = "src"
 module-name = "observablejs._engine"
 locked = true
@@ -78,10 +78,12 @@ cache-keys = [
 	{ file = "build_backend.py" },
 	{ file = "../../Cargo.toml" },
 	{ file = "../../Cargo.lock" },
-	{ file = "../../crates/**/*.rs" },
-	{ file = "../../crates/**/Cargo.toml" },
-	{ file = "../../crates/pyobservablejs-engine/src/bootstrap.js" },
-	{ file = "../../crates/pyobservablejs-engine/bundle/*.js" },
+	{ file = "../engine-python/Cargo.toml" },
+	{ file = "../engine-python/src/**/*.rs" },
+	{ file = "../engine-rust/Cargo.toml" },
+	{ file = "../engine-rust/build.rs" },
+	{ file = "../engine-rust/src/**/*" },
+	{ file = "../engine-rust/bundle/*.js" },
 ]
 
 [tool.agent-plugins]

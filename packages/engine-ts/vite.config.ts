@@ -34,7 +34,7 @@ export default defineConfig({
 	build: {
 		target: "esnext",
 		// The Rust engine crate embeds every chunk of this bundle.
-		outDir: "../../crates/pyobservablejs-engine/bundle",
+		outDir: "../engine-rust/bundle",
 		emptyOutDir: true,
 		lib: { entry: "src/embedded.ts", formats: ["es"], fileName: () => "engine.js" },
 		minify: true,

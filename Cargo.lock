@@ -1454,7 +1454,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "pyobservablejs-engine"
+name = "pyobservablejs-engine-python"
+version = "0.0.0"
+dependencies = [
+ "pyo3",
+ "pyobservablejs-engine-rust",
+]
+
+[[package]]
+name = "pyobservablejs-engine-rust"
 version = "0.0.0"
 dependencies = [
  "base64 0.23.1",
@@ -1469,14 +1477,6 @@ dependencies = [
  "sha2",
  "tokio",
  "ureq",
-]
-
-[[package]]
-name = "pyobservablejs-python"
-version = "0.0.0"
-dependencies = [
- "pyo3",
- "pyobservablejs-engine",
 ]
 
 [[package]]

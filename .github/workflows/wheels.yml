@@ -25,7 +25,7 @@ jobs:
           name: package-assets
           path: |
             packages/pyobservablejs/src/observablejs/static/
-            crates/pyobservablejs-engine/bundle/
+            packages/engine-rust/bundle/
           include-hidden-files: true
           retention-days: 1
           if-no-files-found: error

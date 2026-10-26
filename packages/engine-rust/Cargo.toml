@@ -1,5 +1,5 @@
 [package]
-name = "pyobservablejs-engine"
+name = "pyobservablejs-engine-rust"
 description = "Notebook engine that hosts the pyobservablejs JavaScript bundle in V8 isolates"
 version.workspace = true
 edition.workspace = true

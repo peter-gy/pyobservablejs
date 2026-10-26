@@ -11,8 +11,14 @@ for the native engine.
 pixi.toml, pixi.lock      system tools, Python interpreters, and tasks
 package.json, pnpm-*      TypeScript workspace: packages/*, apps/*
 pyproject.toml, uv.lock   Python workspace: packages/pyobservablejs
-Cargo.toml, Cargo.lock    Rust workspace: crates/*
+Cargo.toml, Cargo.lock    Rust workspace: packages/engine-rust, packages/engine-python
 ```
+
+Every library lives in `packages/`, and `apps/` holds the docs site and the
+end-to-end tests. A package's directory matches its name after the
+`@pyobservablejs/` npm scope or the `pyobservablejs-` crate prefix. The engine
+splits into `engine-ts` for the TypeScript service, `engine-rust` for the V8
+host, and `engine-python` for the Python extension.
 
 ## Package graph
 
@@ -20,31 +26,31 @@ Cargo.toml, Cargo.lock    Rust workspace: crates/*
 flowchart TB
   python["@pyobservablejs/python"] --> widget["@pyobservablejs/widget"]
   python --> bundle["anywidget-bundle"]
-  python --> engine["@pyobservablejs/engine"]
+  python --> engine["@pyobservablejs/engine-ts"]
   widget --> runtime["@pyobservablejs/runtime"]
   widget --> protocol["@pyobservablejs/protocol"]
   engine --> runtime
   engine --> protocol
   protocol --> runtime
-  binding["pyobservablejs-python<br/>crate"] --> core["pyobservablejs-engine<br/>crate"]
+  binding["pyobservablejs-engine-python<br/>crate"] --> core["pyobservablejs-engine-rust<br/>crate"]
   core -. embeds .-> engine
   wheel["pyobservablejs<br/>Python package"] --> binding
   app["Standalone TypeScript consumer"] --> runtime
   runtime --> kit["Notebook Kit and Observable Runtime"]
 ```
 
-| Package                        | Contract                                                                                                 |
-| ------------------------------ | -------------------------------------------------------------------------------------------------------- |
-| `packages/runtime`             | Source-to-DOM mounting, analysis, execution, native values, input controls, styles, and evaluation state |
-| `packages/widget`              | anywidget model resolution, shared-input transport, and readback publication                             |
-| `packages/protocol`            | Python value codecs, exact read contracts, and Chromium response frames                                  |
-| `packages/engine`              | Headless command service, the embedded V8 bundle, and the Chromium page entry                            |
-| `anywidget-bundle`             | Vite plugin, manifest, module transport, lifecycle protocol, and Python response runtime                 |
-| `crates/pyobservablejs-engine` | Rust `Engine`: V8 isolates, host operations, module loading, network policy, and module cache            |
-| `crates/pyobservablejs-python` | PyO3 extension `observablejs._engine` over the engine crate                                              |
-| `packages/pyobservablejs`      | Python API, traitlets, build backend, native and pure wheels, and sdist                                  |
-| `apps/e2e`                     | Standalone TypeScript, marimo, JupyterLab, and Pyodide tests                                             |
-| `apps/docs`                    | Docusaurus configuration, mdx-marimo integration, and published site build                               |
+| Package                   | Contract                                                                                                 |
+| ------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `packages/runtime`        | Source-to-DOM mounting, analysis, execution, native values, input controls, styles, and evaluation state |
+| `packages/widget`         | anywidget model resolution, shared-input transport, and readback publication                             |
+| `packages/protocol`       | Python value codecs, exact read contracts, and Chromium response frames                                  |
+| `packages/engine-ts`      | Headless command service, the embedded V8 bundle, and the Chromium page entry                            |
+| `anywidget-bundle`        | Vite plugin, manifest, module transport, lifecycle protocol, and Python response runtime                 |
+| `packages/engine-rust`    | Rust `Engine`: V8 isolates, host operations, module loading, network policy, and module cache            |
+| `packages/engine-python`  | PyO3 extension `observablejs._engine` over the engine crate                                              |
+| `packages/pyobservablejs` | Python API, traitlets, build backend, native and pure wheels, and sdist                                  |
+| `apps/e2e`                | Standalone TypeScript, marimo, JupyterLab, and Pyodide tests                                             |
+| `apps/docs`               | Docusaurus configuration, mdx-marimo integration, and published site build                               |
 
 Solid arrows indicate imports from consumer to dependency. Cross-package
 TypeScript imports use package names and internal dependencies use
@@ -117,16 +123,16 @@ and verifies the files into `CARGO_HOME/pyobservablejs-v8`, and remaps build
 paths in the extension. Pixi's Rust tasks run Cargo through it:
 
 ```sh
-pixi run python packages/pyobservablejs/native_build.py cargo test --workspace --locked --exclude pyobservablejs-python
+pixi run python packages/pyobservablejs/native_build.py cargo test --workspace --locked --exclude pyobservablejs-engine-python
 ```
 
 The PEP 517 backend in `build_backend.py` checks the frontend assets, runs the
 same V8 check, delegates to [Maturin](https://www.maturin.rs/) with
-`manifest-path = "../../crates/pyobservablejs-python/Cargo.toml"`, and attaches
+`manifest-path = "../engine-python/Cargo.toml"`, and attaches
 the Agent Plugin.
 
-`@pyobservablejs/engine` writes its V8 bundle to
-`crates/pyobservablejs-engine/bundle/`. The engine crate's `build.rs` embeds
+`@pyobservablejs/engine-ts` writes its V8 bundle to
+`packages/engine-rust/bundle/`. The engine crate's `build.rs` embeds
 every chunk there, served as `pyobservablejs:/<file>.js`, and the `deno_web`
 and `deno_webidl` sources, located through `cargo metadata`.
 

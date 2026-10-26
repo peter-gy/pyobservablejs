@@ -9,10 +9,10 @@
 - `packages/widget/` adapts anywidget model references and Python wire values to
   runtime mounts and publishes serialized readback.
 - `packages/protocol/` owns the Python wire codecs that the widget and engine share.
-- `packages/engine/` owns the headless command service for the embedded V8
+- `packages/engine-ts/` owns the headless command service for the embedded V8
   isolate and the Chromium page.
-- `crates/pyobservablejs-engine/` owns the Rust engine that embeds V8, and
-  `crates/pyobservablejs-python/` exposes it to Python as `observablejs._engine`.
+- `packages/engine-rust/` owns the Rust engine that embeds V8, and
+  `packages/engine-python/` exposes it to Python as `observablejs._engine`.
 - The npm and Python `anywidget-bundle` packages own the cross-language build
   and module-transport boundary consumed by the frontend build and Python
   widget models.

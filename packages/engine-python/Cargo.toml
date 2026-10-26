@@ -1,5 +1,5 @@
 [package]
-name = "pyobservablejs-python"
+name = "pyobservablejs-engine-python"
 description = "CPython bindings for the pyobservablejs notebook engine"
 version.workspace = true
 edition.workspace = true
@@ -13,7 +13,7 @@ name = "_engine"
 crate-type = ["cdylib"]
 
 [dependencies]
-pyobservablejs-engine.workspace = true
+pyobservablejs-engine-rust.workspace = true
 pyo3.workspace = true
 
 [lints]
