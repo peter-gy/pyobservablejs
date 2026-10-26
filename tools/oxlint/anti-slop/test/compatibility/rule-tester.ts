@@ -1,7 +1,7 @@
-import type { Rule } from "@oxlint/plugins";
+import type { Rule } from "vite-plus/lint/plugins";
 
 import { describe, it } from "node:test";
-import { RuleTester } from "oxlint/plugins-dev";
+import { RuleTester } from "vite-plus/lint/plugins-dev";
 
 RuleTester.describe = describe;
 RuleTester.it = it;

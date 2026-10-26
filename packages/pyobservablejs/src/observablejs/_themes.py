@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
-from typing import Any, cast, get_args
+from typing import Any, get_args
 
 from .types import NotebookTheme, Theme
 
@@ -61,4 +61,4 @@ def _normalize_theme_name(value: Any) -> NotebookTheme:
     theme = value.strip().lower()
     if theme not in _THEME_NAMES:
         raise ValueError(f"Unsupported Notebook Kit theme: {value!r}")
-    return cast(NotebookTheme, theme)
+    return theme

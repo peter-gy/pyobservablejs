@@ -1,0 +1,19 @@
+from collections.abc import Sequence
+
+class EngineStopped(RuntimeError): ...
+
+class Engine:
+    def __init__(
+        self,
+        *,
+        network: bool | Sequence[str],
+        cache_dir: str | None = None,
+        memory_mb: int = 4096,
+    ) -> None: ...
+    def send(self, message: str) -> None: ...
+    def receive(
+        self, timeout: float | None = None
+    ) -> tuple[bytes, list[bytes]] | None: ...
+    def close(self) -> None: ...
+    @property
+    def closed(self) -> bool: ...

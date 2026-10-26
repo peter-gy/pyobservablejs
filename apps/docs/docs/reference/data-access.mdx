@@ -15,9 +15,9 @@ notebook.data["sales"].to_polars()
 notebook.graph.upstream("result")
 ```
 
-`notebook.data` and `notebook.graph` use the optional [headless runtime](../guide/server.mdx).
-Files and cell handles work with the base installation. Live widget reads use the
-specific view's browser and require no Deno:
+`notebook.data` and `notebook.graph` use the [headless engine](../guide/server.mdx)
+of the native wheels. Files, cell handles, and live widget reads work with every
+wheel. A widget read uses the specific view's browser:
 
 ```python
 frame = await view.data["sales"].to_polars()

@@ -6,22 +6,23 @@
 		"clear": "docusaurus clear",
 		"dev": "docusaurus start --host 127.0.0.1 --port 27331",
 		"serve": "docusaurus serve --host 127.0.0.1 --port 27331",
-		"test": "node --test llms.test.mjs"
+		"test": "node --test llms.test.mjs",
+		"check:build": "node check-build.mjs"
 	},
 	"dependencies": {
-		"@docusaurus/core": "3.10.2",
-		"@docusaurus/preset-classic": "3.10.2",
+		"@docusaurus/core": "catalog:",
+		"@docusaurus/preset-classic": "catalog:",
 		"@docusaurus/theme-mermaid": "catalog:",
 		"@marimo-team/mdx-marimo": "catalog:",
-		"@mdx-js/react": "^3.1.1",
+		"@mdx-js/react": "catalog:",
 		"@mermaid-js/layout-elk": "catalog:",
 		"@orama/plugin-docusaurus-v3": "catalog:",
 		"docusaurus-plugin-llms": "catalog:",
-		"react": "^19.2.8",
-		"react-dom": "^19.2.8"
+		"react": "catalog:",
+		"react-dom": "catalog:"
 	},
 	"devDependencies": {
 		"@docusaurus/plugin-content-docs": "catalog:",
-		"@docusaurus/types": "3.10.2"
+		"@docusaurus/types": "catalog:"
 	}
 }

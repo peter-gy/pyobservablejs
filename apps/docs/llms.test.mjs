@@ -22,7 +22,7 @@ void test("validates production-base links against Docusaurus routes", () => {
 void test("removes an execution fence that repeats a visible Python example", () => {
 	const source = [
 		"```marimo-config",
-		'requires-python = ">=3.11,<3.15"',
+		'requires-python = ">=3.11"',
 		'dependencies = ["pyobservablejs"]',
 		"```",
 		"",

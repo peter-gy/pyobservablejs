@@ -724,7 +724,7 @@ def _files_to_attachments(
 
 def _iso_timestamp_ms(value: str) -> int | None:
     try:
-        parsed = _dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+        parsed = _dt.datetime.fromisoformat(value)
     except ValueError:
         return None
     return int(parsed.timestamp() * 1000)

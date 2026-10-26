@@ -13,7 +13,8 @@ export type RuntimeCellDefinition = Omit<NotebookKitDefinition, "body"> & {
 	body: NotebookKitDefinition["body"] | RuntimeBody;
 	display?: RuntimeDefinition["display"];
 	rootInput?: number;
-	imports?: RuntimeCellDefinition[];
+	/** Definitions of the notebook imports lowered out of this cell. */
+	importDefinitions?: RuntimeCellDefinition[];
 };
 
 interface DisplayOverride {

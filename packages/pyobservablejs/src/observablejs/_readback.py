@@ -195,7 +195,7 @@ def _validate_string_sequence(value: object, field: str) -> list[str]:
         not isinstance(item, str) for item in value
     ):
         raise traitlets.TraitError(f"{field} must be a list of strings")
-    return cast(list[str], list(value))
+    return list(value)
 
 
 def _validate_result_wire(value: object, input_revision: int | None) -> dict[str, Any]:

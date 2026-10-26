@@ -1,6 +1,7 @@
 [build-system]
-requires = ["agent-plugins>=0.2", "hatchling==1.31.0"]
-build-backend = "agent_plugins.build.hatchling"
+requires = ["agent-plugins>=0.2", "maturin>=1.15,<2"]
+build-backend = "build_backend"
+backend-path = ["."]
 
 [project]
 name = "pyobservablejs"
@@ -8,12 +9,12 @@ version = "0.2.1"
 description = "Observable notebooks as Python widgets and headless computations"
 readme = "README.md"
 license = "MIT"
-license-files = ["LICENSE", "NOTICE"]
+license-files = ["LICENSE"]
 authors = [{ name = "Peter Ferenc Gyarmati", email = "dev.petergy@gmail.com" }]
 maintainers = [{ name = "Peter Ferenc Gyarmati", email = "dev.petergy@gmail.com" }]
-requires-python = ">=3.11,<3.15"
+requires-python = ">=3.11"
 keywords = ["anywidget", "jupyter", "marimo", "notebooks", "observable", "visualization"]
-dependencies = ["agent-plugins>=0.2", "anywidget>=0.11.0", "anywidget-bundle==0.1.1", "traitlets>=5"]
+dependencies = ["agent-plugins>=0.2", "anywidget>=0.11.0", "anywidget-bundle>=0.1.1", "traitlets>=5"]
 classifiers = [
 	"Programming Language :: Python :: 3",
 	"Programming Language :: Python :: 3 :: Only",
@@ -25,7 +26,7 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-server = ["deno>=2.9.6,<3"]
+chromium = ["playwright>=1.56"]
 
 [project.urls]
 Homepage = "https://github.com/peter-gy/pyobservablejs"
@@ -37,20 +38,51 @@ Issues = "https://github.com/peter-gy/pyobservablejs/issues"
 pyobservablejs = "observablejs.agent"
 
 [dependency-groups]
-dev = ["hatchling==1.31.0", "watchfiles"]
+dev = ["hatchling==1.31.0", "maturin>=1.15,<2", "watchfiles"]
+release = ["agent-plugins>=0.2", "hatchling==1.31.0"]
 
+[tool.maturin]
+manifest-path = "../../crates/pyobservablejs-python/Cargo.toml"
+python-source = "src"
+module-name = "observablejs._engine"
+locked = true
+include = [
+	{ path = "build_backend.py", format = "sdist" },
+	{ path = "native_build.py", format = "sdist" },
+	{ path = "native-archives.json", format = "sdist" },
+	{ path = "hatch_build.py", format = "sdist" },
+	{ path = "src/observablejs/static/**/*", format = [
+		"sdist",
+		"wheel",
+	] },
+]
+exclude = ["src/observablejs/**/__pycache__/**", "src/observablejs/_engine*.so", "src/observablejs/_engine*.pyd"]
+
+# Hatch builds the pure py3-none-any wheel from the same sources.
 [tool.hatch.build]
 only-packages = true
 artifacts = ["src/observablejs/static/**"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/observablejs"]
-
-[tool.hatch.build.targets.sdist]
-include = ["/hatch_build.py", "/LICENSE", "/NOTICE", "/README.md", "/pyproject.toml", "/src/observablejs"]
+exclude = ["src/observablejs/_engine*"]
 
 [tool.hatch.build.hooks.custom]
 path = "hatch_build.py"
+
+[tool.uv]
+cache-keys = [
+	{ file = "pyproject.toml" },
+	{ file = "native_build.py" },
+	{ file = "native-archives.json" },
+	{ file = "build_backend.py" },
+	{ file = "../../Cargo.toml" },
+	{ file = "../../Cargo.lock" },
+	{ file = "../../crates/**/*.rs" },
+	{ file = "../../crates/**/Cargo.toml" },
+	{ file = "../../crates/pyobservablejs-engine/src/bootstrap.js" },
+	{ file = "../../crates/pyobservablejs-engine/bundle/*.js" },
+]
 
 [tool.agent-plugins]
 root = "../.."

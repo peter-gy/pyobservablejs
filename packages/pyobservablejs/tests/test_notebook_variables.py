@@ -673,7 +673,7 @@ def test_browser_values_decode_to_python_values(
     )
 
     values = view.state.result("readback").values
-    assert values["when"] == dt.datetime(2026, 5, 25, 10, tzinfo=dt.timezone.utc)
+    assert values["when"] == dt.datetime(2026, 5, 25, 10, tzinfo=dt.UTC)
     assert values["raw"] == b"abc"
 
 

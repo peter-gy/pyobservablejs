@@ -5,11 +5,12 @@ description: Read notebook values and datasets from Python scripts, with optiona
 
 # Headless Python
 
-Install the server extra to run notebook computation in Deno. Add the dataframe
-library you want to use:
+`notebook.data` evaluates notebook cells inside the Python process and returns
+their values as Python objects, Arrow tables, or dataframes. Install the package
+with the dataframe library you want to use:
 
 ```sh
-pip install 'pyobservablejs[server]' polars
+pip install pyobservablejs polars
 ```
 
 ```python
@@ -32,6 +33,41 @@ context manager or call `notebook.close()` when finished.
 
 `notebook.with_variables(price=9)` creates an independent notebook binding.
 The original notebook and its views retain their current variables.
+
+## Embedded engine
+
+Each execution runs in its own [V8](https://v8.dev/) JavaScript isolate inside
+the Python process, with a [Happy DOM](https://github.com/capricorn86/happy-dom)
+document for HTML, SVG, and input construction. The engine has no browser layout
+or graphics. Its `width` is 640 and `dark` is false.
+
+Native wheels carry the engine for Linux x86_64 and aarch64 with glibc 2.28 or
+newer, macOS 12 or newer on Apple silicon and Intel, and Windows x86_64. Other
+platforms, including [Pyodide](https://pyodide.org/) in marimo WebAssembly
+notebooks and JupyterLite, install the pure Python wheel. It displays views and
+reads their data through [`view.data`](#async-and-widget-access). Headless reads
+from the pure wheel raise `ImportError`.
+
+A timeout terminates the affected execution, including a synchronous JavaScript
+loop. A subsequent unpinned read starts a new execution. Exceptions retain
+JavaScript stacks, source excerpts, and structured diagnostics. An execution that
+exceeds its 4 GiB JavaScript heap stops with `errors.EngineError`.
+
+Engines belong to the process that started them. A child process created with
+`fork` after its parent ran headless reads must start with the `spawn`
+[start method](https://docs.python.org/3/library/multiprocessing.html#contexts-and-start-methods)
+to use `notebook.data`.
+
+Supply Python-owned values to bypass input construction:
+
+```python
+with obs.Notebook(
+    obs.ojs("viewof threshold = Inputs.range([0, 1])"),
+    obs.ojs("answer = threshold * 2"),
+    variables={"threshold": 0.5},
+) as notebook:
+    print(notebook.data["answer"].to_python())  # 1
+```
 
 ## Inspect and discover
 
@@ -65,9 +101,16 @@ restricted = notebook.data.using(
 )
 ```
 
-Deno caches downloaded modules. Its classic `require()` loads packages through
-native ESM entries while preserving declared package versions. Use Chromium for
-libraries that require AMD globals or browser-specific behavior.
+A host entry matches every port of that host. Write `host:port` to allow one
+port. The policy applies to `fetch`, attachments, and module imports. The
+embedded engine also checks every redirect target.
+
+The embedded engine keeps downloaded module source in the user cache directory for the
+lifetime its server declares through `Cache-Control: max-age`. Later processes
+read fresh entries from that cache. Set `PYOBSERVABLEJS_CACHE_DIR` to choose
+another directory. Classic `require()` loads packages through native ESM
+entries while preserving declared package versions. Use Chromium for libraries
+that require AMD globals or browser-specific behavior.
 
 Supply local notebook dependencies through `resolve_notebook`:
 
@@ -95,7 +138,13 @@ and resolves version pins before calling the resolver.
 
 ## Chromium
 
-Use Chromium for canvas, layout, and browser APIs:
+Use Chromium for canvas, layout, and browser APIs. Install the `chromium` extra,
+which adds [Playwright](https://playwright.dev/python/), a browser automation
+library:
+
+```sh
+pip install 'pyobservablejs[chromium]'
+```
 
 ```python
 data = notebook.data.using(engine="chromium")
@@ -107,34 +156,15 @@ png = notebook.render.png("chart", scale=2, timeout=120)
 doubles the PNG width and height while preserving the notebook's CSS layout.
 Fractional scales such as `1.5` are supported.
 
-Deno runs the bundled, pinned Playwright driver. The driver installs matching
-Chromium on first use. Engine preparation has a separate three-minute deadline,
-so the initial download does not consume the read timeout. Each
-execution uses a fresh browser context and closes the browser with the notebook.
-Notebook request policy applies to both engines. Browser installation is separate
-from notebook network access.
+Playwright downloads its matching Chromium build on first use. Engine
+preparation has a separate three-minute deadline, so the initial download does
+not consume the read timeout. Each execution uses a fresh browser context and
+closes the browser with the notebook. The network policy applies to Chromium
+page requests and WebSockets. Browser installation is separate from notebook
+network access.
 
-Engine selection is explicit. A failing Deno computation is not automatically
-reexecuted in Chromium, which could repeat its side effects.
-
-## Deno DOM capabilities
-
-The default engine provides a DOM implementation for HTML, SVG, and input
-construction. It has no browser layout or graphics engine. Its `width` is 640
-and `dark` is false. Supply Python-owned values to bypass control construction:
-
-```python
-with obs.Notebook(
-    obs.ojs("viewof threshold = Inputs.range([0, 1])"),
-    obs.ojs("answer = threshold * 2"),
-    variables={"threshold": 0.5},
-) as notebook:
-    print(notebook.data["answer"].to_python())  # 1
-```
-
-A timeout terminates the affected execution, including a synchronous JavaScript
-loop. A subsequent unpinned read starts a new execution. Exceptions retain
-JavaScript stacks, source excerpts, and structured diagnostics.
+Engine selection is explicit. A failing embedded computation is not
+reexecuted in Chromium automatically, which could repeat its side effects.
 
 ## Async and widget access
 
@@ -151,6 +181,6 @@ A displayed widget has its own awaitable namespace:
 frame = await view.data["sales"].to_polars()
 ```
 
-Widget construction, display, and widget data access work with the base package
-and do not require Deno or the server extra. They read the originating view's
-browser values, including its current interactions.
+Widget construction, display, and widget data access work with every wheel.
+They read the originating view's browser values, including its current
+interactions.

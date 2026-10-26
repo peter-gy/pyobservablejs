@@ -1,0 +1,154 @@
+[workspace]
+name = "pyobservablejs"
+description = "Observable notebooks as Python widgets and headless computations"
+channels = ["https://prefix.dev/conda-forge"]
+platforms = ["linux-64", "linux-aarch64", "osx-64", "osx-arm64", "win-64"]
+requires-pixi = ">=0.82"
+exclude-newer = "3d"
+
+# Pixi owns interpreters and system tools. uv.lock, pnpm-lock.yaml, and
+# Cargo.lock own the Python, JavaScript, and Rust dependency graphs.
+[dependencies]
+actionlint = "1.7.*"
+cargo-deny = "0.20.*"
+cargo-shear = "1.13.*"
+nodejs = "26.*"
+pnpm = "12.*"
+rust = "1.99.*"
+uv = "0.13.*"
+
+[activation.env]
+UV_PYTHON_DOWNLOADS = "never"
+UV_PYTHON_PREFERENCE = "only-system"
+
+[target.unix.activation.env]
+UV_PYTHON = "$CONDA_PREFIX/bin/python"
+
+[target.win.activation.env]
+UV_PYTHON = "%CONDA_PREFIX%\\python.exe"
+
+[feature.py311.dependencies]
+python = "3.11.*"
+
+[feature.py311.activation.env]
+UV_PROJECT_ENVIRONMENT = ".venv-py311"
+
+[feature.py312.dependencies]
+python = "3.12.*"
+
+[feature.py313.dependencies]
+python = "3.13.*"
+
+[feature.py313.activation.env]
+UV_PROJECT_ENVIRONMENT = ".venv-py313"
+
+[feature.py314.dependencies]
+python = "3.14.*"
+
+[feature.py314.activation.env]
+UV_PROJECT_ENVIRONMENT = ".venv-py314"
+
+[environments]
+default = ["py312"]
+py311 = ["py311"]
+py313 = ["py313"]
+py314 = ["py314"]
+
+[tasks]
+install-js = { cmd = "pnpm install --frozen-lockfile", description = "Install the locked JavaScript workspace" }
+build-js = { cmd = "pnpm run build", depends-on = [
+	"install-js",
+], description = "Build the TypeScript packages, widget assets, and engine bundle" }
+install = { cmd = "uv sync --frozen --all-packages --extra chromium --group dev", depends-on = [
+	"build-js",
+], description = "Install the Python workspace and compile the native extension" }
+
+check-js = { cmd = "pnpm run check", depends-on = [
+	"install-js",
+], description = "Format, lint, and type-check JavaScript, docs, and TOML, then run Knip" }
+test-js = { cmd = "pnpm run test", depends-on = ["install-js"], description = "Run the TypeScript tests" }
+test-inspect = { cmd = "node --test packages/runtime/tests/inspect-node.test.mjs", depends-on = [
+	"build-js",
+], description = "Test the built Node inspection entry point" }
+
+lock-python = { cmd = "uv lock --check", description = "Check that uv.lock matches the Python manifests" }
+lint-python = { cmd = "uv run --frozen ruff format --check . && uv run --frozen ruff check", depends-on = [
+	"install",
+], description = "Check Python formatting and lints" }
+type-python = { cmd = """\
+  uv run --frozen --all-packages --extra chromium --group dev ty check packages/pyobservablejs scripts apps/e2e \
+  && uv run --frozen --all-packages --extra chromium --group dev pyrefly check --min-severity warn""", depends-on = [
+	"install",
+], description = "Type-check Python with ty and Pyrefly" }
+check-python = { depends-on = [
+	"lock-python",
+	"lint-python",
+	"type-python",
+], description = "Check the Python lockfile, formatting, lints, and types" }
+test-python = { cmd = "uv run --frozen --all-packages --extra chromium --group dev pytest -q packages/pyobservablejs/tests", depends-on = [
+	"install",
+], description = "Run the Python tests" }
+
+fmt-rust = { cmd = "cargo fmt --all", description = "Format the Rust workspace" }
+lint-rust = { cmd = """\
+  cargo fmt --all --check \
+  && python packages/pyobservablejs/native_build.py cargo clippy --workspace --locked --all-targets -- -D warnings""", depends-on = [
+	"build-js",
+], description = "Check Rust formatting and Clippy lints" }
+audit-rust = { cmd = "cargo deny --locked check && cargo shear --deny-warnings", description = "Check Rust advisories, licenses, sources, and unused dependencies" }
+test-rust = { cmd = "python packages/pyobservablejs/native_build.py cargo test --workspace --locked --exclude pyobservablejs-python", depends-on = [
+	"build-js",
+], description = "Run the Rust tests" }
+check-rust = { depends-on = [
+	"lint-rust",
+	"audit-rust",
+	"test-rust",
+], description = "Lint, audit, and test the Rust workspace" }
+
+build = { cmd = "uv build --package pyobservablejs --out-dir dist", depends-on = [
+	"build-js",
+], description = "Build the sdist and a native wheel from it in dist/" }
+build-pure = { cmd = """\
+  rm -rf dist/pure \
+  && uv --directory packages/pyobservablejs run --frozen --isolated --only-group release python -m hatchling build --target wheel --directory $PIXI_PROJECT_ROOT/dist/pure \
+  && uv --directory packages/pyobservablejs run --frozen --isolated --only-group release python -m agent_plugins attach-wheel $PIXI_PROJECT_ROOT/dist/pure/pyobservablejs-*-py3-none-any.whl""", depends-on = [
+	"build-js",
+], description = "Build the pure py3-none-any wheel in dist/pure/" }
+test-floors = { cmd = """\
+  rm -rf dist/floors \
+  && uv build --package pyobservablejs --wheel --out-dir dist/floors \
+  && uv run --no-project python scripts/test_python_floors.py dist/floors/pyobservablejs-*.whl""", depends-on = [
+	"build-js",
+], description = "Test runtime dependencies at their declared lower bounds" }
+
+install-browser = { cmd = "pnpm --filter @pyobservablejs/e2e run install-browser", depends-on = [
+	"install-js",
+], description = "Install Chromium for the browser tests" }
+test-e2e = { cmd = "pnpm --filter @pyobservablejs/e2e run test:e2e", depends-on = [
+	"install",
+], description = "Run the browser tests" }
+test-pyodide = { cmd = "pnpm --filter @pyobservablejs/e2e run test:pyodide", depends-on = [
+	"build-pure",
+], description = "Install the pure wheel in Pyodide" }
+
+docs = { cmd = "pnpm exec vp run -w docs-build && pnpm --filter @pyobservablejs/docs run check:build", env = { UV_NO_DEFAULT_GROUPS = "1" }, depends-on = [
+	"build-js",
+], description = "Build and check the documentation site" }
+docs-serve = { cmd = "pnpm --filter @pyobservablejs/docs run serve", depends-on = [
+	"docs",
+], description = "Serve the built documentation site" }
+lint-workflows = { cmd = "actionlint", description = "Lint the GitHub Actions workflows" }
+
+check = { depends-on = [
+	"check-js",
+	"test-js",
+	"check-python",
+	"check-rust",
+	"build",
+	"test-inspect",
+	"test-python",
+	"test-e2e",
+	"test-pyodide",
+	"docs",
+	"lint-workflows",
+], description = "Run the complete local gate" }

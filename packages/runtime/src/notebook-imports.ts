@@ -8,7 +8,7 @@ export function transpileNotebookImports(cell: Cell): RuntimeCellDefinition | nu
 	if (!cell.value.includes("import")) return null;
 	const parsed = parseJavaScript(cell.value, cell.mode);
 	if (parsed.body.type !== "Program") return null;
-	const imports: RuntimeCellDefinition[] = [];
+	const importDefinitions: RuntimeCellDefinition[] = [];
 	const edits: { start: number; end: number; value: string }[] = [];
 	let bindingIndex = 0;
 	let prefix = `__notebookBinding${String(cell.id).replace("-", "_")}_`;
@@ -42,19 +42,19 @@ export function transpileNotebookImports(cell: Cell): RuntimeCellDefinition | nu
 			{ ...cell, value: statement },
 			{ resolveImport: resolveRuntimeImport, resolveLocalImports: true },
 		);
-		imports.push(definition);
+		importDefinitions.push(definition);
 		edits.push({
 			start: node.start,
 			end: node.end,
 			value: bindings.map(({ local, name }) => `const ${local} = ${name};`).join("\n"),
 		});
 	}
-	if (!imports.length) return null;
+	if (!importDefinitions.length) return null;
 	let source = cell.value;
 	for (const edit of edits.reverse()) source = source.slice(0, edit.start) + edit.value + source.slice(edit.end);
 	const definition = transpile(
 		{ ...cell, value: source },
 		{ resolveImport: resolveRuntimeImport, resolveLocalImports: true },
 	);
-	return { ...definition, imports };
+	return { ...definition, importDefinitions };
 }

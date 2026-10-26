@@ -9,22 +9,20 @@ afterEach(() => {
 });
 
 test("imports typed declarations through native modules and preserves lazy cells", async () => {
-	const resolveNotebook = vi.fn(
-		async (): Promise<NotebookSource> => ({
-			runtimeProfile: "notebook-kit",
-			origin: { id: "0123456789abcdef", version: 1 },
-			source: {
-				cells: [
-					{
-						id: 1,
-						mode: "ts",
-						value: "const base: number = 6; const doubled = base * 2; const evaluations: string[] = [];",
-					},
-					{ id: 2, mode: "js", value: 'const unused = evaluations.push("unused");' },
-				],
-			},
-		}),
-	);
+	const resolveNotebook = vi.fn(async (): Promise<NotebookSource> => ({
+		runtimeProfile: "notebook-kit",
+		origin: { id: "0123456789abcdef", version: 1 },
+		source: {
+			cells: [
+				{
+					id: 1,
+					mode: "ts",
+					value: "const base: number = 6; const doubled = base * 2; const evaluations: string[] = [];",
+				},
+				{ id: 2, mode: "js", value: 'const unused = evaluations.push("unused");' },
+			],
+		},
+	}));
 	const mount = mountNotebook(
 		document.createElement("div"),
 		{

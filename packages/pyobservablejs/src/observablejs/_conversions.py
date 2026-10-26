@@ -112,7 +112,7 @@ def file_format(
         try:
             json.loads(data)
             return "json"
-        except (ValueError, UnicodeError):
+        except ValueError:
             pass
     raise ValueError(f"Cannot infer the format of {name!r}. Pass format= explicitly")
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import weakref
 from collections.abc import Iterable, Mapping
-from typing import Any, Protocol, cast
+from typing import Any, Protocol
 
 import traitlets
 
@@ -106,7 +106,7 @@ class NotebookController(traitlets.HasTraits):
 
     @property
     def attachments(self) -> dict[str, FileAttachment]:
-        return cast(dict[str, FileAttachment], dict(self._attachments))
+        return dict(self._attachments)
 
     def update_variables(
         self,

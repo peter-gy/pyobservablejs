@@ -11,7 +11,13 @@ VERIFY_RELEASE_SCRIPT = REPOSITORY_ROOT / "scripts" / "verify_release.py"
 
 def run_verifier(expected_version: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [sys.executable, str(VERIFY_RELEASE_SCRIPT), expected_version],
+        [
+            sys.executable,
+            str(VERIFY_RELEASE_SCRIPT),
+            expected_version,
+            "--wheel",
+            "native",
+        ],
         cwd=REPOSITORY_ROOT,
         check=False,
         capture_output=True,
@@ -25,7 +31,9 @@ def test_verifier_accepts_installed_release() -> None:
     result = run_verifier(installed_version)
 
     assert result.returncode == 0
-    assert result.stdout == f"Verified pyobservablejs {installed_version}\n"
+    assert (
+        result.stdout == f"Verified pyobservablejs {installed_version} (native wheel)\n"
+    )
     assert result.stderr == ""
 
 

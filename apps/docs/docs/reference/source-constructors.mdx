@@ -89,7 +89,7 @@ selection.
 `notebook.variables` contains Python overrides and starts empty by default.
 Use `notebook.data.names()` to list notebook-defined variables and
 `notebook.data[name].to_python()` to evaluate and read one through the
-[optional headless engine](data-access.mdx). `notebook.data[name].cell` returns
+[headless engine](data-access.mdx). `notebook.data[name].cell` returns
 the defining cell, which you can pass directly to `notebook.view()`.
 
 Remote uploaded files become URL-backed attachments. Explicit `files` replace

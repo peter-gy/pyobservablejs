@@ -21,7 +21,7 @@ export function defineRuntimeCell(
 	observer?: RuntimeObserver,
 	options?: RuntimeDefinitionOptions,
 ): DefinedCell {
-	for (const imported of definition.imports ?? []) {
+	for (const imported of definition.importDefinitions ?? []) {
 		const id = nextModuleCellId(runtime.main);
 		defineModuleCell(
 			runtime.main,

@@ -1,13 +1,16 @@
 from __future__ import annotations
 
-import sys
+import argparse
+import importlib.util
 from importlib.metadata import distribution
 from importlib.metadata import version as distribution_version
 
 import observablejs
 import observablejs.agent as observablejs_agent
 from observablejs import (
+    Notebook,
     NotebookView,
+    js,
     view_from_code,
     view_from_html,
     view_from_observablehq,
@@ -15,7 +18,32 @@ from observablejs import (
 )
 
 
-def verify_release(expected_version: str) -> None:
+def verify_engine(wheel: str) -> None:
+    """Check the headless contract of a native or pure wheel."""
+    native = importlib.util.find_spec("observablejs._engine") is not None
+    if native != (wheel == "native"):
+        raise SystemExit(
+            f"Installed wheel {'has' if native else 'lacks'} the native engine, "
+            f"expected a {wheel} wheel"
+        )
+    with Notebook(js("const answer = 6 * 7")) as notebook:
+        if wheel == "native":
+            answer = notebook.data["answer"].to_python()
+            if answer != 42:
+                raise SystemExit(
+                    f"Headless evaluation returned {answer!r}, expected 42"
+                )
+            return
+        try:
+            notebook.data["answer"].to_python()
+        except ImportError as error:
+            if "native pyobservablejs wheel" not in str(error):
+                raise SystemExit(f"Unexpected headless error: {error}") from error
+        else:
+            raise SystemExit("The pure wheel evaluated a notebook headlessly")
+
+
+def verify_release(expected_version: str, wheel: str) -> None:
     installed_version = distribution_version("pyobservablejs")
     if installed_version != expected_version:
         raise SystemExit(
@@ -115,14 +143,18 @@ def verify_release(expected_version: str) -> None:
             f"{sorted(plugin_files)!r}, expected {sorted(expected_plugin_files)!r}"
         )
 
+    verify_engine(wheel)
+
 
 def main() -> None:
-    if len(sys.argv) != 2:
-        raise SystemExit("Usage: python scripts/verify_release.py VERSION")
-
-    expected_version = sys.argv[1]
-    verify_release(expected_version)
-    print(f"Verified pyobservablejs {expected_version}")
+    parser = argparse.ArgumentParser(
+        description="Verify an installed pyobservablejs wheel."
+    )
+    parser.add_argument("version")
+    parser.add_argument("--wheel", choices=["native", "pure"], required=True)
+    options = parser.parse_args()
+    verify_release(options.version, options.wheel)
+    print(f"Verified pyobservablejs {options.version} ({options.wheel} wheel)")
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ from typing import Any, Literal, cast
 
 import traitlets
 
-Origin = Literal["notebook", "runtime", "widget", "server"]
+Origin = Literal["notebook", "runtime", "widget", "engine"]
 Phase = Literal["analysis", "evaluation", "rendering", "serialization", "transport"]
 
 
@@ -89,8 +89,8 @@ class NotebookError(ObservableError):
     """Authored notebook source failed analysis or evaluation."""
 
 
-class ServerError(ObservableError):
-    """The headless server could not complete an operation."""
+class EngineError(ObservableError):
+    """The headless notebook engine could not complete an operation."""
 
 
 class WidgetError(ObservableError):
@@ -122,7 +122,7 @@ class NotebookTimeoutError(ObservableError, TimeoutError):
 
 
 def _is_fatal(diagnostic: Diagnostic) -> bool:
-    return diagnostic.origin in {"runtime", "widget", "server"} or diagnostic.phase in {
+    return diagnostic.origin in {"runtime", "widget", "engine"} or diagnostic.phase in {
         "serialization",
         "transport",
     }
@@ -150,8 +150,8 @@ def _exception_for(
         exception = SerializationError
     elif primary.phase == "transport" and primary.name in named:
         exception = named[primary.name]
-    elif primary.origin == "server":
-        exception = ServerError
+    elif primary.origin == "engine":
+        exception = EngineError
     elif read:
         exception = ReadError
     else:
@@ -208,7 +208,7 @@ def _diagnostic_from_wire(value: object) -> Diagnostic:
         {"name", "message", "origin", "phase", "component", "operation"},
         {"stack", "cause", "variable", "cell"},
     )
-    if raw["origin"] not in {"notebook", "runtime", "widget", "server"}:
+    if raw["origin"] not in {"notebook", "runtime", "widget", "engine"}:
         raise ValueError("Invalid diagnostic origin")
     if raw["phase"] not in {
         "analysis",
@@ -235,6 +235,7 @@ def _diagnostic_from_wire(value: object) -> Diagnostic:
 __all__ = [
     "Diagnostic",
     "DiagnosticCell",
+    "EngineError",
     "ErrorDetail",
     "NotebookError",
     "NotebookTimeoutError",
@@ -242,7 +243,6 @@ __all__ = [
     "ProtocolError",
     "ReadError",
     "SerializationError",
-    "ServerError",
     "StaleViewError",
     "ViewClosedError",
     "WidgetError",

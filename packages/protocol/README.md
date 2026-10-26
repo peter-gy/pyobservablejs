@@ -1,7 +1,7 @@
 # Python transport codecs
 
 `@pyobservablejs/protocol` owns Python value tags, exact read encoding, and read
-request validation. The widget and Deno server consume these codecs. The runtime
+request validation. The widget and the notebook engine consume these codecs. The runtime
 continues to operate on native JavaScript values.
 
 Preview encoding has a size budget and may summarize values. Explicit reads

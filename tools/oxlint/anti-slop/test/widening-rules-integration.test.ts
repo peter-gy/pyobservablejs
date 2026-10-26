@@ -1,4 +1,4 @@
-import { defineRule, type Context, type Rule, type VisitorWithHooks } from "@oxlint/plugins";
+import { defineRule, type Context, type Rule, type VisitorWithHooks } from "vite-plus/lint/plugins";
 
 import antiSlopPlugin from "../index.ts";
 import { ruleTester } from "./rule-tester.ts";
