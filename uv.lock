@@ -2735,7 +2735,7 @@ wheels = [
 
 [[package]]
 name = "pyobservablejs"
-version = "0.2.1"
+version = "0.3.0"
 source = { editable = "packages/pyobservablejs" }
 dependencies = [
     { name = "agent-plugins" },

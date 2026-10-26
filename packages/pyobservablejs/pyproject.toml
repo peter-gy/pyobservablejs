@@ -5,7 +5,7 @@ backend-path = ["."]
 
 [project]
 name = "pyobservablejs"
-version = "0.2.1"
+version = "0.3.0"
 description = "Observable notebooks as Python widgets and headless computations"
 readme = "README.md"
 license = "MIT"
